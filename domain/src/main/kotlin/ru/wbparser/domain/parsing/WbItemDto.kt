@@ -77,11 +77,17 @@ object FlexibleBoolSerializer : KSerializer<Boolean> {
     override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("FlexibleBool", PrimitiveKind.BOOLEAN)
 
     override fun deserialize(decoder: Decoder): Boolean {
-        val value = decoder.decodeString()
-        return value == "1" || value.lowercase() == "true"
+        val jsonDecoder = decoder as? kotlinx.serialization.json.JsonDecoder
+            ?: return decoder.decodeString().let { parseFlexibleBool(it) }
+        val el = jsonDecoder.decodeJsonElement()
+        val str = el.toString().removeSurrounding("\"").lowercase()
+        return parseFlexibleBool(str)
     }
 
     override fun serialize(encoder: Encoder, value: Boolean) {
         encoder.encodeBoolean(value)
     }
 }
+
+private fun parseFlexibleBool(value: String): Boolean =
+    value == "true" || value == "1"

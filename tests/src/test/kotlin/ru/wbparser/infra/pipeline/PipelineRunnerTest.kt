@@ -130,7 +130,12 @@ class PipelineRunnerTest : FunSpec({
 
     test("PipelineRunner stops when stopAt returns Stop") {
         runTest {
+            // Use pagination (nextPageUrl) so stopAt is consulted when deciding to add page 2.
+            // Without pagination, the loop exits naturally before stopAt would fire.
             val pipeline = makePipeline(
+                parse = { fetched ->
+                    Step.Done(ParsedPage(fetched, emptyList(), testCrawling().url, false))
+                },
                 stopAt = { pages, _ -> if (pages >= 1) Stop.MaxPagesReached else null },
             )
             val registry = SideInterpreterRegistry()

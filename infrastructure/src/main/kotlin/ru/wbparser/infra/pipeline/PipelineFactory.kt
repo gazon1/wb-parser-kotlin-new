@@ -7,6 +7,7 @@ import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedItem
 import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.Pipeline
+import ru.wbparser.domain.pipeline.Retry
 import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
@@ -53,11 +54,13 @@ fun buildParserPipeline(
     download = { task: Crawling ->
         downloader(task).fold(
             ifLeft = { err ->
-                Step.Fail(
-                    StageFailure.Network(
-                        message = err.message,
-                        cause = err.cause,
-                        url = task.url.toString(),
+                // Both connection failures and HTTP 5xx errors are retryable.
+                // HTTP 4xx errors from KtorDownloader are non-retryable but KtorDownloader
+                // returns them as NetworkError too — they will be retried once before failing.
+                Step.Retry(
+                    Retry.ServerError(
+                        attempt = 0,  // actual attempt count is managed by stageWithRetry
+                        delayMs = null,  // use policy defaults
                     ),
                 )
             },

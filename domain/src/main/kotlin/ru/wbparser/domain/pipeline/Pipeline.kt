@@ -101,14 +101,15 @@ data class Pipeline(
                 }
                 is Cont<Fetched, ParsedPage> -> continue
             }
-            pagesCrawled++
 
-            // --- Stop condition check ---
+            // --- Stop condition check ---  (before counting the page, so page 1 is always processed)
             val stopNow = stopAt(pagesCrawled, task.depth)
             if (stopNow != null) {
                 stopped = stopNow
                 break
             }
+
+            pagesCrawled++
 
             // --- Enrich, filter, and save each item ---
             for (item in page.items) {
@@ -146,7 +147,8 @@ data class Pipeline(
             // --- Pagination: enqueue next page if available ---
             val nextUrl = page.nextPageUrl
             if (nextUrl != null) {
-                if (stopAt(pagesCrawled, task.depth + 1) == null) {
+                val paginationStop = stopAt(pagesCrawled, task.depth + 1)
+                if (paginationStop == null) {
                     pending.add(
                         Crawling(
                             id = idGen(),
@@ -155,6 +157,8 @@ data class Pipeline(
                             targetId = task.targetId,
                         ),
                     )
+                } else {
+                    stopped = paginationStop
                 }
             } else {
                 // No next page and no pagination — this page was terminal

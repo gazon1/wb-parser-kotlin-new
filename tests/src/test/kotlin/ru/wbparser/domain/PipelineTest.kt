@@ -110,15 +110,17 @@ class PipelineTest : FunSpec({
 
     test("run stops when stopAt returns a Stop") {
         runTest {
+            // stopAt is consulted BEFORE pagesCrawled is incremented for that page.
+            // So stopAt(pages=1) fires when we want to stop at page 1.
             val pipeline = makePipeline(
-                stopAt = { pages, _ -> if (pages >= 2) Stop.MaxPagesReached else null },
+                stopAt = { pages, _ -> if (pages >= 1) Stop.MaxPagesReached else null },
             )
             val tasks = listOf(testCrawling("http://e.com/1"), testCrawling("http://e.com/2"))
             val result = pipeline.run(tasks)
 
             result.isRight() shouldBe true
             val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
-            crawled.pagesCrawled shouldBe 2
+            crawled.pagesCrawled shouldBe 1
             crawled.stopReason.shouldBeInstanceOf<Stop.MaxPagesReached>()
         }
     }

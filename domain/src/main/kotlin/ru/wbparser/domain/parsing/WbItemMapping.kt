@@ -44,11 +44,13 @@ fun WbItemDto.toParsedItem(
 
 private fun parsePrice(value: String?): Long {
     if (value.isNullOrBlank()) return 0L
-    return value
-        .replace(" ", "")
-        .replace("\u00A0", "")
-        .replace(",", ".")
-        .toDoubleOrNull()
-        ?.let { (it * 100).toLong() }
-        ?: 0L
+    val normalized = value.replace(" ", "").replace("\u00A0", "").replace(",", ".")
+    // If the normalized string has no decimal point, treat it as kopeks directly
+    return if (!normalized.contains('.')) {
+        normalized.toLongOrNull() ?: 0L
+    } else {
+        normalized.toDoubleOrNull()
+            ?.let { (it * 100).toLong() }
+            ?: 0L
+    }
 }

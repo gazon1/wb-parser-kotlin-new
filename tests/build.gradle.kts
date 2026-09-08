@@ -38,6 +38,10 @@ dependencies {
     testImplementation("io.mockk:mockk:1.14.11")
     testImplementation("org.testcontainers:postgresql:1.20.4")
     testImplementation("org.testcontainers:junit-jupiter:1.20.4")
+    // SQLite for integration tests
+    testImplementation("org.xerial:sqlite-jdbc:3.46.0.0")
+    // Needed for debug deserialization checks in integration tests
+    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 }
 
 tasks.test {
