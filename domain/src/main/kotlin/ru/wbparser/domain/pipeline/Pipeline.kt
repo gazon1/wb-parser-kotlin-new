@@ -47,6 +47,8 @@ data class Pipeline(
     val retryPolicy: RetryPolicy = RetryPolicy(),
     val stopAt:    (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
     val clock: Clock,
+    /** Generates a unique ID for a pagination task. Override in tests for determinism. */
+    val idGen: () -> String = { java.util.UUID.randomUUID().toString() },
 ) {
     /**
      * Runs the pipeline over [tasks] synchronously.
@@ -147,7 +149,7 @@ data class Pipeline(
                 if (stopAt(pagesCrawled, task.depth + 1) == null) {
                     pending.add(
                         Crawling(
-                            id = java.util.UUID.randomUUID().toString(),
+                            id = idGen(),
                             url = nextUrl,
                             depth = task.depth + 1,
                             targetId = task.targetId,

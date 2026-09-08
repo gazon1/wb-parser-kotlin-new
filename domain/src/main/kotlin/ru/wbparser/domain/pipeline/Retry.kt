@@ -6,27 +6,28 @@ import kotlin.random.Random
  * Signal that tells the runner why a stage wants to retry.
  */
 sealed interface Retry {
-    val delayMs: Long
+    /** Explicit delay override, or null to use policy defaults. */
+    val delayMs: Long?
 
     /** Server returned 5xx. */
     data class ServerError(
         val attempt: Int,
-        override val delayMs: Long = -1L,
+        override val delayMs: Long? = null,
     ) : Retry
 
     /** Server returned 429 or sent Retry-After. */
     data class RateLimited(
-        override val delayMs: Long = -1L,
+        override val delayMs: Long? = null,
     ) : Retry
 
     /** Anti-bot challenge detected. */
     data class Antibot(
-        override val delayMs: Long = -1L,
+        override val delayMs: Long? = null,
     ) : Retry
 
     /** Auth context expired. */
     data class StaleContext(
-        override val delayMs: Long = -1L,
+        override val delayMs: Long? = null,
     ) : Retry
 }
 
@@ -58,13 +59,13 @@ fun retryDelayMs(
     random: Random = Random.Default,
 ): Long {
     val baseDelay = when (signal) {
-        is Retry.ServerError -> signal.delayMs.takeIf { it > 0 }
+        is Retry.ServerError -> signal.delayMs
             ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
-        is Retry.RateLimited -> signal.delayMs.takeIf { it > 0 }
+        is Retry.RateLimited -> signal.delayMs
             ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
-        is Retry.Antibot -> signal.delayMs.takeIf { it > 0 }
+        is Retry.Antibot -> signal.delayMs
             ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
-        is Retry.StaleContext -> signal.delayMs.takeIf { it > 0 }
+        is Retry.StaleContext -> signal.delayMs
             ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
     }
     val capped = baseDelay.coerceAtMost(policy.maxDelayMs)
