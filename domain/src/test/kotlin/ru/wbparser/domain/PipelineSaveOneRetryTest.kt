@@ -170,7 +170,7 @@ class PipelineSaveOneRetryTest : FunSpec({
 
     test("saveOne collects sides from successful save") {
         runTest {
-            var sidesCount = 0
+            var sidesCount: Int
             val pipeline = makePipeline(
                 save = { Step.Done(Unit, sides = listOf(ru.wbparser.domain.pipeline.Side.Log(
                     ru.wbparser.domain.pipeline.LogLevel.INFO, "saved"

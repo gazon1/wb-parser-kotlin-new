@@ -51,6 +51,18 @@ data class Pipeline(
     val idGen: () -> String = { java.util.UUID.randomUUID().toString() },
 ) {
     /**
+     * Outcome of a stage execution inside [run].
+     * Used by helper functions to communicate result + side effects back to [run].
+     * Note: [Cont] is never returned by any stage in this pipeline — fold into callers.
+     */
+    private sealed class StageDecision<out O> {
+        class Done<O>(val output: O) : StageDecision<O>()
+        class Retry(val task: Crawling) : StageDecision<Nothing>()
+        class Fail(val error: DomainError) : StageDecision<Nothing>()
+        class Cont : StageDecision<Nothing>()
+    }
+
+    /**
      * Runs the pipeline over [tasks] synchronously.
      *
      * Returns [Either.Left] with a [DomainError] on unrecoverable failure,
@@ -73,33 +85,25 @@ data class Pipeline(
             val task = pending.removeFirst()
 
             // --- Download stage ---
-            val fetched: Fetched = when (val result = stageWithRetry(task, download)) {
-                is Done<Crawling, Fetched> -> {
-                    sides += result.sides()
-                    result.output
-                }
-                is Fail<Crawling, Fetched> -> return Either.Left(result.failure.toDomainError())
-                is Retry<Crawling, Fetched> -> {
-                    sides += Side.ScheduleRetry(task.url.toString(), retryDelayMs(0, result.signal, retryPolicy), task.targetId)
+            val fetched: Fetched = when (val decision = runDownloadStage(task, sides)) {
+                is StageDecision.Done -> decision.output
+                is StageDecision.Fail -> return Either.Left(decision.error)
+                is StageDecision.Retry -> {
                     pending.add(task)
                     continue
                 }
-                is Cont<Crawling, Fetched> -> continue
+                is StageDecision.Cont -> continue
             }
 
             // --- Parse stage ---
-            val page: ParsedPage = when (val result = stageWithRetry(fetched, parse)) {
-                is Done<Fetched, ParsedPage> -> {
-                    sides += result.sides()
-                    result.output
-                }
-                is Fail<Fetched, ParsedPage> -> return Either.Left(result.failure.toDomainError())
-                is Retry<Fetched, ParsedPage> -> {
-                    sides += Side.ScheduleRetry(task.url.toString(), retryDelayMs(0, result.signal, retryPolicy), task.targetId)
+            val page: ParsedPage = when (val decision = runParseStage(task, fetched, sides)) {
+                is StageDecision.Done -> decision.output
+                is StageDecision.Fail -> return Either.Left(decision.error)
+                is StageDecision.Retry -> {
                     pending.add(task)
                     continue
                 }
-                is Cont<Fetched, ParsedPage> -> continue
+                is StageDecision.Cont -> continue
             }
 
             // --- Stop condition check --- (before counting the page, so page 1 is always processed)
@@ -158,6 +162,59 @@ data class Pipeline(
         return Either.Right(
             Crawled(pagesCrawled, itemsSaved, stopped, durationMs) to sides.toList(),
         )
+    }
+
+    /**
+     * Runs the download stage on [task] with retry, returning a [StageDecision].
+     * Caller is responsible for handling [StageDecision.Retry] by re-adding [task] to the pending queue.
+     */
+    private suspend fun runDownloadStage(
+        task: Crawling,
+        sides: MutableList<Side>,
+    ): StageDecision<Fetched> {
+        return when (val result = stageWithRetry(task, download)) {
+            is Done<Crawling, Fetched> -> {
+                sides += result.sides()
+                StageDecision.Done(result.output)
+            }
+            is Fail<Crawling, Fetched> -> StageDecision.Fail(result.failure.toDomainError())
+            is Retry<Crawling, Fetched> -> {
+                sides += Side.ScheduleRetry(
+                    task.url.toString(),
+                    retryDelayMs(0, result.signal, retryPolicy),
+                    task.targetId,
+                )
+                StageDecision.Retry(task)
+            }
+            is Cont<Crawling, Fetched> -> StageDecision.Cont()
+        }
+    }
+
+    /**
+     * Runs the parse stage on [fetched] with retry, returning a [StageDecision].
+     * Caller handles [StageDecision.Retry] by re-adding the original [task] to the pending queue.
+     */
+    private suspend fun runParseStage(
+        task: Crawling,
+        fetched: Fetched,
+        sides: MutableList<Side>,
+    ): StageDecision<ParsedPage> {
+        return when (val result = stageWithRetry(fetched, parse)) {
+            is Done<Fetched, ParsedPage> -> {
+                sides += result.sides()
+                StageDecision.Done(result.output)
+            }
+            is Fail<Fetched, ParsedPage> -> StageDecision.Fail(result.failure.toDomainError())
+            is Retry<Fetched, ParsedPage> -> {
+                sides += Side.ScheduleRetry(
+                    task.url.toString(),
+                    retryDelayMs(0, result.signal, retryPolicy),
+                    task.targetId,
+                )
+                StageDecision.Retry(task)
+            }
+            is Cont<Fetched, ParsedPage> -> StageDecision.Cont()
+        }
     }
 
     /**
