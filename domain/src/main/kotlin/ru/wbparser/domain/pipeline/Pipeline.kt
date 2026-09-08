@@ -129,7 +129,15 @@ data class Pipeline(
                         sides += r.sides()
                         itemsSaved++
                     }
-                    else -> {}
+                    is Fail -> sides += Side.Log(
+                        LogLevel.ERROR,
+                        "Save stage failed: ${r.failure.message}",
+                    )
+                    is Retry -> sides += Side.Log(
+                        LogLevel.WARN,
+                        "Save stage requested retry",
+                    )
+                    is Cont -> { /* continuation — re-invoke save next loop iteration */ }
                 }
             }
 

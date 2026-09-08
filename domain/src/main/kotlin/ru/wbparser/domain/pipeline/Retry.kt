@@ -61,9 +61,11 @@ fun retryDelayMs(
         is Retry.ServerError -> signal.delayMs.takeIf { it > 0 }
             ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
         is Retry.RateLimited -> signal.delayMs.takeIf { it > 0 }
-            ?: policy.baseDelayMs
-        is Retry.Antibot -> signal.delayMs
-        is Retry.StaleContext -> signal.delayMs
+            ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
+        is Retry.Antibot -> signal.delayMs.takeIf { it > 0 }
+            ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
+        is Retry.StaleContext -> signal.delayMs.takeIf { it > 0 }
+            ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
     }
     val capped = baseDelay.coerceAtMost(policy.maxDelayMs)
     val jitterBound = (capped * policy.jitterPercent).toLong()

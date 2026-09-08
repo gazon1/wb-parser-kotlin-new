@@ -33,11 +33,13 @@ class NoOpMetricInterpreter : Interpreter<Side.Metric> {
 
 /**
  * Accumulates [Side.SaveBatch] items and flushes to DB on [flush].
- * [targetId] is captured from the crawl context at construction time.
+ *
+ * Note: this interpreter is not currently wired into [SideInterpreterRegistry]
+ * in CrawlRunner — see the Cluster A tech-debt notes. The real save path
+ * goes through CrawlRunner.save which calls db.ds.upsertSavedItems directly.
  */
 class SaveBatchInterpreter(
     private val ds: DataSource,
-    @Suppress("UNUSED_PARAMETER") private val targetId: Long,
 ) : Interpreter<Side.SaveBatch> {
     private val accumulated = mutableListOf<SavedItem>()
 

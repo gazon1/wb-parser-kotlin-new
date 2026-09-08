@@ -37,8 +37,12 @@ infix fun <I, M, O> Stage<I, M>.andThen(next: Stage<M, O>): Stage<I, O> = { inpu
         is Step.Cont -> Step.Cont(result.input)
         is Step.Done -> {
             val nextResult = next(result.output)
-            val nextSides = (nextResult as? Step.Done)?.sides.orEmpty()
-            Step.Done(nextResult.outputOrNull()!!, result.sides + nextSides)
+            when (nextResult) {
+                is Step.Done -> Step.Done(nextResult.output, result.sides + nextResult.sides)
+                is Step.Retry -> Step.Retry(nextResult.signal)
+                is Step.Fail -> Step.Fail(nextResult.failure)
+                is Step.Cont -> Step.Cont(nextResult.input)
+            }
         }
         is Step.Retry -> Step.Retry(result.signal)
         is Step.Fail -> Step.Fail(result.failure)

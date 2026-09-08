@@ -27,7 +27,7 @@ class WbAuthExtractor(
             }
 
             pool.using { page ->
-                val context = extractFromPage(page, url)
+                val context = extractFromPage(targetId, page, url)
                 if (context != null) {
                     cache[targetId] = context
                     context.right()
@@ -37,7 +37,7 @@ class WbAuthExtractor(
             }
         }
 
-    private fun extractFromPage(page: Page, url: String): WbAuthContext? {
+    private fun extractFromPage(targetId: Long, page: Page, url: String): WbAuthContext? {
         return try {
             val authHeadersMap = mutableMapOf<String, String>()
             var capturedCookie: String? = null
@@ -64,7 +64,7 @@ class WbAuthExtractor(
                 val ua = page.evaluate("navigator.userAgent") as? String
                     ?: DEFAULT_USER_AGENT
                 WbAuthContext(
-                    targetId = 0L,
+                    targetId = targetId,
                     userAgent = ua,
                     authHeaders = authHeadersMap,
                     cookie = capturedCookie,
