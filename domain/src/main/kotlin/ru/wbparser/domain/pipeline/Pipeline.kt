@@ -116,23 +116,7 @@ data class Pipeline(
             pagesCrawled++
 
             // --- Enrich, filter, and save each item ---
-            for (item in page.items) {
-                val filtered = when (val r = filter(item)) {
-                    is Done<ParsedItem, ParsedItem?> -> r.output
-                    else -> null
-                }
-                if (filtered == null) continue
-
-                val enriched: SavedItem = when (val r = enrich(filtered)) {
-                    is Done<ParsedItem, SavedItem> -> {
-                        sides += r.sides()
-                        r.output
-                    }
-                    else -> continue
-                }
-
-                itemsSaved += saveOne(enriched, sides)
-            }
+            itemsSaved += processItems(page, task, sides)
 
             // --- Pagination: enqueue next page if available ---
             val nextUrl = page.nextPageUrl
@@ -162,6 +146,35 @@ data class Pipeline(
         return Either.Right(
             Crawled(pagesCrawled, itemsSaved, stopped, durationMs) to sides.toList(),
         )
+    }
+
+    /**
+     * Runs filter → enrich → save for each item in [page].
+     * Returns the number of items successfully saved.
+     */
+    private suspend fun processItems(
+        page: ParsedPage,
+        task: Crawling,
+        sides: MutableList<Side>,
+    ): Int {
+        var saved = 0
+        for (item in page.items) {
+            val filtered = when (val r = filter(item)) {
+                is Done<ParsedItem, ParsedItem?> -> r.output
+                else -> null
+            }
+            if (filtered == null) continue
+
+            val enriched: SavedItem = when (val r = enrich(filtered)) {
+                is Done<ParsedItem, SavedItem> -> {
+                    sides += r.sides()
+                    r.output
+                }
+                else -> continue
+            }
+            saved += saveOne(enriched, sides)
+        }
+        return saved
     }
 
     /**
