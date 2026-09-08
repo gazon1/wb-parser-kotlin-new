@@ -42,3 +42,4 @@ web-frontend/.next/
 
 # Test output
 hs_err_pid*.log
+.zcode/plans/**
