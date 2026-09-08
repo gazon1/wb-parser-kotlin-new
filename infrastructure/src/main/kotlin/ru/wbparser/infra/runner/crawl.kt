@@ -113,7 +113,7 @@ class CrawlRunner(
                     ifLeft = { err ->
                         Step.Fail(
                             ru.wbparser.domain.pipeline.StageFailure.Network(
-                                message = err.message ?: "Network error",
+                                message = err.message,
                                 cause = err.cause,
                                 url = task.url.toString(),
                             ),
