@@ -87,7 +87,7 @@ class ScheduleRetryInterpreter(
                 id = UUID.randomUUID().toString(),
                 url = parsedUrl,
                 depth = 0,
-                targetId = 0L, // caller must set correct targetId
+                targetId = side.targetId,
             ),
         )
     }

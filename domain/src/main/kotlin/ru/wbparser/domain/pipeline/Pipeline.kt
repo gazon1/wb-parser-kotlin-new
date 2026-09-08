@@ -78,7 +78,7 @@ data class Pipeline(
                 }
                 is Fail<Crawling, Fetched> -> return Either.Left(result.failure.toDomainError())
                 is Retry<Crawling, Fetched> -> {
-                    sides += Side.ScheduleRetry(task.url.toString(), retryDelayMs(0, result.signal, retryPolicy))
+                    sides += Side.ScheduleRetry(task.url.toString(), retryDelayMs(0, result.signal, retryPolicy), task.targetId)
                     pending.add(task) // re-attempt on next loop
                     continue
                 }
@@ -93,7 +93,7 @@ data class Pipeline(
                 }
                 is Fail<Fetched, ParsedPage> -> return Either.Left(result.failure.toDomainError())
                 is Retry<Fetched, ParsedPage> -> {
-                    sides += Side.ScheduleRetry(task.url.toString(), retryDelayMs(0, result.signal, retryPolicy))
+                    sides += Side.ScheduleRetry(task.url.toString(), retryDelayMs(0, result.signal, retryPolicy), task.targetId)
                     pending.add(task)
                     continue
                 }

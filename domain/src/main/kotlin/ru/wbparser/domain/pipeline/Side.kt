@@ -50,6 +50,7 @@ sealed interface Side {
     data class ScheduleRetry(
         val url: String,
         val afterMs: Long,
+        val targetId: Long,
     ) : Side
 
     /** Record that we attempted to acquire the advisory lock. */
