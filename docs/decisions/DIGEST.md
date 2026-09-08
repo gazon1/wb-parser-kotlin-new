@@ -21,6 +21,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** call `delay()` or `UUID.randomUUID()` inside a `Stage` — inject timing/id generation through `PipelineContext` if needed. _(from `2026-09-08-functional-pipeline-refactor`)
 - **Never** emit a `Side` from a stage without a corresponding interpreter registered — the pipeline will throw at runtime. _(from `2026-09-08-functional-pipeline-refactor`)
 - New code in `domain/pipeline/**` **MUST** be accompanied by a pure-Kotlin test in `domain/src/test/kotlin/` using a fake registry. _(from `2026-09-08-functional-pipeline-refactor`)
+- **Always** call `server.baseUrl()` inside the test lambda (not at class instantiation), because the port is assigned on `start()` _(from `2026-09-08-integration-testing-pr7`)
+- **Always** emit `Step.Retry` from download stage for retryable errors — `Step.Fail` bypasses `stageWithRetry` _(from `2026-09-08-integration-testing-pr7`)
+- **Always** use `jdbc:sqlite:file::memory:?cache=shared` for in-memory SQLite in tests _(from `2026-09-08-integration-testing-pr7`)
+- **Never** use `Random.Default` in retry tests — use seeded `Random` for deterministic back-off _(from `2026-09-08-integration-testing-pr7`)
 
 ## Per-tag
 
@@ -58,9 +62,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-09-08-conventional-commits-and-cleanup-prs` — workflow  conventions
 - `2026-09-08-domain-coverage-pr4` — testing  domain  pipeline
 - `2026-09-08-functional-pipeline-refactor` — pipeline  architecture  domain
+- `2026-09-08-integration-testing-pr7` — testing  pipeline  architecture
 
 ## Active entries
 
 - `2026-09-08-conventional-commits-and-cleanup-prs` — Conventional Commits + PR-numbered cleanup series
 - `2026-09-08-domain-coverage-pr4` — Domain coverage — Retry/StageFailure/Pipeline EmptyPage tests
 - `2026-09-08-functional-pipeline-refactor` — Functional pipeline refactor — Stage/Side/Interpreter registry
+- `2026-09-08-integration-testing-pr7` — Integration testing — SQLite + Java HttpServer
