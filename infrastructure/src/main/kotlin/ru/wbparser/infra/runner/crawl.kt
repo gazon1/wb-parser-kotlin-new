@@ -24,6 +24,7 @@ import ru.wbparser.infra.db.repositories.fetchActiveTargets
 import ru.wbparser.infra.db.repositories.upsertSavedItems
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
+import ru.wbparser.infra.pipeline.buildParserPipeline
 import ru.wbparser.infra.scheduler.Freshness
 import ru.wbparser.infra.scheduler.FreshnessPolicy
 import ru.wbparser.infra.scheduler.markCrawled
@@ -107,50 +108,35 @@ class CrawlRunner(
     private suspend fun runTarget(target: Target): TargetResult {
         val targetId = target.id
 
-        val pipeline: DomainPipeline = DomainPipeline(
-            download = { task: Crawling ->
-                downloader(task).fold(
-                    ifLeft = { err ->
-                        Step.Fail(
-                            ru.wbparser.domain.pipeline.StageFailure.Network(
-                                message = err.message,
-                                cause = err.cause,
-                                url = task.url.toString(),
-                            ),
-                        )
-                    },
-                    ifRight = { fetched -> Step.Done(fetched) },
-                )
-            },
-            parse = { fetched: Fetched ->
-                Step.Done(parser(fetched))
-            },
-            filter = { item: ru.wbparser.domain.model.ParsedItem ->
-                Step.Done<ru.wbparser.domain.model.ParsedItem, ru.wbparser.domain.model.ParsedItem?>(item)
-            },
-            enrich = { item: ru.wbparser.domain.model.ParsedItem ->
-                Step.Done(SavedItem.from(item, targetId))
-            },
+        val pipeline: DomainPipeline = buildParserPipeline(
+            downloader = downloader,
+            parser = parser,
             save = { items: List<SavedItem> ->
                 if (items.isNotEmpty()) {
                     db.ds.upsertSavedItems(items, UUID.randomUUID())
                 }
                 Step.Done(Unit)
             },
+            targetId = targetId,
             retryPolicy = retryPolicy,
-            stopAt = { pages: Int, depth: Int ->
-                if (pages >= maxPagesPerCatalog) {
-                    Stop.MaxPagesReached
-                } else if (depth >= maxDepth) {
-                    Stop.MaxDepthReached(maxDepth, depth)
-                } else {
-                    null
+            stopAt = { pages, depth ->
+                when {
+                    pages >= maxPagesPerCatalog -> Stop.MaxPagesReached
+                    depth >= maxDepth -> Stop.MaxDepthReached(maxDepth, depth)
+                    else -> null
                 }
             },
             clock = clock,
         )
 
-        val registry = SideInterpreterRegistry()
+        val registry = SideInterpreterRegistry(
+            log = ru.wbparser.infra.pipeline.LogInterpreter(),
+            metric = ru.wbparser.infra.pipeline.NoOpMetricInterpreter(),
+            saveBatch = ru.wbparser.infra.pipeline.SaveBatchInterpreter(db.ds),
+            jobEvent = ru.wbparser.infra.pipeline.JobEventInterpreter(),
+            scheduleRetry = ru.wbparser.infra.pipeline.ScheduleRetryInterpreter(mutableListOf()),
+            acquireAdvisoryLock = ru.wbparser.infra.pipeline.NoOpAdvisoryLockInterpreter(),
+        )
         val runner = PipelineRunner(pipeline, registry)
 
         val startUrl: CrawlUrl = CrawlUrl.of(target.url).getOrElse {
