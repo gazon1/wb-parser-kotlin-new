@@ -6,7 +6,6 @@ import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.error.DropItemError
 import ru.wbparser.domain.error.NetworkError
 import ru.wbparser.domain.error.ParseError
-import ru.wbparser.domain.error.StoppedCrawling
 
 /**
  * Failure from a pipeline stage — carries enough information to decide retry vs. stop.
@@ -64,12 +63,6 @@ sealed interface StageFailure {
         override val isRetryable: Boolean = true
     }
 
-    data class Stopped(val reason: Stop?) : StageFailure {
-        override val message: String = "Stopped: ${reason ?: "external signal"}"
-        override val url: String? = null
-        override val isRetryable: Boolean = false
-    }
-
     /** All retry attempts were exhausted. */
     data class RetryExhausted(
         override val message: String,
@@ -87,6 +80,5 @@ fun StageFailure.toDomainError(): DomainError = when (this) {
     is StageFailure.Item -> DropItemError(message, reason, null, url)
     is StageFailure.Antibot -> AntibotError(message, null, null, url)
     is StageFailure.AuthFailed -> AuthFailedError(message, null, url)
-    is StageFailure.Stopped -> StoppedCrawling(message, url)
     is StageFailure.RetryExhausted -> NetworkError(message, null, url)
 }

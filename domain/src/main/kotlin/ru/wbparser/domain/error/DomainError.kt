@@ -8,6 +8,9 @@ sealed interface DomainError {
     val url: String?
 
     fun isRetryable(): Boolean
+    // Overrides exist in DepthExceededError, StoppedCrawling, DropItemError
+    // but isStopped()/isDrop() have zero callers in the codebase.
+    // Remove override declarations from subclasses if removing these defaults.
     fun isStopped(): Boolean = false
     fun isDrop(): Boolean = false
 }

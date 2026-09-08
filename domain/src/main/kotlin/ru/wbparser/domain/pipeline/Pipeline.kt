@@ -140,7 +140,7 @@ data class Pipeline(
                         LogLevel.WARN,
                         "Save stage requested retry",
                     )
-                    is Cont -> { /* continuation — re-invoke save next loop iteration */ }
+                    is Cont -> { /* save stages in this pipeline never emit Cont */ }
                 }
             }
 

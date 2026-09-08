@@ -12,8 +12,3 @@ typealias RequestInterceptor = suspend (Crawling) -> Map<String, String>
  * Interceptor that runs after a response is received.
  */
 typealias ResponseInterceptor = suspend (Fetched) -> Fetched
-
-/**
- * Applies WB catalog JSON headers to the response.
- */
-fun applyCatalogJsonHeaders(response: Fetched): Fetched = response
