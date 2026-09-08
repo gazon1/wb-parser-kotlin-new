@@ -1,49 +1,78 @@
 package ru.wbparser.domain.pipeline
 
+import kotlin.random.Random
+
 /**
- * Signal to retry an item or page.
+ * Signal that tells the runner why a stage wants to retry.
  */
 sealed interface Retry {
     val delayMs: Long
 
+    /** Server returned 5xx. */
     data class ServerError(
         val attempt: Int,
-        override val delayMs: Long = 1_000L,
+        override val delayMs: Long = -1L,
     ) : Retry
 
+    /** Server returned 429 or sent Retry-After. */
     data class RateLimited(
-        override val delayMs: Long = 5_000L,
+        override val delayMs: Long = -1L,
     ) : Retry
 
+    /** Anti-bot challenge detected. */
     data class Antibot(
-        override val delayMs: Long = 30_000L,
+        override val delayMs: Long = -1L,
     ) : Retry
 
+    /** Auth context expired. */
     data class StaleContext(
-        override val delayMs: Long = 10_000L,
+        override val delayMs: Long = -1L,
     ) : Retry
 }
 
 /**
- * Retry policy configuration.
+ * Retry policy — controls back-off behaviour.
  */
 data class RetryPolicy(
     val maxAttempts: Int = 5,
     val baseDelayMs: Long = 1_000L,
     val maxDelayMs: Long = 120_000L,
+    val jitterPercent: Double = 0.1,  // up to 10% jitter
 )
 
 /**
- * Calculate the retry delay for a given attempt and [Retry] signal.
+ * Calculate retry delay in milliseconds for [attempt] with [signal] under [policy].
+ *
+ * Uses exponential back-off with capped maximum and optional jitter.
+ * Jitter makes concurrent retries less likely to collide.
+ *
+ * ## Determinism note
+ *
+ * This function is **pure** when [random] is seeded (e.g. `Random(42)`).
+ * Never use `Random.Default` in tests — pass a seeded instance.
  */
-fun retryDelay(attempt: Int, signal: Retry, policy: RetryPolicy = RetryPolicy()): Long {
-    val exponentialDelay = kotlin.math.min(policy.baseDelayMs * (1 shl attempt), policy.maxDelayMs)
-    val jitter = (Math.random() * 0.3 * exponentialDelay).toLong()
-    return kotlin.math.min(exponentialDelay + jitter, policy.maxDelayMs)
+fun retryDelayMs(
+    attempt: Int,
+    signal: Retry,
+    policy: RetryPolicy = RetryPolicy(),
+    random: Random = Random.Default,
+): Long {
+    val baseDelay = when (signal) {
+        is Retry.ServerError -> signal.delayMs.takeIf { it > 0 }
+            ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
+        is Retry.RateLimited -> signal.delayMs.takeIf { it > 0 }
+            ?: policy.baseDelayMs
+        is Retry.Antibot -> signal.delayMs
+        is Retry.StaleContext -> signal.delayMs
+    }
+    val capped = baseDelay.coerceAtMost(policy.maxDelayMs)
+    val jitterBound = (capped * policy.jitterPercent).toLong()
+    val jitter = if (jitterBound > 0) random.nextLong(jitterBound) else 0L
+    return (capped + jitter).coerceAtMost(policy.maxDelayMs)
 }
 
 /**
- * Whether a retry should be attempted for the given attempt count.
+ * Whether retry should be attempted for [attempt] under [policy].
  */
 fun shouldRetry(attempt: Int, policy: RetryPolicy = RetryPolicy()): Boolean =
     attempt < policy.maxAttempts

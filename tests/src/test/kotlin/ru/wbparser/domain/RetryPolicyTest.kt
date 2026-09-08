@@ -5,30 +5,34 @@ import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import ru.wbparser.domain.pipeline.Retry
 import ru.wbparser.domain.pipeline.RetryPolicy
-import ru.wbparser.domain.pipeline.retryDelay
+import ru.wbparser.domain.pipeline.retryDelayMs
 import ru.wbparser.domain.pipeline.shouldRetry
+import kotlin.random.Random
 
 class RetryPolicyTest : FunSpec({
 
-    test("retryDelay returns positive values for ServerError signal") {
+    test("retryDelayMs returns positive values for ServerError signal") {
         val signal = Retry.ServerError(attempt = 1)
-        val delay = retryDelay(1, signal)
+        val delay = retryDelayMs(1, signal, random = Random(42))
         delay shouldBeGreaterThan 0L
     }
 
-    test("retryDelay returns positive values for RateLimited signal") {
+    test("retryDelayMs returns positive values for RateLimited signal") {
         val signal = Retry.RateLimited(delayMs = 5_000L)
-        val delay = retryDelay(1, signal)
+        val delay = retryDelayMs(1, signal, random = Random(42))
         delay shouldBeGreaterThan 0L
     }
 
-    test("retryDelay increases with attempt number (exponential backoff)") {
-        val signal = Retry.ServerError(attempt = 0)
-        val delay0 = retryDelay(0, signal)
-        val delay1 = retryDelay(1, signal)
-        val delay2 = retryDelay(2, signal)
-        delay1 shouldBeGreaterThan delay0
-        delay2 shouldBeGreaterThan delay1
+    test("retryDelayMs base delay grows exponentially with attempt") {
+        // Test base delay (without jitter) grows: 1000 -> 2000 -> 4000 -> 8000
+        // We use a tiny jitterPercent so jitter doesn't flip the ordering
+        val policy = RetryPolicy(jitterPercent = 0.0)
+        for (attempt in 0..5) {
+            val signal = Retry.ServerError(attempt = 0)
+            val delay = retryDelayMs(attempt, signal, policy, Random(42))
+            val expected = 1000L * (1 shl attempt)
+            delay shouldBe expected
+        }
     }
 
     test("shouldRetry returns true for attempts less than maxAttempts") {
@@ -49,10 +53,10 @@ class RetryPolicyTest : FunSpec({
         shouldRetry(10, policy) shouldBe false
     }
 
-    test("retryDelay respects maxDelayMs cap") {
+    test("retryDelayMs respects maxDelayMs cap") {
         val signal = Retry.ServerError(attempt = 100)
         val policy = RetryPolicy(maxDelayMs = 60_000L)
-        val delay = retryDelay(100, signal, policy)
+        val delay = retryDelayMs(100, signal, policy, Random(42))
         (delay <= 60_000L) shouldBe true
     }
 })

@@ -69,6 +69,15 @@ sealed interface StageFailure {
         override val url: String? = null
         override val isRetryable: Boolean = false
     }
+
+    /** All retry attempts were exhausted. */
+    data class RetryExhausted(
+        override val message: String,
+        val signal: Retry,
+    ) : StageFailure {
+        override val url: String? = null
+        override val isRetryable: Boolean = false
+    }
 }
 
 fun StageFailure.toDomainError(): DomainError = when (this) {
@@ -79,4 +88,5 @@ fun StageFailure.toDomainError(): DomainError = when (this) {
     is StageFailure.Antibot -> AntibotError(message, null, null, url)
     is StageFailure.AuthFailed -> AuthFailedError(message, null, url)
     is StageFailure.Stopped -> StoppedCrawling(message, url)
+    is StageFailure.RetryExhausted -> NetworkError(message, null, url)
 }

@@ -33,6 +33,34 @@ data class SavedItem(
     val updatedAt: String,
 ) {
     companion object {
+        /**
+         * Canonical factory from a [ParsedItem] produced by the parse stage.
+         * [targetId] is set by the caller (enrichment context).
+         */
+        fun from(item: ParsedItem, targetId: Long): SavedItem {
+            val now = Instant.now()
+            return SavedItem(
+                productId = item.productId.value,
+                name = item.name,
+                priceKopecks = item.priceKopecks,
+                salePriceKopecks = item.salePriceKopecks,
+                cashback = item.cashback,
+                brand = item.brand,
+                category = item.category,
+                categoryId = null,
+                imageUrl = item.imageUrl,
+                pageUrl = item.pageUrl.toString(),
+                targetId = targetId,
+                brandId = item.brandId,
+                subjectId = item.subjectId,
+                supplierId = item.supplierId,
+                inStock = item.inStock,
+                contentHash = "${item.productId.value}:${item.name}:${item.priceKopecks}",
+                createdAt = now.toString(),
+                updatedAt = now.toString(),
+            )
+        }
+
         fun from(
             productId: ProductId,
             name: String,
