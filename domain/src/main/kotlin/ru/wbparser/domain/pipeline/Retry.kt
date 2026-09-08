@@ -29,6 +29,11 @@ sealed interface Retry {
     data class StaleContext(
         override val delayMs: Long? = null,
     ) : Retry
+
+    /** Database or other storage failure. */
+    data class Database(
+        override val delayMs: Long? = null,
+    ) : Retry
 }
 
 /**

@@ -163,22 +163,38 @@ data class Pipeline(
     /**
      * Saves a single [item] and records any side effects.
      * Returns 1 if saved successfully, 0 otherwise.
+     *
+     * Uses a retry loop for transient (retryable) failures — identical to how
+     * [stageWithRetry] handles download and parse stages. A DB blip will not
+     * fail the entire crawl.
      */
     private suspend fun saveOne(item: SavedItem, sides: MutableList<Side>): Int {
-        return when (val r = save(listOf(item))) {
-            is Done<List<SavedItem>, Unit> -> {
-                sides += r.sides()
-                1
+        var attempt = 0
+        val items = listOf(item)
+        while (true) {
+            when (val r = save.invoke(items)) {
+                is Done<List<SavedItem>, Unit> -> {
+                    sides += r.sides()
+                    return 1
+                }
+                is Fail -> {
+                    sides += Side.Log(LogLevel.ERROR, "Save stage failed: ${r.failure.message}")
+                    return 0
+                }
+                is Retry -> {
+                    if (!shouldRetry(attempt, retryPolicy)) {
+                        sides += Side.Log(
+                            LogLevel.ERROR,
+                            "Save stage retry exhausted after ${retryPolicy.maxAttempts} attempts",
+                        )
+                        return 0
+                    }
+                    attempt++
+                    delay(retryDelayMs(attempt - 1, r.signal, retryPolicy))
+                    // loop and retry
+                }
+                is Cont -> { /* save stages in this pipeline never emit Cont */ return 0 }
             }
-            is Fail -> {
-                sides += Side.Log(LogLevel.ERROR, "Save stage failed: ${r.failure.message}")
-                0
-            }
-            is Retry -> {
-                sides += Side.Log(LogLevel.WARN, "Save stage requested retry")
-                0
-            }
-            is Cont -> { /* save stages in this pipeline never emit Cont */ 0 }
         }
     }
 

@@ -98,6 +98,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 6. **Мокки / Mockito** — используй Fake* классы (fake over mock convention)
 7. **Чистый код в `infrastructure/`** — Exposed queries, Ktor client, Flyway migrations; domain-only логика должна жить в `domain/`
 8. **CHANGELOG.md** — не создавай; git log + PR-серии в commit messages покрывают
+9. **Save-стадия без retry-loop** — DB/HTTP/внешние ресурсы должны использовать retry-loop (per PR 11, G10). Транзитный DB-блип не должен ронять весь crawl.
 
 ---
 

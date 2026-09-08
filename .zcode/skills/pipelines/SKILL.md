@@ -259,6 +259,48 @@ override suspend fun invoke(input: String): Step<String, String> =
     Step.Done(input.uppercase(), sides = listOf(Side.Metric("processed", 1)))
 ```
 
+### BAD: Save stage without `stageWithRetry`
+
+The save stage touches an external mutable resource (database) — the same class of
+failure as HTTP download. A transient DB hiccup should retry, not fail the entire crawl.
+
+```kotlin
+// BAD — saveOne returns 0 on Retry without retrying (pre-PR-11)
+private suspend fun saveOne(item: SavedItem, sides: MutableList<Side>): Int {
+    return when (val r = save(listOf(item))) {
+        is Retry -> 0  // silently gives up on the first blip
+        is Fail -> { sides += Side.Log(ERROR, r.failure.message); 0 }
+        is Done -> { sides += r.sides(); 1 }
+        is Cont -> 0
+    }
+}
+
+// GOOD — mirrors stageWithRetry loop (post-PR-11)
+private suspend fun saveOne(item: SavedItem, sides: MutableList<Side>): Int {
+    var attempt = 0
+    val items = listOf(item)
+    while (true) {
+        when (val r = save.invoke(items)) {
+            is Done -> { sides += r.sides(); return 1 }
+            is Fail -> { sides += Side.Log(ERROR, r.failure.message); return 0 }
+            is Retry -> {
+                if (!shouldRetry(attempt, retryPolicy)) {
+                    sides += Side.Log(ERROR, "Save exhausted after ${retryPolicy.maxAttempts} attempts")
+                    return 0
+                }
+                attempt++
+                delay(retryDelayMs(attempt - 1, r.signal, retryPolicy))
+                // loop and retry
+            }
+            is Cont -> return 0
+        }
+    }
+}
+```
+
+**Rule**: Always wrap external-state stages (DB, HTTP, file I/O) in a retry loop.
+Use [Retry.Database] for transient DB errors.
+
 ## Related Skills
 
 - `kotlin-test-boundary` — where to place tests (domain vs. infrastructure vs. tests module)
