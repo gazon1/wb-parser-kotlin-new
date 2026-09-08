@@ -165,4 +165,40 @@ class PipelineTest : FunSpec({
             savedItems shouldBe emptyList()
         }
     }
+
+    test("run exits with ManualStop when page has items but no next URL") {
+        runTest {
+            val item = testParsedItem()
+            val fetched = testFetched(testCrawling())
+            val page = testParsedPage(fetched, listOf(item), nextPageUrl = null)
+
+            val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
+            val pipeline = makePipeline(parse = parseStage)
+            val result = pipeline.run(listOf(testCrawling()))
+
+            result.isRight() shouldBe true
+            val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
+            crawled.pagesCrawled shouldBe 1
+            crawled.itemsSaved shouldBe 1
+            // NoNextPage is never emitted — page had items, so pipeline
+            // simply runs out of pending tasks and returns ManualStop
+            crawled.stopReason.shouldBeInstanceOf<Stop.ManualStop>()
+        }
+    }
+
+    test("run stops with EmptyPage when page is empty with no next URL") {
+        runTest {
+            val fetched = testFetched(testCrawling())
+            val page = testParsedPage(fetched, items = emptyList(), nextPageUrl = null, isEmptyPage = true)
+
+            val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
+            val pipeline = makePipeline(parse = parseStage)
+            val result = pipeline.run(listOf(testCrawling()))
+
+            result.isRight() shouldBe true
+            val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
+            crawled.pagesCrawled shouldBe 1
+            crawled.stopReason.shouldBeInstanceOf<Stop.EmptyPage>()
+        }
+    }
 })

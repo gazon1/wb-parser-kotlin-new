@@ -59,4 +59,39 @@ class RetryPolicyTest : FunSpec({
         val delay = retryDelayMs(100, signal, policy, Random(42))
         (delay <= 60_000L) shouldBe true
     }
+
+    test("retryDelayMs Antibot uses explicit delayMs when provided") {
+        val signal = Retry.Antibot(delayMs = 30_000L)
+        val policy = RetryPolicy(jitterPercent = 0.0)
+        val delay = retryDelayMs(0, signal, policy, Random(42))
+        delay shouldBe 30_000L
+    }
+
+    test("retryDelayMs Antibot falls back to exponential backoff when no explicit delay") {
+        val policy = RetryPolicy(jitterPercent = 0.0, baseDelayMs = 1_000L)
+        val signal = Retry.Antibot(delayMs = null)
+        val delay = retryDelayMs(2, signal, policy, Random(42))
+        delay shouldBe 4_000L  // 1000 * 2^2
+    }
+
+    test("retryDelayMs StaleContext uses explicit delayMs when provided") {
+        val signal = Retry.StaleContext(delayMs = 15_000L)
+        val policy = RetryPolicy(jitterPercent = 0.0)
+        val delay = retryDelayMs(0, signal, policy, Random(42))
+        delay shouldBe 15_000L
+    }
+
+    test("retryDelayMs StaleContext falls back to exponential backoff when no explicit delay") {
+        val policy = RetryPolicy(jitterPercent = 0.0, baseDelayMs = 1_000L)
+        val signal = Retry.StaleContext(delayMs = null)
+        val delay = retryDelayMs(3, signal, policy, Random(42))
+        delay shouldBe 8_000L  // 1000 * 2^3
+    }
+
+    test("retryDelayMs Antibot respects maxDelayMs cap") {
+        val signal = Retry.Antibot(delayMs = null)
+        val policy = RetryPolicy(baseDelayMs = 1_000L, maxDelayMs = 5_000L)
+        val delay = retryDelayMs(10, signal, policy, Random(42))
+        delay shouldBe 5_000L
+    }
 })

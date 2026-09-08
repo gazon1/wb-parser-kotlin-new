@@ -7,6 +7,7 @@ import ru.wbparser.domain.error.NetworkError
 import ru.wbparser.domain.error.ParseError
 import ru.wbparser.domain.error.StoppedCrawling
 import ru.wbparser.domain.pipeline.Dropped
+import ru.wbparser.domain.pipeline.Retry
 import ru.wbparser.domain.pipeline.StageFailure
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.pipeline.toDomainError
@@ -78,5 +79,30 @@ class StageFailureTest : FunSpec({
         val failure = StageFailure.Stopped(Stop.EmptyPage)
         val error = failure.toDomainError()
         error.shouldBeInstanceOf<StoppedCrawling>()
+    }
+
+    test("toDomainError converts Antibot to AntibotError") {
+        val failure = StageFailure.Antibot("403 Forbidden", "https://wb.ru/api")
+        val error = failure.toDomainError()
+        error.shouldBeInstanceOf<ru.wbparser.domain.error.AntibotError>()
+    }
+
+    test("toDomainError converts AuthFailed to AuthFailedError") {
+        val failure = StageFailure.AuthFailed("401 Unauthorized", "https://wb.ru/api")
+        val error = failure.toDomainError()
+        error.shouldBeInstanceOf<ru.wbparser.domain.error.AuthFailedError>()
+    }
+
+    test("toDomainError converts Item to DropItemError") {
+        val failure = StageFailure.Item(ru.wbparser.domain.pipeline.Dropped.EmptyPrice)
+        val error = failure.toDomainError()
+        error.shouldBeInstanceOf<ru.wbparser.domain.error.DropItemError>()
+    }
+
+    test("toDomainError converts RetryExhausted to NetworkError") {
+        val signal = Retry.RateLimited(delayMs = null)
+        val failure = StageFailure.RetryExhausted("Retries exhausted", signal)
+        val error = failure.toDomainError()
+        error.shouldBeInstanceOf<ru.wbparser.domain.error.NetworkError>()
     }
 })
