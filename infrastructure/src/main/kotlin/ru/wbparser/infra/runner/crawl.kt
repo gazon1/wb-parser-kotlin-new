@@ -132,9 +132,9 @@ class CrawlRunner(
         val registry = SideInterpreterRegistry(
             log = ru.wbparser.infra.pipeline.LogInterpreter(),
             metric = ru.wbparser.infra.pipeline.NoOpMetricInterpreter(),
-            saveBatch = ru.wbparser.infra.pipeline.SaveBatchInterpreter(db.ds),
+            saveBatch = ru.wbparser.infra.pipeline.NoOpSaveBatchInterpreter(),
             jobEvent = ru.wbparser.infra.pipeline.JobEventInterpreter(),
-            scheduleRetry = ru.wbparser.infra.pipeline.ScheduleRetryInterpreter(mutableListOf()),
+            scheduleRetry = ru.wbparser.infra.pipeline.NoOpScheduleRetryInterpreter(),
             acquireAdvisoryLock = ru.wbparser.infra.pipeline.NoOpAdvisoryLockInterpreter(),
         )
         val runner = PipelineRunner(pipeline, registry)

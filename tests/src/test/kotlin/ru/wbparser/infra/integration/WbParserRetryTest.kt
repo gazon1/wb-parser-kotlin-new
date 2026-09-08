@@ -13,11 +13,11 @@ import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.value.CrawlUrl
-import ru.wbparser.infra.http.KtorDownloader
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
 import ru.wbparser.testing.LogTestInterpreter
+import ru.wbparser.testing.NoRetryKtorDownloader
 import ru.wbparser.testing.SaveBatchTestInterpreter
 import ru.wbparser.testing.ScheduleRetryTestInterpreter
 import ru.wbparser.testing.TestSideCollector
@@ -31,8 +31,7 @@ import java.util.UUID
 
 /**
  * Integration test: parser retries on HTTP 500 and succeeds on the second attempt,
- * verifying that [ScheduleRetryInterpreter] receives a [ru.wbparser.domain.pipeline.Side.ScheduleRetry]
- * side effect.
+ * verifying that the pipeline retry mechanism handles HTTP errors.
  */
 class WbParserRetryTest : FunSpec({
 
@@ -60,7 +59,7 @@ class WbParserRetryTest : FunSpec({
             200 to fixtureBody,
         ))
 
-        val downloader = KtorDownloader(timeoutMs = 10_000)
+        val downloader = NoRetryKtorDownloader(timeoutMs = 10_000)
 
         val save: suspend (List<SavedItem>) -> Step<List<SavedItem>, Unit> = { items ->
             db.ds.connection.use { conn ->
@@ -136,8 +135,9 @@ class WbParserRetryTest : FunSpec({
         crawled.itemsSaved shouldBe 5
 
         // HTTP: two requests were made (500 then 200)
-        // Note: Ktor's HttpClient retries at the connection level, so the pipeline-level
-        // retry (Step.Retry) may not emit Side.ScheduleRetry when Ktor handles it internally.
+        // Note: stageWithRetry handles retry via internal delay() — it does not emit
+        // Side.ScheduleRetry, so collector.scheduleRetries stays empty. The retry is
+        // verified by the two HTTP requests and successful save.
         server.requestCount("/catalog") shouldBe 2
 
         // DB: 5 items persisted

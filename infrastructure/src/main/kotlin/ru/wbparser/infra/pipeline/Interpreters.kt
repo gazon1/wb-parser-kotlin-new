@@ -1,13 +1,8 @@
 package ru.wbparser.infra.pipeline
 
-import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
-import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.JobOp
 import ru.wbparser.domain.pipeline.Side
-import ru.wbparser.infra.db.repositories.upsertSavedItems
-import java.util.UUID
-import javax.sql.DataSource
 
 private val logger = LoggerFactory.getLogger("Interpreters")
 
@@ -32,30 +27,18 @@ class NoOpMetricInterpreter : Interpreter<Side.Metric> {
 }
 
 /**
- * Accumulates [Side.SaveBatch] items and flushes to DB on [flush].
+ * No-op [Side.SaveBatch] interpreter.
  *
- * Note: this interpreter is not currently wired into [SideInterpreterRegistry]
- * in CrawlRunner — see the Cluster A tech-debt notes. The real save path
- * goes through CrawlRunner.save which calls db.ds.upsertSavedItems directly.
+ * The actual save path in production goes through [CrawlRunner.runTarget]'s save lambda,
+ * which calls `db.ds.upsertSavedItems()` directly — bypassing the pipeline's side effect
+ * system entirely. This interpreter exists only to satisfy the registry API.
+ *
+ * @see SaveBatchTestInterpreter — test variant that actually collects batches
  */
-class SaveBatchInterpreter(
-    private val ds: DataSource,
-) : Interpreter<Side.SaveBatch> {
-    private val accumulated = mutableListOf<SavedItem>()
-
+class NoOpSaveBatchInterpreter : Interpreter<Side.SaveBatch> {
     override suspend fun handle(side: Side.SaveBatch) {
-        accumulated += side.items
+        // intentionally empty — production save is handled by CrawlRunner directly
     }
-
-    /** Persists all accumulated items and clears the buffer. */
-    suspend fun flush() {
-        if (accumulated.isNotEmpty()) {
-            ds.upsertSavedItems(accumulated.toList(), UUID.randomUUID())
-            accumulated.clear()
-        }
-    }
-
-    val savedCount: Int get() = accumulated.size
 }
 
 /** Records [Side.JobEvent] to the job repository. */
@@ -73,25 +56,24 @@ class JobEventInterpreter : Interpreter<Side.JobEvent> {
 }
 
 /**
- * Schedules retry by delaying and re-adding the task to the pending queue.
- * This interpreter mutates [pendingTasks] — the caller supplies it.
+ * No-op [Side.ScheduleRetry] interpreter.
+ *
+ * Retry is implemented inline inside [Pipeline.run][ru.wbparser.domain.pipeline.Pipeline.run]:
+ * [stageWithRetry][ru.wbparser.domain.pipeline.stageWithRetry] suspends with back-off delay
+ * and re-invokes the download stage on the next loop iteration. The resulting
+ * [Side.ScheduleRetry] side effect is emitted for observability only — it is NOT
+ * re-injected into the pending queue by [PipelineRunner].
+ *
+ * This interpreter exists only to satisfy the registry API (without it, the
+ * pipeline would throw `IllegalStateException: No interpreter for Side.ScheduleRetry`).
+ *
+ * @see ScheduleRetryTestInterpreter — test variant that records retry attempts
  */
-class ScheduleRetryInterpreter(
-    private val pendingTasks: MutableList<ru.wbparser.domain.model.Crawling>,
-) : Interpreter<Side.ScheduleRetry> {
+class NoOpScheduleRetryInterpreter : Interpreter<Side.ScheduleRetry> {
     override suspend fun handle(side: Side.ScheduleRetry) {
-        delay(side.afterMs)
-        val url = side.url
-        val parsedUrl = ru.wbparser.domain.value.CrawlUrl.of(url).getOrNull()
-            ?: return
-        pendingTasks.add(
-            ru.wbparser.domain.model.Crawling(
-                id = UUID.randomUUID().toString(),
-                url = parsedUrl,
-                depth = 0,
-                targetId = side.targetId,
-            ),
-        )
+        // Retry delay is handled inline by stageWithRetry inside Pipeline.run.
+        // This side effect is emitted for observability/logging only.
+        logger.trace("ScheduleRetry: url=${side.url} afterMs=${side.afterMs}")
     }
 }
 

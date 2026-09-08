@@ -10,8 +10,16 @@ import java.sql.ResultSet
  * In-memory SQLite database handle for integration tests.
  *
  * Uses `jdbc:sqlite:file::memory:?cache=shared` so that multiple connections
- * ( HikariCP pool, test queries) see the same database.
+ * (HikariCP pool, test queries) see the same database. **Always use this URI
+ * form** — `:memory:` without `cache=shared` creates a per-connection database.
+ *
  * Foreign keys are enabled via PRAGMA.
+ *
+ * **Transaction note:** SQLite JDBC operates in auto-commit mode by default.
+ * Each [query] and [update] call opens its own connection from the pool and
+ * auto-commits immediately. This is fine for tests that don't need explicit
+ * transactions. If explicit transactions are needed, acquire a connection from
+ * [ds.connection] and manage commit/rollback manually.
  *
  * Migration is applied once at construction; [clear] wipes data between tests.
  */
