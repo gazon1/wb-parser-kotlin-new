@@ -19,7 +19,6 @@ import ru.wbparser.infra.advisory.LockUnavailable
 import ru.wbparser.infra.advisory.PostgresAdvisoryLock
 import ru.wbparser.infra.advisory.withLock
 import ru.wbparser.infra.db.DatabaseHandle
-import ru.wbparser.infra.db.connect
 import ru.wbparser.infra.db.repositories.fetchActiveTargets
 import ru.wbparser.infra.db.repositories.upsertSavedItems
 import ru.wbparser.infra.pipeline.PipelineRunner
@@ -47,13 +46,13 @@ import java.util.UUID
  *   freshness tracking, and job-row CRUD.
  */
 class CrawlRunner(
+    private val db: DatabaseHandle,
     private val downloader: suspend (Crawling) -> Either<ru.wbparser.domain.error.NetworkError, Fetched>,
     private val parser: (Fetched) -> ru.wbparser.domain.model.ParsedPage,
     private val maxPagesPerCatalog: Int = 10,
     private val maxDepth: Int = 2,
     private val clock: Clock = SystemClock,
 ) {
-    private val db: DatabaseHandle = connect()
     private val advisoryLock = PostgresAdvisoryLock(db.ds)
     private val freshnessPolicy = FreshnessPolicy()
     private var freshnessState = Freshness()

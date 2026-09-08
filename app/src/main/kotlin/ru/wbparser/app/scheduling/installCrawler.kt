@@ -13,6 +13,7 @@ import ru.wbparser.domain.pipeline.Crawled
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
 import ru.wbparser.infra.http.KtorDownloader
+import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.runner.CrawlRunner
 import java.time.Duration
 import java.util.concurrent.ScheduledFuture
@@ -22,6 +23,7 @@ import java.util.concurrent.ScheduledFuture
  * Returns a [ScheduledFuture] that can be cancelled.
  */
 fun TaskScheduler.installCrawler(
+    db: DatabaseHandle,
     maxPagesPerCatalog: Int = 10,
     maxDepth: Int = 2,
     clock: Clock = SystemClock,
@@ -39,6 +41,7 @@ fun TaskScheduler.installCrawler(
     }
 
     val runner = CrawlRunner(
+        db = db,
         downloader = download,
         parser = parser,
         maxPagesPerCatalog = maxPagesPerCatalog,
