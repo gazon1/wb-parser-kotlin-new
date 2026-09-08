@@ -1,0 +1,44 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# Build output
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sensitive
+.env
+.env.*
+!.env.example
+secrets.yaml
+credentials.json
+
+# React build (generated at runtime, not committed)
+web-frontend/node_modules/
+web-frontend/dist/
+web-frontend/.next/
+
+# Kotlin
+*.kt.bak
+*.kts.bak
+
+# Test output
+hs_err_pid*.log

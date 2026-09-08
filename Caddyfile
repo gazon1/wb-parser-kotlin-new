@@ -1,0 +1,16 @@
+# Caddy reverse proxy configuration
+# Routes /api/* to Spring, /* to Next.js frontend
+
+:80 {
+    @api {
+        path /api/*
+    }
+
+    reverse_proxy @api app:8080
+    reverse_proxy /* frontend:3000
+
+    # Health checks bypass proxy
+    handle /health/* {
+        reverse_proxy app:8080
+    }
+}

@@ -1,0 +1,106 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: wb-parser
+
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:wbparser}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 30000
+      connection-timeout: 30000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    open-in-view: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+  security:
+    user:
+      name: ${ADMIN_USER:admin}
+      password: ${ADMIN_PASSWORD:changeme}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when_authorized
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+
+# OTLP
+otel:
+  exporter:
+    otlp:
+      endpoint: ${OTEL_ENDPOINT:http://localhost:4317}
+  service:
+    name: wb-parser
+
+# Logging
+logging:
+  level:
+    root: INFO
+    ru.wbparser: DEBUG
+    org.springframework.web: INFO
+    org.hibernate.SQL: WARN
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+---
+spring:
+  config:
+    activate:
+      on-profile: worker
+
+crawler:
+  schedule:
+    interval-ms: 300000
+  lock:
+    timeout-minutes: 10
+  worker:
+    enabled: true
+
+---
+spring:
+  config:
+    activate:
+      on-profile: admin
+
+crawler:
+  worker:
+    enabled: false
+
+---
+spring:
+  config:
+    activate:
+      on-profile: public
+
+crawler:
+  worker:
+    enabled: false

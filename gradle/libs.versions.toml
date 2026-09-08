@@ -1,0 +1,138 @@
+[versions]
+kotlin = "1.9.24"
+spring-boot = "3.4.1"
+ktor = "2.3.13"
+exposed = "0.55.0"
+flyway = "10.17.0"
+kotest = "5.8.1"
+arrow-core = "1.2.4"
+mockk = "1.14.11"
+testcontainers = "1.20.4"
+resilience4j = "2.2.0"
+jsoup = "1.18.3"
+crawler-commons = "1.6"
+shedlock = "5.14.0"
+coroutines = "1.9.0"
+serialization = "1.7.3"
+opentelemetry = "1.43.0"
+detekt = "1.23.7"
+ktlint = "1.3.0"
+logback = "1.5.14"
+logback-encoder = "8.0.1"
+caffeine = "3.2.0"
+commons-csv = "1.12.0"
+jackson-dataformat-yaml = "2.18.2"
+micronaut-security = "4.7.1"
+postgresql = "42.7.4"
+hikaricp = "5.1.0"
+jooq = "3.19.16"
+playwright = "1.49.0"
+
+[libraries]
+# Arrow
+arrow-core = { group = "io.arrow-kt", name = "arrow-core", version.ref = "arrow-core" }
+
+# Kotlin
+kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib-jdk8" }
+kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect" }
+kotlin-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
+kotlin-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlin-coroutines-reactor = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-reactor", version.ref = "coroutines" }
+
+# Spring Boot
+spring-boot-starter-web = { group = "org.springframework.boot", name = "spring-boot-starter-web", version.ref = "spring-boot" }
+spring-boot-starter-actuator = { group = "org.springframework.boot", name = "spring-boot-starter-actuator", version.ref = "spring-boot" }
+spring-boot-starter-security = { group = "org.springframework.boot", name = "spring-boot-starter-security", version.ref = "spring-boot" }
+spring-boot-starter-validation = { group = "org.springframework.boot", name = "spring-boot-starter-validation", version.ref = "spring-boot" }
+spring-boot-starter-aop = { group = "org.springframework.boot", name = "spring-boot-starter-aop", version.ref = "spring-boot" }
+spring-boot-configuration-processor = { group = "org.springframework.boot", name = "spring-boot-configuration-processor", version.ref = "spring-boot" }
+spring-boot-starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test", version.ref = "spring-boot" }
+spring-security-test = { group = "org.springframework.security", name = "spring-security-test", version.ref = "spring-boot" }
+
+# Ktor Client
+ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
+ktor-client-cio = { group = "io.ktor", name = "ktor-client-cio", version.ref = "ktor" }
+ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-client-logging = { group = "io.ktor", name = "ktor-client-logging", version.ref = "ktor" }
+ktor-client-mock = { group = "io.ktor", name = "ktor-client-mock", version.ref = "ktor" }
+
+# Exposed
+exposed-core = { group = "org.jetbrains.exposed", name = "exposed-core", version.ref = "exposed" }
+exposed-dao = { group = "org.jetbrains.exposed", name = "exposed-dao", version.ref = "exposed" }
+exposed-jdbc = { group = "org.jetbrains.exposed", name = "exposed-jdbc", version.ref = "exposed" }
+exposed-json = { group = "org.jetbrains.exposed", name = "exposed-json", version.ref = "exposed" }
+exposed-crypt = { group = "org.jetbrains.exposed", name = "exposed-crypt", version.ref = "exposed" }
+
+# Database
+postgresql = { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
+hikaricp = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikaricp" }
+flyway-core = { group = "org.flywaydb", name = "flyway-core", version.ref = "flyway" }
+flyway-database-postgresql = { group = "org.flywaydb", name = "flyway-database-postgresql", version.ref = "flyway" }
+jooq-meta = { group = "org.jooq", name = "jooq-meta", version.ref = "jooq" }
+
+# Resilience
+resilience4j-kotlin = { group = "io.github.resilience4j", name = "resilience4j-kotlin", version.ref = "resilience4j" }
+resilience4j-retry = { group = "io.github.resilience4j", name = "resilience4j-retry", version.ref = "resilience4j" }
+resilience4j-circuitbreaker = { group = "io.github.resilience4j", name = "resilience4j-circuitbreaker", version.ref = "resilience4j" }
+resilience4j-ratelimiter = { group = "io.github.resilience4j", name = "resilience4j-ratelimiter", version.ref = "resilience4j" }
+
+# ShedLock
+shedlock-spring = { group = "net.javacrumbs.shedlock", name = "shedlock-spring", version.ref = "shedlock" }
+shedlock-provider-jdbc-template = { group = "net.javacrumbs.shedlock", name = "shedlock-provider-jdbc-template", version.ref = "shedlock" }
+
+# Scraping
+jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
+crawler-commons = { group = "com.github.crawler-commons", name = "crawler-commons", version.ref = "crawler-commons" }
+
+# Caching
+caffeine = { group = "com.github.ben-manes.caffeine", name = "caffeine", version.ref = "caffeine" }
+
+# CSV
+commons-csv = { group = "org.apache.commons", name = "commons-csv", version.ref = "commons-csv" }
+
+# Logging
+logback-classic = { group = "ch.qos.logback", name = "logback-classic", version.ref = "logback" }
+logback-encoder = { group = "ch.qos.logback", name = "logback-encoder", version.ref = "logback-encoder" }
+kotlin-logging = { group = "io.github.microutils", name = "kotlin-logging", version = "3.0.5" }
+
+# OpenTelemetry
+opentelemetry-api = { group = "io.opentelemetry", name = "opentelemetry-api", version.ref = "opentelemetry" }
+opentelemetry-sdk = { group = "io.opentelemetry", name = "opentelemetry-sdk", version.ref = "opentelemetry" }
+opentelemetry-exporter-otlp = { group = "io.opentelemetry", name = "opentelemetry-exporter-otlp", version.ref = "opentelemetry" }
+opentelemetry-spring-boot-starter = { group = "io.opentelemetry.instrumentation", name = "opentelemetry-spring-boot-starter", version = "2.6.0" }
+
+# YAML config
+jackson-dataformat-yaml = { group = "com.fasterxml.jackson.dataformat", name = "jackson-dataformat-yaml", version.ref = "jackson-dataformat-yaml" }
+
+# Testing
+kotest-runner-junit5 = { group = "io.kotest", name = "kotest-runner-junit5", version.ref = "kotest" }
+kotest-assertions-core = { group = "io.kotest", name = "kotest-assertions-core", version.ref = "kotest" }
+kotest-property = { group = "io.kotest", name = "kotest-property", version.ref = "kotest" }
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+testcontainers = { group = "org.testcontainers", name = "testcontainers", version.ref = "testcontainers" }
+testcontainers-postgresql = { group = "org.testcontainers", name = "postgresql", version.ref = "testcontainers" }
+testcontainers-junit-jupiter = { group = "org.testcontainers", name = "junit-jupiter", version.ref = "testcontainers" }
+
+# Detekt / ktlint
+detekt-cli = { group = "io.gitlab.arturbosch.detekt", name = "detekt-cli", version.ref = "detekt" }
+detekt-api = { group = "io.gitlab.arturbosch.detekt", name = "detekt-api", version.ref = "detekt" }
+detekt-test = { group = "io.gitlab.arturbosch.detekt", name = "detekt-test", version.ref = "detekt" }
+ktlint = { group = "com.pinterest.ktlint", name = "ktlint", version.ref = "ktlint" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
+spring-ota = { id = "io.spring.ota", version = "0.1.0" }
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+ktlint = { id = "com.pinterest.ktlint", version.ref = "ktlint" }
+
+[bundles]
+ktor-client = ["ktor-client-core", "ktor-client-cio", "ktor-client-content-negotiation", "ktor-serialization-kotlinx-json", "ktor-client-logging"]
+exposed-all = ["exposed-core", "exposed-dao", "exposed-jdbc", "exposed-json"]
+flyway-all = ["flyway-core", "flyway-database-postgresql"]
+resilience4j-all = ["resilience4j-kotlin", "resilience4j-retry", "resilience4j-circuitbreaker", "resilience4j-ratelimiter"]
+kotest-all = ["kotest-runner-junit5", "kotest-assertions-core", "kotest-property"]
+testcontainers-all = ["testcontainers", "testcontainers-postgresql", "testcontainers-junit-jupiter"]

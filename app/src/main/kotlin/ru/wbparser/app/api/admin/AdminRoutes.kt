@@ -1,0 +1,174 @@
+package ru.wbparser.app.api.admin
+
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
+import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.RequestParam
+import org.springframework.web.bind.annotation.RestController
+import ru.wbparser.domain.scheduling.Target
+import java.time.Instant
+import java.util.UUID
+import javax.sql.DataSource
+
+/**
+ * Admin read-only endpoints — crawl status, errors, jobs.
+ */
+@RestController
+@RequestMapping("/api/admin")
+class AdminRoutes(
+    private val datasource: DataSource,
+) {
+
+    @GetMapping("/targets")
+    fun getTargets(): List<Target> = datasource.fetchAdminTargets()
+
+    @GetMapping("/errors")
+    fun getErrors(
+        @RequestParam(defaultValue = "100") limit: Int,
+        @RequestParam(defaultValue = "false") unresolvedOnly: Boolean,
+    ): List<RecordedError> = datasource.fetchAdminErrors(limit, unresolvedOnly)
+
+    @GetMapping("/jobs")
+    fun getJobs(
+        @RequestParam(defaultValue = "20") limit: Int,
+        @RequestParam(required = false) targetId: String?,
+    ): List<Job> = datasource.fetchAdminJobs(limit, targetId)
+}
+
+/**
+ * A crawl target loaded into the scheduler.
+ */
+data class RecordedError(
+    val id: String,
+    val url: String?,
+    val message: String,
+    val category: String?,
+    val isResolved: Boolean,
+    val createdAt: Instant,
+)
+
+/**
+ * A crawl job record.
+ */
+data class Job(
+    val id: String,
+    val targetId: String?,
+    val status: String,
+    val startedAt: Instant?,
+    val completedAt: Instant?,
+    val pagesCrawled: Int,
+    val itemsSaved: Int,
+    val errorMessage: String?,
+)
+
+/**
+ * Fetches all admin targets from the database.
+ */
+fun DataSource.fetchAdminTargets(): List<Target> {
+    return connection.use { conn ->
+        conn.prepareStatement(
+            """
+            SELECT id, name, start_url, is_active, max_depth, created_at
+            FROM crawl_targets
+            ORDER BY name
+            """.trimIndent(),
+        ).use { ps ->
+            ps.executeQuery().use { rs ->
+                val list = mutableListOf<Target>()
+                while (rs.next()) {
+                    val idRaw = rs.getObject("id")
+                    val id = when (idRaw) {
+                        is UUID -> idRaw.hashCode().toLong()
+                        is Long -> idRaw
+                        else -> 0L
+                    }
+                    list.add(
+                        Target(
+                            id = id,
+                            name = rs.getString("name") ?: "",
+                            url = rs.getString("start_url") ?: "",
+                            cronExpression = null,
+                            maxDepth = rs.getInt("max_depth"),
+                            isActive = rs.getBoolean("is_active"),
+                            priority = 0,
+                            lastScheduledAt = null,
+                            nextScheduledAt = null,
+                        ),
+                    )
+                }
+                list
+            }
+        }
+    }
+}
+
+/**
+ * Fetches admin errors from the database.
+ */
+fun DataSource.fetchAdminErrors(limit: Int, unresolvedOnly: Boolean): List<RecordedError> {
+    val sql = if (unresolvedOnly) {
+        "SELECT * FROM crawl_errors WHERE is_resolved = false ORDER BY created_at DESC LIMIT ?"
+    } else {
+        "SELECT * FROM crawl_errors ORDER BY created_at DESC LIMIT ?"
+    }
+    return connection.use { conn ->
+        conn.prepareStatement(sql).use { ps ->
+            ps.setInt(1, limit)
+            ps.executeQuery().use { rs ->
+                val list = mutableListOf<RecordedError>()
+                while (rs.next()) {
+                    list.add(
+                        RecordedError(
+                            id = (rs.getObject("id") as? UUID)?.toString() ?: "",
+                            url = rs.getString("url"),
+                            message = rs.getString("error_message") ?: "",
+                            category = rs.getString("category"),
+                            isResolved = rs.getBoolean("is_resolved"),
+                            createdAt = rs.getTimestamp("created_at")?.toInstant() ?: Instant.now(),
+                        ),
+                    )
+                }
+                list
+            }
+        }
+    }
+}
+
+/**
+ * Fetches admin jobs from the database.
+ */
+fun DataSource.fetchAdminJobs(limit: Int, targetId: String?): List<Job> {
+    val sql = if (targetId != null) {
+        "SELECT * FROM crawl_jobs WHERE target_id = ? ORDER BY started_at DESC LIMIT ?"
+    } else {
+        "SELECT * FROM crawl_jobs ORDER BY started_at DESC LIMIT ?"
+    }
+    return connection.use { conn ->
+        conn.prepareStatement(sql).use { ps ->
+            if (targetId != null) {
+                ps.setObject(1, UUID.fromString(targetId))
+                ps.setInt(2, limit)
+            } else {
+                ps.setInt(1, limit)
+            }
+            ps.executeQuery().use { rs ->
+                val list = mutableListOf<Job>()
+                while (rs.next()) {
+                    list.add(
+                        Job(
+                            id = (rs.getObject("id") as? UUID)?.toString() ?: "",
+                            targetId = (rs.getObject("target_id") as? UUID)?.toString(),
+                            status = rs.getString("status") ?: "",
+                            startedAt = rs.getTimestamp("started_at")?.toInstant(),
+                            completedAt = rs.getTimestamp("completed_at")?.toInstant(),
+                            pagesCrawled = rs.getInt("pages_crawled"),
+                            itemsSaved = rs.getInt("items_saved"),
+                            errorMessage = rs.getString("error_message"),
+                        ),
+                    )
+                }
+                list
+            }
+        }
+    }
+}
