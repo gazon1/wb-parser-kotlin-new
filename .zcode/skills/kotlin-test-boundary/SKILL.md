@@ -135,6 +135,38 @@ server.routeSequence("/catalog", listOf(
 
 ---
 
+## Characterisation Tests for Behaviour-Preserving Refactors
+
+When refactoring a large function (≥50 lines), write characterisation tests **first** to
+establish a safety net. A characterisation test captures the **current behaviour** of the
+function — even when that behaviour seems wrong — so you can refactor with confidence.
+
+### Workflow
+
+1. **Write characterisation tests** in `domain/src/test/kotlin/ru/wbparser/domain/` using the
+   real function. These tests document what the function does today.
+2. **Run tests** — they should pass against the current code.
+3. **Extract helper functions** one at a time. Each extract → run tests → commit.
+4. If a test breaks after extraction: you introduced a behaviour change. Fix the refactor, not the test.
+
+### Example: `Pipeline.run()` refactor
+
+Before refactoring `Pipeline.run()` (113 lines), characterisation tests covered:
+- Stop conditions (MaxPages, MaxDepth, EmptyPage, ManualStop)
+- Pagination (self-links, nextPageUrl, stopAt interaction)
+- Item processing (filter → enrich → save flow)
+- Retry semantics (exhaustion, back-off, retry-exhausted mapping)
+
+After extraction into `runDownloadStage` + `runParseStage` + `processItems` helpers,
+all 194 characterisation tests passed without modification.
+
+### Rules
+
+- **Never refactor without characterisation tests** for functions ≥ 30 lines
+- **One extract per commit** — build → test → commit after each helper
+- **Keep helper signatures narrow** — pass only what each helper needs
+- **Keep helpers ≤ 20 lines** — if a helper grows beyond 20 lines, it likely needs its own extraction
+
 ## Common Mistakes
 
 ### BAD: Adding Spring dep to domain test
@@ -170,20 +202,27 @@ import ru.wbparser.testing.SqliteTestHandle  // NO!
 
 ---
 
-## wb-parser-kotlin Test Inventory (after PR 10)
+## wb-parser-kotlin Test Inventory (after PR 11)
 
-### `domain/src/test/` — pure domain unit tests (~50 tests)
-- `BusinessRulesTest`, `ItemDtoMappingTest`, `PipelineTest`
-- `RetryPolicyTest`, `StageFailureTest`, `StageTest`, `WbUrlTest`
-- Any future: `PriceTest`, `CashbackTest`, `CrawlUrlTest`, `CrawlHttpStatusCodeTest`
+### `domain/src/test/` — pure domain unit tests (194 tests after PR 11)
+- `BusinessRulesTest`, `CashbackTest`, `ClockDomainTest`, `CrawlHttpStatusCodeTest`
+- `CrawlUrlDomainTest`, `DomainErrorClassifyTest`, `ItemDtoMappingTest`
+- `JobStatusTest`, `PagedResultTest`, `PipelineTest`
+- `PipelineSaveOneRetryTest` (PR 11 — G10 retry coverage)
+- `PresetTest`, `PriceTest`, `RetryDatabaseTest` (PR 11)
+- `RetryPolicyTest`, `SavedItemFactoryTest` (PR 11)
+- `StageFailureDatabaseMappingTest` (PR 11)
+- `StageFailureTest`, `StageTest`, `StopExhaustiveTest` (PR 11)
+- `WbUrlTest`
 - Utility: `TestClock.kt` (`fixedClockOf`)
 
-### `infrastructure/src/test/` — infra adapters (~0 tests currently)
-- Candidates: `KtorDownloaderTest`, `SideInterpreterRegistryTest`
-- Candidates: `PostgresAdvisoryLockTest`, `SavedItemQueriesTest`, `CatalogQueriesTest`
-- Candidates: `FreshnessPolicyTest`, `LogInterpreterTest`
+### `infrastructure/src/test/` — infra adapters (empty — Kotlin version conflict)
+The `infrastructure/` module has a pre-existing Kotlin stdlib 2.2.21 vs compiler 1.9.24
+conflict. Infra adapter tests live in `tests/` module instead:
+- `tests/src/test/kotlin/ru/wbparser/infra/SideInterpreterRegistryTest.kt`
+- `tests/src/test/kotlin/ru/wbparser/infra/LogInterpreterTest.kt`
 
-### `tests/src/test/` — full integration tests (~27 tests)
+### `tests/src/test/` — full integration tests (26 tests)
 - `WbParserHappyPathTest`, `WbParserEmptyPageTest`, `WbParserRetryTest`
 - `PipelineRunnerTest`, `WbParserPaginationTest`, `WbParserRetryExhaustionTest`
 - `InMemoryAdapters.kt` (TestSideCollector, Fake*Interpreter implementations)
@@ -195,7 +234,7 @@ import ru.wbparser.testing.SqliteTestHandle  // NO!
 
 - `integration-testing-kotlin` — fake HTTP servers, in-memory DB patterns
 - `dead-code-purge` — safe removal of code that no test covers
-- `refactor-without-fear` — behaviour-preserving refactors that keep tests green
+- `pipelines` — Stage/Side/Interpreter patterns and anti-patterns
 
 ## Sources
 
