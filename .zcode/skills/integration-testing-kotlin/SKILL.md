@@ -1,133 +1,77 @@
 ---
 name: integration-testing-kotlin
-description: Kotlin integration testing patterns — fake HTTP servers, in-memory databases, Kotest extensions, and end-to-end pipeline tests. Use when the user mentions "integration test", "fake server", "Ktor test", "in-memory DB", "Testcontainers", "SQLite for tests", or asks to write a test that spans HTTP + DB layers in a Kotlin project.
+description: Kotlin integration testing patterns — fake HTTP servers, in-memory databases, Kotest extensions, and end-to-end pipeline tests. Use when the user mentions "integration test", "fake server", "in-memory DB", "Testcontainers", "SQLite for tests", or asks to write a test that spans HTTP + DB layers in a Kotlin project.
 ---
 
 # Integration Testing in Kotlin — Fake HTTP + In-Memory DB
 
 ## When to use this skill
 
-Use whenever you need to write an integration test in a Kotlin project that:
+Use whenever you need to write an integration test in this project that:
 - Spans an HTTP layer (fetching pages) AND a persistence layer (writing to a DB).
-- Uses **Kotest** as the test framework (the project's standard, confirmed by `kotest-runner-junit5:5.8.1` in all `build.gradle.kts` test deps).
+- Uses **Kotest** as the test framework.
 - Needs a **fake HTTP server** instead of Testcontainers or real network.
 - Needs an **in-memory SQLite** database instead of Testcontainers Postgres.
 
-This skill does NOT cover: pure unit tests, Spring Boot slices (`@SpringBootTest`), or MockK usage (the project uses Fake-over-Mock convention per AGENTS.md rule #6).
+This skill does NOT cover: pure unit tests (see `kotlin-test-boundary`), or MockK usage (the project uses Fake-over-Mock convention per AGENTS.md).
 
 ## Core Patterns
 
-### 1. Fake HTTP server — Ktor embedded (CIO engine)
+### 1. Fake HTTP server — WbFixtureServer (com.sun.net.httpserver)
 
-**Why Ktor instead of MockWebServer?** The production stack already uses Ktor (`ktor-client-cio` in `infrastructure/build.gradle.kts:31`). Using `embeddedServer(CIO)` for tests keeps the engine consistent and requires no new dependency family.
-
-```kotlin
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.cio.CIO
-import io.ktor.server.routing.get
-import io.ktor.server.routing.routing
-import io.ktor.server.response.respondText
-import io.ktor.http.HttpStatusCode
-import io.ktor.http.ContentType
-import kotlinx.coroutines.runBlocking
-
-// Start on a free port (port = 0 tells the OS to pick one)
-val server = embeddedServer(CIO, port = 0) {
-    routing {
-        get("/catalog") {
-            call.respondText(
-                """{"data":{"products":[{"id":1,"name":"Item 1","price":"49900"}]}}""",
-                contentType = ContentType.Application.Json,
-            )
-        }
-    }
-}.start(wait = false)
-
-// Discover the assigned port
-val port = server.engine.resolvedConnectors().first().port
-println("Server running on port $port")
-
-// Stop in afterSpec / finally
-server.stop(100, 500)
-```
-
-**Port discovery gotcha:** `embeddedServer(..., port = 0)` assigns a random free port. Always read it back from `resolvedConnectors()` after `start()`, never hardcode a port like `8080`.
-
-### 2. Kotest extension for server lifecycle
-
-Use a **Kotest `extension`** to manage server start/stop automatically:
+The project provides `ru.wbparser.testing.WbFixtureServer` — a `com.sun.net.httpserver.HttpServer`-based fixture server. Use this, not Ktor embedded, not MockWebServer.
 
 ```kotlin
-import io.kotest.core.extensions.MountedExtension
-import io.kotest.core.spec.Spec
-import io.kotest.core.engine.ExperimentalKotestEngineApi
-import io.ktor.server.engine.embeddedServer
-import io.ktor.server.cio.CIO
+import ru.wbparser.testing.WbFixtureServer
 
-@OptIn(ExperimentalKotestEngineApi::class)
-class WbFixtureServerExtension(
-    private val configure: CIOApplicationEngine.() -> Unit = {},
-) : MountedExtension<Spec, CIOApplicationEngine>({ spec, _ ->
-    val server = embeddedServer(CIO, port = 0, appConfig = {}, module = configure)
-    server.start()
-    spec.registerShutdownHook { server.stop(100, 500) }
-    server
-}) {
-    val port: Int get() = instance.engine.resolvedConnectors().first().port
-    fun baseUrl(): String = "http://localhost:$port"
-}
-```
+class WbParserPaginationTest : FunSpec({
 
-Simpler alternative: use `beforeSpec` / `afterSpec` callbacks in a `FunSpec`:
-
-```kotlin
-class WbParserHappyPathTest : FunSpec({
-    val server = embeddedServer(CIO, port = 0) { routing { get("/catalog") { ... } } }
+    val server = WbFixtureServer()
     beforeSpec { server.start() }
-    afterSpec { server.stop(100, 500) }
+    afterSpec { server.stop() }
 
-    val port = server.engine.resolvedConnectors().first().port
+    // Fixed route: same response every time
+    server.route("/catalog", 200, """{"data":{"products":[]}}""")
+
+    // Sequence route: consume one response per request (for retry tests)
+    server.routeSequence("/catalog", listOf(
+        500 to "",                              // first call fails
+        200 to """{"data":{"products":[...]}}"""  // second call succeeds
+    ))
+
+    val baseUrl = server.baseUrl()  // "http://localhost:12345"
+
+    // Assert request counts
+    server.requestCount("/catalog") shouldBe 2
 })
+```
+
+**WbFixtureServer** lives at `tests/src/test/kotlin/ru/wbparser/testing/WbFixtureServer.kt`. It supports:
+- `route(path, status, body)` — fixed response per path
+- `routeSequence(path, responses)` — consume one response per request (for retry/pagination tests)
+- `requestCount(path)` — number of requests received
+- `baseUrl()` — base URL with assigned port
+
+### 2. Route sequence for retry tests
+
+```kotlin
+// Simulate: first request returns 429 (rate limited), second succeeds
+server.routeSequence("/catalog", listOf(
+    429 to """{"error":"Rate limit"}""",
+    200 to """{"data":{"products":[{"id":1,"name":"Item","price":"49900"}]}}""",
+))
 ```
 
 ### 3. Per-path request counter
 
 ```kotlin
-val requestCounts = mutableMapOf<String, Int>()
-
-val server = embeddedServer(CIO, port = 0) {
-    routing {
-        get("/catalog") {
-            requestCounts["/catalog"] = (requestCounts["/catalog"] ?: 0) + 1
-            call.respondText(fixtureBody, contentType = ContentType.Application.Json)
-        }
-    }
-}
+server.route("/catalog", 200, fixtureBody)
 
 // Later in assertions:
-requestCounts["/catalog"] shouldBe 2
+server.requestCount("/catalog") shouldBe 3
 ```
 
-### 4. Route sequence for retry tests
-
-```kotlin
-val responses = mutableListOf(
-    HttpStatusCode.InternalServerError to "",
-    HttpStatusCode.OK to """{"data":{"products":[{"id":1,"name":"Item 1","price":"49900"}]}}""",
-)
-var callIndex = 0
-
-val server = embeddedServer(CIO, port = 0) {
-    routing {
-        get("/catalog") {
-            val (status, body) = responses[callIndex++]
-            call.respondText(body, status)
-        }
-    }
-}
-```
-
-### 5. Fixture JSON as resource files
+### 4. Fixture JSON as resource files
 
 Store fixture JSON in `src/test/resources/wb-fixtures/` and load at test time:
 
@@ -141,9 +85,7 @@ val fixtureBody = ::class.java.classLoader
     ?: throw IllegalStateException("Fixture not found")
 ```
 
-This keeps test code clean and makes fixtures reusable across test files.
-
-### 6. In-memory SQLite — connection gotcha
+### 5. In-memory SQLite — connection gotcha
 
 **Critical:** `jdbc:sqlite::memory:` creates a **new in-memory database per connection**. Two connections see two different databases. Fix: use `cache=shared`:
 
@@ -153,15 +95,11 @@ jdbc:sqlite:file::memory:?cache=shared
 
 Or use a named in-memory file: `jdbc:sqlite:/tmp/test.db` (cleanup required).
 
-**HikariCP note:** HikariCP is overkill for in-memory SQLite tests. For a single-connection test DB, use `org.sqlite.SQLiteDataSource` directly with `maximumPoolSize = 1` (or just a single raw `DriverManager.getConnection`). The project's `DatabaseHandle` wraps HikariCP + Exposed — for test DB just use raw JDBC.
-
 ```kotlin
 import org.sqlite.SQLiteDataSource
 
 class SqliteTestHandle(url: String = "jdbc:sqlite:file::memory:?cache=shared") : AutoCloseable {
-    private val ds = SQLiteDataSource().apply {
-        this.url = url
-    }
+    private val ds = SQLiteDataSource().apply { this.url = url }
 
     fun execute(sql: String) {
         ds.connection.use { it.createStatement().use { it.execute(sql) } }
@@ -190,10 +128,9 @@ class SqliteTestHandle(url: String = "jdbc:sqlite:file::memory:?cache=shared") :
 }
 ```
 
-### 7. Kotest assertions for DB rows
+### 6. Kotest assertions for DB rows
 
 ```kotlin
-// Helper extension on SqliteTestHandle
 fun SqliteTestHandle.shouldHaveItem(productId: Long, assertions: SavedItemRow.() -> Unit) {
     val items = query("SELECT * FROM scraped_items WHERE product_id = ?", productId) {
         SavedItemRow(
@@ -207,103 +144,96 @@ fun SqliteTestHandle.shouldHaveItem(productId: Long, assertions: SavedItemRow.()
     item.assertions()
 }
 
-// Usage in test:
+// Usage:
 db.shouldHaveItem(123L) {
     priceKopecks shouldBe 49900L
     title shouldBe "Item 1"
 }
 ```
 
-### 8. End-to-end test structure (per Kotest FunSpec)
+### 7. End-to-end pipeline test structure
 
 ```kotlin
 class WbParserHappyPathTest : FunSpec({
 
-    val server = embeddedServer(CIO, port = 0) {
-        routing {
-            get("/catalog") {
-                val body = ::class.java.classLoader
-                    .getResource("wb-fixtures/page-5-products.json")!!.readText()
-                call.respondText(body, contentType = ContentType.Application.Json)
-            }
-        }
-    }
-
+    val server = WbFixtureServer()
     beforeSpec { server.start() }
-    afterSpec { server.stop(100, 500) }
+    afterSpec { server.stop() }
 
-    val port = server.engine.resolvedConnectors().first().port
     val db = SqliteTestHandle()
 
     beforeTest {
-        db.execute("CREATE TABLE scraped_items (...)")
+        db.execute("CREATE TABLE IF NOT EXISTS scraped_items (...)")
     }
-    afterTest { db.close() }
+    afterTest {
+        db.execute("DELETE FROM scraped_items")
+    }
 
-    test("parser pipeline writes scraped_items to sqlite") {
-        // Arrange
-        val downloader = KtorDownloader()
-        val save: suspend (List<SavedItem>) -> Step<List<SavedItem>, Unit> = { items ->
-            for (item in items) {
-                db.update(
-                    "INSERT OR REPLACE INTO scraped_items (id, product_id, title, price_kopecks, ...) VALUES (?, ?, ?, ?, ...)",
-                    UUID.randomUUID().toString(), item.productId, item.name, item.priceKopecks,
-                )
-            }
-            Step.Done(Unit)
-        }
+    test("parser pipeline writes items to sqlite") {
+        val fixtureBody = ::class.java.classLoader
+            .getResource("wb-fixtures/page-5-products.json")!!.readText()
+        server.route("/catalog", 200, fixtureBody)
 
-        // Act
-        val pipeline = buildParserPipeline(
-            downloader = downloader,
-            parser = ::parseWbCatalog,
-            save = save,
-            targetId = 1L,
-            stopAt = { pages, _ -> if (pages >= 1) Stop.MaxPagesReached else null },
-            clock = fixedClockOf(2026, 9, 8),
-            idGen = { "task-id" },
+        val clock = fixedClockOf(2026, 9, 8)
+        val idGen = { "task-id" }
+        val policy = RetryPolicy()
+
+        val pipeline = Pipeline(
+            download = WbDownloader("$baseUrl/catalog"),
+            parse = WbCatalogParser(),
+            filter = BusinessRules()::dropIfInvalid,
+            enrich = { Step.Done(it.toSavedItem()) },
+            save = FakeSaveBatch(db),
+            retryPolicy = policy,
+            stopAt = stopAfterPages(1),
+            clock = clock,
+            idGen = idGen,
         )
+
         val runner = PipelineRunner(pipeline, SideInterpreterRegistry(
-            log = LogTestInterpreter(collector),
-            saveBatch = SaveBatchTestInterpreter(collector),
-            scheduleRetry = ScheduleRetryTestInterpreter(collector),
+            log = LogTestInterpreter(logs),
+            saveBatch = SaveBatchTestInterpreter(savedItems),
         ))
+
+        val startTask = Crawling(id = "start", url = WbUrl.of("$baseUrl/catalog"), depth = 0, targetId = 1L)
         val result = runner.run(listOf(startTask))
 
-        // Assert
         result.isRight() shouldBe true
         db.query("SELECT COUNT(*) FROM scraped_items") { it.getInt(1) }.first() shouldBe 5
     }
 })
 ```
 
-### 9. When NOT to use this skill
+### 8. When NOT to use this skill
 
-- **Pure unit tests** — use `FunSpec` + `runTest` with hand-crafted `Step` objects directly. No server, no DB needed.
-- **Spring Boot context tests** — use `@SpringBootTest` with `@TestConfiguration` overrides. The project has no existing Spring test infrastructure so this pattern doesn't apply here.
-- **Testcontainers Postgres** — use when the production schema must be exercised verbatim. The project's `tests/build.gradle.kts:39` declares `testcontainers:postgresql:1.20.4` but no tests currently use it. If Postgres fidelity is required, use it instead of SQLite.
+- **Pure unit tests** — use `FunSpec` in `domain/src/test/` with hand-crafted `Step` objects directly. No server, no DB needed. See `kotlin-test-boundary`.
+- **Testcontainers Postgres** — use when production schema fidelity is required. The project's `tests/build.gradle.kts:39` declares `testcontainers:postgresql:1.20.4` but no tests currently use it.
 
 ## Anti-patterns
 
 ### BAD: hardcoded port
+
 ```kotlin
-embeddedServer(CIO, port = 8080)  // BAD — port may be taken
+HttpServer.create(InetSocketAddress(8080), 0)  // BAD — port may be taken
 ```
-**GOOD:** `embeddedServer(CIO, port = 0)` then read `resolvedConnectors().first().port`.
+**GOOD:** `HttpServer.create(InetSocketAddress(0), 0)` then read `.address.port` after `start()`.
 
 ### BAD: `jdbc:sqlite::memory:` without `cache=shared`
+
 ```kotlin
 val ds = SQLiteDataSource(url = "jdbc:sqlite::memory:")  // Each connection = new DB!
 ```
 **GOOD:** `jdbc:sqlite:file::memory:?cache=shared`.
 
 ### BAD: MockK for database
+
 ```kotlin
 every { repo.save(any()) } returns item  // BAD — mocks leak into prod
 ```
 **GOOD:** Use a real in-memory DB (`SqliteTestHandle`) or a `FakeSavedItemRepository` with mutable list.
 
 ### BAD: `delay()` inside a pipeline stage
+
 ```kotlin
 val download = { task: Crawling ->
     delay(100)  // BAD — side effect inside pure stage
@@ -315,11 +245,12 @@ val download = { task: Crawling ->
 ## Related Skills
 
 - `pipelines` — pipeline composition, Step/Side/Interpreter patterns
+- `kotlin-test-boundary` — where to place tests (domain vs. infrastructure vs. tests module)
 - `sqlite-from-postgres` — Postgres-to-SQLite dialect conversion
 
 ## Sources
 
 - [Kotest documentation](https://kotest.io/)
-- [Ktor docs — embedded server](https://ktor.io/docs/server-embedded.html)
+- [com.sun.net.httpserver Javadoc](https://docs.oracle.com/en/java/javase/17/docs/api/jdk.httpserver/com/sun/net/httpserver/HttpServer.html)
 - [SQLite JDBC wiki](https://github.com/xerial/sqlite-jdbc)
 - [Arrow Either / Raise](https://arrow-kt.io/docs/)

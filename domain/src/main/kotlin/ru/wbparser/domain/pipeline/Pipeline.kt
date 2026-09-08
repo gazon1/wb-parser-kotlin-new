@@ -73,7 +73,7 @@ data class Pipeline(
             val task = pending.removeFirst()
 
             // --- Download stage ---
-            val fetched: Fetched = when (val result = stageWithRetry(task, download, retryPolicy)) {
+            val fetched: Fetched = when (val result = stageWithRetry(task, download)) {
                 is Done<Crawling, Fetched> -> {
                     sides += result.sides()
                     result.output
@@ -81,14 +81,14 @@ data class Pipeline(
                 is Fail<Crawling, Fetched> -> return Either.Left(result.failure.toDomainError())
                 is Retry<Crawling, Fetched> -> {
                     sides += Side.ScheduleRetry(task.url.toString(), retryDelayMs(0, result.signal, retryPolicy), task.targetId)
-                    pending.add(task) // re-attempt on next loop
+                    pending.add(task)
                     continue
                 }
                 is Cont<Crawling, Fetched> -> continue
             }
 
             // --- Parse stage ---
-            val page: ParsedPage = when (val result = stageWithRetry(fetched, parse, retryPolicy)) {
+            val page: ParsedPage = when (val result = stageWithRetry(fetched, parse)) {
                 is Done<Fetched, ParsedPage> -> {
                     sides += result.sides()
                     result.output
@@ -102,7 +102,7 @@ data class Pipeline(
                 is Cont<Fetched, ParsedPage> -> continue
             }
 
-            // --- Stop condition check ---  (before counting the page, so page 1 is always processed)
+            // --- Stop condition check --- (before counting the page, so page 1 is always processed)
             val stopNow = stopAt(pagesCrawled, task.depth)
             if (stopNow != null) {
                 stopped = stopNow
@@ -117,7 +117,7 @@ data class Pipeline(
                     is Done<ParsedItem, ParsedItem?> -> r.output
                     else -> null
                 }
-                if (filtered == null) continue  // dropped by filter
+                if (filtered == null) continue
 
                 val enriched: SavedItem = when (val r = enrich(filtered)) {
                     is Done<ParsedItem, SavedItem> -> {
@@ -127,21 +127,7 @@ data class Pipeline(
                     else -> continue
                 }
 
-                when (val r = save(listOf(enriched))) {
-                    is Done<List<SavedItem>, Unit> -> {
-                        sides += r.sides()
-                        itemsSaved++
-                    }
-                    is Fail -> sides += Side.Log(
-                        LogLevel.ERROR,
-                        "Save stage failed: ${r.failure.message}",
-                    )
-                    is Retry -> sides += Side.Log(
-                        LogLevel.WARN,
-                        "Save stage requested retry",
-                    )
-                    is Cont -> { /* save stages in this pipeline never emit Cont */ }
-                }
+                itemsSaved += saveOne(enriched, sides)
             }
 
             // --- Pagination: enqueue next page if available ---
@@ -159,9 +145,9 @@ data class Pipeline(
                     )
                 } else {
                     stopped = paginationStop
+                    break
                 }
             } else {
-                // No next page and no pagination — this page was terminal
                 if (page.items.isEmpty()) lastPageWasEmpty = true
             }
         }
@@ -173,29 +159,47 @@ data class Pipeline(
             Crawled(pagesCrawled, itemsSaved, stopped, durationMs) to sides.toList(),
         )
     }
-}
 
-/**
- * Executes [stage] on [input] with retry logic.
- * Returns [Done] on success, [Fail] when retries are exhausted, or [Retry] to request scheduling.
- * Suspends between retry attempts to implement back-off delay.
- */
-private suspend fun <I, O> stageWithRetry(
-    input: I,
-    stage: Stage<I, O>,
-    policy: RetryPolicy,
-): Step<I, O> {
-    var attempt = 0
-    while (true) {
-        val result = stage(input)
-        if (result !is Retry) return result
-        if (!shouldRetry(attempt, policy)) {
-            return Fail(StageFailure.RetryExhausted(
-                "Retry ${attempt + 1}/${policy.maxAttempts} failed",
-                result.signal,
-            ))
+    /**
+     * Saves a single [item] and records any side effects.
+     * Returns 1 if saved successfully, 0 otherwise.
+     */
+    private suspend fun saveOne(item: SavedItem, sides: MutableList<Side>): Int {
+        return when (val r = save(listOf(item))) {
+            is Done<List<SavedItem>, Unit> -> {
+                sides += r.sides()
+                1
+            }
+            is Fail -> {
+                sides += Side.Log(LogLevel.ERROR, "Save stage failed: ${r.failure.message}")
+                0
+            }
+            is Retry -> {
+                sides += Side.Log(LogLevel.WARN, "Save stage requested retry")
+                0
+            }
+            is Cont -> { /* save stages in this pipeline never emit Cont */ 0 }
         }
-        attempt++
-        delay(retryDelayMs(attempt - 1, result.signal, policy))
+    }
+
+    /**
+     * Executes [stage] on [input] with retry logic.
+     * Returns [Done] on success, [Fail] when retries are exhausted, or [Retry] to request scheduling.
+     * Suspends between retry attempts to implement back-off delay.
+     */
+    private suspend fun <I, O> stageWithRetry(input: I, stage: Stage<I, O>): Step<I, O> {
+        var attempt = 0
+        while (true) {
+            val result = stage.invoke(input)
+            if (result !is Retry) return result
+            if (!shouldRetry(attempt, retryPolicy)) {
+                return Fail(StageFailure.RetryExhausted(
+                    "Retry ${attempt + 1}/${retryPolicy.maxAttempts} failed",
+                    result.signal,
+                ))
+            }
+            attempt++
+            delay(retryDelayMs(attempt - 1, result.signal, retryPolicy))
+        }
     }
 }
