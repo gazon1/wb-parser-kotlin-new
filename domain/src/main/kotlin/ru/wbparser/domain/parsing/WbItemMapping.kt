@@ -12,7 +12,6 @@ import ru.wbparser.domain.value.ProductId
  * Convert a [WbItemDto] to a [ParsedItem], or report why the item was dropped.
  */
 fun WbItemDto.toParsedItem(
-    targetId: Long,
     basePageUrl: String,
 ): Either<Dropped.InvalidProductId, ParsedItem> = either {
     if (id <= 0) raise(Dropped.InvalidProductId)

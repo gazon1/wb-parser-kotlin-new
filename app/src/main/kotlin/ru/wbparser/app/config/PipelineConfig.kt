@@ -24,7 +24,7 @@ private const val BASE_PAGE_URL = "https://www.wildberries.ru/catalog/"
 /**
  * Parses a WB catalog response into a ParsedPage.
  */
-fun parseWbCatalog(response: Fetched, targetId: Long): ParsedPage {
+fun parseWbCatalog(response: Fetched): ParsedPage {
     val body = response.body
     if (body.isNullOrBlank()) {
         return ParsedPage(
@@ -42,7 +42,7 @@ fun parseWbCatalog(response: Fetched, targetId: Long): ParsedPage {
             ?: emptyList()
 
         val items = products.mapNotNull { dto: WbItemDto ->
-            dto.toParsedItem(targetId, BASE_PAGE_URL).getOrNull()
+            dto.toParsedItem(BASE_PAGE_URL).getOrNull()
         }
 
         val nextPageUrl: CrawlUrl? = catalogEnvelope.payload?.nextPage?.let { nextPageStr ->

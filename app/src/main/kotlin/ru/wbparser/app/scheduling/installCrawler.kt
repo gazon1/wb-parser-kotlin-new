@@ -35,9 +35,7 @@ fun TaskScheduler.installCrawler(
 
     // parser is created per-target with targetId in runTarget
     val parser: (Fetched) -> ParsedPage = { fetched ->
-        // targetId is set by the caller at construction time — we use 0L as default
-        // and enrich stage corrects it from Crawling.targetId
-        parseWbCatalog(fetched, targetId = 0L)
+        parseWbCatalog(fetched)
     }
 
     val runner = CrawlRunner(
