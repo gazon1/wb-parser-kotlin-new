@@ -58,11 +58,7 @@ class CrawlRunner(
     private val freshnessPolicy = FreshnessPolicy()
     private var freshnessState = Freshness()
 
-    private val retryPolicy = RetryPolicy(
-        maxAttempts = 5,
-        baseDelayMs = 1_000L,
-        maxDelayMs = 120_000L,
-    )
+    private val retryPolicy = RetryPolicy()
 
     /**
      * Runs the crawler: acquires advisory lock, crawls all due targets, closes lock.

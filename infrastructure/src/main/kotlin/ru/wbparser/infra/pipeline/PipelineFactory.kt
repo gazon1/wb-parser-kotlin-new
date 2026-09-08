@@ -42,11 +42,7 @@ fun buildParserPipeline(
     parser: (Fetched) -> ru.wbparser.domain.model.ParsedPage,
     save: suspend (List<SavedItem>) -> Step<List<SavedItem>, Unit>,
     targetId: Long,
-    retryPolicy: RetryPolicy = RetryPolicy(
-        maxAttempts = 5,
-        baseDelayMs = 1_000L,
-        maxDelayMs = 120_000L,
-    ),
+    retryPolicy: RetryPolicy = RetryPolicy(),
     stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
     clock: Clock = SystemClock,
     idGen: () -> String = { UUID.randomUUID().toString() },
