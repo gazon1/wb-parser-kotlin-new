@@ -60,45 +60,5 @@ data class SavedItem(
                 updatedAt = now.toString(),
             )
         }
-
-        fun from(
-            productId: ProductId,
-            name: String,
-            priceKopecks: Long,
-            salePriceKopecks: Long?,
-            cashback: Double?,
-            brand: String?,
-            category: String?,
-            categoryId: Long?,
-            imageUrl: String?,
-            pageUrl: CrawlUrl,
-            targetId: Long,
-            brandId: Long?,
-            subjectId: Long?,
-            supplierId: Long?,
-            inStock: Boolean,
-            contentHash: String,
-            createdAt: Instant = Instant.now(),
-            updatedAt: Instant = Instant.now(),
-        ): SavedItem = SavedItem(
-            productId = productId.value,
-            name = name,
-            priceKopecks = priceKopecks,
-            salePriceKopecks = salePriceKopecks,
-            cashback = cashback,
-            brand = brand,
-            category = category,
-            categoryId = categoryId,
-            imageUrl = imageUrl,
-            pageUrl = pageUrl.toString(),
-            targetId = targetId,
-            brandId = brandId,
-            subjectId = subjectId,
-            supplierId = supplierId,
-            inStock = inStock,
-            contentHash = contentHash,
-            createdAt = createdAt.toString(),
-            updatedAt = updatedAt.toString(),
-        )
     }
 }

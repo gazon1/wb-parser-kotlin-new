@@ -64,8 +64,8 @@ sealed interface StageFailure {
         override val isRetryable: Boolean = true
     }
 
-    data class Stopped(val reason: StopReason) : StageFailure {
-        override val message: String = "Stopped: $reason"
+    data class Stopped(val reason: Stop?) : StageFailure {
+        override val message: String = "Stopped: ${reason ?: "external signal"}"
         override val url: String? = null
         override val isRetryable: Boolean = false
     }

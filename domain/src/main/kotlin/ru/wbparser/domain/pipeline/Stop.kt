@@ -2,10 +2,6 @@ package ru.wbparser.domain.pipeline
 
 /**
  * Reason a crawl pipeline stopped.
- *
- * ## Migration note
- *
- * Replaces [StopReason] (deprecated, to be removed in PR 2).
  */
 sealed interface Stop {
     data object ManualStop : Stop

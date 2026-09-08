@@ -1,7 +1,6 @@
 package ru.wbparser.domain.model
 
 import ru.wbparser.domain.value.CrawlUrl
-import ru.wbparser.domain.value.Depth
 import java.time.Instant
 
 /**
@@ -14,7 +13,4 @@ data class Crawling(
     val targetId: Long,
     val jobId: Long? = null,
     val createdAt: Instant = Instant.now(),
-) {
-    fun canCrawl(maxDepth: Depth): Boolean =
-        maxDepth.isUnlimited || depth < maxDepth.value
-}
+)

@@ -8,7 +8,7 @@ import ru.wbparser.domain.error.ParseError
 import ru.wbparser.domain.error.StoppedCrawling
 import ru.wbparser.domain.pipeline.Dropped
 import ru.wbparser.domain.pipeline.StageFailure
-import ru.wbparser.domain.pipeline.StopReason
+import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.pipeline.toDomainError
 
 class StageFailureTest : FunSpec({
@@ -57,7 +57,7 @@ class StageFailureTest : FunSpec({
     }
 
     test("Stopped is NOT retryable") {
-        val failure = StageFailure.Stopped(StopReason.MaxPages(10, 10))
+        val failure = StageFailure.Stopped(Stop.MaxPagesReached)
         failure.isRetryable shouldBe false
     }
 
@@ -75,7 +75,7 @@ class StageFailureTest : FunSpec({
     }
 
     test("toDomainError converts Stopped to StoppedCrawling") {
-        val failure = StageFailure.Stopped(StopReason.EmptyPage)
+        val failure = StageFailure.Stopped(Stop.EmptyPage)
         val error = failure.toDomainError()
         error.shouldBeInstanceOf<StoppedCrawling>()
     }

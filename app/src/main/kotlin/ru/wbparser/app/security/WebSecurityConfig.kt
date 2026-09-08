@@ -10,7 +10,6 @@ import org.springframework.security.web.SecurityFilterChain
 import org.springframework.web.cors.CorsConfiguration
 import org.springframework.web.cors.CorsConfigurationSource
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource
-import ru.wbparser.app.config.CrawlProperties
 
 @Configuration
 @EnableWebSecurity
@@ -60,15 +59,3 @@ class WebSecurityConfig {
         }
     }
 }
-
-/**
- * Top-level security config builder — for programmatic use when needed.
- */
-fun securityConfig(props: CrawlProperties): SecurityConfigData {
-    return SecurityConfigData()
-}
-
-data class SecurityConfigData(
-    val adminPath: String = "/api/admin/**",
-    val publicPaths: List<String> = listOf("/api/health/**", "/actuator/**", "/api/catalog/**"),
-)
