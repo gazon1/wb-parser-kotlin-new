@@ -27,6 +27,11 @@ jobs:
           echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
           echo "org.gradle.caching=true" >> ~/.gradle/gradle.properties
 
+      - name: Refresh decisions digest
+        run: |
+          chmod +x scripts/refresh-decisions-digest.sh
+          ./scripts/refresh-decisions-digest.sh
+
       - name: Build with Gradle
         run: ./gradlew build --no-daemon -x ktlintCheck -x detekt
 
