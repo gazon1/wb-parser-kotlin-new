@@ -75,8 +75,7 @@ for download and parse; `saveOne` now follows the same pattern.
 
 - **Always** wrap external-state stages (DB, HTTP, file I/O) in a retry loop.
   Use `stageWithRetry(save, retryPolicy)` or a manual loop inside `saveOne`.
-- **Always** use `Retry.Database` (or the appropriate `Retry.*` variant) for
-  transient storage errors — not `Step.Fail`.
+- **Always** use `Retry.Database` (or the appropriate `Retry.*` variant) for transient storage errors — not `Step.Fail`.
 - A DB blip no longer fails the entire crawl. The save still fails the item
   (returns 0), but the crawl continues.
 

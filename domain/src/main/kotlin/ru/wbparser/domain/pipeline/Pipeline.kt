@@ -1,6 +1,9 @@
 package ru.wbparser.domain.pipeline
 
 import arrow.core.Either
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlin.collections.MutableSet
 import ru.wbparser.domain.error.DomainError
@@ -75,7 +78,26 @@ data class Pipeline(
     }
 
     /**
-     * Runs the pipeline over [tasks] synchronously.
+     * Result of processing one [Crawling] task through download + parse stages.
+     * Used internally by [run] to collect results from concurrent workers.
+     */
+    private sealed class TaskOutcome {
+        /** Download or parse succeeded with the parsed page and sides collected. */
+        data class Done(
+            val task: Crawling,
+            val page: ParsedPage,
+            val sides: List<Side>,
+        ) : TaskOutcome()
+
+        /** Download or parse failed with a non-retryable error. */
+        data class Failed(val task: Crawling, val error: DomainError, val sides: List<Side>) : TaskOutcome()
+
+        /** Download or parse emitted a retry signal — task re-enqueued by caller. */
+        data class Retry(val task: Crawling, val sides: List<Side>) : TaskOutcome()
+    }
+
+    /**
+     * Runs the pipeline over [tasks].
      *
      * Returns [Either.Left] with a [DomainError] on unrecoverable failure,
      * or [Either.Right] with [Crawled] result and accumulated [Side] effects.
@@ -84,12 +106,17 @@ data class Pipeline(
      * been enqueued. A task whose fingerprint is already in the set is skipped
      * with a DEBUG log — preventing self-loops and pagination cycles.
      *
+     * Concurrency: when [concurrency] > 1, download + parse stages are executed
+     * concurrently for up to [concurrency] tasks at a time. The coordinator loop
+     * remains sequential, preserving correct stop-condition and pagination semantics.
+     *
      * Pagination: if a [ParsedPage] carries a non-null [ParsedPage.nextPageUrl],
      * a new [Crawling] task is appended to the queue — unless [stopAt] says stop.
      */
     suspend fun run(
         tasks: List<Crawling>,
         seenFingerprints: MutableSet<CrawlingFingerprint> = mutableSetOf(),
+        concurrency: Int = 1,
     ): Either<DomainError, Pair<Crawled, List<Side>>> {
         val startMs = clock.now().toEpochMilli()
 
@@ -100,11 +127,10 @@ data class Pipeline(
         val pending = tasks.toMutableList()
         var stopped: Stop = Stop.ManualStop
 
-        while (pending.isNotEmpty()) {
+        while (pending.isNotEmpty() && stopped == Stop.ManualStop) {
+            // --- Deduplication check ---
             val task = pending.removeFirst()
             val fp = CrawlingFingerprint(task.url, task.depth)
-
-            // --- Deduplication check ---
             if (seenFingerprints.add(fp).not()) {
                 sides += Side.Log(
                     LogLevel.DEBUG,
@@ -113,59 +139,95 @@ data class Pipeline(
                 continue
             }
 
-            // --- Download stage ---
-            val fetched: Fetched = when (val decision = runDownloadStage(task, sides)) {
-                is StageDecision.Done -> decision.output
-                is StageDecision.Fail -> return Either.Left(decision.error)
-                is StageDecision.Retry -> {
-                    pending.add(task)
-                    continue
+            // --- Batch of tasks to process concurrently (download + parse stages only) ---
+            val batchSize = minOf(concurrency.coerceAtLeast(1), pending.size + 1)
+            val batch = mutableListOf(task)
+            repeat(batchSize - 1) { if (pending.isNotEmpty()) batch.add(pending.removeFirst()) }
+
+            val batchSides = mutableListOf<Side>()
+            val donePages = mutableListOf<TaskOutcome.Done>()
+
+            // Collect first non-retry failure to return as Either.Left
+            var failureError: DomainError? = null
+
+            // Launch concurrent async workers for download + parse stages
+            coroutineScope {
+                batch.map { t ->
+                    async {
+                        val taskSides = mutableListOf<Side>()
+
+                        // Download stage
+                        val fetched: Fetched? = when (val decision = runDownloadStage(t, taskSides)) {
+                            is StageDecision.Done -> decision.output
+                            is StageDecision.Fail -> {
+                                return@async TaskOutcome.Failed(t, decision.error, taskSides.toList())
+                            }
+                            is StageDecision.Retry -> {
+                                return@async TaskOutcome.Retry(t, taskSides.toList())
+                            }
+                            is StageDecision.Cont -> {
+                                return@async TaskOutcome.Failed(t, ru.wbparser.domain.error.NetworkError("Unexpected Cont", null, null), taskSides.toList())
+                            }
+                        }
+
+                        // Parse stage
+                        val page: ParsedPage? = when (val decision = runParseStage(t, fetched!!, taskSides)) {
+                            is StageDecision.Done -> decision.output
+                            is StageDecision.Fail -> {
+                                return@async TaskOutcome.Failed(t, decision.error, taskSides.toList())
+                            }
+                            is StageDecision.Retry -> {
+                                return@async TaskOutcome.Retry(t, taskSides.toList())
+                            }
+                            is StageDecision.Cont -> {
+                                return@async TaskOutcome.Failed(t, ru.wbparser.domain.error.NetworkError("Unexpected Cont", null, null), taskSides.toList())
+                            }
+                        }
+                        TaskOutcome.Done(t, page!!, taskSides.toList())
+                    }
+                }.awaitAll().forEach { outcome ->
+                    when (outcome) {
+                        is TaskOutcome.Done -> {
+                            batchSides.addAll(outcome.sides)
+                            donePages.add(outcome)
+                        }
+                        is TaskOutcome.Failed -> {
+                            if (failureError == null) failureError = outcome.error
+                            batchSides.addAll(outcome.sides)
+                        }
+                        is TaskOutcome.Retry -> pending.add(outcome.task)
+                    }
                 }
-                is StageDecision.Cont -> continue
             }
 
-            // --- Parse stage ---
-            val page: ParsedPage = when (val decision = runParseStage(task, fetched, sides)) {
-                is StageDecision.Done -> decision.output
-                is StageDecision.Fail -> return Either.Left(decision.error)
-                is StageDecision.Retry -> {
-                    pending.add(task)
-                    continue
-                }
-                is StageDecision.Cont -> continue
-            }
+            // Propagate first failure as Either.Left (same semantics as sequential pipeline)
+            failureError?.let { return Either.Left(it) }
 
-            // --- Stop condition check --- (before counting the page, so page 1 is always processed)
-            val stopNow = stopAt(pagesCrawled, task.depth)
-            if (stopNow != null) {
-                stopped = stopNow
-                break
-            }
+            sides.addAll(batchSides)
 
-            pagesCrawled++
-
-            // --- Enrich, filter, and save each item ---
-            itemsSaved += processItems(page, task, sides)
-
-            // --- Pagination: enqueue next page if available ---
-            val nextUrl = page.nextPageUrl
-            if (nextUrl != null) {
-                val paginationStop = stopAt(pagesCrawled, task.depth + 1)
-                if (paginationStop == null) {
-                    pending.add(
-                        Crawling(
-                            id = idGen(),
-                            url = nextUrl,
-                            depth = task.depth + 1,
-                            targetId = task.targetId,
-                        ),
-                    )
-                } else {
-                    stopped = paginationStop
+            // --- Sequential post-processing: stop check, enrich/save, pagination ---
+            for (done in donePages) {
+                val stopNow = stopAt(pagesCrawled, done.task.depth)
+                if (stopNow != null) {
+                    stopped = stopNow
                     break
                 }
-            } else {
-                if (page.items.isEmpty()) lastPageWasEmpty = true
+
+                pagesCrawled++
+                itemsSaved += processItems(done.page, done.task, sides)
+
+                val nextUrl = done.page.nextPageUrl
+                if (nextUrl != null) {
+                    val paginationStop = stopAt(pagesCrawled, done.task.depth + 1)
+                    if (paginationStop == null) {
+                        pending.add(Crawling(id = idGen(), url = nextUrl, depth = done.task.depth + 1, targetId = done.task.targetId))
+                    } else {
+                        stopped = paginationStop
+                        break
+                    }
+                } else {
+                    if (done.page.items.isEmpty()) lastPageWasEmpty = true
+                }
             }
         }
 
@@ -181,6 +243,7 @@ data class Pipeline(
      * Runs filter → enrich → save for each item in [page].
      * Returns the number of items successfully saved.
      */
+    @Suppress("UNUSED_PARAMETER")
     private suspend fun processItems(
         page: ParsedPage,
         task: Crawling,
