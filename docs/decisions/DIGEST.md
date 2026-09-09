@@ -29,9 +29,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** emit `Step.Fail` for a condition that should be retried — use _(from `2026-09-08-retry-semantics-pr8`)
 - **Never** register a live side-effect interpreter that the pipeline never calls. _(from `2026-09-08-retry-semantics-pr8`)
 - **Never** write a `when` over a sealed interface when all branches are identical — access the common property directly _(from `2026-09-09-retry-backoff-collapse-pr9-5`)
-- **Always** use `Retry.Database` (or the appropriate `Retry.*` variant) for transient DB errors. _(from `2026-09-09-save-stage-retry-pr11`)
+- **Always** use `Retry.Database` (or the appropriate `Retry.*` variant) for transient storage errors — not `Step.Fail`. _(from `2026-09-09-save-stage-retry-pr11`)
 - **Always** wrap external-state stages (DB, HTTP, file I/O) in a retry loop. _(from `2026-09-09-save-stage-retry-pr11`)
-- **Always** emit `Side.Drop` when the filter stage returns null — never silently skip the item. _(from `2026-09-09-g6-drop-observability-pr15`)
 
 ## Per-tag
 
