@@ -13,7 +13,11 @@ import ru.wbparser.domain.model.SavedItem
  *
  * Instead of performing HTTP calls, DB writes, or logging directly inside stages,
  * stages return [Side] values. The runner collects them and interprets them.
- * This makes stages pure functions testable without any mocks or test doubles.
+ * This makes stages **effect-recording** — they describe effects as data rather
+ * than executing them inline. Stages call suspend functions (download, save) which
+ * produce [Side] values; the effects themselves are interpreted later by the runner.
+ * This makes stages testable without mocks: pass in fake Side-producing stages and
+ * verify the Side values they emit.
  *
  * ## Adding a new effect
  *

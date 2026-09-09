@@ -214,7 +214,7 @@ data class Pipeline(
                 }
 
                 pagesCrawled++
-                itemsSaved += processItems(done.page, done.task, sides)
+                itemsSaved += processItems(done.page, sides)
 
                 val nextUrl = done.page.nextPageUrl
                 if (nextUrl != null) {
@@ -243,10 +243,8 @@ data class Pipeline(
      * Runs filter → enrich → save for each item in [page].
      * Returns the number of items successfully saved.
      */
-    @Suppress("UNUSED_PARAMETER")
     private suspend fun processItems(
         page: ParsedPage,
-        task: Crawling,
         sides: MutableList<Side>,
     ): Int {
         var saved = 0

@@ -8,11 +8,6 @@ sealed interface DomainError {
     val url: String?
 
     fun isRetryable(): Boolean
-    // Overrides exist in DepthExceededError, StoppedCrawling, DropItemError
-    // but isStopped()/isDrop() have zero callers in the codebase.
-    // Remove override declarations from subclasses if removing these defaults.
-    fun isStopped(): Boolean = false
-    fun isDrop(): Boolean = false
 }
 
 data class NetworkError(
@@ -48,7 +43,6 @@ data class DepthExceededError(
 ) : DomainError {
     override val message: String = "Depth $currentDepth exceeds max $maxDepth"
     override val cause: Throwable? = null
-    override fun isStopped(): Boolean = true
     override fun isRetryable(): Boolean = false
 }
 
@@ -67,7 +61,6 @@ data class StoppedCrawling(
 ) : DomainError {
     override val message: String = "Crawl stopped: $reason"
     override val cause: Throwable? = null
-    override fun isStopped(): Boolean = true
     override fun isRetryable(): Boolean = false
 }
 
@@ -85,6 +78,5 @@ data class DropItemError(
     override val cause: Throwable? = null,
     override val url: String? = null,
 ) : DomainError {
-    override fun isDrop(): Boolean = true
     override fun isRetryable(): Boolean = false
 }
