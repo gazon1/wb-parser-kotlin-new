@@ -52,7 +52,24 @@ class CrawlRunner(
     private val maxPagesPerCatalog: Int = 10,
     private val maxDepth: Int = 2,
     private val clock: Clock = SystemClock,
+    /** Called once when the crawl job starts, before any target is processed. */
+    private val onCrawlStart: suspend (CrawlContext) -> Unit = {},
+    /** Called once when the crawl job ends (success, failure, or cancellation). */
+    private val onCrawlEnd: suspend (CrawlContext, Stop) -> Unit = { _, _ -> },
 ) {
+
+    /**
+     * Context for a crawl job — passed to [onCrawlStart] and [onCrawlEnd] hooks.
+     *
+     * @param jobId unique identifier for this crawl job
+     * @param startedAt wall-clock time when the job began
+     * @param targetIds IDs of targets selected for this crawl
+     */
+    data class CrawlContext(
+        val jobId: UUID,
+        val startedAt: java.time.Instant,
+        val targetIds: List<Long>,
+    )
     private val advisoryLock = PostgresAdvisoryLock(db.ds)
     private val freshnessPolicy = FreshnessPolicy()
     private var freshnessState = Freshness()
@@ -72,10 +89,18 @@ class CrawlRunner(
 
     private suspend fun runUnsafe(): RunResult {
         val jobId = openJob()
-        try {
-            val targets = db.ds.fetchActiveTargets()
-            val due = freshnessState.targetsDue(targets, freshnessPolicy)
+        val startedAt = java.time.Instant.now()
+        val targets = db.ds.fetchActiveTargets()
+        val due = freshnessState.targetsDue(targets, freshnessPolicy)
+        val ctx = CrawlContext(jobId, startedAt, due.map { it.id })
 
+        try {
+            onCrawlStart(ctx)
+        } catch (_: Exception) {
+            // hooks must not crash the crawl
+        }
+
+        try {
             var totalPages = 0
             var totalItems = 0
 
@@ -87,9 +112,11 @@ class CrawlRunner(
             }
 
             closeJob(jobId, "Completed", pagesCrawled = totalPages, itemsSaved = totalItems)
+            try { onCrawlEnd(ctx, Stop.ManualStop) } catch (_: Exception) { /* hooks must not crash */ }
             return RunResult.Success(totalPages, totalItems)
         } catch (e: Exception) {
             closeJob(jobId, "Failed", errorMessage = e.message)
+            try { onCrawlEnd(ctx, Stop.ManualStop) } catch (_: Exception) { /* hooks must not crash */ }
             return RunResult.Failure(e.message ?: "Unknown error")
         }
     }
