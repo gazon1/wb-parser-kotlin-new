@@ -30,8 +30,8 @@ class PipelineRunner(
      *
      * Side effects (logging, metrics, saves) are performed by the [interpreterRegistry].
      */
-    suspend fun run(tasks: List<Crawling>): Either<DomainError, ru.wbparser.domain.pipeline.Crawled> {
-        return pipeline.run(tasks).map { (crawled, sides) ->
+    suspend fun run(tasks: List<Crawling>, concurrency: Int = 1): Either<DomainError, ru.wbparser.domain.pipeline.Crawled> {
+        return pipeline.run(tasks, concurrency = concurrency).map { (crawled, sides) ->
             interpreterRegistry.interpretAll(sides)
             crawled
         }

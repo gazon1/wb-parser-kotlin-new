@@ -52,6 +52,7 @@ class CrawlRunner(
     private val maxPagesPerCatalog: Int = 10,
     private val maxDepth: Int = 2,
     private val clock: Clock = SystemClock,
+    private val concurrency: Int = 1,
     /** Called once when the crawl job starts, before any target is processed. */
     private val onCrawlStart: suspend (CrawlContext) -> Unit = {},
     /** Called once when the crawl job ends (success, failure, or cancellation). */
@@ -173,7 +174,7 @@ class CrawlRunner(
             targetId = targetId,
         )
 
-        val result = runner.run(listOf(startTask))
+        val result = runner.run(listOf(startTask), concurrency = concurrency)
 
         return when (result) {
             is Either.Left -> TargetResult(0, 0)

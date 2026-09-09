@@ -27,6 +27,7 @@ fun TaskScheduler.installCrawler(
     maxPagesPerCatalog: Int = 10,
     maxDepth: Int = 2,
     clock: Clock = SystemClock,
+    concurrency: Int = 1,
 ): ScheduledFuture<*> {
     val logger = LoggerFactory.getLogger("installCrawler")
 
@@ -47,6 +48,7 @@ fun TaskScheduler.installCrawler(
         maxPagesPerCatalog = maxPagesPerCatalog,
         maxDepth = maxDepth,
         clock = clock,
+        concurrency = concurrency,
     )
 
     val task = Runnable {

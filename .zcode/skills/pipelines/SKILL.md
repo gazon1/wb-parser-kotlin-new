@@ -74,7 +74,11 @@ data class Pipeline(
     val clock: Clock,
     val idGen: () -> String = { java.util.UUID.randomUUID().toString() },
 ) {
-    suspend fun run(tasks: List<Crawling>): Either<DomainError, Pair<Crawled, List<Side>>>
+    suspend fun run(
+        tasks: List<Crawling>,
+        seenFingerprints: MutableSet<CrawlingFingerprint> = mutableSetOf(),
+        concurrency: Int = 1,
+    ): Either<DomainError, Pair<Crawled, List<Side>>>
 }
 ```
 
@@ -301,11 +305,30 @@ private suspend fun saveOne(item: SavedItem, sides: MutableList<Side>): Int {
 **Rule**: Always wrap external-state stages (DB, HTTP, file I/O) in a retry loop.
 Use [Retry.Database] for transient DB errors.
 
+## Concurrency wiring
+
+`Spider.concurrency` from `CrawlProperties` reaches `Pipeline.run()` through this chain:
+
+```
+CrawlProperties.Spider.concurrency
+    → installCrawler(concurrency)
+    → CrawlRunner(concurrency)
+    → PipelineRunner.run(tasks, concurrency)
+    → Pipeline.run(tasks, concurrency = N)
+```
+
+Before PR 17, `Spider.concurrency` was declared but never read — the pipeline always used `concurrency = 1`.
+See [`config-to-runtime-plumbing`](./config-to-runtime-plumbing/SKILL.md) for the general pattern.
+
+For concurrency > 1, `Pipeline.run()` uses `async {}` workers for download + parse stages only.
+Stop, pagination, enrich, and save remain sequential. See `PipelineConcurrencyTest` for test coverage.
+
 ## Related Skills
 
 - `kotlin-test-boundary` — where to place tests (domain vs. infrastructure vs. tests module)
 - `dead-code-purge` — how to safely remove unused code
 - `integration-testing-kotlin` — fake HTTP server setup for integration tests
+- `config-to-runtime-plumbing` — Spider.concurrency gap is a case study
 
 ## Sources
 
