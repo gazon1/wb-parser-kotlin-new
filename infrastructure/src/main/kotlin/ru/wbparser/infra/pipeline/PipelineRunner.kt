@@ -29,6 +29,10 @@ class PipelineRunner(
      * or [Either.Left] with [DomainError] if the pipeline aborted.
      *
      * Side effects (logging, metrics, saves) are performed by the [interpreterRegistry].
+     *
+     * Note: using `map` here is intentional — we both perform a side effect (interpretAll)
+     * and transform the return type from `Pair<Crawled, List<Side>>` to `Crawled`.
+     * Arrow's `onRight` cannot do both; it only performs a side effect without type change.
      */
     suspend fun run(tasks: List<Crawling>, concurrency: Int = 1): Either<DomainError, ru.wbparser.domain.pipeline.Crawled> {
         return pipeline.run(tasks, concurrency = concurrency).map { (crawled, sides) ->
