@@ -17,9 +17,9 @@ data class DatabaseHandle(
  * Connect to PostgreSQL and return a DatabaseHandle.
  */
 fun connect(
-    url: String = "jdbc:postgresql://localhost:5432/wbparser",
-    user: String = "postgres",
-    password: String = "postgres",
+    url: String,
+    user: String,
+    password: String,
     poolSize: Int = 10,
 ): DatabaseHandle {
     val config = HikariConfig().apply {

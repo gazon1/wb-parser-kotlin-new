@@ -135,9 +135,7 @@ class CrawlRunner(
         val runner = PipelineRunner(pipeline, registry)
 
         val startUrl: CrawlUrl = CrawlUrl.of(target.url).getOrElse {
-            CrawlUrl.of("https://wildberries.ru").getOrElse {
-                throw IllegalStateException("Invalid fallback URL")
-            }
+            throw IllegalArgumentException("Invalid target URL: ${target.url}")
         }
 
         val startTask = Crawling(
