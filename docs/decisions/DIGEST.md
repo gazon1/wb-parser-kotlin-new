@@ -31,7 +31,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** write a `when` over a sealed interface when all branches are identical — access the common property directly _(from `2026-09-09-retry-backoff-collapse-pr9-5`)
 - **Always** use `Retry.Database` (or the appropriate `Retry.*` variant) for transient DB errors. _(from `2026-09-09-save-stage-retry-pr11`)
 - **Always** wrap external-state stages (DB, HTTP, file I/O) in a retry loop. _(from `2026-09-09-save-stage-retry-pr11`)
-- **Never** allow a mutable `pending` queue without a deduplication check on `(url, depth)` — `CrawlingFingerprint` must be used to prevent self-loop and pagination cycles. _(from `2026-09-09-g1-dedup-pr13`)
+- **Always** emit `Side.Drop` when the filter stage returns null — never silently skip the item. _(from `2026-09-09-g6-drop-observability-pr15`)
 
 ## Per-tag
 
