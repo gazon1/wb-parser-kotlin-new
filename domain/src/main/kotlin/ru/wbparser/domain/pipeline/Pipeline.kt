@@ -192,7 +192,11 @@ data class Pipeline(
                 is Done<ParsedItem, ParsedItem?> -> r.output
                 else -> null
             }
-            if (filtered == null) continue
+            if (filtered == null) {
+                // Emit Side.Drop so the runner can count/metric/log dropped items.
+                sides += Side.Drop(Dropped.Filtered, item)
+                continue
+            }
 
             val enriched: SavedItem = when (val r = enrich(filtered)) {
                 is Done<ParsedItem, SavedItem> -> {

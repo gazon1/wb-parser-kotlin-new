@@ -83,3 +83,17 @@ class NoOpAdvisoryLockInterpreter : Interpreter<Side.AcquireAdvisoryLock> {
         logger.trace("Advisory lock key=${side.key}")
     }
 }
+
+/** Logs [Side.Drop] at WARN level so dropped items are visible in observability. */
+class LogDropInterpreter : Interpreter<Side.Drop> {
+    override suspend fun handle(side: Side.Drop) {
+        logger.warn("Item dropped [${side.reason}]: pageUrl=${side.item.pageUrl} productId=${side.item.productId}")
+    }
+}
+
+/** No-op drop interpreter — drops are logged but otherwise ignored. */
+class NoOpDropInterpreter : Interpreter<Side.Drop> {
+    override suspend fun handle(side: Side.Drop) {
+        logger.trace("Dropped: ${side.reason}")
+    }
+}

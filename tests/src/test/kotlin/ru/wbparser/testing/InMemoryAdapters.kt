@@ -19,6 +19,7 @@ class TestSideCollector {
     val jobEvents = mutableListOf<Side.JobEvent>()
     val scheduleRetries = mutableListOf<Side.ScheduleRetry>()
     val advisoryLocks = mutableListOf<Side.AcquireAdvisoryLock>()
+    val drops = mutableListOf<Side.Drop>()
 
     fun collect(side: Side) {
         when (side) {
@@ -28,6 +29,7 @@ class TestSideCollector {
             is Side.JobEvent -> jobEvents += side
             is Side.ScheduleRetry -> scheduleRetries += side
             is Side.AcquireAdvisoryLock -> advisoryLocks += side
+            is Side.Drop -> drops += side
         }
     }
 
@@ -38,6 +40,7 @@ class TestSideCollector {
         jobEvents.clear()
         scheduleRetries.clear()
         advisoryLocks.clear()
+        drops.clear()
     }
 
     val totalItemsSaved: Int get() = saveBatches.sumOf { it.items.size }
@@ -71,6 +74,11 @@ class ScheduleRetryTestInterpreter(private val collector: TestSideCollector) : I
 /** A [Side.AcquireAdvisoryLock] interpreter that collects lock attempts into [TestSideCollector]. */
 class AcquireAdvisoryLockTestInterpreter(private val collector: TestSideCollector) : Interpreter<Side.AcquireAdvisoryLock> {
     override suspend fun handle(side: Side.AcquireAdvisoryLock) = collector.collect(side)
+}
+
+/** A [Side.Drop] interpreter that collects drops into [TestSideCollector]. */
+class DropTestInterpreter(private val collector: TestSideCollector) : Interpreter<Side.Drop> {
+    override suspend fun handle(side: Side.Drop) = collector.collect(side)
 }
 
 /**

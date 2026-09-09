@@ -26,6 +26,7 @@ class SideInterpreterRegistry(
     private val jobEvent: Interpreter<Side.JobEvent>? = null,
     private val scheduleRetry: Interpreter<Side.ScheduleRetry>? = null,
     private val acquireAdvisoryLock: Interpreter<Side.AcquireAdvisoryLock>? = null,
+    private val drop: Interpreter<Side.Drop>? = null,
 ) {
 
     /**
@@ -52,6 +53,8 @@ class SideInterpreterRegistry(
                 ?: throw IllegalStateException("No interpreter for Side.ScheduleRetry: $side")
             is Side.AcquireAdvisoryLock -> acquireAdvisoryLock?.handle(side)
                 ?: throw IllegalStateException("No interpreter for Side.AcquireAdvisoryLock: $side")
+            is Side.Drop -> drop?.handle(side)
+                ?: throw IllegalStateException("No interpreter for Side.Drop: $side")
         }
     }
 }

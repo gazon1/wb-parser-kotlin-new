@@ -1,5 +1,6 @@
 package ru.wbparser.domain.pipeline
 
+import ru.wbparser.domain.model.ParsedItem
 import ru.wbparser.domain.model.SavedItem
 
 /**
@@ -56,6 +57,12 @@ sealed interface Side {
     /** Record that we attempted to acquire the advisory lock. */
     data class AcquireAdvisoryLock(
         val key: Long,
+    ) : Side
+
+    /** Record that an item was dropped by the filter stage. */
+    data class Drop(
+        val reason: Dropped,
+        val item: ru.wbparser.domain.model.ParsedItem,
     ) : Side
 }
 

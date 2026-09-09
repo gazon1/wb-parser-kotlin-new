@@ -162,9 +162,13 @@ class PipelineTest : FunSpec({
             val result = pipeline.run(listOf(testCrawling()))
 
             result.isRight() shouldBe true
-            val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
+            val (crawled, sides) = result.getOrElse { throw AssertionError("Expected Right") }
             crawled.itemsSaved shouldBe 0
             savedItems shouldBe emptyList()
+            // Side.Drop is emitted when filter returns null
+            val dropSides = sides.filterIsInstance<ru.wbparser.domain.pipeline.Side.Drop>()
+            dropSides.size shouldBe 1
+            dropSides.first().reason shouldBe ru.wbparser.domain.pipeline.Dropped.Filtered
         }
     }
 

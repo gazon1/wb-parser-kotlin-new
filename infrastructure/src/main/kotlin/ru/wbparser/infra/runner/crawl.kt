@@ -131,6 +131,7 @@ class CrawlRunner(
             jobEvent = ru.wbparser.infra.pipeline.JobEventInterpreter(),
             scheduleRetry = ru.wbparser.infra.pipeline.NoOpScheduleRetryInterpreter(),
             acquireAdvisoryLock = ru.wbparser.infra.pipeline.NoOpAdvisoryLockInterpreter(),
+            drop = ru.wbparser.infra.pipeline.LogDropInterpreter(),
         )
         val runner = PipelineRunner(pipeline, registry)
 
