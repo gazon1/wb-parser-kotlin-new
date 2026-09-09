@@ -8,6 +8,7 @@ data class CrawlProperties(
     val schedule: Schedule = Schedule(),
     val spider: Spider = Spider(),
     val database: Database = Database(),
+    val worker: Worker = Worker(),
 )
 
 data class Schedule(
@@ -26,4 +27,8 @@ data class Database(
     val username: String = "postgres",
     val password: String = "postgres",
     val poolSize: Int = 10,
+)
+
+data class Worker(
+    val enabled: Boolean = false,
 )

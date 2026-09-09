@@ -79,7 +79,7 @@ spring:
 
 crawler:
   schedule:
-    interval-ms: 300000
+    cron: "0 0 */4 * * *"
   lock:
     timeout-minutes: 10
   worker:

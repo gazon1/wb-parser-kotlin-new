@@ -30,16 +30,21 @@ Is the code under test in `domain/`?
 │
 └── NO (code under test is in `infrastructure/` or `app/`)
     │
-    ├── Does it need real Spring Boot context?
-    │   ├── YES → `tests/src/test/kotlin/ru/wbparser/infra/integration/`
-    │   │         Example: full pipeline with Spring beans, REST routes
+    ├── Is the code under test in `app/`?
+    │   ├── YES → `tests/src/test/kotlin/ru/wbparser/app/`
+    │   │         Example: @Scheduled bean test, Spring @Configuration wiring,
+    │   │                   CrawlProperties binding, ApplicationContext integration
     │   └── NO
-    │       ├── Does it use Ktor client, SQLite, or Caffeine?
-    │       │   YES → `infrastructure/src/test/kotlin/ru/wbparser/infra/`
-    │       │         Example: KtorDownloader unit test, CatalogQueries with SQLite,
-    │       │                   SideInterpreterRegistry test, PostgresAdvisoryLock test
-    │       └── NO
-    │           └── Any other case → `tests/src/test/kotlin/ru/wbparser/infra/integration/`
+    │       └── Does it need real Spring Boot context?
+    │           ├── YES → `tests/src/test/kotlin/ru/wbparser/infra/integration/`
+    │           │         Example: full pipeline with Spring beans, REST routes
+    │           └── NO
+    │               ├── Does it use Ktor client, SQLite, or Caffeine?
+    │               │   YES → `infrastructure/src/test/kotlin/ru/wbparser/infra/`
+    │               │         Example: KtorDownloader unit test, CatalogQueries with SQLite,
+    │               │                   SideInterpreterRegistry test, PostgresAdvisoryLock test
+    │               └── NO
+    │                   └── Any other case → `tests/src/test/kotlin/ru/wbparser/infra/integration/`
 ```
 
 ---
@@ -202,13 +207,15 @@ import ru.wbparser.testing.SqliteTestHandle  // NO!
 
 ---
 
-## wb-parser-kotlin Test Inventory (after PR 11)
+## wb-parser-kotlin Test Inventory (after PR 18)
 
-### `domain/src/test/` — pure domain unit tests (194 tests after PR 11)
+### `domain/src/test/` — pure domain unit tests (202 tests after PR 17)
 - `BusinessRulesTest`, `CashbackTest`, `ClockDomainTest`, `CrawlHttpStatusCodeTest`
 - `CrawlUrlDomainTest`, `DomainErrorClassifyTest`, `ItemDtoMappingTest`
 - `JobStatusTest`, `PagedResultTest`, `PipelineTest`
 - `PipelineSaveOneRetryTest` (PR 11 — G10 retry coverage)
+- `PipelineDedupTest` (PR 13 — CrawlingFingerprint dedup)
+- `PipelineConcurrencyTest` (PR 17 — concurrency wiring)
 - `PresetTest`, `PriceTest`, `RetryDatabaseTest` (PR 11)
 - `RetryPolicyTest`, `SavedItemFactoryTest` (PR 11)
 - `StageFailureDatabaseMappingTest` (PR 11)
@@ -227,6 +234,10 @@ conflict. Infra adapter tests live in `tests/` module instead:
 - `PipelineRunnerTest`, `WbParserPaginationTest`, `WbParserRetryExhaustionTest`
 - `InMemoryAdapters.kt` (TestSideCollector, Fake*Interpreter implementations)
 - `NoRetryKtorDownloader.kt`, `WbFixtureServer.kt`, `SqliteTestHandle.kt`
+
+### `app/src/test/` — Spring Boot context tests (PR 18)
+- `ScheduledCrawlerTest` (PR 18 — @Scheduled bean wiring)
+- `CrawlerConfigTest` (PR 18 — @Bean wiring for CrawlRunner)
 
 ---
 
