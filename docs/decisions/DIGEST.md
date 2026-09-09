@@ -29,8 +29,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** emit `Step.Fail` for a condition that should be retried — use _(from `2026-09-08-retry-semantics-pr8`)
 - **Never** register a live side-effect interpreter that the pipeline never calls. _(from `2026-09-08-retry-semantics-pr8`)
 - **Never** write a `when` over a sealed interface when all branches are identical — access the common property directly _(from `2026-09-09-retry-backoff-collapse-pr9-5`)
-- **Always** use `Retry.Database` (or the appropriate `Retry.*` variant) for _(from `2026-09-09-save-stage-retry-pr11`)
+- **Always** use `Retry.Database` (or the appropriate `Retry.*` variant) for transient DB errors. _(from `2026-09-09-save-stage-retry-pr11`)
 - **Always** wrap external-state stages (DB, HTTP, file I/O) in a retry loop. _(from `2026-09-09-save-stage-retry-pr11`)
+- **Never** allow a mutable `pending` queue without a deduplication check on `(url, depth)` — `CrawlingFingerprint` must be used to prevent self-loop and pagination cycles. _(from `2026-09-09-g1-dedup-pr13`)
 
 ## Per-tag
 
@@ -78,11 +79,29 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `pipeline`
 
 - A DB blip no longer fails the entire crawl. The save still fails the item _(from `2026-09-09-save-stage-retry-pr11`)_
+- Adding a new stage (e.g. `dedup`) is now a mechanical extract step _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- Each helper is independently testable _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 - HTTP errors (500/429/connection) are now correctly retried up to `maxAttempts`. _(from `2026-09-08-retry-semantics-pr8`)_
 - Integration tests in `tests/` still cover the full stack; they complement, not replace, domain tests. _(from `2026-09-08-domain-coverage-pr4`)_
+- Pagination remains inline — defer extraction until a concrete need arises _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- `Pipeline.run()` reduced from 113 lines to ~55 lines _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 - `Retry.*` data classes kept for test expressiveness and future signal-specific behaviour _(from `2026-09-09-retry-backoff-collapse-pr9-5`)_
 - `retryDelayMs()` reduced from 19 lines to 11 lines _(from `2026-09-09-retry-backoff-collapse-pr9-5`)_
 - `SaveBatchInterpreter` and `ScheduleRetryInterpreter` are not optional — they must be registered in every `runTarget`. _(from `2026-09-08-functional-pipeline-refactor`)_
+
+### `PR-11-5`
+
+- Adding a new stage (e.g. `dedup`) is now a mechanical extract step _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- Each helper is independently testable _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- Pagination remains inline — defer extraction until a concrete need arises _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- `Pipeline.run()` reduced from 113 lines to ~55 lines _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+
+### `refactoring`
+
+- Adding a new stage (e.g. `dedup`) is now a mechanical extract step _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- Each helper is independently testable _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- Pagination remains inline — defer extraction until a concrete need arises _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- `Pipeline.run()` reduced from 113 lines to ~55 lines _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 
 ### `testing`
 
@@ -105,6 +124,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-09-08-integration-testing-pr7` — testing  pipeline  architecture
 - `2026-09-08-retry-semantics-pr8` — pipeline  bug-fix
 - `2026-09-09-dead-code-purge-pr9` — cleanup  architecture
+- `2026-09-09-pipeline-extraction-pr11-5` — refactoring  pipeline  PR-11-5
 - `2026-09-09-retry-backoff-collapse-pr9-5` — cleanup  pipeline
 - `2026-09-09-save-stage-retry-pr11` — pipeline  bug-fix  G10
 - `2026-09-09-test-module-boundary-pr10` — testing  architecture
@@ -117,6 +137,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-09-08-integration-testing-pr7` — Integration testing — SQLite + Java HttpServer
 - `2026-09-08-retry-semantics-pr8` — Retry signal must be Step.Retry, not Step.Fail
 - `2026-09-09-dead-code-purge-pr9` — Dead code purge — PR 9 cluster C
+- `2026-09-09-pipeline-extraction-pr11-5` — PR 11.5 — Pipeline.run() extraction — behaviour-preserving refactor
 - `2026-09-09-retry-backoff-collapse-pr9-5` — Collapse identical Retry back-off branches
 - `2026-09-09-save-stage-retry-pr11` — Save stage retry — G10: transient DB blip must not fail the entire crawl
 - `2026-09-09-test-module-boundary-pr10` — Test module boundary — where tests live

@@ -2,6 +2,7 @@ package ru.wbparser.domain.pipeline
 
 import arrow.core.Either
 import kotlinx.coroutines.delay
+import kotlin.collections.MutableSet
 import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
@@ -27,6 +28,17 @@ data class Crawled(
     val itemsSaved: Int,
     val stopReason: Stop,
     val durationMs: Long,
+)
+
+/**
+ * Deduplication fingerprint for a [Crawling] task.
+ * Combines URL and depth so the same URL at different crawl depths
+ * is tracked separately (prevents depth-0 loops while allowing
+ * legitimate back-navigation to shallower depths).
+ */
+data class CrawlingFingerprint(
+    val url: ru.wbparser.domain.value.CrawlUrl,
+    val depth: Int,
 )
 
 /**
@@ -68,10 +80,17 @@ data class Pipeline(
      * Returns [Either.Left] with a [DomainError] on unrecoverable failure,
      * or [Either.Right] with [Crawled] result and accumulated [Side] effects.
      *
+     * Deduplication: [seenFingerprints] tracks (url, depth) pairs that have already
+     * been enqueued. A task whose fingerprint is already in the set is skipped
+     * with a DEBUG log — preventing self-loops and pagination cycles.
+     *
      * Pagination: if a [ParsedPage] carries a non-null [ParsedPage.nextPageUrl],
      * a new [Crawling] task is appended to the queue — unless [stopAt] says stop.
      */
-    suspend fun run(tasks: List<Crawling>): Either<DomainError, Pair<Crawled, List<Side>>> {
+    suspend fun run(
+        tasks: List<Crawling>,
+        seenFingerprints: MutableSet<CrawlingFingerprint> = mutableSetOf(),
+    ): Either<DomainError, Pair<Crawled, List<Side>>> {
         val startMs = clock.now().toEpochMilli()
 
         var pagesCrawled = 0
@@ -83,6 +102,16 @@ data class Pipeline(
 
         while (pending.isNotEmpty()) {
             val task = pending.removeFirst()
+            val fp = CrawlingFingerprint(task.url, task.depth)
+
+            // --- Deduplication check ---
+            if (seenFingerprints.add(fp).not()) {
+                sides += Side.Log(
+                    LogLevel.DEBUG,
+                    "Skipping duplicate task: ${task.url} at depth ${task.depth}",
+                )
+                continue
+            }
 
             // --- Download stage ---
             val fetched: Fetched = when (val decision = runDownloadStage(task, sides)) {
