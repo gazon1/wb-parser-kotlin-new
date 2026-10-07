@@ -37,37 +37,40 @@ class NoRetryKtorDownloader(
     private val timeoutMs: Long = 30_000,
     private val userAgent: String = DEFAULT_USER_AGENT,
 ) {
-    private val client = HttpClient(CIO) {
-        install(HttpTimeout) {
-            requestTimeoutMillis = timeoutMs
-            connectTimeoutMillis = 15_000
-            // Equal to request timeout: any delay surfaces as a clean NetworkError.
-            socketTimeoutMillis = timeoutMs
-        }
-
-        // No automatic retry plugin — CIO does not retry server errors by default.
-        // Pipeline-level retry is handled by stageWithRetry.
-
-        install(Logging) {
-            logger = object : Logger {
-                override fun log(message: String) {
-                    // no-op: tests use TestSideCollector for assertions
-                }
+    private val client =
+        HttpClient(CIO) {
+            install(HttpTimeout) {
+                requestTimeoutMillis = timeoutMs
+                connectTimeoutMillis = 15_000
+                // Equal to request timeout: any delay surfaces as a clean NetworkError.
+                socketTimeoutMillis = timeoutMs
             }
-            level = LogLevel.NONE
+
+            // No automatic retry plugin — CIO does not retry server errors by default.
+            // Pipeline-level retry is handled by stageWithRetry.
+
+            install(Logging) {
+                logger =
+                    object : Logger {
+                        override fun log(message: String) {
+                            // no-op: tests use TestSideCollector for assertions
+                        }
+                    }
+                level = LogLevel.NONE
+            }
         }
-    }
 
     suspend fun download(task: Crawling): Either<NetworkError, Fetched> =
         withContext(Dispatchers.IO) {
             val startNs = System.nanoTime()
             try {
                 val urlStr = task.url.toString()
-                val response = client.get(urlStr) {
-                    header("User-Agent", userAgent)
-                    header("Accept", "application/json, text/html, */*")
-                    header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-                }
+                val response =
+                    client.get(urlStr) {
+                        header("User-Agent", userAgent)
+                        header("Accept", "application/json, text/html, */*")
+                        header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                    }
                 val statusCode = response.status.value
                 if (statusCode == 0) {
                     Either.Left(NetworkError("Connection failed", null, task.url.toString()))
@@ -97,6 +100,8 @@ class NoRetryKtorDownloader(
     }
 
     companion object {
-        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        const val DEFAULT_USER_AGENT: String =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 }

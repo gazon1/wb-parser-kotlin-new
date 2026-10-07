@@ -22,6 +22,9 @@ class ScheduledCrawler(
     private val log = LoggerFactory.getLogger(ScheduledCrawler::class.java)
 
     @Scheduled(cron = "\${crawler.schedule.cron:0 0 */4 * * *}")
+    // A scheduled crawl must survive any single failure: catching broadly at this boundary
+    // is the point, and the exception is logged rather than swallowed.
+    @Suppress("TooGenericExceptionCaught")
     suspend fun run() {
         try {
             when (val result = crawler.run()) {

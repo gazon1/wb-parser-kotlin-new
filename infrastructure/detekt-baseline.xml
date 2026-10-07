@@ -1,0 +1,9 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues></ManuallySuppressedIssues>
+  <CurrentIssues>
+    <ID>LongParameterList:CrawlRunner.kt$CrawlRunner$( private val db: DatabaseHandle, private val downloader: suspend (Crawling) -&gt; Either&lt;ru.wbparser.domain.error.NetworkError, Fetched&gt;, private val parser: (Fetched) -&gt; ru.wbparser.domain.model.ParsedPage, private val maxPagesPerCatalog: Int = 10, private val maxDepth: Int = 2, private val clock: Clock = SystemClock, private val concurrency: Int = 1, /** Called once when the crawl job starts, before any target is processed. */ private val onCrawlStart: suspend (CrawlContext) -&gt; Unit = {}, /** Called once when the crawl job ends (success, failure, or cancellation). */ private val onCrawlEnd: suspend (CrawlContext, Stop) -&gt; Unit = { _, _ -&gt; }, )</ID>
+    <ID>LongParameterList:Interpreter.kt$SideInterpreterRegistry$( private val log: Interpreter&lt;Side.Log&gt;? = null, private val metric: Interpreter&lt;Side.Metric&gt;? = null, private val saveBatch: Interpreter&lt;Side.SaveBatch&gt;? = null, private val jobEvent: Interpreter&lt;Side.JobEvent&gt;? = null, private val scheduleRetry: Interpreter&lt;Side.ScheduleRetry&gt;? = null, private val acquireAdvisoryLock: Interpreter&lt;Side.AcquireAdvisoryLock&gt;? = null, private val drop: Interpreter&lt;Side.Drop&gt;? = null, )</ID>
+    <ID>LongParameterList:PipelineFactory.kt$( downloader: suspend (Crawling) -&gt; Either&lt;NetworkError, Fetched&gt;, parser: (Fetched) -&gt; ru.wbparser.domain.model.ParsedPage, save: suspend (List&lt;SavedItem&gt;) -&gt; Step&lt;List&lt;SavedItem&gt;, Unit&gt;, targetId: UUID, retryPolicy: RetryPolicy = RetryPolicy(), stopAt: (pages: Int, depth: Int) -&gt; Stop? = { _, _ -&gt; null }, clock: Clock = SystemClock, idGen: () -&gt; String = { UUID.randomUUID().toString() }, )</ID>
+  </CurrentIssues>
+</SmellBaseline>

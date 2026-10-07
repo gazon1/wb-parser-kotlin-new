@@ -1,8 +1,5 @@
 package ru.wbparser.testing
 
-import io.kotest.core.spec.Spec
-import io.kotest.core.test.TestCase
-import io.kotest.core.test.TestResult
 import org.sqlite.SQLiteDataSource
 import java.sql.ResultSet
 
@@ -24,18 +21,19 @@ import java.sql.ResultSet
  * Migration is applied once at construction; [clear] wipes data between tests.
  */
 class SqliteTestHandle : AutoCloseable {
-
-    val ds: SQLiteDataSource = SQLiteDataSource().apply {
-        url = "jdbc:sqlite:file::memory:?cache=shared"
-    }
+    val ds: SQLiteDataSource =
+        SQLiteDataSource().apply {
+            url = "jdbc:sqlite:file::memory:?cache=shared"
+        }
 
     init {
         ds.connection.createStatement().use { s ->
             s.execute("PRAGMA foreign_keys = ON")
-            val sql = javaClass.classLoader
-                .getResource("db/sqlite/V1__sqlite_init.sql")
-                ?.readText()
-                ?: throw IllegalStateException("Migration not found: db/sqlite/V1__sqlite_init.sql")
+            val sql =
+                javaClass.classLoader
+                    .getResource("db/sqlite/V1__sqlite_init.sql")
+                    ?.readText()
+                    ?: throw IllegalStateException("Migration not found: db/sqlite/V1__sqlite_init.sql")
             for (statement in sql.split(";").filter { it.isNotBlank() }) {
                 s.execute(statement.trim())
             }
@@ -48,8 +46,12 @@ class SqliteTestHandle : AutoCloseable {
     }
 
     /** Run a query with optional params and map each row via [mapper]. */
-    fun <T> query(sql: String, vararg params: Any?, mapper: (ResultSet) -> T): List<T> {
-        return ds.connection.use { conn ->
+    fun <T> query(
+        sql: String,
+        vararg params: Any?,
+        mapper: (ResultSet) -> T,
+    ): List<T> =
+        ds.connection.use { conn ->
             conn.prepareStatement(sql).use { ps ->
                 params.forEachIndexed { idx, v -> ps.setObject(idx + 1, v) }
                 ps.executeQuery().use { rs ->
@@ -57,22 +59,21 @@ class SqliteTestHandle : AutoCloseable {
                 }
             }
         }
-    }
 
     /** Execute an update/insert and return the number of affected rows. */
-    fun update(sql: String, vararg params: Any?): Int {
-        return ds.connection.use { conn ->
+    fun update(
+        sql: String,
+        vararg params: Any?,
+    ): Int =
+        ds.connection.use { conn ->
             conn.prepareStatement(sql).use { ps ->
                 params.forEachIndexed { idx, v -> ps.setObject(idx + 1, v) }
                 ps.executeUpdate()
             }
         }
-    }
 
     /** Count rows in [table]. */
-    fun count(table: String): Int {
-        return query("SELECT COUNT(*) FROM $table") { it.getInt(1) }.first()
-    }
+    fun count(table: String): Int = query("SELECT COUNT(*) FROM $table") { it.getInt(1) }.first()
 
     /** Delete all data from all tables. */
     fun clear() {
@@ -102,21 +103,26 @@ data class ScrapedItemRow(
 /**
  * Ergonomic Kotest assertion helper: find a row by product_id and run assertions.
  */
-fun SqliteTestHandle.findItem(productId: Long, assertions: ScrapedItemRow.() -> Unit) {
-    val rows = query(
-        "SELECT product_id, title, price_kopecks, brand, content_hash, target_id FROM scraped_items WHERE product_id = ?",
-        productId,
-    ) { rs ->
-        ScrapedItemRow(
-            productId = rs.getLong("product_id"),
-            title = rs.getString("title") ?: "",
-            priceKopecks = rs.getLong("price_kopecks"),
-            brand = rs.getString("brand"),
-            contentHash = rs.getString("content_hash") ?: "",
-            targetId = rs.getString("target_id") ?: "",
-        )
-    }
-    val row = rows.firstOrNull()
-        ?: throw AssertionError("No scraped_items row with product_id=$productId")
+fun SqliteTestHandle.findItem(
+    productId: Long,
+    assertions: ScrapedItemRow.() -> Unit,
+) {
+    val rows =
+        query(
+            "SELECT product_id, title, price_kopecks, brand, content_hash, target_id FROM scraped_items WHERE product_id = ?",
+            productId,
+        ) { rs ->
+            ScrapedItemRow(
+                productId = rs.getLong("product_id"),
+                title = rs.getString("title") ?: "",
+                priceKopecks = rs.getLong("price_kopecks"),
+                brand = rs.getString("brand"),
+                contentHash = rs.getString("content_hash") ?: "",
+                targetId = rs.getString("target_id") ?: "",
+            )
+        }
+    val row =
+        rows.firstOrNull()
+            ?: throw AssertionError("No scraped_items row with product_id=$productId")
     row.assertions()
 }

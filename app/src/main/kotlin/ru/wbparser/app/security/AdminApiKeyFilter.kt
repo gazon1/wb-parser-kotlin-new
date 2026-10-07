@@ -15,7 +15,6 @@ import org.springframework.web.filter.OncePerRequestFilter
 class AdminApiKeyFilter(
     private val apiKey: String = System.getenv("ADMIN_API_KEY") ?: "dev-api-key-change-me",
 ) : OncePerRequestFilter() {
-
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
@@ -23,11 +22,12 @@ class AdminApiKeyFilter(
     ) {
         val providedKey = request.getHeader("X-Api-Key")
         if (providedKey == apiKey) {
-            val auth = UsernamePasswordAuthenticationToken(
-                "admin",
-                null,
-                listOf(SimpleGrantedAuthority("ROLE_ADMIN")),
-            )
+            val auth =
+                UsernamePasswordAuthenticationToken(
+                    "admin",
+                    null,
+                    listOf(SimpleGrantedAuthority("ROLE_ADMIN")),
+                )
             SecurityContextHolder.getContext().authentication = auth
         }
         filterChain.doFilter(request, response)

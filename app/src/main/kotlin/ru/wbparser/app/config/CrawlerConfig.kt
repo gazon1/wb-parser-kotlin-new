@@ -19,7 +19,6 @@ import ru.wbparser.infra.runner.CrawlRunner
  */
 @Configuration
 class CrawlerConfig {
-
     @Bean
     fun ktorDownloader(): KtorDownloader = KtorDownloader()
 
@@ -29,8 +28,8 @@ class CrawlerConfig {
         downloader: KtorDownloader,
         properties: CrawlProperties,
         clock: Clock,
-    ): CrawlRunner {
-        return CrawlRunner(
+    ): CrawlRunner =
+        CrawlRunner(
             db = db,
             downloader = { task -> downloader.download(task) },
             parser = { fetched -> parseWbCatalog(fetched) },
@@ -39,7 +38,6 @@ class CrawlerConfig {
             clock = clock,
             concurrency = properties.spider.concurrency,
         )
-    }
 
     @Bean
     fun clock(): Clock = SystemClock

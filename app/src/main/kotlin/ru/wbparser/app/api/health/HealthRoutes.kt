@@ -1,11 +1,9 @@
 package ru.wbparser.app.api.health
 
+import arrow.core.Either
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import arrow.core.Either
-import arrow.core.left
-import arrow.core.right
 import javax.sql.DataSource
 
 /**
@@ -16,7 +14,6 @@ import javax.sql.DataSource
 class HealthRoutes(
     private val datasource: DataSource,
 ) {
-
     @GetMapping("/live")
     fun liveness() = mapOf("status" to "UP")
 
@@ -45,13 +42,20 @@ class HealthRoutes(
 /**
  * Database health check result.
  */
-data class Unhealthy(val message: String)
+data class Unhealthy(
+    val message: String,
+)
 
 /**
  * Checks if the database is reachable.
+ *
+ * Any failure here means "not ready", whatever its cause — connection refused, auth
+ * failure, driver error. Narrowing the catch would turn some of those into a crash
+ * instead of a reported outage, which is exactly the opposite of what a probe is for.
  */
-fun DataSource.checkHealth(): Either<Unhealthy, Unit> {
-    return try {
+@Suppress("TooGenericExceptionCaught")
+fun DataSource.checkHealth(): Either<Unhealthy, Unit> =
+    try {
         connection.use { conn ->
             conn.createStatement().use { stmt ->
                 stmt.execute("SELECT 1")
@@ -59,6 +63,6 @@ fun DataSource.checkHealth(): Either<Unhealthy, Unit> {
         }
         Either.Right(Unit)
     } catch (e: Exception) {
-        Either.Left(Unhealthy(e.message ?: "Unknown error"))
+        // Exception class only — a message can contain the connection string.
+        Either.Left(Unhealthy("${e::class.simpleName}: ${e.message ?: "unknown error"}"))
     }
-}

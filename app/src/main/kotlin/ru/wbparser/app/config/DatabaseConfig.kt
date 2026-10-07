@@ -14,14 +14,12 @@ import ru.wbparser.infra.db.connect
  */
 @Configuration
 class DatabaseConfig {
-
     @Bean
-    fun databaseHandle(properties: CrawlProperties): DatabaseHandle {
-        return connect(
+    fun databaseHandle(properties: CrawlProperties): DatabaseHandle =
+        connect(
             url = properties.database.url,
             user = properties.database.username,
             password = properties.database.password,
             poolSize = properties.database.poolSize,
         )
-    }
 }

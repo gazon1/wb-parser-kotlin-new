@@ -4,7 +4,6 @@ build:
 
 config:
   validation: true
-  defaultActiveProfile: default
 
 style:
   active: true
@@ -13,14 +12,6 @@ style:
   ReturnCount:
     active: true
     max: 4
-  TooManyFunctions:
-    active: true
-    excludes: ['**/test/**']
-    thresholdInFiles: 20
-    thresholdInClasses: 15
-    thresholdInInterfaces: 10
-    thresholdInObjects: 10
-    thresholdInEnums: 10
   UnusedPrivateMember:
     active: true
     excludes: ['**/test/**']
@@ -30,9 +21,18 @@ complexity:
   LongParameterList:
     active: true
     threshold: 6
+    # Test builders legitimately take one argument per pipeline stage.
+    excludes: ['**/test/**']
+  # TooManyFunctions lives under `complexity`, not `style`. The detailed thresholds
+  # below were previously written under `style`, where detekt silently ignored them.
   TooManyFunctions:
     active: true
-    thresholdInFiles: 30
+    excludes: ['**/test/**']
+    thresholdInFiles: 20
+    thresholdInClasses: 15
+    thresholdInInterfaces: 10
+    thresholdInObjects: 10
+    thresholdInEnums: 10
 
 naming:
   active: true
@@ -45,9 +45,11 @@ naming:
   FunctionNaming:
     active: true
     functionPattern: '[a-z][a-zA-Z0-9]*'
-  PropertyNaming:
+  # detekt 1.23 split the old `PropertyNaming` rule into VariableNaming /
+  # TopLevelPropertyNaming / ObjectPropertyNaming.
+  VariableNaming:
     active: true
-    propertyPattern: '[a-z][a-zA-Z0-9]*'
+    variablePattern: '[a-z][a-zA-Z0-9]*'
 
 potential-bugs:
   active: true

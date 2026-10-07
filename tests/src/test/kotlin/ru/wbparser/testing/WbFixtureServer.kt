@@ -22,36 +22,38 @@ import java.util.concurrent.ConcurrentHashMap
  * ```
  */
 class WbFixtureServer {
-
     private val requestCounts = ConcurrentHashMap<String, Int>()
     private val routeSequences = ConcurrentHashMap<String, MutableList<Pair<Int, String>>>()
     private val routeFixed = ConcurrentHashMap<String, Pair<Int, String>>()
 
     @Volatile
-    private var _serverPort: Int = 0
+    private var serverPort: Int = 0
 
     private var server: HttpServer? = null
 
     /** Start the server on a random free port. Call from `beforeSpec { server.start() }`. */
     fun start() {
-        server = HttpServer.create(InetSocketAddress(0), 0).apply {
-            val counts = requestCounts
-            val sequences = routeSequences
-            val fixed = routeFixed
+        server =
+            HttpServer.create(InetSocketAddress(0), 0).apply {
+                val counts = requestCounts
+                val sequences = routeSequences
+                val fixed = routeFixed
 
-            createContext("/catalog") { exchange ->
-                handle(exchange, counts, sequences, fixed, "/catalog")
+                createContext("/catalog") { exchange ->
+                    handle(exchange, counts, sequences, fixed, "/catalog")
+                }
+                createContext("/catalog/empty") { exchange ->
+                    handle(exchange, counts, sequences, fixed, "/catalog/empty")
+                }
+                createContext("/catalog/page2") { exchange ->
+                    handle(exchange, counts, sequences, fixed, "/catalog/page2")
+                }
+                executor =
+                    java.util.concurrent.Executors
+                        .newSingleThreadExecutor()
+                start()
+                serverPort = address.port
             }
-            createContext("/catalog/empty") { exchange ->
-                handle(exchange, counts, sequences, fixed, "/catalog/empty")
-            }
-            createContext("/catalog/page2") { exchange ->
-                handle(exchange, counts, sequences, fixed, "/catalog/page2")
-            }
-            executor = java.util.concurrent.Executors.newSingleThreadExecutor()
-            start()
-            _serverPort = address.port
-        }
     }
 
     private fun handle(
@@ -82,7 +84,11 @@ class WbFixtureServer {
         sendResponse(exchange, HttpURLConnection.HTTP_INTERNAL_ERROR, """{"error":"no fixture registered for $path"}""")
     }
 
-    private fun sendResponse(exchange: com.sun.net.httpserver.HttpExchange, status: Int, body: String) {
+    private fun sendResponse(
+        exchange: com.sun.net.httpserver.HttpExchange,
+        status: Int,
+        body: String,
+    ) {
         val bodyBytes = body.toByteArray(Charsets.UTF_8)
         exchange.responseHeaders["Content-Type"] = listOf("application/json; charset=utf-8")
         exchange.responseHeaders["Content-Length"] = listOf(bodyBytes.size.toString())
@@ -98,7 +104,7 @@ class WbFixtureServer {
     }
 
     /** Base URL of the running server, e.g. `http://localhost:12345`. */
-    fun baseUrl(): String = "http://localhost:$_serverPort"
+    fun baseUrl(): String = "http://localhost:$serverPort"
 
     /** Number of requests received on [path] since server start. */
     fun requestCount(path: String): Int = requestCounts[path] ?: 0
@@ -107,7 +113,11 @@ class WbFixtureServer {
      * Register a fixed (status, body) response for [path].
      * Last call wins; clears any sequence registered for the same path.
      */
-    fun route(path: String, status: Int, body: String) {
+    fun route(
+        path: String,
+        status: Int,
+        body: String,
+    ) {
         routeFixed[path] = status to body
         routeSequences.remove(path)
     }
@@ -117,7 +127,10 @@ class WbFixtureServer {
      * Responses are consumed one per request in order.
      * Clears any fixed route for the same path.
      */
-    fun routeSequence(path: String, responses: List<Pair<Int, String>>) {
+    fun routeSequence(
+        path: String,
+        responses: List<Pair<Int, String>>,
+    ) {
         routeSequences[path] = responses.toMutableList()
         routeFixed.remove(path)
     }

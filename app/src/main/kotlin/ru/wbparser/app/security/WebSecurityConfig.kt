@@ -14,7 +14,6 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 @Configuration
 @EnableWebSecurity
 class WebSecurityConfig {
-
     @Bean
     @Order(1)
     fun adminSecurityFilterChain(http: HttpSecurity): SecurityFilterChain {
@@ -22,8 +21,10 @@ class WebSecurityConfig {
             .securityMatcher("/api/admin/**")
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
-            .addFilterBefore(AdminApiKeyFilter(), org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter::class.java)
-            .authorizeHttpRequests { auth ->
+            .addFilterBefore(
+                AdminApiKeyFilter(),
+                org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter::class.java,
+            ).authorizeHttpRequests { auth ->
                 auth.anyRequest().hasRole("ADMIN")
             }
         return http.build()
@@ -38,22 +39,27 @@ class WebSecurityConfig {
             .cors { it.configurationSource(corsConfigurationSource()) }
             .authorizeHttpRequests { auth ->
                 auth
-                    .requestMatchers("/api/health/**", "/actuator/**").permitAll()
-                    .requestMatchers("/api/catalog/**").permitAll()
-                    .requestMatchers("/api/admin/**").authenticated()
-                    .anyRequest().permitAll()
+                    .requestMatchers("/api/health/**", "/actuator/**")
+                    .permitAll()
+                    .requestMatchers("/api/catalog/**")
+                    .permitAll()
+                    .requestMatchers("/api/admin/**")
+                    .authenticated()
+                    .anyRequest()
+                    .permitAll()
             }
         return http.build()
     }
 
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
-        val configuration = CorsConfiguration().apply {
-            allowedOrigins = listOf("*")
-            allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
-            allowedHeaders = listOf("*")
-            exposedHeaders = listOf("X-Total-Count", "X-Page-Count")
-        }
+        val configuration =
+            CorsConfiguration().apply {
+                allowedOrigins = listOf("*")
+                allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "OPTIONS")
+                allowedHeaders = listOf("*")
+                exposedHeaders = listOf("X-Total-Count", "X-Page-Count")
+            }
         return UrlBasedCorsConfigurationSource().apply {
             registerCorsConfiguration("/**", configuration)
         }
