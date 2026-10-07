@@ -1,0 +1,10 @@
+# Gates exempt from the positive-control requirement (Part F).
+#
+# A gate with a `--self-test` proves it can fail by rejecting a deliberately
+# broken fixture. A gate listed here does not, and says why. An exemption with
+# no reason is a finding, because "we did not think about it" and "this gate is
+# trivially correct" look identical in a diff.
+#
+# Format: <gate name> <TAB> <reason on ONE line>
+
+gate scripts' own unit tests	Its control is the unittest suite itself: a failing test fails the gate. The remaining risk is a suite that discovers zero tests and exits 0, which is why scripts/tests/test_runnable_tests.py asserts that discovery actually finds tests rather than trusting the exit code.

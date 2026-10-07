@@ -43,3 +43,7 @@ web-frontend/.next/
 # Test output
 hs_err_pid*.log
 .zcode/plans/**
+
+# Python bytecode from the gate scripts' unit tests
+__pycache__/
+*.pyc

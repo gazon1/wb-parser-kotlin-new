@@ -1,0 +1,16 @@
+# Declared differences between the local loop (check.sh) and CI (ci.yml).
+#
+# Part E of scripts/check-gate-wiring.py fails when a Gradle task runs on one
+# surface and not the other and is not listed here. The asymmetry is always real
+# and always invisible from one side, so the honest options are "make them the
+# same" and "say why they differ" — silence is not one of them.
+#
+# A row here that no longer describes a difference is drift of its own: it tells
+# the next reader that a difference is expected where there is none. Part E only
+# reports *missing* declarations, so prune this file when a task becomes
+# symmetric.
+#
+# Format: <scope>:<task> <TAB> <reason on ONE line>
+
+ci-only:build	ci.yml runs the full build lifecycle because it is the only place that assembles the bootJar and proves the image can be packaged. Locally that is `just app::build bootJar`, which is slower than the compile check check.sh uses.
+local-only:compileKotlin	check.sh compiles the app module explicitly so a Spring wiring error surfaces in the local loop with a readable message, rather than as part of a multi-minute `build`. CI gets the same coverage from `build`, which depends on compilation.

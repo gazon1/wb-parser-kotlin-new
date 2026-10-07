@@ -18,8 +18,11 @@ wb-parser-kotlin/
 
 ```bash
 # Полная проверка (перед каждым commit)
-just tests::check      # или: ./check.sh
+just tests::check      # или: ./check.sh — единственная точка входа
 just t                 # алиас
+
+# ./check.sh — 8 нумерованных шагов. Шаг [1] вызывает scripts/ci/static-gates.sh,
+# тот же реестр, что джоб `static` в ci.yml: один реестр, два вызывающих.
 
 # Модульные тесты
 just domain::test      # domain module unit tests
@@ -87,6 +90,23 @@ so they surface in DIGEST.md Critical section.
 Commit с ADR **всегда** включает обновлённый `DIGEST.md` в том же commit.
 
 ---
+
+## Гейты / Gates
+
+Единственный реестр — `scripts/ci/static-gates.sh`. Его вызывают и `./check.sh`,
+и джоб `static` в CI. **Always** добавлять гейт одной строкой `gate <blocking|advisory> <name> <cmd>`;
+**Never** не вызывать гейт напрямую из `ci.yml` — тогда он не попадёт в локальный цикл
+(в репозитории был гейт, живший только в CI, и `scripts/check.sh`, живший только локально
+и падавший на `./gradlew` из-за `ROOT`, указывавшего на `scripts/`).
+
+- `|| true` на гейте запрещён (часть D). Неблокирующий гейт объявляется как `advisory`.
+- Каждый гейт обязан иметь `--self-test` либо строку с обоснованием в
+  `config/gates/control-exemptions.tsv` (часть F).
+- Расхождение между локальным циклом и CI объявляется в `config/gates/asymmetries.tsv` (часть E).
+- Baseline detekt может только уменьшаться; рост — `--allow-growth --reason '…'`
+  (`scripts/check-baseline-ratchet.py`).
+- «Тесты прошли» ≠ «тесты выполнились»: `scripts/check-test-runs.py` сверяет JUnit XML
+  с полом в `config/gates/test-runs-floor.txt`. Гейт **MUST** идти после тестов.
 
 ## ❌ Что НЕ делать / What NOT to do
 
