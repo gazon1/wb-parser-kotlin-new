@@ -43,11 +43,12 @@ data class DepthExceededError(
 ) : DomainError {
     override val message: String = "Depth $currentDepth exceeds max $maxDepth"
     override val cause: Throwable? = null
+
     override fun isRetryable(): Boolean = false
 }
 
 data class TargetNotFoundError(
-    val targetId: Long,
+    val targetId: java.util.UUID,
     override val message: String = "Target not found: $targetId",
     override val cause: Throwable? = null,
     override val url: String? = null,
@@ -61,6 +62,7 @@ data class StoppedCrawling(
 ) : DomainError {
     override val message: String = "Crawl stopped: $reason"
     override val cause: Throwable? = null
+
     override fun isRetryable(): Boolean = false
 }
 

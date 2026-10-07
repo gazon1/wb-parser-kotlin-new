@@ -1,12 +1,16 @@
 package ru.wbparser.domain.scheduling
 
 import java.time.Instant
+import java.util.UUID
 
 /**
  * A crawl target loaded into the scheduler.
+ *
+ * [id] is the real `crawl_targets.id` UUID. It must never be reduced to a hash:
+ * the value is written back as `scraped_items.target_id`, which is a foreign key.
  */
 data class Target(
-    val id: Long,
+    val id: UUID,
     val name: String,
     val url: String,
     val cronExpression: String?,

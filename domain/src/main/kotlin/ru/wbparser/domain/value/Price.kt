@@ -5,7 +5,9 @@ package ru.wbparser.domain.value
  * 1 ruble = 100 kopecks.
  */
 @JvmInline
-value class Price private constructor(val kopecks: Long) {
+value class Price private constructor(
+    val kopecks: Long,
+) {
     init {
         require(kopecks >= 0) { "Price cannot be negative: $kopecks kopecks" }
     }
@@ -22,6 +24,7 @@ value class Price private constructor(val kopecks: Long) {
         val ZERO: Price = Price(0)
 
         fun kopecks(kopecks: Long): Price = Price(kopecks)
+
         fun rubles(rubles: Double): Price = Price((rubles * 100).toLong())
     }
 }

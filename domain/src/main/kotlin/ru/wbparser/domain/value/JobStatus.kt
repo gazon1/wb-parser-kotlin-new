@@ -9,7 +9,8 @@ enum class JobStatus {
     Completed,
     Failed,
     Cancelled,
-    Crashed;
+    Crashed,
+    ;
 
     val isTerminal: Boolean
         get() = this in listOf(Completed, Failed, Cancelled, Crashed)

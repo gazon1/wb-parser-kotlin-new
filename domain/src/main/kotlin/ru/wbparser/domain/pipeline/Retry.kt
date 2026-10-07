@@ -43,7 +43,7 @@ data class RetryPolicy(
     val maxAttempts: Int = 5,
     val baseDelayMs: Long = 1_000L,
     val maxDelayMs: Long = 120_000L,
-    val jitterPercent: Double = 0.1,  // up to 10% jitter
+    val jitterPercent: Double = 0.1, // up to 10% jitter
 )
 
 /**
@@ -66,8 +66,9 @@ fun retryDelayMs(
     // All four Retry variants (ServerError, RateLimited, Antibot, StaleContext)
     // share the same back-off formula: explicit delayMs override, or exponential.
     // The when-is covers all Retry subtypes, so no else/unchecked warning.
-    val baseDelay = signal.delayMs
-        ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
+    val baseDelay =
+        signal.delayMs
+            ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
     val capped = baseDelay.coerceAtMost(policy.maxDelayMs)
     val jitterBound = (capped * policy.jitterPercent).toLong()
     val jitter = if (jitterBound > 0) random.nextLong(jitterBound) else 0L
@@ -77,5 +78,7 @@ fun retryDelayMs(
 /**
  * Whether retry should be attempted for [attempt] under [policy].
  */
-fun shouldRetry(attempt: Int, policy: RetryPolicy = RetryPolicy()): Boolean =
-    attempt < policy.maxAttempts
+fun shouldRetry(
+    attempt: Int,
+    policy: RetryPolicy = RetryPolicy(),
+): Boolean = attempt < policy.maxAttempts

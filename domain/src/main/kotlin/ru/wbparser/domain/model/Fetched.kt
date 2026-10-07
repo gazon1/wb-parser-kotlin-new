@@ -1,7 +1,6 @@
 package ru.wbparser.domain.model
 
 import ru.wbparser.domain.value.CrawlHttpStatusCode
-import ru.wbparser.domain.value.CrawlUrl
 import java.time.Instant
 
 /**

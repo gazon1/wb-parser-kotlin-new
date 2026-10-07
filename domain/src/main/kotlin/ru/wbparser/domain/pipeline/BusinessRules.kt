@@ -16,19 +16,16 @@ data class BusinessRules(
  * Validate [this] item against [rules], returning either a drop reason or the item itself.
  */
 fun ParsedItem.dropIfInvalid(rules: BusinessRules): Dropped? {
-    if (priceKopecks == 0L && salePriceKopecks == null) {
-        return Dropped.EmptyPrice
-    }
-    if (rules.requireInStock && !inStock) {
-        return Dropped.OutOfStock
-    }
-    if (priceKopecks != 0L) {
-        if (priceKopecks < rules.minPriceKopecks || priceKopecks > rules.maxPriceKopecks) {
-            return Dropped.PriceOutOfRange(rules.minPriceKopecks, rules.maxPriceKopecks, priceKopecks)
+    val reason: Dropped? =
+        when {
+            priceKopecks == 0L && salePriceKopecks == null -> Dropped.EmptyPrice
+            rules.requireInStock && !inStock -> Dropped.OutOfStock
+            priceKopecks != 0L &&
+                (priceKopecks < rules.minPriceKopecks || priceKopecks > rules.maxPriceKopecks) ->
+                Dropped.PriceOutOfRange(rules.minPriceKopecks, rules.maxPriceKopecks, priceKopecks)
+            category != null && category in rules.blacklistedCategories ->
+                Dropped.CategoryBlacklisted(category)
+            else -> null
         }
-    }
-    if (rules.blacklistedCategories.isNotEmpty() && category != null && category in rules.blacklistedCategories) {
-        return Dropped.CategoryBlacklisted(category)
-    }
-    return null
+    return reason
 }

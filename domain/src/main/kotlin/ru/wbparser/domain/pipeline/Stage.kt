@@ -20,9 +20,10 @@ package ru.wbparser.domain.pipeline
 typealias Stage<I, O> = suspend (I) -> Step<I, O>
 
 /** Lifts a pure transformation into a [Stage]. */
-fun <I, O> stageOf(f: (I) -> O): Stage<I, O> = { input ->
-    Step.Done(f(input))
-}
+fun <I, O> stageOf(f: (I) -> O): Stage<I, O> =
+    { input ->
+        Step.Done(f(input))
+    }
 
 /**
  * Composes two stages: first [this], then [next].
@@ -32,19 +33,20 @@ fun <I, O> stageOf(f: (I) -> O): Stage<I, O> = { input ->
  * - `Done` — first stage produced output; feed it into [next].
  * - `Retry` and `Fail` — propagate immediately without calling [next].
  */
-infix fun <I, M, O> Stage<I, M>.andThen(next: Stage<M, O>): Stage<I, O> = { input ->
-    when (val result = this(input)) {
-        is Step.Cont -> Step.Cont(result.input)
-        is Step.Done -> {
-            val nextResult = next(result.output)
-            when (nextResult) {
-                is Step.Done -> Step.Done(nextResult.output, result.sides + nextResult.sides)
-                is Step.Retry -> Step.Retry(nextResult.signal)
-                is Step.Fail -> Step.Fail(nextResult.failure)
-                is Step.Cont -> Step.Cont(nextResult.input)
+infix fun <I, M, O> Stage<I, M>.andThen(next: Stage<M, O>): Stage<I, O> =
+    { input ->
+        when (val result = this(input)) {
+            is Step.Cont -> Step.Cont(result.input)
+            is Step.Done -> {
+                val nextResult = next(result.output)
+                when (nextResult) {
+                    is Step.Done -> Step.Done(nextResult.output, result.sides + nextResult.sides)
+                    is Step.Retry -> Step.Retry(nextResult.signal)
+                    is Step.Fail -> Step.Fail(nextResult.failure)
+                    is Step.Cont -> Step.Cont(nextResult.input)
+                }
             }
+            is Step.Retry -> Step.Retry(result.signal)
+            is Step.Fail -> Step.Fail(result.failure)
         }
-        is Step.Retry -> Step.Retry(result.signal)
-        is Step.Fail -> Step.Fail(result.failure)
     }
-}

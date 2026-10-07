@@ -19,12 +19,13 @@ data class PagedResult<T>(
             page: Int,
             pageSize: Int,
             totalItems: Long,
-        ): PagedResult<T> = PagedResult(
-            items = items,
-            page = page,
-            pageSize = pageSize,
-            totalItems = totalItems,
-            totalPages = if (pageSize > 0) ((totalItems + pageSize - 1) / pageSize).toInt() else 0,
-        )
+        ): PagedResult<T> =
+            PagedResult(
+                items = items,
+                page = page,
+                pageSize = pageSize,
+                totalItems = totalItems,
+                totalPages = if (pageSize > 0) ((totalItems + pageSize - 1) / pageSize).toInt() else 0,
+            )
     }
 }

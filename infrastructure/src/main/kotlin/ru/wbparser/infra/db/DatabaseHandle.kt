@@ -22,15 +22,16 @@ fun connect(
     password: String,
     poolSize: Int = 10,
 ): DatabaseHandle {
-    val config = HikariConfig().apply {
-        jdbcUrl = url
-        username = user
-        this.password = password
-        maximumPoolSize = poolSize
-        minimumIdle = 2
-        connectionTimeout = 30_000
-        idleTimeout = 600_000
-    }
+    val config =
+        HikariConfig().apply {
+            jdbcUrl = url
+            username = user
+            this.password = password
+            maximumPoolSize = poolSize
+            minimumIdle = 2
+            connectionTimeout = 30_000
+            idleTimeout = 600_000
+        }
 
     val ds: DataSource = HikariDataSource(config)
     val db = Database.connect(ds)

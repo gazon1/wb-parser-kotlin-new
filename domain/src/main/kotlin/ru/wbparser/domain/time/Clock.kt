@@ -22,7 +22,9 @@ object SystemClock : Clock {
  * Frozen clock for deterministic testing.
  * All calls to now() return the same fixed instant.
  */
-data class FixedClock(private val fixed: Instant) : Clock {
+data class FixedClock(
+    private val fixed: Instant,
+) : Clock {
     constructor(epochMillis: Long) : this(Instant.ofEpochMilli(epochMillis))
 
     override fun now(): Instant = fixed

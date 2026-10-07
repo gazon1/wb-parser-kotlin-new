@@ -29,8 +29,8 @@ data class LockUnavailable(
  * Executes the block with the advisory lock held.
  * Returns Left(LockUnavailable) if the lock cannot be acquired.
  */
-suspend fun <T> PostgresAdvisoryLock.withLock(block: suspend () -> T): Either<LockUnavailable, T> {
-    return try {
+suspend fun <T> PostgresAdvisoryLock.withLock(block: suspend () -> T): Either<LockUnavailable, T> =
+    try {
         withTimeout(lockTimeoutMs) {
             datasource.connection.use { conn ->
                 if (tryAcquire(conn)) {
@@ -47,15 +47,13 @@ suspend fun <T> PostgresAdvisoryLock.withLock(block: suspend () -> T): Either<Lo
     } catch (e: TimeoutCancellationException) {
         Either.Left(LockUnavailable("Lock acquisition timed out after ${lockTimeoutMs}ms"))
     }
-}
 
-private fun tryAcquire(conn: Connection): Boolean {
-    return conn.prepareStatement("SELECT pg_try_advisory_lock($LOCK_KEY)").use { ps ->
+private fun tryAcquire(conn: Connection): Boolean =
+    conn.prepareStatement("SELECT pg_try_advisory_lock($LOCK_KEY)").use { ps ->
         ps.executeQuery().use { rs ->
             rs.next() && rs.getBoolean(1)
         }
     }
-}
 
 private fun release(conn: Connection) {
     conn.prepareStatement("SELECT pg_advisory_unlock($LOCK_KEY)").use { ps ->

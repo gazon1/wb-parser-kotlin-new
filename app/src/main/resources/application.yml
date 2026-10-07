@@ -6,6 +6,10 @@ spring:
     name: wb-parser
 
   datasource:
+    # DB_NAME must match the database the migrations are applied to and the storefront
+    # reads from. `wbparser` is the database created by this repo's docker-compose.yml;
+    # the legacy .NET stack used `webcrawler` — pointing at the wrong one yields an
+    # empty catalog with no error. Set DB_NAME explicitly everywhere it is not local.
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:wbparser}
     username: ${DB_USER:postgres}
     password: ${DB_PASSWORD:postgres}
@@ -17,16 +21,14 @@ spring:
       connection-timeout: 30000
       max-lifetime: 1800000
 
-  jpa:
-    hibernate:
-      ddl-auto: none
-    show-sql: false
-    open-in-view: false
-
   flyway:
     enabled: true
     locations: classpath:db/migration
-    baseline-on-migrate: true
+    # No baseline-on-migrate. Against a non-empty database it silently marks the existing
+    # schema as V1 and applies nothing, leaving the .NET schema in place while the code
+    # expects the Kotlin one — a divergence that only surfaces as wrong storefront data.
+    # Migrating an existing database is an explicit `flyway baseline` + `flyway migrate`.
+    baseline-on-migrate: false
 
   jackson:
     serialization:
@@ -36,8 +38,10 @@ spring:
 
   security:
     user:
+      # No default password: the admin API must not be reachable with a well-known
+      # credential. Supply ADMIN_PASSWORD explicitly; see .env.example.
       name: ${ADMIN_USER:admin}
-      password: ${ADMIN_PASSWORD:changeme}
+      password: ${ADMIN_PASSWORD:}
 
 # Actuator
 management:
@@ -67,7 +71,6 @@ logging:
     root: INFO
     ru.wbparser: DEBUG
     org.springframework.web: INFO
-    org.hibernate.SQL: WARN
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
 

@@ -21,7 +21,6 @@ class PipelineRunner(
     private val pipeline: DomainPipeline,
     private val interpreterRegistry: SideInterpreterRegistry,
 ) {
-
     /**
      * Runs the pipeline over [tasks] and interprets all emitted sides.
      *
@@ -34,10 +33,12 @@ class PipelineRunner(
      * and transform the return type from `Pair<Crawled, List<Side>>` to `Crawled`.
      * Arrow's `onRight` cannot do both; it only performs a side effect without type change.
      */
-    suspend fun run(tasks: List<Crawling>, concurrency: Int = 1): Either<DomainError, ru.wbparser.domain.pipeline.Crawled> {
-        return pipeline.run(tasks, concurrency = concurrency).map { (crawled, sides) ->
+    suspend fun run(
+        tasks: List<Crawling>,
+        concurrency: Int = 1,
+    ): Either<DomainError, ru.wbparser.domain.pipeline.Crawled> =
+        pipeline.run(tasks, concurrency = concurrency).map { (crawled, sides) ->
             interpreterRegistry.interpretAll(sides)
             crawled
         }
-    }
 }

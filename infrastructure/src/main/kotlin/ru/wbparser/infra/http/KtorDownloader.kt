@@ -11,7 +11,6 @@ import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,37 +28,44 @@ class KtorDownloader(
     private val timeoutMs: Long = 30_000,
     private val userAgent: String = DEFAULT_USER_AGENT,
 ) {
-    private val json = Json { ignoreUnknownKeys = true; isLenient = true }
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+        }
 
-    private val client = HttpClient(CIO) {
-        install(HttpTimeout) {
-            requestTimeoutMillis = timeoutMs
-            connectTimeoutMillis = 15_000
-            socketTimeoutMillis = timeoutMs
-        }
-        install(ContentNegotiation) {
-            json(json)
-        }
-        install(Logging) {
-            logger = object : Logger {
-                override fun log(message: String) {
-                    // structured logging via kotlin-logging in production
-                }
+    private val client =
+        HttpClient(CIO) {
+            install(HttpTimeout) {
+                requestTimeoutMillis = timeoutMs
+                connectTimeoutMillis = 15_000
+                socketTimeoutMillis = timeoutMs
             }
-            level = LogLevel.NONE
+            install(ContentNegotiation) {
+                json(json)
+            }
+            install(Logging) {
+                logger =
+                    object : Logger {
+                        override fun log(message: String) {
+                            // structured logging via kotlin-logging in production
+                        }
+                    }
+                level = LogLevel.NONE
+            }
         }
-    }
 
     suspend fun download(task: Crawling): Either<NetworkError, Fetched> =
         withContext(Dispatchers.IO) {
             val startNs = System.nanoTime()
             try {
                 val urlStr = task.url.toString()
-                val response = client.get(urlStr) {
-                    header("User-Agent", userAgent)
-                    header("Accept", "application/json, text/html, */*")
-                    header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-                }
+                val response =
+                    client.get(urlStr) {
+                        header("User-Agent", userAgent)
+                        header("Accept", "application/json, text/html, */*")
+                        header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                    }
                 val statusCode = response.status.value
                 if (statusCode == 0) {
                     Either.Left(NetworkError("Connection failed", null, task.url.toString()))
@@ -89,6 +95,8 @@ class KtorDownloader(
     }
 
     companion object {
-        const val DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        const val DEFAULT_USER_AGENT: String =
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
 }

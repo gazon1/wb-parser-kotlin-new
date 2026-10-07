@@ -1,7 +1,9 @@
 package ru.wbparser.domain.value
 
 @JvmInline
-value class CrawlHttpStatusCode(val value: Int) {
+value class CrawlHttpStatusCode(
+    val value: Int,
+) {
     val isInformational: Boolean get() = value in 100..199
     val isSuccess: Boolean get() = value in 200..299
     val isRedirection: Boolean get() = value in 300..399

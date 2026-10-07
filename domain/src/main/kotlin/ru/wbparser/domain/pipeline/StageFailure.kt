@@ -43,7 +43,9 @@ sealed interface StageFailure {
         override val isRetryable: Boolean = false
     }
 
-    data class Item(val reason: Dropped) : StageFailure {
+    data class Item(
+        val reason: Dropped,
+    ) : StageFailure {
         override val message: String = "Item dropped: $reason"
         override val url: String? = null
         override val isRetryable: Boolean = false
@@ -80,13 +82,14 @@ sealed interface StageFailure {
     }
 }
 
-fun StageFailure.toDomainError(): DomainError = when (this) {
-    is StageFailure.Network -> NetworkError(message, cause, url)
-    is StageFailure.DownloadFailure -> NetworkError("HTTP $statusCode", null, url)
-    is StageFailure.ParseFailure -> ParseError(message, null, cause, url)
-    is StageFailure.Item -> DropItemError(message, reason, null, url)
-    is StageFailure.Antibot -> AntibotError(message, null, null, url)
-    is StageFailure.AuthFailed -> AuthFailedError(message, null, url)
-    is StageFailure.Database -> NetworkError(message, null, url)
-    is StageFailure.RetryExhausted -> NetworkError(message, null, url)
-}
+fun StageFailure.toDomainError(): DomainError =
+    when (this) {
+        is StageFailure.Network -> NetworkError(message, cause, url)
+        is StageFailure.DownloadFailure -> NetworkError("HTTP $statusCode", null, url)
+        is StageFailure.ParseFailure -> ParseError(message, null, cause, url)
+        is StageFailure.Item -> DropItemError(message, reason, null, url)
+        is StageFailure.Antibot -> AntibotError(message, null, null, url)
+        is StageFailure.AuthFailed -> AuthFailedError(message, null, url)
+        is StageFailure.Database -> NetworkError(message, null, url)
+        is StageFailure.RetryExhausted -> NetworkError(message, null, url)
+    }

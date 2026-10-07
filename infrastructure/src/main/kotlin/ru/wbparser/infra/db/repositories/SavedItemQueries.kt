@@ -5,60 +5,102 @@ import kotlinx.serialization.json.Json
 import ru.wbparser.domain.model.SavedItem
 import java.math.BigDecimal
 import java.sql.Timestamp
+import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
 private val json = Json { ignoreUnknownKeys = true }
 
+private const val INSERT_SQL = """
+    INSERT INTO scraped_items (
+        id, target_id, catalog_url, product_url, brand, seller,
+        price_kopecks, sale_price_kopecks, title, product_id,
+        cashback, cashback_percent, data, content_hash, scraped_at,
+        subject_id, subject_parent_id, match_id, supplier_id, catalog_name,
+        image_url, in_stock, brand_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (target_id, content_hash) DO UPDATE SET
+        target_id = EXCLUDED.target_id,
+        product_url = EXCLUDED.product_url,
+        brand = EXCLUDED.brand,
+        seller = EXCLUDED.seller,
+        price_kopecks = EXCLUDED.price_kopecks,
+        sale_price_kopecks = EXCLUDED.sale_price_kopecks,
+        title = EXCLUDED.title,
+        cashback = EXCLUDED.cashback,
+        cashback_percent = EXCLUDED.cashback_percent,
+        scraped_at = EXCLUDED.scraped_at,
+        subject_id = EXCLUDED.subject_id,
+        subject_parent_id = EXCLUDED.subject_parent_id,
+        match_id = EXCLUDED.match_id,
+        supplier_id = EXCLUDED.supplier_id,
+        catalog_name = EXCLUDED.catalog_name,
+        image_url = EXCLUDED.image_url,
+        in_stock = EXCLUDED.in_stock,
+        brand_id = EXCLUDED.brand_id
+"""
+
 /**
- * Data access functions for SavedItem entities.
- * Uses kotlinx.serialization for JSON serialization.
+ * Persists a batch of [SavedItem]s under a single [targetUuid].
+ *
+ * `target_uuid` is the real `crawl_targets.id`: the column is a foreign key, so a
+ * generated value would reject every insert.
+ *
+ * One transaction per batch — a failed page must not leave half of it written.
  */
-fun DataSource.upsertSavedItems(items: List<SavedItem>, targetUuid: UUID) {
+fun DataSource.upsertSavedItems(
+    items: List<SavedItem>,
+    targetUuid: UUID,
+) {
+    if (items.isEmpty()) return
+
     connection.use { conn ->
-        conn.prepareStatement(
-            """
-            INSERT INTO scraped_items (
-                id, target_id, catalog_url, product_url, brand, seller,
-                price_kopecks, title, product_id, cashback, cashback_percent,
-                data, content_hash, scraped_at, subject_id, subject_parent_id,
-                match_id, supplier_id, catalog_name
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (content_hash) DO UPDATE SET
-                product_url = EXCLUDED.product_url,
-                brand = EXCLUDED.brand,
-                price_kopecks = EXCLUDED.price_kopecks,
-                title = EXCLUDED.title,
-                cashback = EXCLUDED.cashback,
-                scraped_at = EXCLUDED.scraped_at,
-                subject_id = EXCLUDED.subject_id,
-                supplier_id = EXCLUDED.supplier_id,
-                catalog_name = EXCLUDED.catalog_name
-            """.trimIndent(),
-        ).use { ps ->
-            for (item in items) {
-                ps.setObject(1, UUID.randomUUID())
-                ps.setObject(2, targetUuid)
-                ps.setString(3, null) // catalogUrl
-                ps.setString(4, item.pageUrl)
-                ps.setString(5, item.brand)
-                ps.setString(6, null) // seller
-                ps.setObject(7, item.priceKopecks)
-                ps.setString(8, item.name)
-                ps.setObject(9, item.productId)
-                ps.setBigDecimal(10, item.cashback?.let { BigDecimal.valueOf(it) })
-                ps.setBigDecimal(11, null) // cashbackPercent
-                ps.setString(12, json.encodeToString(item))
-                ps.setString(13, item.contentHash)
-                ps.setTimestamp(14, Timestamp.valueOf(java.time.LocalDateTime.now()))
-                ps.setObject(15, item.subjectId)
-                ps.setObject(16, null) // subjectParentId
-                ps.setObject(17, null) // matchId
-                ps.setObject(18, item.supplierId)
-                ps.setString(19, item.category)
-                ps.addBatch()
+        val previousAutoCommit = conn.autoCommit
+        conn.autoCommit = false
+        try {
+            conn.prepareStatement(INSERT_SQL).use { ps ->
+                val now = Timestamp.from(Instant.now())
+                for (item in items) {
+                    ps.setObject(1, UUID.randomUUID())
+                    ps.setObject(2, targetUuid)
+                    // catalog_url: the storefront does not read this column. The crawl page URL
+                    // is not carried on ParsedItem, so it stays NULL rather than being faked.
+                    ps.setString(3, null)
+                    ps.setString(4, item.pageUrl)
+                    ps.setString(5, item.brand)
+                    ps.setString(6, item.seller)
+                    ps.setObject(7, item.priceKopecks)
+                    ps.setObject(8, item.salePriceKopecks)
+                    ps.setString(9, item.name)
+                    ps.setObject(10, item.productId)
+                    ps.setBigDecimal(11, item.cashbackKopecks?.let { kopecksToRubles(it) })
+                    ps.setBigDecimal(12, item.cashbackPercent?.let { BigDecimal.valueOf(it) })
+                    // `data` is JSONB. setString would send a varchar and PostgreSQL rejects
+                    // the assignment outright, so bind it as an untyped/other value.
+                    ps.setObject(13, json.encodeToString(item), java.sql.Types.OTHER)
+                    ps.setString(14, item.contentHash)
+                    ps.setTimestamp(15, now)
+                    ps.setObject(16, item.subjectId)
+                    ps.setObject(17, item.subjectParentId)
+                    ps.setObject(18, item.matchId)
+                    ps.setObject(19, item.supplierId)
+                    ps.setString(20, item.category)
+                    ps.setString(21, item.imageUrl)
+                    ps.setBoolean(22, item.inStock)
+                    ps.setObject(23, item.brandId)
+                    ps.addBatch()
+                }
+                ps.executeBatch()
             }
-            ps.executeBatch()
+            conn.commit()
+        } catch (e: Exception) {
+            runCatching { conn.rollback() }
+            throw e
+        } finally {
+            runCatching { conn.autoCommit = previousAutoCommit }
         }
     }
 }
+
+/** Exact kopecks → rubles conversion, no floating-point drift. */
+private fun kopecksToRubles(kopecks: Long): BigDecimal = BigDecimal.valueOf(kopecks).movePointLeft(2)

@@ -11,6 +11,22 @@ import kotlinx.serialization.encoding.Encoder
 /**
  * WB catalog API response — item fields.
  * WB sends bool-like fields as mixed types (bool or string "false").
+ *
+ * ## Units
+ *
+ * [cashback] is a percentage. WB does not document the unit, so this is an assumption
+ * recorded at the boundary: the pipeline stores it as `cashback_percent` and derives
+ * the monetary amount from the price. Verify against a live response before trusting
+ * the derived figure — this is the one field whose meaning is assumed rather than known.
+ *
+ * ## Unverified optional fields
+ *
+ * [matchId] and [seller] are declared because the storefront needs them (top-deals
+ * groups by `match_id`; product cards show the seller), but whether the catalog
+ * endpoint actually returns them is **unverified**. They default to `null`, and
+ * kotlinx.serialization ignores unknown keys, so declaring them is safe either way:
+ * if the endpoint sends them they are parsed, if not the columns stay NULL and the
+ * storefront must degrade rather than invent values.
  */
 @Serializable
 data class WbItemDto(
@@ -24,6 +40,8 @@ data class WbItemDto(
     val brandId: Long? = null,
     val subjectId: Long? = null,
     val supplierId: Long? = null,
+    val matchId: Long? = null,
+    val seller: String? = null,
     @Serializable(with = FlexibleBoolSerializer::class)
     val isSold: Boolean = false,
     @Serializable(with = FlexibleBoolSerializer::class)
@@ -77,17 +95,20 @@ object FlexibleBoolSerializer : KSerializer<Boolean> {
     override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("FlexibleBool", PrimitiveKind.BOOLEAN)
 
     override fun deserialize(decoder: Decoder): Boolean {
-        val jsonDecoder = decoder as? kotlinx.serialization.json.JsonDecoder
-            ?: return decoder.decodeString().let { parseFlexibleBool(it) }
+        val jsonDecoder =
+            decoder as? kotlinx.serialization.json.JsonDecoder
+                ?: return decoder.decodeString().let { parseFlexibleBool(it) }
         val el = jsonDecoder.decodeJsonElement()
         val str = el.toString().removeSurrounding("\"").lowercase()
         return parseFlexibleBool(str)
     }
 
-    override fun serialize(encoder: Encoder, value: Boolean) {
+    override fun serialize(
+        encoder: Encoder,
+        value: Boolean,
+    ) {
         encoder.encodeBoolean(value)
     }
 }
 
-private fun parseFlexibleBool(value: String): Boolean =
-    value == "true" || value == "1"
+private fun parseFlexibleBool(value: String): Boolean = value == "true" || value == "1"

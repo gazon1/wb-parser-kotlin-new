@@ -3,6 +3,7 @@ package ru.wbparser.infra.scheduler
 import ru.wbparser.domain.scheduling.Target
 import java.time.Duration
 import java.time.Instant
+import java.util.UUID
 
 /**
  * Freshness policy configuration.
@@ -16,19 +17,24 @@ data class FreshnessPolicy(
  * Tracks when targets were last crawled.
  */
 data class Freshness(
-    val state: Map<Long, Instant> = emptyMap(),
+    val state: Map<UUID, Instant> = emptyMap(),
 )
 
 /**
  * Marks a target as crawled at the given time.
  */
-fun Freshness.markCrawled(targetId: Long, now: Instant = Instant.now()): Freshness =
-    copy(state = state + (targetId to now))
+fun Freshness.markCrawled(
+    targetId: UUID,
+    now: Instant = Instant.now(),
+): Freshness = copy(state = state + (targetId to now))
 
 /**
  * Returns targets that are due for crawling based on freshness policy.
  */
-fun Freshness.targetsDue(targets: List<Target>, policy: FreshnessPolicy): List<Target> {
+fun Freshness.targetsDue(
+    targets: List<Target>,
+    policy: FreshnessPolicy,
+): List<Target> {
     val now = Instant.now()
     return targets.filter { target ->
         val lastCrawl = state[target.id]
@@ -47,7 +53,10 @@ fun Freshness.targetsDue(targets: List<Target>, policy: FreshnessPolicy): List<T
 /**
  * Calculates delay before next crawl for a target.
  */
-fun FreshnessPolicy.nextCrawlDelay(targetId: Long, lastCrawl: Instant?): Long {
+fun FreshnessPolicy.nextCrawlDelay(
+    targetId: UUID,
+    lastCrawl: Instant?,
+): Long {
     if (lastCrawl == null) return 0L
     val elapsedMs = Duration.between(lastCrawl, Instant.now()).toMillis()
     val freshnessMs = defaultFreshnessMinutes * 60 * 1000

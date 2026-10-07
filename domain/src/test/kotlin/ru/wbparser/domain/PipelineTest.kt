@@ -19,192 +19,208 @@ import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.ProductId
 import ru.wbparser.testing.fixedClockOf
+import java.util.UUID
 
-class PipelineTest : FunSpec({
+class PipelineTest :
+    FunSpec({
 
-    val clock = fixedClockOf(2026, 1, 1)
+        val clock = fixedClockOf(2026, 1, 1)
 
-    fun testCrawlUrl(url: String = "http://example.com") =
-        CrawlUrl.of(url).getOrElse { throw IllegalArgumentException(it.message) }
+        fun testCrawlUrl(url: String = "http://example.com") = CrawlUrl.of(url).getOrElse { throw IllegalArgumentException(it.message) }
 
-    fun testCrawling(url: String = "http://example.com", depth: Int = 0, targetId: Long = 1L) =
-        Crawling("id-${url.hashCode()}", testCrawlUrl(url), depth, targetId)
+        fun testCrawling(
+            url: String = "http://example.com",
+            depth: Int = 0,
+            targetId: UUID = UUID.randomUUID(),
+        ) = Crawling("id-${url.hashCode()}", testCrawlUrl(url), depth, targetId)
 
-    fun testFetched(task: Crawling, body: String = "") = Fetched(
-        task = task,
-        statusCode = CrawlHttpStatusCode(200),
-        body = body,
-        headers = emptyMap(),
-        durationMs = 100L,
-    )
+        fun testFetched(
+            task: Crawling,
+            body: String = "",
+        ) = Fetched(
+            task = task,
+            statusCode = CrawlHttpStatusCode(200),
+            body = body,
+            headers = emptyMap(),
+            durationMs = 100L,
+        )
 
-    fun testParsedPage(
-        fetched: Fetched,
-        items: List<ParsedItem> = emptyList(),
-        nextPageUrl: CrawlUrl? = null,
-        isEmptyPage: Boolean = false,
-    ) = ParsedPage(fetched, items, nextPageUrl, isEmptyPage)
+        fun testParsedPage(
+            fetched: Fetched,
+            items: List<ParsedItem> = emptyList(),
+            nextPageUrl: CrawlUrl? = null,
+            isEmptyPage: Boolean = false,
+        ) = ParsedPage(fetched, items, nextPageUrl, isEmptyPage)
 
-    fun testParsedItem(
-        productId: Long = 123L,
-        name: String = "Test Product",
-        priceKopecks: Long = 1000L,
-        pageUrl: String = "http://example.com/p/123",
-    ) = ParsedItem(
-        productId = ProductId(productId),
-        name = name,
-        priceKopecks = priceKopecks,
-        salePriceKopecks = null,
-        cashback = null,
-        brand = "TestBrand",
-        category = "TestCategory",
-        imageUrl = null,
-        pageUrl = testCrawlUrl(pageUrl),
-        brandId = null,
-        subjectId = null,
-        supplierId = null,
-        inStock = true,
-    )
+        fun testParsedItem(
+            productId: Long = 123L,
+            name: String = "Test Product",
+            priceKopecks: Long = 1000L,
+            pageUrl: String = "http://example.com/p/123",
+        ) = ParsedItem(
+            productId = ProductId(productId),
+            name = name,
+            priceKopecks = priceKopecks,
+            salePriceKopecks = null,
+            cashbackPercent = null,
+            cashbackKopecks = null,
+            brand = "TestBrand",
+            category = "TestCategory",
+            imageUrl = null,
+            pageUrl = testCrawlUrl(pageUrl),
+            brandId = null,
+            subjectId = null,
+            supplierId = null,
+            inStock = true,
+        )
 
-    fun makePipeline(
-        download: Stage<Crawling, Fetched> = { task -> Step.Done(testFetched(task)) },
-        parse: Stage<Fetched, ParsedPage> = { fetched -> Step.Done(testParsedPage(fetched)) },
-        filter: Stage<ParsedItem, ParsedItem?> = { Step.Done(it) },
-        enrich: Stage<ParsedItem, SavedItem> = { item -> Step.Done(SavedItem.from(item, 0L)) },
-        save: Stage<List<SavedItem>, Unit> = { Step.Done(Unit) },
-        stopAt: (Int, Int) -> Stop? = { _, _ -> null },
-    ): Pipeline = Pipeline(
-        download = download,
-        parse = parse,
-        filter = filter,
-        enrich = enrich,
-        save = save,
-        stopAt = stopAt,
-        clock = clock,
-    )
-
-    test("run returns Left when download fails") {
-        runTest {
-            val failDownload: Stage<Crawling, Fetched> = {
-                Step.Fail(ru.wbparser.domain.pipeline.StageFailure.Network("network error", null, null))
-            }
-            val pipeline = makePipeline(download = failDownload)
-            val result = pipeline.run(listOf(testCrawling()))
-
-            result.isLeft() shouldBe true
-        }
-    }
-
-    test("run succeeds with single download + parse") {
-        runTest {
-            val pipeline = makePipeline()
-            val result = pipeline.run(listOf(testCrawling()))
-
-            result.isRight() shouldBe true
-            val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
-            crawled.pagesCrawled shouldBe 1
-            crawled.itemsSaved shouldBe 0
-            crawled.stopReason.shouldBeInstanceOf<Stop.EmptyPage>()
-        }
-    }
-
-    test("run stops when stopAt returns a Stop") {
-        runTest {
-            // stopAt is consulted BEFORE pagesCrawled is incremented for that page.
-            // So stopAt(pages=1) fires when we want to stop at page 1.
-            val pipeline = makePipeline(
-                stopAt = { pages, _ -> if (pages >= 1) Stop.MaxPagesReached else null },
+        fun makePipeline(
+            download: Stage<Crawling, Fetched> = { task -> Step.Done(testFetched(task)) },
+            parse: Stage<Fetched, ParsedPage> = { fetched -> Step.Done(testParsedPage(fetched)) },
+            filter: Stage<ParsedItem, ParsedItem?> = { Step.Done(it) },
+            enrich: Stage<ParsedItem, SavedItem> = { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
+            save: Stage<List<SavedItem>, Unit> = { Step.Done(Unit) },
+            stopAt: (Int, Int) -> Stop? = { _, _ -> null },
+        ): Pipeline =
+            Pipeline(
+                download = download,
+                parse = parse,
+                filter = filter,
+                enrich = enrich,
+                save = save,
+                stopAt = stopAt,
+                clock = clock,
             )
-            val tasks = listOf(testCrawling("http://e.com/1"), testCrawling("http://e.com/2"))
-            val result = pipeline.run(tasks)
 
-            result.isRight() shouldBe true
-            val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
-            crawled.pagesCrawled shouldBe 1
-            crawled.stopReason.shouldBeInstanceOf<Stop.MaxPagesReached>()
-        }
-    }
+        test("run returns Left when download fails") {
+            runTest {
+                val failDownload: Stage<Crawling, Fetched> = {
+                    Step.Fail(
+                        ru.wbparser.domain.pipeline.StageFailure
+                            .Network("network error", null, null),
+                    )
+                }
+                val pipeline = makePipeline(download = failDownload)
+                val result = pipeline.run(listOf(testCrawling()))
 
-    test("run enriches and saves items") {
-        runTest {
-            val item = testParsedItem()
-            val fetched = testFetched(testCrawling())
-            val page = testParsedPage(fetched, listOf(item))
-
-            val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
-            val savedItems = mutableListOf<SavedItem>()
-            val saveStage: Stage<List<SavedItem>, Unit> = { items ->
-                savedItems += items
-                Step.Done(Unit)
+                result.isLeft() shouldBe true
             }
-
-            val pipeline = makePipeline(parse = parseStage, save = saveStage)
-            val result = pipeline.run(listOf(testCrawling()))
-
-            result.isRight() shouldBe true
-            val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
-            crawled.itemsSaved shouldBe 1
-            savedItems.map { it.name } shouldContainExactly listOf("Test Product")
         }
-    }
 
-    test("filter drops items that return null") {
-        runTest {
-            val item = testParsedItem()
-            val fetched = testFetched(testCrawling())
-            val page = testParsedPage(fetched, listOf(item))
-            val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
-            val filterStage: Stage<ParsedItem, ParsedItem?> = { Step.Done(null) }
-            val savedItems = mutableListOf<SavedItem>()
-            val saveStage: Stage<List<SavedItem>, Unit> = { savedItems += it; Step.Done(Unit) }
+        test("run succeeds with single download + parse") {
+            runTest {
+                val pipeline = makePipeline()
+                val result = pipeline.run(listOf(testCrawling()))
 
-            val pipeline = makePipeline(parse = parseStage, filter = filterStage, save = saveStage)
-            val result = pipeline.run(listOf(testCrawling()))
-
-            result.isRight() shouldBe true
-            val (crawled, sides) = result.getOrElse { throw AssertionError("Expected Right") }
-            crawled.itemsSaved shouldBe 0
-            savedItems shouldBe emptyList()
-            // Side.Drop is emitted when filter returns null
-            val dropSides = sides.filterIsInstance<ru.wbparser.domain.pipeline.Side.Drop>()
-            dropSides.size shouldBe 1
-            dropSides.first().reason shouldBe ru.wbparser.domain.pipeline.Dropped.Filtered
+                result.isRight() shouldBe true
+                val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
+                crawled.pagesCrawled shouldBe 1
+                crawled.itemsSaved shouldBe 0
+                crawled.stopReason.shouldBeInstanceOf<Stop.EmptyPage>()
+            }
         }
-    }
 
-    test("run exits with ManualStop when page has items but no next URL") {
-        runTest {
-            val item = testParsedItem()
-            val fetched = testFetched(testCrawling())
-            val page = testParsedPage(fetched, listOf(item), nextPageUrl = null)
+        test("run stops when stopAt returns a Stop") {
+            runTest {
+                // stopAt is consulted BEFORE pagesCrawled is incremented for that page.
+                // So stopAt(pages=1) fires when we want to stop at page 1.
+                val pipeline =
+                    makePipeline(
+                        stopAt = { pages, _ -> if (pages >= 1) Stop.MaxPagesReached else null },
+                    )
+                val tasks = listOf(testCrawling("http://e.com/1"), testCrawling("http://e.com/2"))
+                val result = pipeline.run(tasks)
 
-            val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
-            val pipeline = makePipeline(parse = parseStage)
-            val result = pipeline.run(listOf(testCrawling()))
-
-            result.isRight() shouldBe true
-            val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
-            crawled.pagesCrawled shouldBe 1
-            crawled.itemsSaved shouldBe 1
-            // NoNextPage is never emitted — page had items, so pipeline
-            // simply runs out of pending tasks and returns ManualStop
-            crawled.stopReason.shouldBeInstanceOf<Stop.ManualStop>()
+                result.isRight() shouldBe true
+                val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
+                crawled.pagesCrawled shouldBe 1
+                crawled.stopReason.shouldBeInstanceOf<Stop.MaxPagesReached>()
+            }
         }
-    }
 
-    test("run stops with EmptyPage when page is empty with no next URL") {
-        runTest {
-            val fetched = testFetched(testCrawling())
-            val page = testParsedPage(fetched, items = emptyList(), nextPageUrl = null, isEmptyPage = true)
+        test("run enriches and saves items") {
+            runTest {
+                val item = testParsedItem()
+                val fetched = testFetched(testCrawling())
+                val page = testParsedPage(fetched, listOf(item))
 
-            val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
-            val pipeline = makePipeline(parse = parseStage)
-            val result = pipeline.run(listOf(testCrawling()))
+                val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
+                val savedItems = mutableListOf<SavedItem>()
+                val saveStage: Stage<List<SavedItem>, Unit> = { items ->
+                    savedItems += items
+                    Step.Done(Unit)
+                }
 
-            result.isRight() shouldBe true
-            val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
-            crawled.pagesCrawled shouldBe 1
-            crawled.stopReason.shouldBeInstanceOf<Stop.EmptyPage>()
+                val pipeline = makePipeline(parse = parseStage, save = saveStage)
+                val result = pipeline.run(listOf(testCrawling()))
+
+                result.isRight() shouldBe true
+                val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
+                crawled.itemsSaved shouldBe 1
+                savedItems.map { it.name } shouldContainExactly listOf("Test Product")
+            }
         }
-    }
-})
+
+        test("filter drops items that return null") {
+            runTest {
+                val item = testParsedItem()
+                val fetched = testFetched(testCrawling())
+                val page = testParsedPage(fetched, listOf(item))
+                val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
+                val filterStage: Stage<ParsedItem, ParsedItem?> = { Step.Done(null) }
+                val savedItems = mutableListOf<SavedItem>()
+                val saveStage: Stage<List<SavedItem>, Unit> = {
+                    savedItems += it
+                    Step.Done(Unit)
+                }
+
+                val pipeline = makePipeline(parse = parseStage, filter = filterStage, save = saveStage)
+                val result = pipeline.run(listOf(testCrawling()))
+
+                result.isRight() shouldBe true
+                val (crawled, sides) = result.getOrElse { throw AssertionError("Expected Right") }
+                crawled.itemsSaved shouldBe 0
+                savedItems shouldBe emptyList()
+                // Side.Drop is emitted when filter returns null
+                val dropSides = sides.filterIsInstance<ru.wbparser.domain.pipeline.Side.Drop>()
+                dropSides.size shouldBe 1
+                dropSides.first().reason shouldBe ru.wbparser.domain.pipeline.Dropped.Filtered
+            }
+        }
+
+        test("run exits with ManualStop when page has items but no next URL") {
+            runTest {
+                val item = testParsedItem()
+                val fetched = testFetched(testCrawling())
+                val page = testParsedPage(fetched, listOf(item), nextPageUrl = null)
+
+                val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
+                val pipeline = makePipeline(parse = parseStage)
+                val result = pipeline.run(listOf(testCrawling()))
+
+                result.isRight() shouldBe true
+                val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
+                crawled.pagesCrawled shouldBe 1
+                crawled.itemsSaved shouldBe 1
+                // NoNextPage is never emitted — page had items, so pipeline
+                // simply runs out of pending tasks and returns ManualStop
+                crawled.stopReason.shouldBeInstanceOf<Stop.ManualStop>()
+            }
+        }
+
+        test("run stops with EmptyPage when page is empty with no next URL") {
+            runTest {
+                val fetched = testFetched(testCrawling())
+                val page = testParsedPage(fetched, items = emptyList(), nextPageUrl = null, isEmptyPage = true)
+
+                val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
+                val pipeline = makePipeline(parse = parseStage)
+                val result = pipeline.run(listOf(testCrawling()))
+
+                result.isRight() shouldBe true
+                val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
+                crawled.pagesCrawled shouldBe 1
+                crawled.stopReason.shouldBeInstanceOf<Stop.EmptyPage>()
+            }
+        }
+    })

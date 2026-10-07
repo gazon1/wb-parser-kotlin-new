@@ -26,7 +26,6 @@ import ru.wbparser.domain.model.SavedItem
  * 3. Add a test interpreter in [testing][testing.InMemoryAdapters].
  */
 sealed interface Side {
-
     /** Log a message at [level]. */
     data class Log(
         val level: LogLevel,
@@ -55,7 +54,7 @@ sealed interface Side {
     data class ScheduleRetry(
         val url: String,
         val afterMs: Long,
-        val targetId: Long,
+        val targetId: java.util.UUID,
     ) : Side
 
     /** Record that we attempted to acquire the advisory lock. */
@@ -74,6 +73,12 @@ enum class LogLevel { DEBUG, INFO, WARN, ERROR }
 
 /** Job lifecycle operations. */
 sealed interface JobOp {
-    data class Open(val jobId: String) : JobOp
-    data class Close(val jobId: String, val status: String) : JobOp
+    data class Open(
+        val jobId: String,
+    ) : JobOp
+
+    data class Close(
+        val jobId: String,
+        val status: String,
+    ) : JobOp
 }

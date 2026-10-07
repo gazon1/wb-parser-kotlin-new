@@ -7,7 +7,7 @@ import kotlinx.coroutines.withContext
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.SavedItem
-import ru.wbparser.domain.pipeline.Pipeline as DomainPipeline
+import ru.wbparser.domain.pipeline.Retry
 import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
@@ -29,8 +29,8 @@ import ru.wbparser.infra.scheduler.FreshnessPolicy
 import ru.wbparser.infra.scheduler.markCrawled
 import ru.wbparser.infra.scheduler.targetsDue
 import java.sql.Timestamp
-import java.time.LocalDateTime
 import java.util.UUID
+import ru.wbparser.domain.pipeline.Pipeline as DomainPipeline
 
 /**
  * CrawlRunner — imperative shell that coordinates advisory lock → load targets →
@@ -58,7 +58,6 @@ class CrawlRunner(
     /** Called once when the crawl job ends (success, failure, or cancellation). */
     private val onCrawlEnd: suspend (CrawlContext, Stop) -> Unit = { _, _ -> },
 ) {
-
     /**
      * Context for a crawl job — passed to [onCrawlStart] and [onCrawlEnd] hooks.
      *
@@ -69,8 +68,9 @@ class CrawlRunner(
     data class CrawlContext(
         val jobId: UUID,
         val startedAt: java.time.Instant,
-        val targetIds: List<Long>,
+        val targetIds: List<UUID>,
     )
+
     private val advisoryLock = PostgresAdvisoryLock(db.ds)
     private val freshnessPolicy = FreshnessPolicy()
     private var freshnessState = Freshness()
@@ -80,28 +80,35 @@ class CrawlRunner(
     /**
      * Runs the crawler: acquires advisory lock, crawls all due targets, closes lock.
      */
-    suspend fun run(): RunResult = withContext(Dispatchers.IO) {
-        val lockResult: Either<LockUnavailable, RunResult> = advisoryLock.withLock { runUnsafe() }
-        lockResult.fold(
-            ifLeft = { RunResult.AlreadyRunning },
-            ifRight = { it },
-        )
-    }
+    suspend fun run(): RunResult =
+        withContext(Dispatchers.IO) {
+            val lockResult: Either<LockUnavailable, RunResult> = advisoryLock.withLock { runUnsafe() }
+            lockResult.fold(
+                ifLeft = { RunResult.AlreadyRunning },
+                ifRight = { it },
+            )
+        }
 
     private suspend fun runUnsafe(): RunResult {
-        val jobId = openJob()
         val startedAt = java.time.Instant.now()
         val targets = db.ds.fetchActiveTargets()
         val due = freshnessState.targetsDue(targets, freshnessPolicy)
-        val ctx = CrawlContext(jobId, startedAt, due.map { it.id })
 
-        try {
-            onCrawlStart(ctx)
-        } catch (_: Exception) {
-            // hooks must not crash the crawl
-        }
+        // Nothing to crawl — no job row is opened, which also keeps crawl_jobs.target_id
+        // (NOT NULL, foreign key) satisfiable.
+        if (due.isEmpty()) return RunResult.Success(0, 0)
 
+        var jobId: UUID? = null
         try {
+            jobId = openJob(due.first().id)
+            val ctx = CrawlContext(jobId, startedAt, due.map { it.id })
+
+            try {
+                onCrawlStart(ctx)
+            } catch (_: Exception) {
+                // hooks must not crash the crawl
+            }
+
             var totalPages = 0
             var totalItems = 0
 
@@ -113,11 +120,16 @@ class CrawlRunner(
             }
 
             closeJob(jobId, "Completed", pagesCrawled = totalPages, itemsSaved = totalItems)
-            try { onCrawlEnd(ctx, Stop.ManualStop) } catch (_: Exception) { /* hooks must not crash */ }
+            try {
+                onCrawlEnd(ctx, Stop.ManualStop)
+            } catch (_: Exception) {
+                // hooks must not crash
+            }
             return RunResult.Success(totalPages, totalItems)
         } catch (e: Exception) {
-            closeJob(jobId, "Failed", errorMessage = e.message)
-            try { onCrawlEnd(ctx, Stop.ManualStop) } catch (_: Exception) { /* hooks must not crash */ }
+            jobId?.let { id ->
+                runCatching { closeJob(id, "Failed", errorMessage = e.message) }
+            }
             return RunResult.Failure(e.message ?: "Unknown error")
         }
     }
@@ -131,48 +143,76 @@ class CrawlRunner(
     private suspend fun runTarget(target: Target): TargetResult {
         val targetId = target.id
 
-        val pipeline: DomainPipeline = buildParserPipeline(
-            downloader = downloader,
-            parser = parser,
-            save = { items: List<SavedItem> ->
-                if (items.isNotEmpty()) {
-                    db.ds.upsertSavedItems(items, UUID.randomUUID())
-                }
-                Step.Done(Unit)
-            },
-            targetId = targetId,
-            retryPolicy = retryPolicy,
-            stopAt = { pages, depth ->
-                when {
-                    pages >= maxPagesPerCatalog -> Stop.MaxPagesReached
-                    depth >= maxDepth -> Stop.MaxDepthReached(maxDepth, depth)
-                    else -> null
-                }
-            },
-            clock = clock,
-        )
+        val pipeline: DomainPipeline =
+            buildParserPipeline(
+                downloader = downloader,
+                parser = parser,
+                save = { items: List<SavedItem> ->
+                    when {
+                        items.isEmpty() -> Step.Done(Unit)
+                        else ->
+                            try {
+                                // The real crawl_targets.id — scraped_items.target_id is a foreign key,
+                                // so a generated UUID would reject every row.
+                                db.ds.upsertSavedItems(items, targetId)
+                                Step.Done(Unit)
+                            } catch (e: java.sql.SQLException) {
+                                // Transient storage failure. Hand it to the save-stage retry loop:
+                                // previously the exception escaped and took the whole page with it.
+                                Step.Retry(Retry.Database())
+                            }
+                    }
+                },
+                targetId = targetId,
+                retryPolicy = retryPolicy,
+                stopAt = { pages, depth ->
+                    when {
+                        pages >= maxPagesPerCatalog -> Stop.MaxPagesReached
+                        depth >= maxDepth -> Stop.MaxDepthReached(maxDepth, depth)
+                        else -> null
+                    }
+                },
+                clock = clock,
+            )
 
-        val registry = SideInterpreterRegistry(
-            log = ru.wbparser.infra.pipeline.LogInterpreter(),
-            metric = ru.wbparser.infra.pipeline.NoOpMetricInterpreter(),
-            saveBatch = ru.wbparser.infra.pipeline.NoOpSaveBatchInterpreter(),
-            jobEvent = ru.wbparser.infra.pipeline.JobEventInterpreter(),
-            scheduleRetry = ru.wbparser.infra.pipeline.NoOpScheduleRetryInterpreter(),
-            acquireAdvisoryLock = ru.wbparser.infra.pipeline.NoOpAdvisoryLockInterpreter(),
-            drop = ru.wbparser.infra.pipeline.LogDropInterpreter(),
-        )
+        val registry =
+            SideInterpreterRegistry(
+                log =
+                    ru.wbparser.infra.pipeline
+                        .LogInterpreter(),
+                metric =
+                    ru.wbparser.infra.pipeline
+                        .NoOpMetricInterpreter(),
+                saveBatch =
+                    ru.wbparser.infra.pipeline
+                        .NoOpSaveBatchInterpreter(),
+                jobEvent =
+                    ru.wbparser.infra.pipeline
+                        .JobEventInterpreter(),
+                scheduleRetry =
+                    ru.wbparser.infra.pipeline
+                        .NoOpScheduleRetryInterpreter(),
+                acquireAdvisoryLock =
+                    ru.wbparser.infra.pipeline
+                        .NoOpAdvisoryLockInterpreter(),
+                drop =
+                    ru.wbparser.infra.pipeline
+                        .LogDropInterpreter(),
+            )
         val runner = PipelineRunner(pipeline, registry)
 
-        val startUrl: CrawlUrl = CrawlUrl.of(target.url).getOrElse {
-            throw IllegalArgumentException("Invalid target URL: ${target.url}")
-        }
+        val startUrl: CrawlUrl =
+            CrawlUrl.of(target.url).getOrElse {
+                throw IllegalArgumentException("Invalid target URL: ${target.url}")
+            }
 
-        val startTask = Crawling(
-            id = UUID.randomUUID().toString(),
-            url = startUrl,
-            depth = 0,
-            targetId = targetId,
-        )
+        val startTask =
+            Crawling(
+                id = UUID.randomUUID().toString(),
+                url = startUrl,
+                depth = 0,
+                targetId = targetId,
+            )
 
         val result = runner.run(listOf(startTask), concurrency = concurrency)
 
@@ -185,20 +225,23 @@ class CrawlRunner(
         }
     }
 
-    private fun openJob(): UUID {
+    private fun openJob(targetId: UUID): UUID {
         val id = UUID.randomUUID()
+        val now = Timestamp.from(java.time.Instant.now())
         db.ds.connection.use { conn ->
-            conn.prepareStatement(
-                """
-                INSERT INTO crawl_jobs (id, target_id, status, started_at, created_at)
-                VALUES (?, '00000000-0000-0000-0000-000000000001', 'Running', ?, ?)
-                """.trimIndent(),
-            ).use { ps ->
-                ps.setObject(1, id)
-                ps.setTimestamp(2, Timestamp.valueOf(LocalDateTime.now()))
-                ps.setTimestamp(3, Timestamp.valueOf(LocalDateTime.now()))
-                ps.executeUpdate()
-            }
+            conn
+                .prepareStatement(
+                    """
+                    INSERT INTO crawl_jobs (id, target_id, status, started_at, created_at)
+                    VALUES (?, ?, 'Running', ?, ?)
+                    """.trimIndent(),
+                ).use { ps ->
+                    ps.setObject(1, id)
+                    ps.setObject(2, targetId)
+                    ps.setTimestamp(3, now)
+                    ps.setTimestamp(4, now)
+                    ps.executeUpdate()
+                }
         }
         return id
     }
@@ -211,29 +254,40 @@ class CrawlRunner(
         errorMessage: String? = null,
     ) {
         db.ds.connection.use { conn ->
-            conn.prepareStatement(
-                """
-                UPDATE crawl_jobs
-                SET status = ?, completed_at = ?, pages_crawled = ?, items_saved = ?, error_message = ?
-                WHERE id = ?
-                """.trimIndent(),
-            ).use { ps ->
-                ps.setString(1, status)
-                ps.setTimestamp(2, Timestamp.valueOf(LocalDateTime.now()))
-                ps.setInt(3, pagesCrawled)
-                ps.setInt(4, itemsSaved)
-                ps.setString(5, errorMessage)
-                ps.setObject(6, id)
-                ps.executeUpdate()
-            }
+            conn
+                .prepareStatement(
+                    """
+                    UPDATE crawl_jobs
+                    SET status = ?, completed_at = ?, pages_crawled = ?, items_saved = ?, error_message = ?
+                    WHERE id = ?
+                    """.trimIndent(),
+                ).use { ps ->
+                    ps.setString(1, status)
+                    ps.setTimestamp(2, Timestamp.from(java.time.Instant.now()))
+                    ps.setInt(3, pagesCrawled)
+                    ps.setInt(4, itemsSaved)
+                    ps.setString(5, errorMessage)
+                    ps.setObject(6, id)
+                    ps.executeUpdate()
+                }
         }
     }
 
     sealed class RunResult {
-        data class Success(val pagesCrawled: Int, val itemsSaved: Int) : RunResult()
-        data class Failure(val message: String) : RunResult()
+        data class Success(
+            val pagesCrawled: Int,
+            val itemsSaved: Int,
+        ) : RunResult()
+
+        data class Failure(
+            val message: String,
+        ) : RunResult()
+
         data object AlreadyRunning : RunResult()
     }
 
-    private data class TargetResult(val pages: Int, val items: Int)
+    private data class TargetResult(
+        val pages: Int,
+        val items: Int,
+    )
 }

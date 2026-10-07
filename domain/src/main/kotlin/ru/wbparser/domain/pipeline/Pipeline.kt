@@ -5,7 +5,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlin.collections.MutableSet
 import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
@@ -17,6 +16,7 @@ import ru.wbparser.domain.pipeline.Step.Done
 import ru.wbparser.domain.pipeline.Step.Fail
 import ru.wbparser.domain.pipeline.Step.Retry
 import ru.wbparser.domain.time.Clock
+import kotlin.collections.MutableSet
 
 /**
  * Result of a complete crawl run.
@@ -55,15 +55,19 @@ data class CrawlingFingerprint(
  */
 data class Pipeline(
     val download: Stage<Crawling, Fetched>,
-    val parse:    Stage<Fetched, ParsedPage>,
-    val filter:   Stage<ParsedItem, ParsedItem?>,
-    val enrich:   Stage<ParsedItem, SavedItem>,
-    val save:     Stage<List<SavedItem>, Unit>,
+    val parse: Stage<Fetched, ParsedPage>,
+    val filter: Stage<ParsedItem, ParsedItem?>,
+    val enrich: Stage<ParsedItem, SavedItem>,
+    val save: Stage<List<SavedItem>, Unit>,
     val retryPolicy: RetryPolicy = RetryPolicy(),
-    val stopAt:    (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
+    val stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
     val clock: Clock,
     /** Generates a unique ID for a pagination task. Override in tests for determinism. */
-    val idGen: () -> String = { java.util.UUID.randomUUID().toString() },
+    val idGen: () -> String = {
+        java.util.UUID
+            .randomUUID()
+            .toString()
+    },
 ) {
     /**
      * Outcome of a stage execution inside [run].
@@ -71,9 +75,18 @@ data class Pipeline(
      * Note: [Cont] is never returned by any stage in this pipeline — fold into callers.
      */
     private sealed class StageDecision<out O> {
-        class Done<O>(val output: O) : StageDecision<O>()
-        class Retry(val task: Crawling) : StageDecision<Nothing>()
-        class Fail(val error: DomainError) : StageDecision<Nothing>()
+        class Done<O>(
+            val output: O,
+        ) : StageDecision<O>()
+
+        class Retry(
+            val task: Crawling,
+        ) : StageDecision<Nothing>()
+
+        class Fail(
+            val error: DomainError,
+        ) : StageDecision<Nothing>()
+
         class Cont : StageDecision<Nothing>()
     }
 
@@ -90,10 +103,17 @@ data class Pipeline(
         ) : TaskOutcome()
 
         /** Download or parse failed with a non-retryable error. */
-        data class Failed(val task: Crawling, val error: DomainError, val sides: List<Side>) : TaskOutcome()
+        data class Failed(
+            val task: Crawling,
+            val error: DomainError,
+            val sides: List<Side>,
+        ) : TaskOutcome()
 
         /** Download or parse emitted a retry signal — task re-enqueued by caller. */
-        data class Retry(val task: Crawling, val sides: List<Side>) : TaskOutcome()
+        data class Retry(
+            val task: Crawling,
+            val sides: List<Side>,
+        ) : TaskOutcome()
     }
 
     /**
@@ -132,10 +152,11 @@ data class Pipeline(
             val task = pending.removeFirst()
             val fp = CrawlingFingerprint(task.url, task.depth)
             if (seenFingerprints.add(fp).not()) {
-                sides += Side.Log(
-                    LogLevel.DEBUG,
-                    "Skipping duplicate task: ${task.url} at depth ${task.depth}",
-                )
+                sides +=
+                    Side.Log(
+                        LogLevel.DEBUG,
+                        "Skipping duplicate task: ${task.url} at depth ${task.depth}",
+                    )
                 continue
             }
 
@@ -152,52 +173,66 @@ data class Pipeline(
 
             // Launch concurrent async workers for download + parse stages
             coroutineScope {
-                batch.map { t ->
-                    async {
-                        val taskSides = mutableListOf<Side>()
+                batch
+                    .map { t ->
+                        async {
+                            val taskSides = mutableListOf<Side>()
 
-                        // Download stage
-                        val fetched: Fetched? = when (val decision = runDownloadStage(t, taskSides)) {
-                            is StageDecision.Done -> decision.output
-                            is StageDecision.Fail -> {
-                                return@async TaskOutcome.Failed(t, decision.error, taskSides.toList())
-                            }
-                            is StageDecision.Retry -> {
-                                return@async TaskOutcome.Retry(t, taskSides.toList())
-                            }
-                            is StageDecision.Cont -> {
-                                return@async TaskOutcome.Failed(t, ru.wbparser.domain.error.NetworkError("Unexpected Cont", null, null), taskSides.toList())
-                            }
-                        }
+                            // Download stage
+                            val fetched: Fetched? =
+                                when (val decision = runDownloadStage(t, taskSides)) {
+                                    is StageDecision.Done -> decision.output
+                                    is StageDecision.Fail -> {
+                                        return@async TaskOutcome.Failed(t, decision.error, taskSides.toList())
+                                    }
+                                    is StageDecision.Retry -> {
+                                        return@async TaskOutcome.Retry(t, taskSides.toList())
+                                    }
+                                    is StageDecision.Cont -> {
+                                        return@async TaskOutcome.Failed(
+                                            t,
+                                            ru.wbparser.domain.error
+                                                .NetworkError("Unexpected Cont", null, null),
+                                            taskSides.toList(),
+                                        )
+                                    }
+                                }
 
-                        // Parse stage
-                        val page: ParsedPage? = when (val decision = runParseStage(t, fetched!!, taskSides)) {
-                            is StageDecision.Done -> decision.output
-                            is StageDecision.Fail -> {
-                                return@async TaskOutcome.Failed(t, decision.error, taskSides.toList())
-                            }
-                            is StageDecision.Retry -> {
-                                return@async TaskOutcome.Retry(t, taskSides.toList())
-                            }
-                            is StageDecision.Cont -> {
-                                return@async TaskOutcome.Failed(t, ru.wbparser.domain.error.NetworkError("Unexpected Cont", null, null), taskSides.toList())
-                            }
+                            // Parse stage
+                            val page: ParsedPage? =
+                                when (val decision = runParseStage(t, fetched!!, taskSides)) {
+                                    is StageDecision.Done -> decision.output
+                                    is StageDecision.Fail -> {
+                                        return@async TaskOutcome.Failed(t, decision.error, taskSides.toList())
+                                    }
+                                    is StageDecision.Retry -> {
+                                        return@async TaskOutcome.Retry(t, taskSides.toList())
+                                    }
+                                    is StageDecision.Cont -> {
+                                        return@async TaskOutcome.Failed(
+                                            t,
+                                            ru.wbparser.domain.error
+                                                .NetworkError("Unexpected Cont", null, null),
+                                            taskSides.toList(),
+                                        )
+                                    }
+                                }
+                            TaskOutcome.Done(t, page!!, taskSides.toList())
                         }
-                        TaskOutcome.Done(t, page!!, taskSides.toList())
+                    }.awaitAll()
+                    .forEach { outcome ->
+                        when (outcome) {
+                            is TaskOutcome.Done -> {
+                                batchSides.addAll(outcome.sides)
+                                donePages.add(outcome)
+                            }
+                            is TaskOutcome.Failed -> {
+                                if (failureError == null) failureError = outcome.error
+                                batchSides.addAll(outcome.sides)
+                            }
+                            is TaskOutcome.Retry -> pending.add(outcome.task)
+                        }
                     }
-                }.awaitAll().forEach { outcome ->
-                    when (outcome) {
-                        is TaskOutcome.Done -> {
-                            batchSides.addAll(outcome.sides)
-                            donePages.add(outcome)
-                        }
-                        is TaskOutcome.Failed -> {
-                            if (failureError == null) failureError = outcome.error
-                            batchSides.addAll(outcome.sides)
-                        }
-                        is TaskOutcome.Retry -> pending.add(outcome.task)
-                    }
-                }
             }
 
             // Propagate first failure as Either.Left (same semantics as sequential pipeline)
@@ -249,23 +284,25 @@ data class Pipeline(
     ): Int {
         var saved = 0
         for (item in page.items) {
-            val filtered = when (val r = filter(item)) {
-                is Done<ParsedItem, ParsedItem?> -> r.output
-                else -> null
-            }
+            val filtered =
+                when (val r = filter(item)) {
+                    is Done<ParsedItem, ParsedItem?> -> r.output
+                    else -> null
+                }
             if (filtered == null) {
                 // Emit Side.Drop so the runner can count/metric/log dropped items.
                 sides += Side.Drop(Dropped.Filtered, item)
                 continue
             }
 
-            val enriched: SavedItem = when (val r = enrich(filtered)) {
-                is Done<ParsedItem, SavedItem> -> {
-                    sides += r.sides()
-                    r.output
+            val enriched: SavedItem =
+                when (val r = enrich(filtered)) {
+                    is Done<ParsedItem, SavedItem> -> {
+                        sides += r.sides()
+                        r.output
+                    }
+                    else -> continue
                 }
-                else -> continue
-            }
             saved += saveOne(enriched, sides)
         }
         return saved
@@ -278,24 +315,24 @@ data class Pipeline(
     private suspend fun runDownloadStage(
         task: Crawling,
         sides: MutableList<Side>,
-    ): StageDecision<Fetched> {
-        return when (val result = stageWithRetry(task, download)) {
+    ): StageDecision<Fetched> =
+        when (val result = stageWithRetry(task, download)) {
             is Done<Crawling, Fetched> -> {
                 sides += result.sides()
                 StageDecision.Done(result.output)
             }
             is Fail<Crawling, Fetched> -> StageDecision.Fail(result.failure.toDomainError())
             is Retry<Crawling, Fetched> -> {
-                sides += Side.ScheduleRetry(
-                    task.url.toString(),
-                    retryDelayMs(0, result.signal, retryPolicy),
-                    task.targetId,
-                )
+                sides +=
+                    Side.ScheduleRetry(
+                        task.url.toString(),
+                        retryDelayMs(0, result.signal, retryPolicy),
+                        task.targetId,
+                    )
                 StageDecision.Retry(task)
             }
             is Cont<Crawling, Fetched> -> StageDecision.Cont()
         }
-    }
 
     /**
      * Runs the parse stage on [fetched] with retry, returning a [StageDecision].
@@ -305,24 +342,24 @@ data class Pipeline(
         task: Crawling,
         fetched: Fetched,
         sides: MutableList<Side>,
-    ): StageDecision<ParsedPage> {
-        return when (val result = stageWithRetry(fetched, parse)) {
+    ): StageDecision<ParsedPage> =
+        when (val result = stageWithRetry(fetched, parse)) {
             is Done<Fetched, ParsedPage> -> {
                 sides += result.sides()
                 StageDecision.Done(result.output)
             }
             is Fail<Fetched, ParsedPage> -> StageDecision.Fail(result.failure.toDomainError())
             is Retry<Fetched, ParsedPage> -> {
-                sides += Side.ScheduleRetry(
-                    task.url.toString(),
-                    retryDelayMs(0, result.signal, retryPolicy),
-                    task.targetId,
-                )
+                sides +=
+                    Side.ScheduleRetry(
+                        task.url.toString(),
+                        retryDelayMs(0, result.signal, retryPolicy),
+                        task.targetId,
+                    )
                 StageDecision.Retry(task)
             }
             is Cont<Fetched, ParsedPage> -> StageDecision.Cont()
         }
-    }
 
     /**
      * Saves a single [item] and records any side effects.
@@ -332,32 +369,52 @@ data class Pipeline(
      * [stageWithRetry] handles download and parse stages. A DB blip will not
      * fail the entire crawl.
      */
-    private suspend fun saveOne(item: SavedItem, sides: MutableList<Side>): Int {
+    private suspend fun saveOne(
+        item: SavedItem,
+        sides: MutableList<Side>,
+    ): Int {
         var attempt = 0
         val items = listOf(item)
         while (true) {
-            when (val r = save.invoke(items)) {
+            val step: Step<List<SavedItem>, Unit> =
+                try {
+                    save.invoke(items)
+                } catch (e: Exception) {
+                    // A throwing save stage must not abort processItems — that would drop
+                    // every remaining item on the page, not just the failed one. Converting
+                    // to Fail keeps the single failure-reporting path below.
+                    Step.Fail(
+                        StageFailure.Database(
+                            "save stage threw ${e::class.simpleName}: ${e.message}",
+                        ),
+                    )
+                }
+            when (step) {
                 is Done<List<SavedItem>, Unit> -> {
-                    sides += r.sides()
+                    sides += step.sides()
                     return 1
                 }
                 is Fail -> {
-                    sides += Side.Log(LogLevel.ERROR, "Save stage failed: ${r.failure.message}")
+                    sides += Side.Log(LogLevel.ERROR, "Save stage failed: ${step.failure.message}")
                     return 0
                 }
                 is Retry -> {
                     if (!shouldRetry(attempt, retryPolicy)) {
-                        sides += Side.Log(
-                            LogLevel.ERROR,
-                            "Save stage retry exhausted after ${retryPolicy.maxAttempts} attempts",
-                        )
+                        sides +=
+                            Side.Log(
+                                LogLevel.ERROR,
+                                "Save stage retry exhausted after ${retryPolicy.maxAttempts} attempts",
+                            )
                         return 0
                     }
                     attempt++
-                    delay(retryDelayMs(attempt - 1, r.signal, retryPolicy))
+                    delay(retryDelayMs(attempt - 1, step.signal, retryPolicy))
                     // loop and retry
                 }
-                is Cont -> { /* save stages in this pipeline never emit Cont */ return 0 }
+                is Cont -> {
+                    // save stages in this pipeline never emit Cont
+                    return 0
+                }
             }
         }
     }
@@ -367,16 +424,21 @@ data class Pipeline(
      * Returns [Done] on success, [Fail] when retries are exhausted, or [Retry] to request scheduling.
      * Suspends between retry attempts to implement back-off delay.
      */
-    private suspend fun <I, O> stageWithRetry(input: I, stage: Stage<I, O>): Step<I, O> {
+    private suspend fun <I, O> stageWithRetry(
+        input: I,
+        stage: Stage<I, O>,
+    ): Step<I, O> {
         var attempt = 0
         while (true) {
             val result = stage.invoke(input)
             if (result !is Retry) return result
             if (!shouldRetry(attempt, retryPolicy)) {
-                return Fail(StageFailure.RetryExhausted(
-                    "Retry ${attempt + 1}/${retryPolicy.maxAttempts} failed",
-                    result.signal,
-                ))
+                return Fail(
+                    StageFailure.RetryExhausted(
+                        "Retry ${attempt + 1}/${retryPolicy.maxAttempts} failed",
+                        result.signal,
+                    ),
+                )
             }
             attempt++
             delay(retryDelayMs(attempt - 1, result.signal, retryPolicy))
