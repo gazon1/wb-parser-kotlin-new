@@ -31,6 +31,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** write a `when` over a sealed interface when all branches are identical — access the common property directly _(from `2026-09-09-retry-backoff-collapse-pr9-5`)
 - **Always** use `Retry.Database` (or the appropriate `Retry.*` variant) for transient storage errors — not `Step.Fail`. _(from `2026-09-09-save-stage-retry-pr11`)
 - **Always** wrap external-state stages (DB, HTTP, file I/O) in a retry loop. _(from `2026-09-09-save-stage-retry-pr11`)
+- **Always** discover test schemas from the classpath; **Never** enumerate migration _(from `2026-10-08-discover-test-migrations`)
+- **Always** read migration bodies with `Class.getResourceAsStream`, not the classloader — _(from `2026-10-08-discover-test-migrations`)
+- **Never** weaken `Migrations` to tolerate a layout it does not recognise. A suite that _(from `2026-10-08-discover-test-migrations`)
 
 ## Per-tag
 
@@ -50,8 +53,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `SaveBatchInterpreter` and `ScheduleRetryInterpreter` are not optional — they must be registered in every `runTarget`. _(from `2026-09-08-functional-pipeline-refactor`)_
 - `Spider.concurrency` from `application.yml` now actually controls download concurrency _(from `2026-09-09-concurrency-wiring-pr17`)_
 - `StageFailure` sealed interface now has 6 variants (was 7) _(from `2026-09-09-dead-code-purge-pr9`)_
+- `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share _(from `2026-10-08-discover-test-migrations`)_
 - `tests:test` still runs integration tests (fake HTTP + SQLite) _(from `2026-09-09-test-module-boundary-pr10`)_
+- The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same _(from `2026-10-08-discover-test-migrations`)_
 - `toDomainError()` has 6 branches (was 7) _(from `2026-09-09-dead-code-purge-pr9`)_
+- Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
 - `WbCatalogInterceptors.kt` reduced to 2 typealiases (was 3 — 1 function) _(from `2026-09-09-dead-code-purge-pr9`)_
 
 ### `arrow`
@@ -94,6 +100,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - Cluster prefixes (`A1`, `A2`, …) from the tech-debt plan may appear in subject after the `PR N` marker. _(from `2026-09-08-conventional-commits-and-cleanup-prs`)_
 - `git log --oneline` is the project changelog — keep subjects informative. _(from `2026-09-08-conventional-commits-and-cleanup-prs`)_
+
+### `database`
+
+- `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share _(from `2026-10-08-discover-test-migrations`)_
+- The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same _(from `2026-10-08-discover-test-migrations`)_
+- Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
 
 ### `dead-code`
 
@@ -167,7 +179,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `domain:test` now runs ~50 pure domain unit tests (previously NO-SOURCE) _(from `2026-09-09-test-module-boundary-pr10`)_
 - Integration tests in `tests/` still cover the full stack; they complement, not replace, domain tests. _(from `2026-09-08-domain-coverage-pr4`)_
 - `isStopped()` / `isDrop()` defaults in `DomainError` still present — zero callers confirmed, removal deferred _(from `2026-09-09-test-module-boundary-pr10`)_
+- `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share _(from `2026-10-08-discover-test-migrations`)_
 - `tests:test` still runs integration tests (fake HTTP + SQLite) _(from `2026-09-09-test-module-boundary-pr10`)_
+- The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same _(from `2026-10-08-discover-test-migrations`)_
+- Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
 
 ### `workflow`
 
@@ -191,6 +206,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-09-09-save-stage-retry-pr11` — pipeline  bug-fix  G10
 - `2026-09-09-scheduler-wireup-pr18` — scheduler  spring  architecture
 - `2026-09-09-test-module-boundary-pr10` — testing  architecture
+- `2026-10-08-discover-test-migrations` — testing  architecture  database
 
 ## Active entries
 
@@ -208,3 +224,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-09-09-save-stage-retry-pr11` — Save stage retry — G10: transient DB blip must not fail the entire crawl
 - `2026-09-09-scheduler-wireup-pr18` — Replace installCrawler with Spring @Scheduled bean — wire scheduler lifecycle
 - `2026-09-09-test-module-boundary-pr10` — Test module boundary — where tests live
+- `2026-10-08-discover-test-migrations` — Test schemas are discovered, never listed — and refuse to guess

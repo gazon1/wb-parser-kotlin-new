@@ -1,17 +1,7 @@
 # Executed-test floors, one per module: `<module> <count>`.
-#
 # Managed by scripts/check-test-runs.py --update. Raise it in the same commit
 # that adds tests; lowering it is allowed only when tests are deleted.
-#
-# What this file is for: Gradle reports BUILD SUCCESSFUL whether a suite executed
-# 227 tests or none, and an UP-TO-DATE test task does not rewrite its results
-# directory at all. A floor compared against the XML the run actually produced
-# is the only check that notices.
-#
-# `infrastructure 0` is not a placeholder — that module genuinely has no tests
-# yet. It is recorded here so the gap is visible and machine-checked rather than
-# discovered when a regression lands. The first real test there should raise it.
 
 domain 196
 infrastructure 0
-tests 31
+tests 44
