@@ -36,8 +36,11 @@ dependencies {
     testImplementation("io.kotest:kotest-assertions-core:5.8.1")
     testImplementation("io.kotest:kotest-property:5.8.1")
     testImplementation("io.mockk:mockk:1.14.11")
-    testImplementation("org.testcontainers:postgresql:1.20.4")
-    testImplementation("org.testcontainers:junit-jupiter:1.20.4")
+    testImplementation("org.testcontainers:postgresql:1.21.3")
+    testImplementation("org.testcontainers:junit-jupiter:1.21.3")
+    // Compile-time access to the driver so tests can build a DataSource against the
+    // Testcontainers instance (infrastructure declares it as `implementation` only).
+    testImplementation("org.postgresql:postgresql:42.7.4")
     // SQLite for integration tests
     testImplementation("org.xerial:sqlite-jdbc:3.46.0.0")
     // Ktor client (CIO engine) for NoRetryKtorDownloader in integration tests
@@ -50,4 +53,9 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // Recent Docker daemons (>= 25) reject the API version docker-java negotiates by
+    // default (1.32) with "client version 1.32 is too old". Pin a supported version so
+    // Testcontainers can reach the host engine.
+    systemProperty("api.version", "1.44")
+    environment("DOCKER_API_VERSION", "1.44")
 }
