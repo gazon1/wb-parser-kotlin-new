@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -42,10 +42,10 @@ jobs:
     needs: static
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -82,10 +82,10 @@ jobs:
     needs: static
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
@@ -113,17 +113,81 @@ jobs:
     needs: static
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Every Gradle task a gate names actually exists
         run: python3 scripts/check-gate-wiring.py --tasks-exist
+  # Publishes the image the VPS deploys. Separate from `build` on purpose: the
+  # Gradle job runs `./gradlew build` in the workspace and its output is thrown
+  # away, while this one packages a jar into an image — so a green `build` never
+  # implied that the image had been produced at all, which is how this
+  # repository managed to have CI for a long time with no artifact to deploy.
+  publish-image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Only after the gates, and only for main: a PR image is useful, an image
+    # from a failing branch is not.
+    needs: [build, lint, gate-honesty]
+    if: github.event_name == 'push'
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/wb-parser
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      # The jar is built inside the image rather than copied in from the
+      # workspace: `COPY . .` plus Gradle's up-to-date checks would happily ship
+      # whatever `app/build/libs/app.jar` happened to contain. .dockerignore
+      # keeps previous build output out of the context.
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.app
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Crawler image"
+            echo ""
+            echo "- Tags: \`${{ steps.meta.outputs.tags }}\`"
+            echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

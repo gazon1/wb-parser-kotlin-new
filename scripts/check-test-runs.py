@@ -191,7 +191,7 @@ def main() -> int:
         # is rather than passed over quietly.
         if not directory.is_dir():
             if floor == 0:
-                print(f"  ⚠️  {module}: no tests (floor 0) — module has no coverage")
+                print(f"  ⚠️  {module}: no tests (floor 0) — see ADR 2026-09-09-test-module-boundary")
                 measured[module] = 0
                 continue
             print(

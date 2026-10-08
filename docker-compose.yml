@@ -1,64 +1,98 @@
-version: "3.9"
+# Production / VPS compose for the crawler.
+#
+# This service owns its database and is the only writer of it. The storefront
+# (gazon1/wb-shop, container `product-catalog`) reads the same database over the
+# network with a SELECT-only role and never migrates it — which is what makes
+# the Flyway migrations here the single source of truth for the schema.
+#
+# There is no `caddy` service in this file on purpose. The reverse proxy is
+# provisioned and managed by gazon1/Caddy-vps; a second proxy on :80/:443 would
+# fight it for the ports and bypass its certificate and header handling.
+#
+# Local development with a throwaway database: docker-compose.dev.yml is not
+# used here — see check.sh for the local workflow.
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:${POSTGRES_IMAGE_TAG:-17-alpine}
+    restart: unless-stopped
     environment:
-      POSTGRES_DB: wbparser
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${DB_NAME:-wbparser}
+      POSTGRES_USER: ${DB_USER:-wbparser}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+    # NOT published. Nothing outside this machine has any reason to reach the
+    # database; the storefront connects over the compose network instead. The
+    # previous `5432:5432` put the crawler's data behind whatever firewall
+    # happened to be in front of the VPS.
+    expose:
+      - "5432"
+    networks:
+      - default
+      - caddy_net
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wbparser} -d ${DB_NAME:-wbparser}"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile.app
+    # TAG is REQUIRED, with no `latest` fallback: a default means a deploy that
+    # forgot to set TAG ships whatever commit the registry considers newest.
+    # The deploy workflow always sets it from the commit being shipped.
+    image: ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser:${TAG:?TAG must be set to the commit SHA tag, e.g. TAG=$(git rev-parse --short HEAD)}
+    container_name: wb-parser
+    restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      SPRING_PROFILES_ACTIVE: worker,public
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/wbparser
-      SPRING_DATASOURCE_USERNAME: postgres
-      SPRING_DATASOURCE_PASSWORD: postgres
-      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-api-key-change-me}
-    ports:
-      - "8080:8080"
+      # compose gives the container these names; .env may override for local
+      # runs, but production reads the values that match the service above.
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME:-wbparser}
+      DB_USER: ${DB_USER:-wbparser}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+    # NOT published. The admin API is credentialed, but binding a port to
+    # 0.0.0.0 makes it reachable from the whole internet; `expose` keeps it on
+    # the compose network where the admin calls actually come from.
+    expose:
+      - "8080"
+    networks:
+      - default
+      - caddy_net
     depends_on:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/api/health/live"]
-      interval: 10s
-      timeout: 5s
+      # wget, not curl: eclipse-temurin:21-jre-alpine ships no curl, so the
+      # previous `curl -fsS …` healthcheck could never pass and the container
+      # would have been reported unhealthy forever. Verified that busybox wget
+      # exits non-zero on a 5xx and zero on a 2xx, which is all this needs.
+      #
+      # /live, not /ready: readiness also checks the database, and a database
+      # blip should not restart the crawler and interrupt a crawl in progress.
+      # The scheduler reconnects on its own.
+      test:
+        - CMD-SHELL
+        - "wget -q -O /dev/null http://127.0.0.1:8080/api/health/live || exit 1"
+      interval: 15s
+      timeout: 10s
       retries: 5
-
-  frontend:
-    build:
-      context: ../kotlin-try/WebCrawler.Public/ClientApp
-      dockerfile: Dockerfile
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8080
-    ports:
-      - "3000:3000"
-    depends_on:
-      - app
-
-  caddy:
-    image: caddy:3-alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-    depends_on:
-      - app
-      - frontend
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:
+
+networks:
+  # Created and owned by the Caddy-vps Ansible role. Declaring it external means
+  # this compose file never creates or deletes it.
+  caddy_net:
+    external: true
+    name: caddy_net

@@ -1,0 +1,42 @@
+# Build outputs must never enter the image.
+#
+# The Dockerfile does `COPY . .` and then runs `./gradlew :app:bootJar`. Without
+# this file the build context carries ~250 MB of previous output — including
+# app/build/libs/app.jar — and Gradle's up-to-date checks can conclude the jar
+# is current and skip the build. The image then ships whatever was compiled on
+# someone's machine last week, with no error anywhere.
+#
+# The Gradle wrapper JAR is the one build artifact that MUST be copied: without
+# it there is no ./gradlew to run. It is explicitly re-included below.
+
+.git
+.gradle/
+.kotlin/
+build/
+*/build/
+
+# Editor / OS noise
+.idea/
+*.iml
+.vscode/
+*.swp
+.DS_Store
+
+# Local state and secrets
+.env
+.env.*
+!.env.example
+db/
+docs/
+
+# Not needed to build the jar
+README.md
+AGENTS.md
+Caddyfile
+check.sh
+justfile
+.just/
+
+# Re-include what the build genuinely needs.
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
