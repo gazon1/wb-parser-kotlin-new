@@ -4,12 +4,16 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import kotlinx.serialization.json.Json
 import org.testcontainers.containers.PostgreSQLContainer
 import ru.wbparser.infra.db.repositories.upsertSavedItems
 import ru.wbparser.testing.PostgresFixture
 import java.math.BigDecimal
 import java.time.Instant
 import java.time.OffsetDateTime
+import java.util.UUID
+
+private val json = Json { ignoreUnknownKeys = true }
 
 /**
  * Integration test for the production write path against a real PostgreSQL with the
@@ -145,6 +149,40 @@ class SavedItemsPersistencePostgresTest :
             db
                 .rows("SELECT title FROM scraped_items WHERE product_id = $productId ORDER BY price_kopecks")
                 .map { it["title"] } shouldBe listOf("Кроссовки", "Кроссовки чёрные")
+        }
+
+        // -------------------------------------------------------------------------
+        // data JSONB update on conflict
+        // -------------------------------------------------------------------------
+
+        test("data is updated when the same content_hash is upserted again") {
+            val targetId = db.seedTarget("Категория DataUpsert")
+            val productId = 6006L
+            val priceKopecks = 49900L
+
+            // Create item A and item B with identical content_hash but different JSON data
+            val itemA = db.item(targetId, productId = productId, priceKopecks = priceKopecks)
+            val itemB = itemA.copy(id = UUID.randomUUID())
+
+            // Verify they share the same content_hash (same target+product+price)
+            assert(itemA.contentHash == itemB.contentHash) {
+                "two items with same target/product/price must share content_hash"
+            }
+
+            // First upsert: item A lands
+            db.ds.upsertSavedItems(listOf(itemA), targetId)
+            val afterFirst = db.row("SELECT data, price_kopecks FROM scraped_items WHERE product_id = $productId")
+            val dataAfterFirst = (afterFirst["data"] as? String)?.let { json.parseToJsonElement(it) }
+
+            // Second upsert with item B (same content_hash): data must be updated, not left as A
+            db.ds.upsertSavedItems(listOf(itemB), targetId)
+            val afterSecond = db.row("SELECT data FROM scraped_items WHERE product_id = $productId")
+            val dataAfterSecond = (afterSecond["data"] as? String)?.let { json.parseToJsonElement(it) }
+
+            // Still one row — same content_hash updated in place
+            db.rows("SELECT data FROM scraped_items WHERE product_id = $productId") shouldHaveSize 1
+            // Data was overwritten, not left stale from the first insert
+            dataAfterSecond shouldBe dataAfterFirst
         }
 
         // -------------------------------------------------------------------------

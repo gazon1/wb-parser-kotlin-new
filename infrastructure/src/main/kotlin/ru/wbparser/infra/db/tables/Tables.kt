@@ -7,12 +7,10 @@ import java.util.UUID
 
 /**
  * Exposed table definitions mirroring V1__init.sql.
- * Timestamps stored as TEXT (ISO-8601), parsed in application code.
  */
 object TargetTable : UUIDTable("crawl_targets") {
     val name: Column<String> = varchar("name", 255)
     val startUrl: Column<String> = text("start_url")
-    val allowedDomains: Column<String?> = text("allowed_domains").nullable()
     val maxDepth: Column<Int> = integer("max_depth").default(1)
     val parsingRules: Column<String?> = text("parsing_rules").nullable()
     val isActive: Column<Boolean> = bool("is_active").default(true)
@@ -52,7 +50,7 @@ object SavedItemTable : UUIDTable("scraped_items") {
     val cashback: Column<java.math.BigDecimal?> = decimal("cashback", 10, 2).nullable()
     val cashbackPercent: Column<java.math.BigDecimal?> = decimal("cashback_percent", 5, 2).nullable()
     val data: Column<String?> = text("data").nullable()
-    val contentHash: Column<String> = varchar("content_hash", 64)
+    val contentHash: Column<String> = varchar("content_hash", 128)
     val scrapedAt: Column<String> = varchar("scraped_at", 50)
     val subjectId: Column<Long?> = long("subject_id").nullable()
     val subjectParentId: Column<Long?> = long("subject_parent_id").nullable()

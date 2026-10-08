@@ -30,6 +30,7 @@ private const val INSERT_SQL = """
         cashback = EXCLUDED.cashback,
         cashback_percent = EXCLUDED.cashback_percent,
         scraped_at = EXCLUDED.scraped_at,
+        data = EXCLUDED.data,
         subject_id = EXCLUDED.subject_id,
         subject_parent_id = EXCLUDED.subject_parent_id,
         match_id = EXCLUDED.match_id,
