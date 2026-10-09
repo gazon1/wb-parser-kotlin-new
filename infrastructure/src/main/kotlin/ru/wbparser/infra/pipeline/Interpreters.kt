@@ -22,7 +22,7 @@ class LogInterpreter : Interpreter<Side.Log> {
 /** No-op metric interpreter — records nothing but doesn't crash. */
 class NoOpMetricInterpreter : Interpreter<Side.Metric> {
     override suspend fun handle(side: Side.Metric) {
-        logger.trace("metric ${side.name}=${side.value} tags=${side.tags}")
+        logger.trace("metric {}={} tags={}", side.name, side.value, side.tags)
     }
 }
 

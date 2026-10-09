@@ -5,6 +5,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 import java.sql.Connection
 import javax.sql.DataSource
+import kotlin.time.Duration.Companion.milliseconds
 
 private const val LOCK_KEY = 0xC0FFEEC0FFEEL
 
@@ -31,7 +32,7 @@ data class LockUnavailable(
  */
 suspend fun <T> PostgresAdvisoryLock.withLock(block: suspend () -> T): Either<LockUnavailable, T> =
     try {
-        withTimeout(lockTimeoutMs) {
+        withTimeout(lockTimeoutMs.milliseconds) {
             datasource.connection.use { conn ->
                 if (tryAcquire(conn)) {
                     try {

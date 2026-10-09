@@ -156,7 +156,7 @@ class CrawlRunner(
                                 // so a generated UUID would reject every row.
                                 db.ds.upsertSavedItems(items, targetId)
                                 Step.Done(Unit)
-                            } catch (e: java.sql.SQLException) {
+                            } catch (_: java.sql.SQLException) {
                                 // Transient storage failure. Hand it to the save-stage retry loop:
                                 // previously the exception escaped and took the whole page with it.
                                 Step.Retry(Retry.Database())

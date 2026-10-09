@@ -17,6 +17,7 @@ import ru.wbparser.domain.pipeline.Step.Fail
 import ru.wbparser.domain.pipeline.Step.Retry
 import ru.wbparser.domain.time.Clock
 import kotlin.collections.MutableSet
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Result of a complete crawl run.
@@ -87,7 +88,7 @@ data class Pipeline(
             val error: DomainError,
         ) : StageDecision<Nothing>()
 
-        class Cont : StageDecision<Nothing>()
+        data object Cont : StageDecision<Nothing>()
     }
 
     /**
@@ -331,7 +332,7 @@ data class Pipeline(
                     )
                 StageDecision.Retry(task)
             }
-            is Cont<Crawling, Fetched> -> StageDecision.Cont()
+            is Cont<Crawling, Fetched> -> StageDecision.Cont
         }
 
     /**
@@ -358,7 +359,7 @@ data class Pipeline(
                     )
                 StageDecision.Retry(task)
             }
-            is Cont<Fetched, ParsedPage> -> StageDecision.Cont()
+            is Cont<Fetched, ParsedPage> -> StageDecision.Cont
         }
 
     /**
@@ -408,7 +409,7 @@ data class Pipeline(
                         return 0
                     }
                     attempt++
-                    delay(retryDelayMs(attempt - 1, step.signal, retryPolicy))
+                    delay(retryDelayMs(attempt - 1, step.signal, retryPolicy).milliseconds)
                     // loop and retry
                 }
                 is Cont -> {
@@ -441,7 +442,7 @@ data class Pipeline(
                 )
             }
             attempt++
-            delay(retryDelayMs(attempt - 1, result.signal, retryPolicy))
+            delay(retryDelayMs(attempt - 1, result.signal, retryPolicy).milliseconds)
         }
     }
 }

@@ -85,7 +85,6 @@ class KtorDownloader(
                     )
                 }
             } catch (e: Exception) {
-                val durationMs = (System.nanoTime() - startNs) / 1_000_000
                 Either.Left(NetworkError(e.message ?: "Unknown error", e, task.url.toString()))
             }
         }
