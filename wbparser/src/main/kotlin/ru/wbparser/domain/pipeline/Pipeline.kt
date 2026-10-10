@@ -376,7 +376,20 @@ data class Pipeline(
                         sides += r.sides()
                         r.output
                     }
-                    else -> null
+                    is Fail<ParsedItem, ParsedItem?> -> {
+                        // Filter stage failed — report as drop so the runner can count/metric it.
+                        sides += r.sides()
+                        null
+                    }
+                    is Retry<ParsedItem, ParsedItem?> -> {
+                        // Retry from a pure filter stage is impossible; treat as drop.
+                        sides += r.sides()
+                        null
+                    }
+                    is Cont<ParsedItem, ParsedItem?> -> {
+                        // Cont from a pure filter stage is impossible; treat as drop.
+                        null
+                    }
                 }
             if (filtered == null) {
                 // Emit Side.Drop so the runner can count/metric/log dropped items — unless the
@@ -389,14 +402,31 @@ data class Pipeline(
                 continue
             }
 
-            val enriched: SavedItem =
+            val enriched: SavedItem? =
                 when (val r = enrich(filtered)) {
                     is Done<ParsedItem, SavedItem> -> {
                         sides += r.sides()
                         r.output
                     }
-                    else -> continue
+                    is Fail<ParsedItem, SavedItem> -> {
+                        // Enrich stage failed — report as drop so the runner can count/metric it.
+                        sides += r.sides()
+                        null
+                    }
+                    is Retry<ParsedItem, SavedItem> -> {
+                        // Retry from a pure enrich stage is impossible; treat as drop.
+                        sides += r.sides()
+                        null
+                    }
+                    is Cont<ParsedItem, SavedItem> -> {
+                        // Cont from a pure enrich stage is impossible; treat as drop.
+                        null
+                    }
                 }
+            if (enriched == null) {
+                sides += Side.Drop(Dropped.Filtered, item)
+                continue
+            }
             saved += saveOne(enriched, sides)
         }
         return saved
