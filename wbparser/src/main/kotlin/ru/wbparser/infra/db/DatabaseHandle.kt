@@ -3,6 +3,7 @@ package ru.wbparser.infra.db
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.jetbrains.exposed.sql.Database
+import ru.wbparser.infra.http.HttpConstants
 import javax.sql.DataSource
 
 /**
@@ -29,7 +30,7 @@ fun connect(
             this.password = password
             maximumPoolSize = poolSize
             minimumIdle = 2
-            connectionTimeout = 30_000
+            connectionTimeout = HttpConstants.DEFAULT_HTTP_TIMEOUT_MS
             idleTimeout = 600_000
         }
 
