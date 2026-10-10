@@ -20,7 +20,8 @@ complexity:
   active: true
   LongParameterList:
     active: true
-    threshold: 6
+    functionThreshold: 6
+    constructorThreshold: 6
     # Test builders legitimately take one argument per pipeline stage.
     excludes: ['**/test/**']
   # TooManyFunctions lives under `complexity`, not `style`. The detailed thresholds
