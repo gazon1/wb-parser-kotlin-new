@@ -37,6 +37,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** break the input on purpose when adding a gate, and record the observed _(from `2026-10-08-gates-that-can-fail`)
 - **Always** discover inputs rather than list them. `Migrations.discover()` in the _(from `2026-10-08-gates-that-can-fail`)
 - **Never** treat a zero exit as evidence. Ask what was inspected; if the answer is "an _(from `2026-10-08-gates-that-can-fail`)
+- **Always** interpret accumulated sides on failure — never lose diagnostic evidence _(from `2026-10-09-pipelinefailure-carries-sides`)
+- **Always** configure `crawler.spider.rules` explicitly when deploying, even to the defaults, _(from `2026-10-09-wire-business-rules-into-filter`)
+- **Never** widen a rule's boundary without adding the boundary case to a test. The comparison _(from `2026-10-09-wire-business-rules-into-filter`)
 
 ## Per-tag
 
@@ -71,6 +74,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Future reviews will correctly identify true `map` anti-patterns (last expression = `Unit`) _(from `2026-09-09-arrow-either-pr20`)_
 - `PipelineRunner` code is unchanged (already correct) _(from `2026-09-09-arrow-either-pr20`)_
 
+### `behaviour`
+
+- A dropped item is counted separately: `Crawled.itemsSaved` excludes it, and one _(from `2026-10-09-wire-business-rules-into-filter`)_
+- Rules read `priceKopecks`, `salePriceKopecks`, `inStock` and `category` from `ParsedItem`, _(from `2026-10-09-wire-business-rules-into-filter`)_
+
 ### `bug-fix`
 
 - A DB blip no longer fails the entire crawl. The save still fails the item _(from `2026-09-09-save-stage-retry-pr11`)_
@@ -102,8 +110,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `configuration`
 
+- A dropped item is counted separately: `Crawled.itemsSaved` excludes it, and one _(from `2026-10-09-wire-business-rules-into-filter`)_
 - Default remains sequential (`1`) — users must explicitly set `crawler.spider.concurrency` in YAML to get parallelism _(from `2026-09-09-concurrency-wiring-pr17`)_
 - Future work: surface `Spider.concurrency` in a Spring `@Bean` configuration (covered in PR 18) _(from `2026-09-09-concurrency-wiring-pr17`)_
+- Rules read `priceKopecks`, `salePriceKopecks`, `inStock` and `category` from `ParsedItem`, _(from `2026-10-09-wire-business-rules-into-filter`)_
 - `Spider.concurrency` from `application.yml` now actually controls download concurrency _(from `2026-09-09-concurrency-wiring-pr17`)_
 
 ### `conventions`
@@ -131,6 +141,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Positive**: Honest documentation (effect-recording vs pure) _(from `2026-09-09-dead-code-purge-pr19`)_
 - `SaveBatchInterpreter` and `ScheduleRetryInterpreter` are not optional — they must be registered in every `runTarget`. _(from `2026-09-08-functional-pipeline-refactor`)_
 
+### `either`
+
+- `PipelineFailure` third-Either variant remains available as a future option if more _(from `2026-10-09-pipelinefailure-carries-sides`)_
+- `Pipeline.run` return type is a breaking change; all call sites that pattern-match on _(from `2026-10-09-pipelinefailure-carries-sides`)_
+
 ### `G10`
 
 - A DB blip no longer fails the entire crawl. The save still fails the item _(from `2026-09-09-save-stage-retry-pr11`)_
@@ -139,6 +154,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - A DB blip no longer fails the entire crawl. The save still fails the item _(from `2026-09-09-save-stage-retry-pr11`)_
 - Adding a new stage (e.g. `dedup`) is now a mechanical extract step _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- A dropped item is counted separately: `Crawled.itemsSaved` excludes it, and one _(from `2026-10-09-wire-business-rules-into-filter`)_
 - `arrow-either-anti-patterns` skill now has accurate guidance with the `map { side-effect; value }` distinction _(from `2026-09-09-arrow-either-pr20`)_
 - Default remains sequential (`1`) — users must explicitly set `crawler.spider.concurrency` in YAML to get parallelism _(from `2026-09-09-concurrency-wiring-pr17`)_
 - Each helper is independently testable _(from `2026-09-09-pipeline-extraction-pr11-5`)_
@@ -147,10 +163,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - HTTP errors (500/429/connection) are now correctly retried up to `maxAttempts`. _(from `2026-09-08-retry-semantics-pr8`)_
 - Integration tests in `tests/` still cover the full stack; they complement, not replace, domain tests. _(from `2026-09-08-domain-coverage-pr4`)_
 - Pagination remains inline — defer extraction until a concrete need arises _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- `PipelineFailure` third-Either variant remains available as a future option if more _(from `2026-10-09-pipelinefailure-carries-sides`)_
 - `PipelineRunner` code is unchanged (already correct) _(from `2026-09-09-arrow-either-pr20`)_
 - `Pipeline.run()` reduced from 113 lines to ~55 lines _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- `Pipeline.run` return type is a breaking change; all call sites that pattern-match on _(from `2026-10-09-pipelinefailure-carries-sides`)_
 - `Retry.*` data classes kept for test expressiveness and future signal-specific behaviour _(from `2026-09-09-retry-backoff-collapse-pr9-5`)_
 - `retryDelayMs()` reduced from 19 lines to 11 lines _(from `2026-09-09-retry-backoff-collapse-pr9-5`)_
+- Rules read `priceKopecks`, `salePriceKopecks`, `inStock` and `category` from `ParsedItem`, _(from `2026-10-09-wire-business-rules-into-filter`)_
 - `SaveBatchInterpreter` and `ScheduleRetryInterpreter` are not optional — they must be registered in every `runTarget`. _(from `2026-09-08-functional-pipeline-refactor`)_
 - `Spider.concurrency` from `application.yml` now actually controls download concurrency _(from `2026-09-09-concurrency-wiring-pr17`)_
 
@@ -175,6 +194,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Positive**: `crawler.schedule.cron` from YAML controls the schedule _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: Scheduler now actually runs when `worker` profile is active and `crawler.worker.enabled = true` _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: `Spider.concurrency` now reaches `CrawlRunner` via `CrawlerConfig` _(from `2026-09-09-scheduler-wireup-pr18`)_
+
+### `side-effects`
+
+- `PipelineFailure` third-Either variant remains available as a future option if more _(from `2026-10-09-pipelinefailure-carries-sides`)_
+- `Pipeline.run` return type is a breaking change; all call sites that pattern-match on _(from `2026-10-09-pipelinefailure-carries-sides`)_
 
 ### `spring`
 
@@ -220,6 +244,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-09-09-test-module-boundary-pr10` — testing  architecture
 - `2026-10-08-discover-test-migrations` — testing  architecture  database
 - `2026-10-08-gates-that-can-fail` — testing  ci  architecture
+- `2026-10-09-pipelinefailure-carries-sides` — pipeline  either  side-effects
+- `2026-10-09-wire-business-rules-into-filter` — pipeline  behaviour  configuration
 
 ## Active entries
 
@@ -239,3 +265,5 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-09-09-test-module-boundary-pr10` — Test module boundary — where tests live
 - `2026-10-08-discover-test-migrations` — Test schemas are discovered, never listed — and refuse to guess
 - `2026-10-08-gates-that-can-fail` — A gate that cannot fail is worse than no gate — and that is a shared rule
+- `2026-10-09-pipelinefailure-carries-sides` — Pipeline failure carries accumulated sides
+- `2026-10-09-wire-business-rules-into-filter` — Business rules are wired into the filter stage, and filtering is now on by default

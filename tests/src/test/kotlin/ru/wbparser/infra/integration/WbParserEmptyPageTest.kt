@@ -6,7 +6,6 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.test.runTest
-import ru.wbparser.app.config.parseWbCatalog
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.RetryPolicy
@@ -14,6 +13,7 @@ import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.infra.http.KtorDownloader
+import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
@@ -24,9 +24,7 @@ import ru.wbparser.testing.SqliteTestHandle
 import ru.wbparser.testing.TestSideCollector
 import ru.wbparser.testing.WbFixtureServer
 import ru.wbparser.testing.fixedClockOf
-import java.math.BigDecimal
-import java.sql.Timestamp
-import java.time.Instant
+import ru.wbparser.testing.writeItemsSqlite
 import java.util.UUID
 
 /**
@@ -59,43 +57,7 @@ class WbParserEmptyPageTest :
                 val downloader = KtorDownloader(timeoutMs = 10_000)
 
                 val save: suspend (List<SavedItem>) -> Step<List<SavedItem>, Unit> = { items ->
-                    db.ds.connection.use { conn ->
-                        conn
-                            .prepareStatement(
-                                """
-                                INSERT OR REPLACE INTO scraped_items (
-                                    id, target_id, catalog_url, product_url, brand, seller,
-                                    price_kopecks, title, product_id, cashback, cashback_percent,
-                                    data, content_hash, scraped_at, subject_id, subject_parent_id,
-                                    match_id, supplier_id, catalog_name
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                """.trimIndent(),
-                            ).use { ps ->
-                                for (item in items) {
-                                    ps.setString(1, UUID.randomUUID().toString())
-                                    ps.setString(2, "1")
-                                    ps.setString(3, null)
-                                    ps.setString(4, item.pageUrl)
-                                    ps.setString(5, item.brand)
-                                    ps.setString(6, null)
-                                    ps.setObject(7, item.priceKopecks)
-                                    ps.setString(8, item.name)
-                                    ps.setObject(9, item.productId)
-                                    ps.setBigDecimal(10, item.cashbackKopecks?.let { BigDecimal.valueOf(it).movePointLeft(2) })
-                                    ps.setBigDecimal(11, null)
-                                    ps.setString(12, "{}") // data column not asserted in tests
-                                    ps.setString(13, item.contentHash)
-                                    ps.setTimestamp(14, Timestamp.from(Instant.now()))
-                                    ps.setObject(15, item.subjectId)
-                                    ps.setObject(16, null)
-                                    ps.setObject(17, null)
-                                    ps.setObject(18, item.supplierId)
-                                    ps.setString(19, item.category)
-                                    ps.addBatch()
-                                }
-                                ps.executeBatch()
-                            }
-                    }
+                    db.ds.writeItemsSqlite(items)
                     Step.Done(Unit)
                 }
 

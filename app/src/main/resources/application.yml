@@ -107,3 +107,25 @@ spring:
 crawler:
   worker:
     enabled: false
+
+---
+# One-shot crawl: run the crawler once, then exit.
+#
+# Both settings are scoped to this profile on purpose. Setting `web-application-type: none`
+# in the base document would silently disable the web server for every mode, including the
+# normal server run; the same goes for `worker.enabled`, which is what gates ScheduledCrawler.
+spring:
+  config:
+    activate:
+      on-profile: once
+  main:
+    web-application-type: none
+  autoconfigure:
+    exclude:
+      # WebSecurityConfig is additionally profile-gated, but its auto-configured
+      # counterpart still assembles a filter chain that requires a servlet context.
+      - org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration
+
+crawler:
+  worker:
+    enabled: false

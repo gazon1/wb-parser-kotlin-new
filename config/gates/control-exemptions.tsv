@@ -8,3 +8,4 @@
 # Format: <gate name> <TAB> <reason on ONE line>
 
 gate scripts' own unit tests	Its control is the unittest suite itself: a failing test fails the gate. The remaining risk is a suite that discovers zero tests and exits 0, which is why scripts/tests/test_runnable_tests.py asserts that discovery actually finds tests rather than trusting the exit code.
+domain purity: no infra imports in domain	A self-test would require introducing a forbidden import into domain/, which is a real violation. The check is a simple grep on a well-defined pattern; the logic is trivially auditable.
