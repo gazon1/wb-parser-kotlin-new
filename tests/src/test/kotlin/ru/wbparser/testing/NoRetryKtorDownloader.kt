@@ -16,6 +16,7 @@ import ru.wbparser.domain.error.NetworkError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.value.CrawlHttpStatusCode
+import ru.wbparser.infra.http.HttpConstants
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -35,7 +36,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * For production, use [ru.wbparser.infra.http.KtorDownloader].
  */
 class NoRetryKtorDownloader(
-    private val timeoutMs: Long = 30_000,
+    private val timeoutMs: Long = HttpConstants.DEFAULT_HTTP_TIMEOUT_MS,
     private val userAgent: String = DEFAULT_USER_AGENT,
 ) {
     private val client =

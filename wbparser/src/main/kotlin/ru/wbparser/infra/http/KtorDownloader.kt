@@ -26,7 +26,7 @@ import kotlin.coroutines.cancellation.CancellationException
  * Uses CIO engine for JVM-native performance without native deps.
  */
 class KtorDownloader(
-    private val timeoutMs: Long = 30_000,
+    private val timeoutMs: Long = HttpConstants.DEFAULT_HTTP_TIMEOUT_MS,
     private val userAgent: String = DEFAULT_USER_AGENT,
 ) {
     private val json =

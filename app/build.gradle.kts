@@ -24,7 +24,7 @@ tasks.bootJar {
 dependencies {
     implementation(project(":wbparser"))
 
-    implementation(kotlin("stdlib-jdk8"))
+    implementation(kotlin("stdlib"))
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("net.javacrumbs.shedlock:shedlock-spring:5.14.0")
     implementation("org.jetbrains.exposed:exposed-core:0.55.0")
