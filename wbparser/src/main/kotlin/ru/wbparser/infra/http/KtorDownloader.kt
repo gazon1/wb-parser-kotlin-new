@@ -1,17 +1,20 @@
-package ru.wbparser.testing
+package ru.wbparser.infra.http
 
 import arrow.core.Either
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logger
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.statement.bodyAsText
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import ru.wbparser.domain.error.NetworkError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
@@ -19,42 +22,34 @@ import ru.wbparser.domain.value.CrawlHttpStatusCode
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * A Ktor-based HTTP downloader that makes exactly one attempt per request.
- *
- * Use this in integration tests when you want to verify the **pipeline-level**
- * retry behaviour (`Step.Retry` + `stageWithRetry`). By default, the pipeline's
- * `stageWithRetry` handles all retry logic — this downloader just translates
- * HTTP responses into `Either<NetworkError, Fetched>` without any retry of its own.
- *
- * Key differences from production [ru.wbparser.infra.http.KtorDownloader]:
- * - No ContentNegotiation plugin (we only read raw body as text)
- * - No HttpRequestRetry plugin — CIO does not retry server errors by default
- * - `socketTimeoutMillis == timeoutMs` so slow servers surface as `NetworkError`
- *   rather than triggering an undefined retry path
- *
- * For production, use [ru.wbparser.infra.http.KtorDownloader].
+ * Ktor-based HTTP downloader for Wildberries catalog pages and API calls.
+ * Uses CIO engine for JVM-native performance without native deps.
  */
-class NoRetryKtorDownloader(
+class KtorDownloader(
     private val timeoutMs: Long = 30_000,
     private val userAgent: String = DEFAULT_USER_AGENT,
 ) {
+    private val json =
+        Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+        }
+
     private val client =
         HttpClient(CIO) {
             install(HttpTimeout) {
                 requestTimeoutMillis = timeoutMs
                 connectTimeoutMillis = 15_000
-                // Equal to request timeout: any delay surfaces as a clean NetworkError.
                 socketTimeoutMillis = timeoutMs
             }
-
-            // No automatic retry plugin — CIO does not retry server errors by default.
-            // Pipeline-level retry is handled by stageWithRetry.
-
+            install(ContentNegotiation) {
+                json(json)
+            }
             install(Logging) {
                 logger =
                     object : Logger {
                         override fun log(message: String) {
-                            // no-op: tests use TestSideCollector for assertions
+                            // structured logging via kotlin-logging in production
                         }
                     }
                 level = LogLevel.NONE
@@ -91,9 +86,10 @@ class NoRetryKtorDownloader(
                     )
                 }
             } catch (e: CancellationException) {
-                // Mirrors the production KtorDownloader: a cancelled test must fail the
-                // same way a cancelled crawl does, otherwise the fixture would mask the
-                // very behaviour the cancellation tests assert.
+                // Cancellation is not a transport failure. It extends
+                // IllegalStateException, so the generic catch below used to turn a
+                // cancelled crawl into NetworkError -> retry, which kept the crawler
+                // downloading after its caller had given up.
                 throw e
             } catch (e: Exception) {
                 Either.Left(NetworkError(e.message ?: "Unknown error", e, task.url.toString()))

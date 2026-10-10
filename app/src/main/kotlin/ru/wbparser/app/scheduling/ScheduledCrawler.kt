@@ -5,6 +5,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import ru.wbparser.infra.runner.CrawlRunner
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Scheduled crawler that runs on a cron schedule.
@@ -38,6 +39,11 @@ class ScheduledCrawler(
                     log.error("Crawl failed: ${result.message}")
                 }
             }
+        } catch (e: CancellationException) {
+            // Shutdown was requested. Logging this as a crawl failure would be noise, and
+            // swallowing it would hide the fact that the crawl never finished.
+            log.info("Crawl cancelled: ${e.message}")
+            throw e
         } catch (e: Exception) {
             log.error("Crawl threw exception", e)
         }

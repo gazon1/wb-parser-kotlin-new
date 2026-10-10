@@ -6,6 +6,7 @@ import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.KtorDownloader
+import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.runner.CrawlRunner
 
 /**
@@ -35,6 +36,7 @@ class CrawlerConfig {
             parser = { fetched -> parseWbCatalog(fetched) },
             maxPagesPerCatalog = properties.spider.maxPagesPerCatalog,
             maxDepth = properties.spider.maxDepth,
+            rules = properties.spider.rules.toBusinessRules(),
             clock = clock,
             concurrency = properties.spider.concurrency,
         )

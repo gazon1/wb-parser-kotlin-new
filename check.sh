@@ -40,17 +40,12 @@ fail() { echo -e "${RED}$1${NC}"; exit 1; }
 step 1 "static gates (the shared registry)"
 bash scripts/ci/static-gates.sh || fail "a static gate failed — see scripts/ci/static-gates.sh"
 
-# --- [2] domain tests --------------------------------------------------------
-# The domain module carries no Spring, no database and no I/O. If its tests fail,
-# every failure above it is downstream, so they run first.
-step 2 "domain:test"
-./gradlew :domain:test --quiet || fail "domain:test FAILED"
-echo -e "${GREEN}domain:test passed${NC}"
-
-# --- [3] infrastructure tests -------------------------------------------------
-step 3 "infrastructure:test"
-./gradlew :infrastructure:test --quiet || fail "infrastructure:test FAILED"
-echo -e "${GREEN}infrastructure:test passed${NC}"
+# --- [2] merged module unit tests --------------------------------------------
+# The wbparser module (domain + infrastructure merged) carries no Spring, no I/O.
+# If its tests fail, every failure above it is downstream, so they run first.
+step 2 "wbparser:test"
+./gradlew :wbparser:test --quiet || fail "wbparser:test FAILED"
+echo -e "${GREEN}wbparser:test passed${NC}"
 
 # --- [4] integration tests ----------------------------------------------------
 if [[ "$SKIP_DB" == "1" ]]; then

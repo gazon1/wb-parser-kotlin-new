@@ -10,8 +10,7 @@ pluginManagement {
 
 rootProject.name = "wb-parser-kotlin"
 
-include("domain")
-include("infrastructure")
+include("wbparser")
 include("app")
 include("tests")
 

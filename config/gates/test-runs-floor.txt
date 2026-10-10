@@ -2,6 +2,5 @@
 # Managed by scripts/check-test-runs.py --update. Raise it in the same commit
 # that adds tests; lowering it is allowed only when tests are deleted.
 
-domain 196
-infrastructure 0
+wbparser 196
 tests 44
