@@ -4,6 +4,12 @@ import java.net.URI
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 
+/**
+ * Public Wildberries base URL — the single source of truth for the WB storefront domain.
+ * Use this constant whenever a WB URL needs to be constructed or validated.
+ */
+const val WB_BASE_URL = "https://www.wildberries.ru"
+
 private val WB_HOSTS = setOf("wildberries.ru", "www.wildberries.ru")
 
 /**

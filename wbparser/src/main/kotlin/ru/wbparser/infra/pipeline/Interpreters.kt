@@ -64,6 +64,16 @@ class JobEventInterpreter : Interpreter<Side.JobEvent> {
  * [Side.ScheduleRetry] side effect is emitted for observability only — it is NOT
  * re-injected into the pending queue by [PipelineRunner].
  *
+ * ## Save stage asymmetry
+ *
+ * The save stage's retry loop ([saveOne][ru.wbparser.domain.pipeline.Pipeline.saveOne])
+ * also runs inline with [delay] but does **not** emit [Side.ScheduleRetry]. This is
+ * intentional: download and parse are I/O stages where retry events are useful for
+ * metrics and alerting, whereas save failures are infrastructure-level and are
+ * already surfaced via [Side.Log] at ERROR level. Adding [Side.ScheduleRetry] for
+ * save would create an asymmetry where the same [Side.ScheduleRetry] semantics
+ * means "retrying download/parse" in one context and "retrying save" in another.
+ *
  * This interpreter exists only to satisfy the registry API (without it, the
  * pipeline would throw `IllegalStateException: No interpreter for Side.ScheduleRetry`).
  *

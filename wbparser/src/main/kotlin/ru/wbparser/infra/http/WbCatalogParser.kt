@@ -7,6 +7,7 @@ import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.parsing.WbCatalogEnvelope
 import ru.wbparser.domain.parsing.WbItemDto
 import ru.wbparser.domain.parsing.toParsedItem
+import ru.wbparser.domain.util.WB_BASE_URL
 import ru.wbparser.domain.value.CrawlUrl
 
 /**
@@ -23,7 +24,7 @@ private val wbJson: Json =
         isLenient = true
     }
 
-private const val BASE_PAGE_URL = "https://www.wildberries.ru/catalog/"
+private const val BASE_PAGE_URL = "$WB_BASE_URL/catalog/"
 
 private val log = LoggerFactory.getLogger("ru.wbparser.infra.http.WbCatalogParser")
 
