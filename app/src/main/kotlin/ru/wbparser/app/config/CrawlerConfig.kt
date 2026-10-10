@@ -39,6 +39,7 @@ class CrawlerConfig {
             rules = properties.spider.rules.toBusinessRules(),
             clock = clock,
             concurrency = properties.spider.concurrency,
+            lockTimeoutMs = properties.lock.timeoutMinutes * 60_000,
         )
 
     @Bean

@@ -59,6 +59,7 @@ class CrawlRunner(
     private val rules: BusinessRules = BusinessRules(),
     private val clock: Clock = SystemClock,
     private val concurrency: Int = 1,
+    private val lockTimeoutMs: Long = 600_000,
     /** Called once when the crawl job starts, before any target is processed. */
     private val onCrawlStart: suspend (CrawlContext) -> Unit = {},
     /** Called once when the crawl job ends (success, failure, or cancellation). */
@@ -77,7 +78,7 @@ class CrawlRunner(
         val targetIds: List<UUID>,
     )
 
-    private val advisoryLock = PostgresAdvisoryLock(db.ds)
+    private val advisoryLock = PostgresAdvisoryLock(db.ds, lockTimeoutMs)
     private val freshnessPolicy = FreshnessPolicy()
     private var freshnessState = Freshness()
 
