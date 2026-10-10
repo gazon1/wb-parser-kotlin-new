@@ -6,6 +6,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.test.runTest
+import ru.wbparser.domain.coroutines.loggingBackgroundFailureHandler
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedItem
@@ -125,7 +126,7 @@ class PipelineFailureEffectsTest :
         test("a successful crawl does reach the interpreter") {
             runTest {
                 val (registry, seen) = collectingRegistry()
-                PipelineRunner(pipeline(failsOn = "nothing"), registry)
+                PipelineRunner(pipeline(failsOn = "nothing"), registry, loggingBackgroundFailureHandler())
                     .run(listOf(task("http://example.com/good")))
 
                 (seen.isNotEmpty()) shouldBe true
@@ -137,7 +138,7 @@ class PipelineFailureEffectsTest :
         test("effects collected before the failure reach the interpreter") {
             runTest {
                 val (registry, seen) = collectingRegistry()
-                val runner = PipelineRunner(pipeline(failsOn = "bad"), registry)
+                val runner = PipelineRunner(pipeline(failsOn = "bad"), registry, loggingBackgroundFailureHandler())
 
                 runner.run(
                     listOf(

@@ -1,6 +1,8 @@
 package ru.wbparser.infra.pipeline
 
 import arrow.core.Either
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.withContext
 import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.pipeline.Pipeline
@@ -16,10 +18,14 @@ import ru.wbparser.domain.pipeline.Pipeline as DomainPipeline
  *
  * @param pipeline The pure pipeline description.
  * @param interpreterRegistry The registry that knows how to handle each [Side] variant.
+ * @param failureHandler Required exception handler for unhandled coroutine failures.
+ *   **Must be provided explicitly** — a scope with no handler lets exceptions escape to the
+ *   platform's default uncaught-exception handler, which kills the JVM process.
  */
 class PipelineRunner(
     private val pipeline: DomainPipeline,
     private val interpreterRegistry: SideInterpreterRegistry,
+    private val failureHandler: CoroutineExceptionHandler,
 ) {
     /**
      * Runs the pipeline over [tasks] and interprets all emitted sides.
@@ -37,17 +43,19 @@ class PipelineRunner(
         tasks: List<Crawling>,
         concurrency: Int = 1,
     ): Either<DomainError, ru.wbparser.domain.pipeline.Crawled> =
-        pipeline.run(tasks, concurrency = concurrency).fold(
-            ifLeft = { (error, sides) ->
-                // Interpret sides even on failure — this is where the diagnostics for
-                // successful tasks in the failed batch live. Without this, every hard
-                // failure silently erased the evidence of how far the batch got.
-                interpreterRegistry.interpretAll(sides)
-                Either.Left(error)
-            },
-            ifRight = { (crawled, sides) ->
-                interpreterRegistry.interpretAll(sides)
-                Either.Right(crawled)
-            },
-        )
+        withContext(failureHandler) {
+            pipeline.run(tasks, concurrency = concurrency).fold(
+                ifLeft = { (error, sides) ->
+                    // Interpret sides even on failure — this is where the diagnostics for
+                    // successful tasks in the failed batch live. Without this, every hard
+                    // failure silently erased the evidence of how far the batch got.
+                    interpreterRegistry.interpretAll(sides)
+                    Either.Left(error)
+                },
+                ifRight = { (crawled, sides) ->
+                    interpreterRegistry.interpretAll(sides)
+                    Either.Right(crawled)
+                },
+            )
+        }
 }

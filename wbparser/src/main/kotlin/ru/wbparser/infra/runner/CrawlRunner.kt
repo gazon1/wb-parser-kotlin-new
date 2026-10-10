@@ -2,9 +2,11 @@ package ru.wbparser.infra.runner
 
 import arrow.core.Either
 import arrow.core.getOrElse
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import ru.wbparser.domain.coroutines.loggingBackgroundFailureHandler
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.SavedItem
@@ -64,6 +66,12 @@ class CrawlRunner(
     private val onCrawlStart: suspend (CrawlContext) -> Unit = {},
     /** Called once when the crawl job ends (success, failure, or cancellation). */
     private val onCrawlEnd: suspend (CrawlContext, Stop) -> Unit = { _, _ -> },
+    /**
+     * Required exception handler for unhandled background coroutine failures in this crawl.
+     * **Must be provided explicitly** — a scope with no handler lets exceptions escape to the
+     * JVM's default uncaught-exception handler, which kills the process.
+     */
+    private val failureHandler: CoroutineExceptionHandler = loggingBackgroundFailureHandler(),
 ) {
     /**
      * Context for a crawl job — passed to [onCrawlStart] and [onCrawlEnd] hooks.
@@ -246,7 +254,7 @@ class CrawlRunner(
                     ru.wbparser.infra.pipeline
                         .LogDropInterpreter(),
             )
-        val runner = PipelineRunner(pipeline, registry)
+        val runner = PipelineRunner(pipeline, registry, failureHandler)
 
         val startUrl: CrawlUrl =
             CrawlUrl.of(target.url).getOrElse {

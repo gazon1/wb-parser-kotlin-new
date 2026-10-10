@@ -4,6 +4,7 @@ import arrow.core.Either
 import arrow.core.getOrElse
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import ru.wbparser.domain.coroutines.loggingBackgroundFailureHandler
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.RetryPolicy
@@ -88,7 +89,7 @@ class WbParserRetryTest :
                     saveBatch = SaveBatchTestInterpreter(collector),
                     scheduleRetry = ScheduleRetryTestInterpreter(collector),
                 )
-            val runner = PipelineRunner(pipeline, registry)
+            val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
             val startUrl = CrawlUrl.of(catalogUrl).getOrElse { throw IllegalStateException("Invalid URL") }
             val startTask = Crawling(id = "start-task", url = startUrl, depth = 0, targetId = targetId)
