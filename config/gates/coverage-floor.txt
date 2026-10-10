@@ -1,0 +1,4 @@
+# Minimum line coverage percentage for wbparser module.
+# 45% — baseline from first instrumentation (2026-10-10).
+# Raise when coverage grows: ./scripts/raise-kover-floor.py
+45
