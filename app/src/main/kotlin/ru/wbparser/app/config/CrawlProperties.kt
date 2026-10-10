@@ -15,10 +15,16 @@ data class CrawlProperties(
     val spider: Spider = Spider(),
     val database: Database = Database(),
     val worker: Worker = Worker(),
+    val lock: Lock = Lock(),
 )
 
 data class Schedule(
     val cron: String = "0 0 */4 * * *",
+)
+
+data class Lock(
+    /** Advisory lock acquisition timeout, in minutes. 0 means no timeout (wait forever). */
+    val timeoutMinutes: Long = 10,
 )
 
 data class Spider(
