@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.test.runTest
+import ru.wbparser.domain.coroutines.loggingBackgroundFailureHandler
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedItem
@@ -97,7 +98,7 @@ class PipelineRunnerTest :
                     SideInterpreterRegistry(
                         saveBatch = SaveBatchTestInterpreter(collector),
                     )
-                val runner = PipelineRunner(pipeline, registry)
+                val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
                 val result = runner.run(listOf(testCrawling()))
 
@@ -119,7 +120,7 @@ class PipelineRunnerTest :
                         },
                     )
                 val registry = SideInterpreterRegistry()
-                val runner = PipelineRunner(pipeline, registry)
+                val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
                 val result = runner.run(listOf(testCrawling()))
 
@@ -141,7 +142,7 @@ class PipelineRunnerTest :
                     SideInterpreterRegistry(
                         saveBatch = SaveBatchTestInterpreter(collector),
                     )
-                val runner = PipelineRunner(pipeline, registry)
+                val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
                 val result = runner.run(listOf(testCrawling()))
 
@@ -162,7 +163,7 @@ class PipelineRunnerTest :
                         stopAt = { pages, _ -> if (pages >= 1) Stop.MaxPagesReached else null },
                     )
                 val registry = SideInterpreterRegistry()
-                val runner = PipelineRunner(pipeline, registry)
+                val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
                 val result = runner.run(listOf(testCrawling()))
 
@@ -197,7 +198,7 @@ class PipelineRunnerTest :
                         log = ru.wbparser.testing.LogTestInterpreter(collector),
                         saveBatch = SaveBatchTestInterpreter(collector),
                     )
-                val runner = PipelineRunner(pipeline, registry)
+                val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
                 val result = runner.run(listOf(testCrawling()))
 

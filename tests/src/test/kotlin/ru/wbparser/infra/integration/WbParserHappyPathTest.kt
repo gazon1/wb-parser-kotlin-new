@@ -5,6 +5,7 @@ import arrow.core.getOrElse
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.test.runTest
+import ru.wbparser.domain.coroutines.loggingBackgroundFailureHandler
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.RetryPolicy
@@ -82,7 +83,7 @@ class WbParserHappyPathTest :
                         saveBatch = SaveBatchTestInterpreter(collector),
                         scheduleRetry = ScheduleRetryTestInterpreter(collector),
                     )
-                val runner = PipelineRunner(pipeline, registry)
+                val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
                 val startUrl =
                     CrawlUrl
