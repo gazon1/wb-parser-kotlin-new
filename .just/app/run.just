@@ -8,7 +8,10 @@
 run:
     #!/bin/bash
     set -euo pipefail
-    SPRING_PROFILES="{{SPRING_PROFILES}}" ./gradlew :app:bootRun --no-daemon
+    if [[ -n "{{SPRING_PROFILES}}" ]]; then
+        export SPRING_PROFILES="{{SPRING_PROFILES}}"
+    fi
+    ./gradlew :app:bootRun --no-daemon
 
 [group('docker')]
 [doc('Run the local debug stack (app + postgres) via docker-compose.debug.yml')]
