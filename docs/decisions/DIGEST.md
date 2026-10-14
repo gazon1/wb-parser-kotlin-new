@@ -40,16 +40,27 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** interpret accumulated sides on failure — never lose diagnostic evidence _(from `2026-10-09-pipelinefailure-carries-sides`)
 - **Always** configure `crawler.spider.rules` explicitly when deploying, even to the defaults, _(from `2026-10-09-wire-business-rules-into-filter`)
 - **Never** widen a rule's boundary without adding the boundary case to a test. The comparison _(from `2026-10-09-wire-business-rules-into-filter`)
+- **Always** reset `warm = false` when `getOrCreatePage()` opens a new page or when a profile _(from `2026-10-14-antibot-session-is-site-wide`)
+- **Always** run one cold request per profile after a CDP reconnect; the flag is the only _(from `2026-10-14-antibot-session-is-site-wide`)
+- **Never** remove the jitter expecting it to be free. It is ~0.35 s of the 0.66 s steady-state _(from `2026-10-14-antibot-session-is-site-wide`)
 - **Always** pass the compose file's path explicitly to the role _(from `2026-10-14-deploy-crawler-as-registry-image`)
 - **Always** treat a deploy as unproven until the container reports healthy. _(from `2026-10-14-deploy-crawler-as-registry-image`)
 - **Never** give an image tag a `latest` fallback. A deploy that forgot to name a _(from `2026-10-14-deploy-crawler-as-registry-image`)
 - **Never** put a credential in the `.env` that compose interpolates. Secrets go _(from `2026-10-14-deploy-crawler-as-registry-image`)
+- **Always** keep request construction in `WbCatalogRequest`, not back inside the adapter. A _(from `2026-10-14-extract-browser-request-logic-for-testability`)
+- **Never** give a Kover-exercised DTO a required field that a single malformed API entry can _(from `2026-10-14-extract-browser-request-logic-for-testability`)
+- **Never** solve a coverage drop on untestable adapters by excluding them. Extract the logic _(from `2026-10-14-extract-browser-request-logic-for-testability`)
 
 ## Per-tag
 
 ### `ansible`
 
 - The crawler reaching Wildberries from the VPS is a separate question from _(from `2026-10-14-deploy-crawler-as-registry-image`)_
+
+### `antibot`
+
+- `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
+- `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
 
 ### `architecture`
 
@@ -88,6 +99,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - A dropped item is counted separately: `Crawled.itemsSaved` excludes it, and one _(from `2026-10-09-wire-business-rules-into-filter`)_
 - Rules read `priceKopecks`, `salePriceKopecks`, `inStock` and `category` from `ParsedItem`, _(from `2026-10-09-wire-business-rules-into-filter`)_
+
+### `browser`
+
+- `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
+- `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
+- The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 
 ### `bug-fix`
 
@@ -131,6 +148,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Cluster prefixes (`A1`, `A2`, …) from the tech-debt plan may appear in subject after the `PR N` marker. _(from `2026-09-08-conventional-commits-and-cleanup-prs`)_
 - `git log --oneline` is the project changelog — keep subjects informative. _(from `2026-09-08-conventional-commits-and-cleanup-prs`)_
 
+### `coverage`
+
+- The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
+
 ### `database`
 
 - `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share _(from `2026-10-08-discover-test-migrations`)_
@@ -170,7 +191,15 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `infrastructure`
 
+- `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
+- `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
+- The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 - The crawler reaching Wildberries from the VPS is a separate question from _(from `2026-10-14-deploy-crawler-as-registry-image`)_
+
+### `performance`
+
+- `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
+- `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
 
 ### `pipeline`
 
@@ -242,6 +271,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `isStopped()` / `isDrop()` defaults in `DomainError` still present — zero callers confirmed, removal deferred _(from `2026-09-09-test-module-boundary-pr10`)_
 - `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share _(from `2026-10-08-discover-test-migrations`)_
 - `tests:test` still runs integration tests (fake HTTP + SQLite) _(from `2026-09-09-test-module-boundary-pr10`)_
+- The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 - The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same _(from `2026-10-08-discover-test-migrations`)_
 - The executed-test floors are raised in the same commit that adds tests, in both _(from `2026-10-08-gates-that-can-fail`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
@@ -272,7 +302,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-08-gates-that-can-fail` — testing  ci  architecture
 - `2026-10-09-pipelinefailure-carries-sides` — pipeline  either  side-effects
 - `2026-10-09-wire-business-rules-into-filter` — pipeline  behaviour  configuration
+- `2026-10-14-antibot-session-is-site-wide` — infrastructure  browser  antibot  performance
 - `2026-10-14-deploy-crawler-as-registry-image` — deployment  infrastructure  ansible  docker
+- `2026-10-14-extract-browser-request-logic-for-testability` — infrastructure  testing  coverage  browser
 - `2026-10-14-pipeline-purity-idgen` — pipeline  refactoring  architecture
 
 ## Active entries
@@ -295,5 +327,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-08-gates-that-can-fail` — A gate that cannot fail is worse than no gate — and that is a shared rule
 - `2026-10-09-pipelinefailure-carries-sides` — Pipeline failure carries accumulated sides
 - `2026-10-09-wire-business-rules-into-filter` — Business rules are wired into the filter stage, and filtering is now on by default
+- `2026-10-14-antibot-session-is-site-wide` — Anti-bot warm-up is amortized per profile, not per request
 - `2026-10-14-deploy-crawler-as-registry-image` — Deploy the crawler as a registry image, built on the operator's machine
+- `2026-10-14-extract-browser-request-logic-for-testability` — Browser fetch extracts request construction instead of excluding itself from coverage
 - `2026-10-14-pipeline-purity-idgen` — Pipeline idGen injectable; delay() in stageWithRetry is intentional
