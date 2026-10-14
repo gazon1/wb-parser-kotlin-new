@@ -11,9 +11,3 @@ dependencies = [
     "psycopg2-binary>=2.9.9",
     "loguru>=0.7.0",
 ]
-
-# ── uv tool settings ──────────────────────────────────────────────────────────
-# Allows `uv run --directory scripts/wb-catalog catalog_selector.py`
-# and `uv run --directory scripts/wb-catalog load_catalog_to_pg.py ...`
-[tool.uv.pip-options]
-extra-index-url = ["https://pypi.org/simple/"]
