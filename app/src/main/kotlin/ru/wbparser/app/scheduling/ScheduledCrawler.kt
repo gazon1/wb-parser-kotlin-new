@@ -23,8 +23,6 @@ class ScheduledCrawler(
     private val log = LoggerFactory.getLogger(ScheduledCrawler::class.java)
 
     @Scheduled(cron = "\${crawler.schedule.cron:0 0 */4 * * *}")
-    // A scheduled crawl must survive any single failure: catching broadly at this boundary
-    // is the point, and the exception is logged rather than swallowed.
     @Suppress("TooGenericExceptionCaught")
     suspend fun run() {
         try {
@@ -40,12 +38,10 @@ class ScheduledCrawler(
                 }
             }
         } catch (e: CancellationException) {
-            // Shutdown was requested. Logging this as a crawl failure would be noise, and
-            // swallowing it would hide the fact that the crawl never finished.
             log.info("Crawl cancelled: ${e.message}")
             throw e
-        } catch (e: Exception) {
-            log.error("Crawl threw exception", e)
+        } catch (t: Throwable) {
+            log.error("Crawl threw exception", t)
         }
     }
 }

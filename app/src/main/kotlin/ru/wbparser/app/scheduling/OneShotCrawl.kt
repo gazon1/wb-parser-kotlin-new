@@ -40,7 +40,7 @@ class OneShotCrawl(
     ExitCodeGenerator {
     private val log = LoggerFactory.getLogger(OneShotCrawl::class.java)
 
-    private var exitCode: Int = EXIT_FAILURE
+    private var exitCode: Int = CrawlRunner.EXIT_CODE_FAILURE
 
     override fun run(args: ApplicationArguments) {
         // runBlocking bridges Spring's synchronous ApplicationRunner contract to the
@@ -51,34 +51,29 @@ class OneShotCrawl(
                 runBlocking { runOnce() }
             } catch (e: CancellationException) {
                 log.info("One-shot crawl cancelled: ${e.message}")
-                EXIT_CANCELLED
+                CrawlRunner.EXIT_CODE_CANCELLED
             }
 
         log.info("One-shot crawl finished with exit code $exitCode")
     }
 
-    private suspend fun runOnce(): Int =
-        when (val result = crawler.run()) {
+    private suspend fun runOnce(): Int {
+        val result = crawler.run()
+        return when (result) {
             is CrawlRunner.RunResult.Success -> {
                 log.info("Crawl completed: {} pages, {} items", result.pagesCrawled, result.itemsSaved)
-                EXIT_SUCCESS
+                result.exitCode()
             }
             is CrawlRunner.RunResult.Failure -> {
                 log.error("Crawl failed: {}", result.message)
-                EXIT_FAILURE
+                result.exitCode()
             }
             is CrawlRunner.RunResult.AlreadyRunning -> {
                 log.warn("Crawl not started: advisory lock held by another instance")
-                EXIT_LOCKED
+                result.exitCode()
             }
         }
+    }
 
     override fun getExitCode(): Int = exitCode
-
-    companion object {
-        const val EXIT_SUCCESS = 0
-        const val EXIT_FAILURE = 1
-        const val EXIT_LOCKED = 2
-        const val EXIT_CANCELLED = 3
-    }
 }

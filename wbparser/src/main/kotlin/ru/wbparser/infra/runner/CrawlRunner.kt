@@ -122,7 +122,7 @@ class CrawlRunner(
 
             try {
                 onCrawlStart(ctx)
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 // hooks must not crash the crawl
             }
 
@@ -153,7 +153,7 @@ class CrawlRunner(
                 )
                 try {
                     onCrawlEnd(ctx, Stop.ManualStop)
-                } catch (_: Exception) {
+                } catch (_: Throwable) {
                     // hooks must not crash
                 }
                 return RunResult.Success(totalPages, totalItems)
@@ -169,7 +169,7 @@ class CrawlRunner(
             )
             try {
                 onCrawlEnd(ctx, Stop.ManualStop)
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 // hooks must not crash
             }
             return RunResult.Failure(message)
@@ -180,11 +180,11 @@ class CrawlRunner(
                 runCatching { closeJob(id, JobStatus.Cancelled) }
             }
             throw e
-        } catch (e: Exception) {
+        } catch (t: Throwable) {
             jobId?.let { id ->
-                runCatching { closeJob(id, JobStatus.Failed, errorMessage = e.message) }
+                runCatching { closeJob(id, JobStatus.Failed, errorMessage = t.message) }
             }
-            return RunResult.Failure(e.message ?: "Unknown error")
+            return RunResult.Failure(t.message ?: "Unknown error")
         }
     }
 
@@ -193,8 +193,14 @@ class CrawlRunner(
      *
      * Constructs a per-target [DomainPipeline] so that [targetId] is correctly
      * captured in the enrich stage closure.
+     *
+     * @param startTaskIdGen ID generator for the initial [Crawling] task.
+     *                        Defaults to [UUID.randomUUID] — override in tests for determinism.
      */
-    private suspend fun runTarget(target: Target): TargetResult {
+    private suspend fun runTarget(
+        target: Target,
+        startTaskIdGen: () -> String = { UUID.randomUUID().toString() },
+    ): TargetResult {
         val targetId = target.id
 
         val pipeline: DomainPipeline =
@@ -228,6 +234,7 @@ class CrawlRunner(
                     }
                 },
                 clock = clock,
+                idGen = startTaskIdGen,
             )
 
         val registry =
@@ -263,7 +270,7 @@ class CrawlRunner(
 
         val startTask =
             Crawling(
-                id = UUID.randomUUID().toString(),
+                id = startTaskIdGen(),
                 url = startUrl,
                 depth = 0,
                 targetId = targetId,
@@ -345,13 +352,33 @@ class CrawlRunner(
         data class Success(
             val pagesCrawled: Int,
             val itemsSaved: Int,
-        ) : RunResult()
+        ) : RunResult() {
+            fun exitCode(): Int = EXIT_CODE_SUCCESS
+        }
 
         data class Failure(
             val message: String,
-        ) : RunResult()
+        ) : RunResult() {
+            fun exitCode(): Int = EXIT_CODE_FAILURE
+        }
 
-        data object AlreadyRunning : RunResult()
+        data object AlreadyRunning : RunResult() {
+            fun exitCode(): Int = EXIT_CODE_LOCKED
+        }
+    }
+
+    companion object {
+        /** Exit code: crawl ran and succeeded. */
+        const val EXIT_CODE_SUCCESS = 0
+
+        /** Exit code: crawl ran and failed. */
+        const val EXIT_CODE_FAILURE = 1
+
+        /** Exit code: crawl was not started — advisory lock held by another instance. */
+        const val EXIT_CODE_LOCKED = 2
+
+        /** Exit code: crawl was cancelled. */
+        const val EXIT_CODE_CANCELLED = 3
     }
 
     /**

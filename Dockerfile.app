@@ -14,17 +14,27 @@
 # ── builder ──────────────────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jdk-alpine AS builder
 WORKDIR /app
+
 # Gradle writes outside /app and the build is not reproducible byte-for-byte
-# otherwise; keeping the caches in a named volume also keeps them out of the
-# image layers.
+# otherwise.
 ENV GRADLE_USER_HOME=/root/.gradle
+
+# The wrapper first, so a source-only change does not invalidate the layer that
+# unpacks the distribution.
 COPY gradlew ./
 COPY gradle ./gradle
-# Dependencies resolve before the source is copied, so editing code does not
-# re-download the world on every build.
-RUN ./gradlew --no-daemon dependencies >/dev/null 2>&1 || true
+
+# Cache mount, not a layer: the dependency cache must not ship in the image, but
+# re-downloading Kotlin, Spring, Ktor and Arrow on every build costs more than
+# the layer it would save. `--mount=type=cache` gives the fast path without the
+# fat image.
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew --no-daemon --version
+
 COPY . .
-RUN ./gradlew --no-daemon :app:bootJar -x test -x ktlintCheck -x detekt
+
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew --no-daemon :app:bootJar -x test -x ktlintCheck -x detekt
 
 # ── runtime ──────────────────────────────────────────────────────────────────
 FROM eclipse-temurin:21-jre-alpine AS runtime

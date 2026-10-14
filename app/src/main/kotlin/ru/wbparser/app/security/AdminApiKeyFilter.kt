@@ -10,10 +10,16 @@ import org.springframework.web.filter.OncePerRequestFilter
 
 /**
  * Authenticates admin requests via X-Api-Key header.
- * Reads the key from the ADMIN_API_KEY environment variable or application config.
+ * Reads the key from the ADMIN_API_KEY environment variable.
+ * Fails fast at startup if the variable is not set.
  */
 class AdminApiKeyFilter(
-    private val apiKey: String = System.getenv("ADMIN_API_KEY") ?: "dev-api-key-change-me",
+    private val apiKey: String =
+        System.getenv("ADMIN_API_KEY")
+            ?: throw IllegalStateException(
+                "ADMIN_API_KEY environment variable is not set. " +
+                    "The admin API must not be reachable with a well-known credential.",
+            ),
 ) : OncePerRequestFilter() {
     override fun doFilterInternal(
         request: HttpServletRequest,

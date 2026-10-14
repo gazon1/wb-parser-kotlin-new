@@ -34,14 +34,18 @@ boot-jar:
     echo "✅ app:bootJar done"
 
 [group('docker')]
-[doc('Build Docker image via Dockerfile.app')]
+[doc('Build the production image via Dockerfile.app (TAG=<sha> names it)')]
 [working-directory(justfile_directory())]
-docker-build:
+docker-build tag="local":
     #!/bin/bash
     set -euo pipefail
+    # No --build-arg JAR_FILE here: Dockerfile.app has no such ARG and has never
+    # had one. It compiles from source in the builder stage, because a prebuilt
+    # JAR cannot be COPYed in — .dockerignore excludes build outputs on purpose,
+    # so a build context carrying a stale jar produced an image whose contents
+    # nobody could account for.
     docker build \
         -f Dockerfile.app \
-        --build-arg JAR_FILE=app/build/libs/*.jar \
-        -t wb-parser:latest \
+        -t "wb-parser:{{ tag }}" \
         .
-    echo "✅ Docker image built: wb-parser:latest"
+    echo "✅ Docker image built: wb-parser:{{ tag }}"

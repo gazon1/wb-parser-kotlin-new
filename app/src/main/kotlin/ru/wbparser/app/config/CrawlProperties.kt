@@ -57,6 +57,15 @@ data class Rules(
         )
 }
 
+/**
+ * Crawler's own connection settings.
+ *
+ * These defaults exist only for the case where `application.yml` is absent; the shipped
+ * config binds this block to the same `${DB_HOST}` / `${DB_PORT}` / `${DB_NAME}` /
+ * `${DB_USER}` / `${DB_PASSWORD}` placeholders as `spring.datasource`, and Spring property
+ * binding overrides every value here. The two connections must stay pointed at the same
+ * database: `spring.datasource` backs the health endpoints, this one backs [CrawlRunner].
+ */
 data class Database(
     val url: String = "jdbc:postgresql://localhost:5432/wbparser",
     val username: String = "postgres",

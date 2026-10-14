@@ -1,0 +1,5 @@
+root = true
+
+[*.kt]
+ktlint_standard_function_signature = disabled
+ktlint_standard_function_expression_body = disabled

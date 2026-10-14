@@ -37,15 +37,20 @@ dependencies {
     implementation("io.ktor:ktor-client-logging:$ktorVersion")
     implementation("io.ktor:ktor-client-mock:$ktorVersion")
 
-    // Exposed — compileOnly for schema metadata, runtime dependency is avoided
-    compileOnly("org.jetbrains.exposed:exposed-core:$exposedVersion")
-    // testImplementation in tests module for runtime use of date/time columns
-    // Full Exposed for infrastructure code (JDBC, DAO)
+    // Exposed. Every module below is `implementation`, not `compileOnly`: a
+    // compileOnly dependency is absent from the runtime classpath, and these
+    // classes are loaded when the crawler first touches a table.
     implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-dao:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
     implementation("org.jetbrains.exposed:exposed-json:$exposedVersion")
-    compileOnly("org.jetbrains.exposed:exposed-java-time:$exposedVersion")
+    // `datetime()` in ExposedTables.kt resolves to JavaDateColumnTypeKt in this
+    // module. Declared compileOnly, the whole suite passed and the crawler died
+    // on its first query with NoClassDefFoundError — the tests module added it
+    // back as a test dependency, so only a real run against a real database ever
+    // saw the missing jar. A schema column type is not compile-time metadata; it
+    // is called on every read and write.
+    implementation("org.jetbrains.exposed:exposed-java-time:$exposedVersion")
 
     // DB
     implementation("org.postgresql:postgresql:42.7.4")
