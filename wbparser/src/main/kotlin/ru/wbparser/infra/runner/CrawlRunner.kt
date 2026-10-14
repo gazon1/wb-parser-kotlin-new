@@ -18,6 +18,7 @@ import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
+import ru.wbparser.domain.util.WB_BASE_URL
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.infra.advisory.LockUnavailable
@@ -263,9 +264,13 @@ class CrawlRunner(
             )
         val runner = PipelineRunner(pipeline, registry, failureHandler)
 
+        // A target configured with a WB catalog ID is served through the internal catalog API,
+// whose entry point is the catalog page URL. Falling back to target.url keeps targets that
+// carry a plain start URL working unchanged.
+        val startUrlString = target.wbCatalogId?.let { "$WB_BASE_URL/catalog/$it/list.aspx" } ?: target.url
         val startUrl: CrawlUrl =
-            CrawlUrl.of(target.url).getOrElse {
-                throw IllegalArgumentException("Invalid target URL: ${target.url}")
+            CrawlUrl.of(startUrlString).getOrElse {
+                throw IllegalArgumentException("Invalid target URL: $startUrlString")
             }
 
         val startTask =

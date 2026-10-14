@@ -76,6 +76,24 @@ logging:
 
 # Crawler
 # DB_* placeholders are shared with spring.datasource above — one pool, one database.
+crawler:
+  spider:
+    use-browser-fetch: true
+    browser-profiles:
+      - k18a6v75
+      - k18a6j35
+      - k187fu14
+      - k17bnqsi
+      - kxpu63n
+    browser-retry-limit: 3
+    # Anti-bot session warm-up is paid once per AdsPower profile, not per page:
+    # ~2 s of challenge wait on the very first request of each profile, then every
+    # later request reuses the warm page.
+    browser-warmup-ms: 2000
+    # Per-request pacing, randomised in [min, max). Keeps request cadence off a
+    # metronome so WB's rate limiting has nothing mechanical to key on.
+    browser-jitter-min-ms: 200
+    browser-jitter-max-ms: 500
 
 ---
 spring:

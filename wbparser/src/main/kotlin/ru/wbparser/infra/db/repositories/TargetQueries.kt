@@ -38,6 +38,7 @@ fun DataSource.fetchActiveTargets(): List<Target> {
                 // updated_at is NOT NULL DEFAULT now() in V1 — stored and read as Instant.
                 lastScheduledAt = row[CrawlTargetsTable.updatedAt],
                 nextScheduledAt = null,
+                wbCatalogId = row[CrawlTargetsTable.wbCatalogId],
             )
         }
     }
