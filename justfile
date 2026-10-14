@@ -19,6 +19,7 @@ mod infra    '.just/infra'
 mod tests    '.just/tests'
 mod scripts  '.just/scripts'
 mod deploy   '.just/deploy'
+mod catalog  '.just/catalog'
 
 set shell := ["bash", "-uc"]
 set unstable
