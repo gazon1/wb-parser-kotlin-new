@@ -30,7 +30,14 @@ import kotlinx.serialization.encoding.Encoder
  */
 @Serializable
 data class WbItemDto(
-    val id: Long,
+    /**
+     * Defaults to 0 so a single product without an `id` is dropped individually instead of
+     * failing the decode for the whole envelope. With a required field, one malformed entry
+     * threw inside `decodeFromString`, the catch-all turned the page into an empty one, and the
+     * crawl reported success while storing nothing — the same silent-total-loss failure the
+     * top-level `products` lookup had. `toParsedItem` already rejects `id <= 0`.
+     */
+    val id: Long = 0,
     val name: String,
     val price: String? = null,
     val salePrice: String? = null,
@@ -52,15 +59,38 @@ data class WbItemDto(
     val em: Boolean = false,
     val imageUrl: String? = null,
     val pageUrl: String? = null,
+    /** Sizes array — the __internal API nests price inside sizes[0].price.product */
+    val sizes: List<WbSizeDto>? = null,
+)
+
+@Serializable
+data class WbSizeDto(
+    val price: WbPriceDto? = null,
+)
+
+@Serializable
+data class WbPriceDto(
+    /** Price in rubles (decimal string like "2590" or "2590.00") */
+    val basic: String? = null,
+    /** Price after sale in rubles */
+    val product: String? = null,
+    val logistics: String? = null,
+    val cashback: String? = null,
 )
 
 /**
  * WB catalog API response wrapper — two variants observed in the wild.
+ *
+ * Variant 1 (catalog page, observed): `{"data": {"products": [...]}}`
+ * Variant 2 (catalog page, observed): `{"payload": {"products": [...], "nextPage": "..."}}`
+ * Variant 3 (__internal API):          `{"products": [...]}`  (top-level array)
  */
 @Serializable
 data class WbCatalogEnvelope(
     val data: WbCatalogData? = null,
     val payload: WbCatalogPayload? = null,
+    /** Variant 3: direct top-level products array returned by __internal API */
+    val products: List<WbItemDto>? = null,
 )
 
 @Serializable
@@ -83,7 +113,7 @@ data class WbProductsPage(
 )
 
 fun WbCatalogEnvelope.toProductsPage(): WbProductsPage {
-    val items = data?.products ?: payload?.products ?: emptyList()
+    val items = data?.products ?: payload?.products ?: products ?: emptyList()
     val nextPage = payload?.nextPage
     return WbProductsPage(items, nextPage)
 }
