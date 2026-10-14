@@ -27,7 +27,7 @@ CATALOG_YAML := "wb_catalog_targets.yaml"
 selector:
     #!/bin/bash
     set -euo pipefail
-    python3 scripts/wb-catalog/catalog_selector.py
+    uv run scripts/wb-catalog/catalog_selector.py
 
 # ==============================================================================
 # 💾 Load into DB
@@ -39,7 +39,7 @@ selector:
 load yaml=CATALOG_YAML:
     #!/bin/bash
     set -euo pipefail
-    python3 scripts/wb-catalog/load_catalog_to_pg.py {{yaml}} \
+    uv run scripts/wb-catalog/load_catalog_to_pg.py {{yaml}} \
         --db-host {{DB_HOST}} \
         --db-port {{DB_PORT}} \
         --db-name {{DB_NAME}} \
@@ -53,7 +53,7 @@ load yaml=CATALOG_YAML:
 load-confirm yaml:
     #!/bin/bash
     set -euo pipefail
-    python3 scripts/wb-catalog/load_catalog_to_pg.py {{yaml}} \
+    uv run scripts/wb-catalog/load_catalog_to_pg.py {{yaml}} \
         --db-host {{DB_HOST}} \
         --db-port {{DB_PORT}} \
         --db-name {{DB_NAME}} \
@@ -66,7 +66,7 @@ load-confirm yaml:
 load-if-empty:
     #!/bin/bash
     set -euo pipefail
-    python3 scripts/wb-catalog/load_catalog_if_empty.py \
+    uv run scripts/wb-catalog/load_catalog_if_empty.py \
         --db-host {{DB_HOST}} \
         --db-port {{DB_PORT}} \
         --db-name {{DB_NAME}} \
