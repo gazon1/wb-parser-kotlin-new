@@ -247,7 +247,17 @@ def load_catalog_to_pg(
     except psycopg2.Error as e:
         if conn:
             conn.rollback()
-        click.echo(f"\nDB error: {e}", err=True)
+        msg = str(e)
+        if "does not exist" in msg and "crawl_targets" in msg:
+            click.echo(
+                "\nDB error: table 'crawl_targets' does not exist.\n"
+                "Run Flyway migrations first:\n"
+                "  docker compose up postgres -d && just app::run\n"
+                "  # OR run the app with SPRING_FLYWAY_ENABLED=true",
+                err=True,
+            )
+        else:
+            click.echo(f"\nDB error: {e}", err=True)
         raise click.Abort()
     except Exception as e:
         if conn:
