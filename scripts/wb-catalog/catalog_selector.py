@@ -42,7 +42,7 @@ DEFAULT_CATALOG_URL = (
 DEFAULT_BASE_URL = "https://www.wildberries.ru"
 DEFAULT_CONFIG_PATH = Path("wb_catalog_targets.yaml")
 DEFAULT_HOST = "0.0.0.0"
-DEFAULT_PORT = 8080
+DEFAULT_PORT = 8089
 
 
 # ── Data helpers ──────────────────────────────────────────────────────────────

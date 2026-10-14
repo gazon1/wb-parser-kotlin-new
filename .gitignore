@@ -47,3 +47,5 @@ hs_err_pid*.log
 # Python bytecode from the gate scripts' unit tests
 __pycache__/
 *.pyc
+
+wb_catalog_targets.yaml
