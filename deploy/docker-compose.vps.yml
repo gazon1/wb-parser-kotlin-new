@@ -1,0 +1,71 @@
+# =============================================================================
+# VPS runtime contract for the crawler.
+#
+# This is the compose file that runs on 91.188.212.39. It is deliberately NOT the
+# same as ../docker-compose.yml: that one owns its own PostgreSQL for a
+# self-contained local stack, while here the database lives on another host
+# (91.188.212.209) and the container only needs to reach it.
+#
+# Kept in the repository rather than templated by the Ansible role on purpose —
+# how the app runs is the app's contract, and a change to it belongs in review
+# here. The role copies this file verbatim and only writes `.env` next to it.
+#
+# Both files are written next to this compose file by the Caddy-vps Ansible role,
+# and they are deliberately not one file:
+#
+#   .env     TAG and IMAGE_OWNER only. Compose interpolates ${…} out of this one,
+#            so anything in it is subject to `$` expansion.
+#   app.env  the credentials, passed to the container through env_file, which
+#            passes values literally. A password containing `$` must not be
+#            interpreted by the tooling that reads it.
+#
+# Folding them together looked simpler and would have silently eaten the `$` in
+# any password that had one.
+#
+# The tag has no `latest` fallback: a deploy that forgot to set TAG would
+# otherwise ship whatever the registry considers newest.
+# =============================================================================
+
+services:
+  wb-parser:
+    image: ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser:${TAG:?TAG must be set to the commit SHA tag, e.g. TAG=$(git rev-parse --short HEAD)}
+    container_name: wb-parser
+    restart: unless-stopped
+    env_file:
+      - app.env
+    # NOT published. Nothing outside the compose network has any reason to reach
+    # the crawler; `expose` keeps it on caddy_net where Caddy and the health
+    # check reach it. Binding 0.0.0.0 would put an authenticated admin API on
+    # the open internet.
+    expose:
+      - "8080"
+    networks:
+      - caddy_net
+    healthcheck:
+      # wget, not curl: eclipse-temurin:21-jre-alpine ships no curl, so a
+      # `curl -fsS …` healthcheck could never pass and the container would be
+      # reported unhealthy forever. BusyBox wget exits non-zero on a 5xx and
+      # zero on a 2xx, which is all this needs.
+      #
+      # /live, not /ready: readiness also checks the database, and a database
+      # blip should not restart the crawler and interrupt a crawl in progress.
+      # The scheduler reconnects on its own.
+      test:
+        - CMD-SHELL
+        - "wget -q -O /dev/null http://127.0.0.1:8080/api/health/live || exit 1"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # Created and owned by the Caddy-vps Ansible role. Declaring it external means
+  # this compose file never creates or deletes it.
+  caddy_net:
+    external: true
+    name: caddy_net

@@ -35,7 +35,16 @@ just app::run              # запустить локально (Spring Boot)
 just app::docker-build     # Docker image
 just app::run-docker       # docker-compose up
 
-# Just aliases: b=build, br=run, td=domain::test, ti=infra::test, t=tests::check
+# Отладка / Debug (локально, VPS не трогаем)
+docker compose -f deploy/docker-compose.debug.yml up   # приложение + БД + JDWP :5005
+
+# Деплой / Deploy → 91.188.212.39
+just deploy                # ./check.sh → Ansible (image already in GHCR from CI)
+just deploy <tag>          # задеплоить уже запушенный тег
+just deploy::build         # one-shot: build + push image (минуя CI)
+just deploy::dry-run <tag> # ansible --check --diff
+
+# Just aliases: b=build, br=run, td=domain::test, ti=infra::test, t=tests::check, d=deploy
 ```
 
 ## 🤖 Decision log workflow
@@ -119,6 +128,8 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 7. **Чистый код в `infrastructure/`** — Exposed queries, Ktor client, Flyway migrations; domain-only логика должна жить в `domain/`
 8. **CHANGELOG.md** — не создавай; git log + PR-серии в commit messages покрывают
 9. **Save-стадия без retry-loop** — DB/HTTP/внешние ресурсы должны использовать retry-loop (per PR 11, G10). Транзитный DB-блип не должен ронять весь crawl.
+10. **`compileOnly` для класса, который грузится в рантайме** — `compileOnly` означает «нет в рантайм-класспате». `exposed-java-time` был объявлен так, при этом `tests/` добавлял его обратно как test-зависимость: все тесты зелёные, а прод падает на первом же запросе к таблице. Тип колонки в схеме — не compile-time метаданные, его вызывают при каждом чтении и записи. **Always** проверять рантайм-класспат сборкой `bootJar`, а не только тестами.
+11. **`exitProcess()` в `main()` после `SpringApplication.run()`** — `run()` для веб-сервера возвращается почти сразу, и `exitProcess` убивал JVM через ~70 мс после «Started». В серверном режиме `main()` просто возвращается: Tomcat держит процесс на non-daemon-потоках. Выходить явно нужно только там, где веб-сервера нет (`web-application-type: none`, one-shot-профиль).
 
 ---
 

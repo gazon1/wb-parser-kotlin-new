@@ -11,9 +11,9 @@ run:
     SPRING_PROFILES="{{SPRING_PROFILES}}" ./gradlew :app:bootRun --no-daemon
 
 [group('docker')]
-[doc('Run app via docker-compose')]
+[doc('Run the local debug stack (app + postgres) via docker-compose.debug.yml')]
 [working-directory(justfile_directory())]
 run-docker:
     #!/bin/bash
     set -euo pipefail
-    docker-compose up --build app
+    docker compose -f deploy/docker-compose.debug.yml up --build

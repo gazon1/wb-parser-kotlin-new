@@ -15,7 +15,7 @@ data class DatabaseHandle(
 )
 
 /**
- * Connect to PostgreSQL and return a DatabaseHandle.
+ * Connect to PostgreSQL and return a DatabaseHandle, creating a new HikariCP pool.
  */
 fun connect(
     url: String,
@@ -35,6 +35,18 @@ fun connect(
         }
 
     val ds: DataSource = HikariDataSource(config)
+    val db = Database.connect(ds)
+    return DatabaseHandle(ds, db)
+}
+
+/**
+ * Wrap an existing [DataSource] in a [DatabaseHandle].
+ *
+ * Use this when the [DataSource] is already configured (e.g. Spring Boot auto-configures
+ * one from `spring.datasource.*`). Exposed's [Database] is a thin wrapper that adds
+ * DSL capabilities — it does not open its own connections.
+ */
+fun connect(ds: DataSource): DatabaseHandle {
     val db = Database.connect(ds)
     return DatabaseHandle(ds, db)
 }

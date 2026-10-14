@@ -1,0 +1,21 @@
+# Debug image — runs the JAR that the host already built, mounted in.
+#
+# It does NOT build: Dockerfile.app is the production image and it compiles from
+# source, which is the right thing for a release and the wrong thing when you
+# want the app up in ten seconds to reproduce a bug. So this image has no COPY
+# of its own — deploy/docker-compose.debug.yml bind-mounts the jar as a FILE
+# (a directory mount onto /app/app.jar is what produced "Invalid or corrupt
+# jarfile" the first time).
+FROM eclipse-temurin:21-jre-alpine
+
+RUN apk add --no-cache wget
+
+WORKDIR /app
+
+# suspend=n: start immediately and let the debugger attach whenever it can.
+# address=*:5005, so an IDE on the host can reach it through a published port.
+ENTRYPOINT ["java", \
+  "-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:5005", \
+  "-XX:+HeapDumpOnOutOfMemoryError", \
+  "-XX:HeapDumpPath=/logs", \
+  "-jar", "app.jar"]

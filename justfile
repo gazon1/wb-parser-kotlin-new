@@ -18,6 +18,7 @@ mod domain   '.just/domain'
 mod infra    '.just/infra'
 mod tests    '.just/tests'
 mod scripts  '.just/scripts'
+mod deploy   '.just/deploy'
 
 set shell := ["bash", "-uc"]
 set unstable
@@ -43,6 +44,9 @@ alias rdocker := app::run-docker
 alias tc    := tests::common
 alias t     := tests::check
 alias tclean := tests::clean
+
+# ----- Deploy -----
+alias d     := deploy::deploy
 
 # ----- Module tests -----
 alias td    := domain::test
