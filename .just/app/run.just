@@ -3,13 +3,13 @@
 # ==============================================================================
 
 [group('run')]
-[doc('Run Spring Boot app locally (respects $SPRING_PROFILES, default: local)')]
+[doc('Run Spring Boot app locally (respects $SPRING_PROFILES_ACTIVE, default: local)')]
 [working-directory(justfile_directory())]
 run:
     #!/bin/bash
     set -euo pipefail
-    if [[ -n "{{SPRING_PROFILES}}" ]]; then
-        export SPRING_PROFILES="{{SPRING_PROFILES}}"
+    if [[ -n "{{SPRING_PROFILES_ACTIVE}}" ]]; then
+        export SPRING_PROFILES_ACTIVE="{{SPRING_PROFILES_ACTIVE}}"
     fi
     ./gradlew :app:bootRun --no-daemon
 
