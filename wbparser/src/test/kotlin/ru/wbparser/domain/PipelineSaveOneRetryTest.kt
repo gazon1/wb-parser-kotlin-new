@@ -140,9 +140,12 @@ class PipelineSaveOneRetryTest :
                 val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
                 // After 3 exhausted retries, saveOne logs error and returns 0
                 crawled.itemsSaved shouldBe 0
-                // 4 attempts: attempt=0,1,2 → shouldRetry=true (retry); attempt=3 → shouldRetry=false (exhausted)
-                // The 4th call still runs save() before we check shouldRetry, so save is invoked 4 times.
-                saveAttempts shouldBe 4
+                // maxAttempts is the number of times save() runs, so it is invoked 3 times.
+                // The loop checks shouldRetry(attempt + 1) against maxAttempts *after* each
+                // failure: attempt=0,1 → retry allowed; attempt=2 → 3 < 3 is false, exhausted.
+                // Checking `attempt` here instead of `attempt + 1` would buy a fourth call to a
+                // stage that already failed three times, i.e. retry budget > configured budget.
+                saveAttempts shouldBe 3
             }
         }
 

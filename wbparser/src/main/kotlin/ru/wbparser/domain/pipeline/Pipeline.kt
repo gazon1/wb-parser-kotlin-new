@@ -529,7 +529,7 @@ data class Pipeline(
                     return 0
                 }
                 is Retry -> {
-                    if (!shouldRetry(attempt, retryPolicy)) {
+                    if (!shouldRetry(attempt + 1, retryPolicy)) {
                         sides +=
                             Side.Log(
                                 LogLevel.ERROR,
@@ -562,7 +562,7 @@ data class Pipeline(
         while (true) {
             val result = stage.invoke(input)
             if (result !is Retry) return result
-            if (!shouldRetry(attempt, retryPolicy)) {
+            if (!shouldRetry(attempt + 1, retryPolicy)) {
                 return Fail(
                     StageFailure.RetryExhausted(
                         "Retry ${attempt + 1}/${retryPolicy.maxAttempts} failed",
