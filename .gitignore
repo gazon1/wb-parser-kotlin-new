@@ -1,12 +1,13 @@
 # Gradle
 .gradle/
 build/
-!gradle/wrapper/gradle-wrapper.jar
-!gradle/wrapper/gradle-wrapper.properties
 
 # Build output
 *.class
 *.jar
+# gradle-wrapper.jar must be AFTER *.jar to take effect
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
 *.war
 *.ear
 *.log
