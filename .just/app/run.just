@@ -15,6 +15,12 @@ run:
     export ADMIN_API_KEY="{{env_var_or_default("ADMIN_API_KEY", "dev-admin-key")}}"
     export ADMIN_PASSWORD="{{env_var_or_default("ADMIN_PASSWORD", "dev-password")}}"
     export SERVER_PORT="{{env_var_or_default("SERVER_PORT", "8080")}}"
+    # DB defaults — docker-compose postgres exposed on 5433
+    export DB_PORT="{{env_var_or_default("DB_PORT", "5433")}}"
+    export DB_HOST="{{env_var_or_default("DB_HOST", "localhost")}}"
+    export DB_NAME="{{env_var_or_default("DB_NAME", "wbparser")}}"
+    export DB_USER="{{env_var_or_default("DB_USER", "postgres")}}"
+    export DB_PASSWORD="{{env_var_or_default("DB_PASSWORD", "postgres")}}"
     ./gradlew :app:bootRun --no-daemon
 
 [group('docker')]

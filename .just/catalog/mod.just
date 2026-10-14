@@ -4,13 +4,13 @@
 #
 # DB connection uses the same env vars as docker-compose.yml:
 #   DB_HOST  DB_PORT  DB_NAME  DB_USER  DB_PASSWORD
-#   (defaults: localhost / 5432 / wbparser / postgres / postgres)
+#   (defaults: localhost / 5433 / wbparser / postgres / postgres)
 # ==============================================================================
 
 # ── Shared env defaults ────────────────────────────────────────────────────────
 
 DB_HOST    := env_var_or_default("DB_HOST", "localhost")
-DB_PORT    := env_var_or_default("DB_PORT", "5432")
+DB_PORT    := env_var_or_default("DB_PORT", "5433")
 DB_NAME    := env_var_or_default("DB_NAME", "wbparser")
 DB_USER    := env_var_or_default("DB_USER", "postgres")
 DB_PASSWORD := env_var_or_default("DB_PASSWORD", "postgres")
