@@ -358,14 +358,17 @@ data class Pipeline(
     }
 
     /**
-     * Runs filter → enrich → save for each item in [page].
+     * Runs filter → enrich for each item in [page], then saves all successfully enriched
+     * items in a single batch (one DB round-trip per page instead of one per item).
+     *
      * Returns the number of items successfully saved.
      */
     private suspend fun processItems(
         page: ParsedPage,
         sides: MutableList<Side>,
     ): Int {
-        var saved = 0
+        val toSave = mutableListOf<SavedItem>()
+
         for (item in page.items) {
             val filtered =
                 when (val r = filter(item)) {
@@ -427,9 +430,65 @@ data class Pipeline(
                 sides += Side.Drop(Dropped.Filtered, item)
                 continue
             }
-            saved += saveOne(enriched, sides)
+            toSave.add(enriched)
         }
-        return saved
+
+        // One DB round-trip per page instead of one per item.
+        return if (toSave.isEmpty()) {
+            0
+        } else {
+            saveBatch(toSave, sides)
+        }
+    }
+
+    /**
+     * Saves [items] in one call to [save], with retry and exponential back-off.
+     * Returns the number of items saved (0 or [items.size]).
+     */
+    private suspend fun saveBatch(
+        items: List<SavedItem>,
+        sides: MutableList<Side>,
+    ): Int {
+        var attempt = 0
+        while (true) {
+            val step: Step<List<SavedItem>, Unit> =
+                try {
+                    save.invoke(items)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Step.Fail(
+                        StageFailure.Database(
+                            "save stage threw ${e::class.simpleName}: ${e.message}",
+                        ),
+                    )
+                }
+            when (step) {
+                is Done<List<SavedItem>, Unit> -> {
+                    sides += step.sides()
+                    return items.size
+                }
+                is Fail -> {
+                    sides += Side.Log(LogLevel.ERROR, "Save stage failed: ${step.failure.message}")
+                    return 0
+                }
+                is Retry -> {
+                    if (!shouldRetry(attempt + 1, retryPolicy)) {
+                        sides +=
+                            Side.Log(
+                                LogLevel.ERROR,
+                                "Save stage retry exhausted after ${retryPolicy.maxAttempts} attempts",
+                            )
+                        return 0
+                    }
+                    attempt++
+                    delay(retryDelayMs(attempt - 1, step.signal, retryPolicy).milliseconds)
+                }
+                is Cont -> {
+                    return 0
+                }
+            }
+        }
     }
 
     /**
@@ -486,70 +545,6 @@ data class Pipeline(
         }
 
     /**
-     * Saves a single [item] and records any side effects.
-     * Returns 1 if saved successfully, 0 otherwise.
-     *
-     * Uses a retry loop for transient (retryable) failures — identical to how
-     * [stageWithRetry] handles download and parse stages. A DB blip will not
-     * fail the entire crawl.
-     */
-    private suspend fun saveOne(
-        item: SavedItem,
-        sides: MutableList<Side>,
-    ): Int {
-        var attempt = 0
-        val items = listOf(item)
-        while (true) {
-            val step: Step<List<SavedItem>, Unit> =
-                try {
-                    save.invoke(items)
-                } catch (e: CancellationException) {
-                    // Cancellation is not a save failure. It extends IllegalStateException,
-                    // so the generic catch below used to absorb it: every cancelled save
-                    // reported itself as a database error, the retry loop spun again, and a
-                    // cancelled crawl finished "successfully" having written a subset.
-                    throw e
-                } catch (e: Exception) {
-                    // A throwing save stage must not abort processItems — that would drop
-                    // every remaining item on the page, not just the failed one. Converting
-                    // to Fail keeps the single failure-reporting path below.
-                    Step.Fail(
-                        StageFailure.Database(
-                            "save stage threw ${e::class.simpleName}: ${e.message}",
-                        ),
-                    )
-                }
-            when (step) {
-                is Done<List<SavedItem>, Unit> -> {
-                    sides += step.sides()
-                    return 1
-                }
-                is Fail -> {
-                    sides += Side.Log(LogLevel.ERROR, "Save stage failed: ${step.failure.message}")
-                    return 0
-                }
-                is Retry -> {
-                    if (!shouldRetry(attempt, retryPolicy)) {
-                        sides +=
-                            Side.Log(
-                                LogLevel.ERROR,
-                                "Save stage retry exhausted after ${retryPolicy.maxAttempts} attempts",
-                            )
-                        return 0
-                    }
-                    attempt++
-                    delay(retryDelayMs(attempt - 1, step.signal, retryPolicy).milliseconds)
-                    // loop and retry
-                }
-                is Cont -> {
-                    // save stages in this pipeline never emit Cont
-                    return 0
-                }
-            }
-        }
-    }
-
-    /**
      * Executes [stage] on [input] with retry logic.
      * Returns [Done] on success, [Fail] when retries are exhausted, or [Retry] to request scheduling.
      * Suspends between retry attempts to implement back-off delay.
@@ -562,7 +557,7 @@ data class Pipeline(
         while (true) {
             val result = stage.invoke(input)
             if (result !is Retry) return result
-            if (!shouldRetry(attempt, retryPolicy)) {
+            if (!shouldRetry(attempt + 1, retryPolicy)) {
                 return Fail(
                     StageFailure.RetryExhausted(
                         "Retry ${attempt + 1}/${retryPolicy.maxAttempts} failed",

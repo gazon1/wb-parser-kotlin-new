@@ -19,4 +19,6 @@ data class Target(
     val priority: Int = 0,
     val lastScheduledAt: Instant? = null,
     val nextScheduledAt: Instant? = null,
+    /** Numeric WB catalog ID (e.g. "9463"). Used by BrowserDownloader to construct API URLs. */
+    val wbCatalogId: String? = null,
 )

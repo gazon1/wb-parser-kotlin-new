@@ -48,6 +48,7 @@ fun parseWbCatalog(response: Fetched): ParsedPage {
         val products =
             catalogEnvelope.data?.products
                 ?: catalogEnvelope.payload?.products
+                ?: catalogEnvelope.products
                 ?: emptyList()
 
         val items =

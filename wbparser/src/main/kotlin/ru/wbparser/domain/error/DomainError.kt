@@ -14,6 +14,7 @@ data class NetworkError(
     override val message: String,
     override val cause: Throwable? = null,
     override val url: String? = null,
+    val isAntibot: Boolean = false,
 ) : DomainError {
     override fun isRetryable(): Boolean = true
 }

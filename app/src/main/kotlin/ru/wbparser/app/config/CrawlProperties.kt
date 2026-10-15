@@ -32,6 +32,28 @@ data class Spider(
     val maxPagesPerCatalog: Int = 10,
     val concurrency: Int = 3,
     val useBrowserForAuth: Boolean = true,
+    val useBrowserFetch: Boolean = false,
+    val browserProfiles: List<String> = emptyList(),
+    /**
+     * How many crawl targets run at once. Set it to the number of AdsPower profiles: the pool
+     * serialises per profile, so more workers queue rather than parallelise.
+     *
+     * Defaults to [browserProfiles].size when that is non-empty, and to 1 otherwise — with no
+     * profiles there is nothing to parallelise across.
+     */
+    val targetConcurrency: Int = if (browserProfiles.isEmpty()) 1 else browserProfiles.size,
+    val browserRetryLimit: Int = 3,
+    /**
+     * How long the WB anti-bot challenge is given to finish after the one-off navigation
+     * that establishes a profile's session. Paid **once per profile**, not per request.
+     */
+    val browserWarmupMs: Long = 2_000,
+    /**
+     * Per-request pacing delay bounds, in ms. Randomised in `[min, max)` to keep request
+     * cadence from looking metronomic to WB's rate limiting.
+     */
+    val browserJitterMinMs: Long = 200,
+    val browserJitterMaxMs: Long = 500,
     val rules: Rules = Rules(),
 )
 

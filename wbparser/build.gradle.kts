@@ -89,6 +89,10 @@ dependencies {
     // CSV
     implementation("org.apache.commons:commons-csv:1.12.0")
 
+    // Metrics — Micrometer (already in app/ via spring-boot-starter-actuator;
+    // declared here so wbparser can record metrics without a Spring dependency).
+    implementation("io.micrometer:micrometer-core:1.15.0")
+
     // Test
     testImplementation("io.kotest:kotest-runner-junit5:6.2.4")
     testImplementation("io.kotest:kotest-assertions-core:6.2.4")

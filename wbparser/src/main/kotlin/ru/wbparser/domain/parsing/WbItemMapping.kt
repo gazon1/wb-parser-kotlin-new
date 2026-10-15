@@ -9,17 +9,36 @@ import ru.wbparser.domain.value.ProductId
 
 /**
  * Convert a [WbItemDto] to a [ParsedItem], or report why the item was dropped.
+ *
+ * Price extraction — the __internal API nests prices inside `sizes`:
+ * - Original price: sizes[0].price.basic  (rubles as decimal string)
+ * - Sale price:     sizes[0].price.product (rubles as decimal string)
+ * - Cashback:       sizes[0].price.cashback (rubles as decimal string)
+ * The top-level `price` / `salePrice` fields are NOT populated by this API.
  */
 fun WbItemDto.toParsedItem(basePageUrl: String): Either<Dropped.InvalidProductId, ParsedItem> =
     either {
         if (id <= 0) raise(Dropped.InvalidProductId)
 
-        val priceKopecks = parsePrice(price)
-        val salePriceKopecks = parsePrice(salePrice)
+        // Prices come nested inside sizes[0].price from the __internal API.
+        // Fall back to top-level price field for compatibility with the older endpoint.
+        val firstSize = sizes?.firstOrNull()
+        val nestedPrice = firstSize?.price
+        val priceKopecks =
+            parsePrice(nestedPrice?.basic)
+                .takeIf { it > 0 }
+                ?: parsePrice(price)
+        val salePriceKopecks =
+            parsePrice(nestedPrice?.product)
+                .takeIf { it > 0 }
+                ?: parsePrice(salePrice)
+        val cashbackKopecksFromSize = parsePrice(nestedPrice?.cashback)
         val cashbackPercent = cashback?.toDoubleOrNull()?.takeIf { it >= 0.0 }
         val cashbackKopecks =
-            cashbackPercent?.let { pct ->
-                Math.round(priceKopecks * pct / 100.0)
+            if (cashbackPercent != null) {
+                Math.round(priceKopecks * cashbackPercent / 100.0)
+            } else {
+                cashbackKopecksFromSize.takeIf { it > 0 }
             }
         val pageUrlStr = pageUrl ?: "$basePageUrl$id"
 

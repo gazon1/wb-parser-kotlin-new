@@ -4,6 +4,8 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import org.jetbrains.exposed.sql.Database
 import ru.wbparser.infra.http.HttpConstants
+import java.util.Collections
+import java.util.WeakHashMap
 import javax.sql.DataSource
 
 /**
@@ -49,4 +51,27 @@ fun connect(
 fun connect(ds: DataSource): DatabaseHandle {
     val db = Database.connect(ds)
     return DatabaseHandle(ds, db)
+}
+
+/**
+ * Registers this [DataSource] with Exposed exactly once and returns the registered [Database].
+ *
+ * `Database.connect(ds)` is not the harmless no-op the name suggests: each call registers the
+ * datasource in Exposed's global `datasources` map. Calling it per query — which the
+ * repositories used to do — therefore mutates shared global state on every read and write.
+ * That is harmless while a single thread owns the crawl and a data race the moment targets
+ * run concurrently.
+ *
+ * The map is weak-keyed so a DataSource that goes out of scope (a test container, a rebuilt
+ * Spring context) is not pinned here for the life of the JVM. The double-checked
+ * `getOrPut` keeps registration exactly-once without holding the lock on the read path.
+ */
+private val exposedDatabases: MutableMap<DataSource, Database> =
+    Collections.synchronizedMap(WeakHashMap())
+
+internal fun DataSource.exposedOnce(): Database {
+    exposedDatabases[this]?.let { return it }
+    synchronized(exposedDatabases) {
+        return exposedDatabases.getOrPut(this) { Database.connect(this) }
+    }
 }
