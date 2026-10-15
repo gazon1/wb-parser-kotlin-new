@@ -43,6 +43,7 @@ import ru.wbparser.infra.scheduler.targetsDue
 import java.sql.Timestamp
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration
 import ru.wbparser.domain.pipeline.Pipeline as DomainPipeline
 
 /**
@@ -93,6 +94,11 @@ class CrawlRunner(
      * When null, a [NoOpMetricInterpreter] is used instead.
      */
     private val meterRegistry: MeterRegistry? = null,
+    /**
+     * Delay function for retry back-off inside [DomainPipeline].
+     * Defaults to [kotlinx.coroutines.delay]; override in tests to avoid actual sleeping.
+     */
+    private val delayFn: suspend (Duration) -> Unit = { d -> kotlinx.coroutines.delay(d) },
 ) {
     /**
      * Context for a crawl job — passed to [onCrawlStart] and [onCrawlEnd] hooks.
@@ -299,6 +305,7 @@ class CrawlRunner(
                 },
                 clock = clock,
                 idGen = startTaskIdGen,
+                delayFn = delayFn,
             )
 
         val registry =

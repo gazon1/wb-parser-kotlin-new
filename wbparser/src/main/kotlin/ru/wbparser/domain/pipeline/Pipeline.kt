@@ -4,7 +4,6 @@ import arrow.core.Either
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
@@ -18,6 +17,7 @@ import ru.wbparser.domain.pipeline.Step.Retry
 import ru.wbparser.domain.time.Clock
 import kotlin.collections.MutableSet
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -73,6 +73,18 @@ data class Pipeline(
             .randomUUID()
             .toString()
     },
+    /**
+     * Delay function for retry back-off.
+     *
+     * Override in tests to get deterministic timing without actual sleeping.
+     * The default delegates to [kotlinx.coroutines.delay].
+     *
+     * ## Purity note
+     *
+     * [Pipeline] promises to be pure *except* for this function and [idGen].
+     * All other logic is deterministic and side-effect free.
+     */
+    val delayFn: suspend (Duration) -> Unit = { d -> kotlinx.coroutines.delay(d) },
 ) {
     /**
      * Outcome of a stage execution inside [run].
@@ -482,7 +494,7 @@ data class Pipeline(
                         return 0
                     }
                     attempt++
-                    delay(retryDelayMs(attempt - 1, step.signal, retryPolicy).milliseconds)
+                    delayFn(retryDelayMs(attempt - 1, step.signal, retryPolicy).milliseconds)
                 }
                 is Cont -> {
                     return 0
@@ -566,7 +578,7 @@ data class Pipeline(
                 )
             }
             attempt++
-            delay(retryDelayMs(attempt - 1, result.signal, retryPolicy).milliseconds)
+            delayFn(retryDelayMs(attempt - 1, result.signal, retryPolicy).milliseconds)
         }
     }
 }
