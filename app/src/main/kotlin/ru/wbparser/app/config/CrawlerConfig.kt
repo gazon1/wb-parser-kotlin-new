@@ -1,5 +1,6 @@
 package ru.wbparser.app.config
 
+import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import ru.wbparser.domain.model.Crawling
@@ -10,6 +11,7 @@ import ru.wbparser.infra.http.BrowserDownloader
 import ru.wbparser.infra.http.BrowserFetchTiming
 import ru.wbparser.infra.http.BrowserPool
 import ru.wbparser.infra.http.BrowserProfileConfig
+import ru.wbparser.infra.http.CircuitBreakerDownloader
 import ru.wbparser.infra.http.KtorDownloader
 import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.runner.CrawlRunner
@@ -67,16 +69,35 @@ class CrawlerConfig {
         )
 
     @Bean
+    fun circuitBreakerDownloader(browserDownloader: BrowserDownloader): CircuitBreakerDownloader =
+        CircuitBreakerDownloader(delegate = browserDownloader)
+
+    @Bean
+    fun crawlDependencies(
+        circuitBreakerDownloader: CircuitBreakerDownloader,
+        meterRegistry: MeterRegistry,
+    ): CrawlDependencies = CrawlDependencies(circuitBreakerDownloader, meterRegistry)
+
+    /**
+     * Groups HTTP/monitoring dependencies that are conditionally used based on [CrawlProperties.spider].
+     * Exists to keep [crawlRunner]'s parameter count below the LongParameterList threshold.
+     */
+    data class CrawlDependencies(
+        val circuitBreakerDownloader: CircuitBreakerDownloader,
+        val meterRegistry: MeterRegistry,
+    )
+
+    @Bean
     fun crawlRunner(
         db: DatabaseHandle,
         ktorDownloader: KtorDownloader,
         properties: CrawlProperties,
         clock: Clock,
-        browserDownloader: BrowserDownloader,
+        deps: CrawlDependencies,
     ): CrawlRunner {
         val downloader: suspend (Crawling) -> arrow.core.Either<ru.wbparser.domain.error.NetworkError, ru.wbparser.domain.model.Fetched> =
             if (properties.spider.useBrowserFetch) {
-                { task: Crawling -> browserDownloader.download(task) }
+                { task: Crawling -> deps.circuitBreakerDownloader.download(task) }
             } else {
                 { task: Crawling -> ktorDownloader.download(task) }
             }
@@ -90,7 +111,9 @@ class CrawlerConfig {
             rules = properties.spider.rules.toBusinessRules(),
             clock = clock,
             concurrency = properties.spider.concurrency,
+            targetConcurrency = properties.spider.targetConcurrency,
             lockTimeoutMs = properties.lock.timeoutMinutes * 60_000,
+            meterRegistry = deps.meterRegistry,
         )
     }
 

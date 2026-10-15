@@ -34,6 +34,14 @@ data class Spider(
     val useBrowserForAuth: Boolean = true,
     val useBrowserFetch: Boolean = false,
     val browserProfiles: List<String> = emptyList(),
+    /**
+     * How many crawl targets run at once. Set it to the number of AdsPower profiles: the pool
+     * serialises per profile, so more workers queue rather than parallelise.
+     *
+     * Defaults to [browserProfiles].size when that is non-empty, and to 1 otherwise — with no
+     * profiles there is nothing to parallelise across.
+     */
+    val targetConcurrency: Int = if (browserProfiles.isEmpty()) 1 else browserProfiles.size,
     val browserRetryLimit: Int = 3,
     /**
      * How long the WB anti-bot challenge is given to finish after the one-off navigation

@@ -2,8 +2,14 @@ package ru.wbparser.infra.runner
 
 import arrow.core.Either
 import arrow.core.getOrElse
+import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.coroutines.loggingBackgroundFailureHandler
@@ -62,6 +68,15 @@ class CrawlRunner(
     private val rules: BusinessRules = BusinessRules(),
     private val clock: Clock = SystemClock,
     private val concurrency: Int = 1,
+    /**
+     * How many targets run at once. Defaults to 1, which is the sequential behaviour this class
+     * had before targets were parallelised.
+     *
+     * Set it to the number of browser profiles: the pool serialises per profile, so a larger
+     * value queues instead of parallelising, and a smaller one leaves profiles idle. Values
+     * above the pool size are safe, just not faster.
+     */
+    private val targetConcurrency: Int = 1,
     private val lockTimeoutMs: Long = 600_000,
     /** Called once when the crawl job starts, before any target is processed. */
     private val onCrawlStart: suspend (CrawlContext) -> Unit = {},
@@ -73,6 +88,11 @@ class CrawlRunner(
      * JVM's default uncaught-exception handler, which kills the process.
      */
     private val failureHandler: CoroutineExceptionHandler = loggingBackgroundFailureHandler(),
+    /**
+     * Micrometer registry for recording crawl metrics (pages, items, errors, retries, drops).
+     * When null, a [NoOpMetricInterpreter] is used instead.
+     */
+    private val meterRegistry: MeterRegistry? = null,
 ) {
     /**
      * Context for a crawl job — passed to [onCrawlStart] and [onCrawlEnd] hooks.
@@ -131,8 +151,13 @@ class CrawlRunner(
             var totalItems = 0
             val failures = mutableListOf<String>()
 
-            for (target in due) {
-                val result = runTarget(target)
+            val results = runTargets(due)
+
+            // Aggregated after the fact, from the returned values. Accumulating into shared
+            // counters inside the concurrent region would be a data race, and the shape of the
+            // bug is nasty: two targets finishing between the read and the write lose one
+            // count each, and crawl_jobs then under-reports a crawl that actually succeeded.
+            for ((target, result) in due.zip(results)) {
                 totalPages += result.pages
                 totalItems += result.items
                 if (result.error != null) {
@@ -180,12 +205,49 @@ class CrawlRunner(
             jobId?.let { id ->
                 runCatching { closeJob(id, JobStatus.Cancelled) }
             }
+            log.info("Crawl cancelled: {}", e.message)
             throw e
         } catch (t: Throwable) {
             jobId?.let { id ->
                 runCatching { closeJob(id, JobStatus.Failed, errorMessage = t.message) }
             }
             return RunResult.Failure(t.message ?: "Unknown error")
+        }
+    }
+
+    /**
+     * Runs every due target, at most [targetConcurrency] at a time, and returns their results in
+     * the same order as [due].
+     *
+     * ## Why the limit is here and not only in the browser pool
+     *
+     * The pool already serialises access to a fixed number of profiles, so oversubscription would
+     * not corrupt anything — it would just queue. The bound matters for two other reasons: it
+     * caps how many crawls hold a DB connection while waiting, and it keeps the pacing meaningful.
+     * Five workers across five profiles give every profile a steady stream; fifty workers give the
+     * same throughput while each request waits behind a queue of its own siblings.
+     *
+     * ## Failure semantics are unchanged
+     *
+     * A target that returns a domain error is recorded and the crawl continues — that is what
+     * [TargetResult.error] is for. A target that *throws* still aborts the whole run, exactly as
+     * the sequential loop did: `coroutineScope` propagates the first failure and cancels the
+     * siblings, and the caller's catch closes the job as Failed. Changing that here would turn a
+     * bug in one catalog into a silently shorter crawl.
+     */
+    private suspend fun runTargets(due: List<Target>): List<TargetResult> {
+        if (due.size == 1 || targetConcurrency <= 1) {
+            return due.map { runTarget(it) }
+        }
+        val limit = minOf(targetConcurrency, due.size)
+        return coroutineScope {
+            val semaphore = Semaphore(limit)
+            due
+                .map { target ->
+                    async {
+                        semaphore.withPermit { runTarget(target) }
+                    }
+                }.awaitAll()
         }
     }
 
@@ -198,6 +260,7 @@ class CrawlRunner(
      * @param startTaskIdGen ID generator for the initial [Crawling] task.
      *                        Defaults to [UUID.randomUUID] — override in tests for determinism.
      */
+
     private suspend fun runTarget(
         target: Target,
         startTaskIdGen: () -> String = { UUID.randomUUID().toString() },
@@ -244,8 +307,12 @@ class CrawlRunner(
                     ru.wbparser.infra.pipeline
                         .LogInterpreter(),
                 metric =
-                    ru.wbparser.infra.pipeline
-                        .NoOpMetricInterpreter(),
+                    meterRegistry?.let {
+                        ru.wbparser.infra.pipeline
+                            .MicrometerMetricInterpreter(it)
+                    }
+                        ?: ru.wbparser.infra.pipeline
+                            .NoOpMetricInterpreter(),
                 saveBatch =
                     ru.wbparser.infra.pipeline
                         .NoOpSaveBatchInterpreter(),

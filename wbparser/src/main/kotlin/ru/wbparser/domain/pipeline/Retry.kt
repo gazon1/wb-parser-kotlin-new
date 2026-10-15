@@ -66,9 +66,12 @@ fun retryDelayMs(
     // All four Retry variants (ServerError, RateLimited, Antibot, StaleContext)
     // share the same back-off formula: explicit delayMs override, or exponential.
     // The when-is covers all Retry subtypes, so no else/unchecked warning.
+    val explicitDelay = signal.delayMs
     val baseDelay =
-        signal.delayMs
-            ?: (policy.baseDelayMs * (1 shl attempt.coerceAtMost(10)))
+        when {
+            explicitDelay != null && explicitDelay > 0 -> explicitDelay
+            else -> policy.baseDelayMs * (1 shl attempt.coerceAtMost(10))
+        }
     val capped = baseDelay.coerceAtMost(policy.maxDelayMs)
     val jitterBound = (capped * policy.jitterPercent).toLong()
     val jitter = if (jitterBound > 0) random.nextLong(jitterBound) else 0L

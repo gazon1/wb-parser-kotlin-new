@@ -99,4 +99,13 @@ class RetryBackoffTest :
             shouldRetry(5, policy) shouldBe false
             shouldRetry(10, policy) shouldBe false
         }
+
+        test("non-positive explicit delayMs falls back to exponential back-off (A3 fix)") {
+            // delayMs <= 0 is treated as "use default", not as a near-zero sleep.
+            // Previously: signal.delayMs ?: ... meant delayMs=-1 would return -1ms (spin-loop).
+            // Fixed: non-positive delayMs falls through to the exponential formula.
+            retryDelayMs(0, Retry.Antibot(delayMs = 0L), policy, Random(42)) shouldBe 1_000L
+            retryDelayMs(0, Retry.Antibot(delayMs = -1L), policy, Random(42)) shouldBe 1_000L
+            retryDelayMs(0, Retry.ServerError(0, delayMs = -1L), policy, Random(42)) shouldBe 1_000L
+        }
     })

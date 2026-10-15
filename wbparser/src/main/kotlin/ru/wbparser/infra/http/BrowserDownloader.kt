@@ -41,7 +41,7 @@ import java.time.Instant
  * - JavaScript errors / page crashes → [NetworkError].
  * - BrowserPool exhaustion → [NetworkError].
  */
-class BrowserDownloader(
+open class BrowserDownloader(
     private val pool: BrowserPool,
     private val objectMapper: ObjectMapper = DEFAULT_JSON_MAPPER,
     /** Navigation timeout, challenge wait and per-request pacing. See [BrowserFetchTiming]. */
@@ -56,7 +56,7 @@ class BrowserDownloader(
      * @return [Either.Left] on any failure (network, antibot, parse error),
      *         [Either.Right] with a [Fetched] whose [Fetched.body] is the raw JSON response.
      */
-    suspend fun download(task: Crawling): Either<NetworkError, Fetched> =
+    open suspend fun download(task: Crawling): Either<NetworkError, Fetched> =
         withContext(Dispatchers.IO) {
             val startNs = System.nanoTime()
             var result: Either<NetworkError, Fetched>
@@ -129,7 +129,11 @@ class BrowserDownloader(
                             message = "Browser pool exhausted: ${e.message}",
                             cause = e,
                             url = task.url.toString(),
-                            isAntibot = true,
+                            // Deliberately NOT isAntibot. Pool exhaustion means no browser slot
+                            // freed in time — a capacity condition on our side. Reporting it as
+                            // an anti-bot ban sends the retry loop after a problem WB never had,
+                            // and writes a false cause into crawl_errors for anyone reading it.
+                            isAntibot = false,
                         ),
                     )
             } catch (e: Exception) {

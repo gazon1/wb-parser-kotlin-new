@@ -50,6 +50,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** keep request construction in `WbCatalogRequest`, not back inside the adapter. A _(from `2026-10-14-extract-browser-request-logic-for-testability`)
 - **Never** give a Kover-exercised DTO a required field that a single malformed API entry can _(from `2026-10-14-extract-browser-request-logic-for-testability`)
 - **Never** solve a coverage drop on untestable adapters by excluding them. Extract the logic _(from `2026-10-14-extract-browser-request-logic-for-testability`)
+- **Always** keep `target-concurrency` low enough to leave connections for the save path. Each _(from `2026-10-14-parallel-crawl-targets`)
+- **Always** open as many AdsPower profiles as `target-concurrency`, or lower the setting. The _(from `2026-10-14-parallel-crawl-targets`)
+- **Never** read a pool-exhaustion error as evidence that WB blocked us. It means no slot freed _(from `2026-10-14-parallel-crawl-targets`)
+- **Never** set `target-concurrency` from a guess about how many browsers are open. The pool _(from `2026-10-14-parallel-crawl-targets`)
 
 ## Per-tag
 
@@ -103,7 +107,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `browser`
 
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
+- `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. _(from `2026-10-14-parallel-crawl-targets`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
+- SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No _(from `2026-10-14-parallel-crawl-targets`)_
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 
 ### `bug-fix`
@@ -134,6 +140,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `PipelineRunner` code is unchanged (already correct) _(from `2026-09-09-arrow-either-pr20`)_
 - **Positive**: Cleaner domain model, no dead code _(from `2026-09-09-dead-code-purge-pr19`)_
 - **Positive**: Honest documentation (effect-recording vs pure) _(from `2026-09-09-dead-code-purge-pr19`)_
+
+### `concurrency`
+
+- `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. _(from `2026-10-14-parallel-crawl-targets`)_
+- SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No _(from `2026-10-14-parallel-crawl-targets`)_
 
 ### `configuration`
 
@@ -192,14 +203,18 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `infrastructure`
 
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
+- `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. _(from `2026-10-14-parallel-crawl-targets`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
+- SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No _(from `2026-10-14-parallel-crawl-targets`)_
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 - The crawler reaching Wildberries from the VPS is a separate question from _(from `2026-10-14-deploy-crawler-as-registry-image`)_
 
 ### `performance`
 
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
+- `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. _(from `2026-10-14-parallel-crawl-targets`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
+- SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No _(from `2026-10-14-parallel-crawl-targets`)_
 
 ### `pipeline`
 
@@ -305,6 +320,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-14-antibot-session-is-site-wide` — infrastructure  browser  antibot  performance
 - `2026-10-14-deploy-crawler-as-registry-image` — deployment  infrastructure  ansible  docker
 - `2026-10-14-extract-browser-request-logic-for-testability` — infrastructure  testing  coverage  browser
+- `2026-10-14-parallel-crawl-targets` — infrastructure  concurrency  browser  performance
 - `2026-10-14-pipeline-purity-idgen` — pipeline  refactoring  architecture
 
 ## Active entries
@@ -330,4 +346,5 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-14-antibot-session-is-site-wide` — Anti-bot warm-up is amortized per profile, not per request
 - `2026-10-14-deploy-crawler-as-registry-image` — Deploy the crawler as a registry image, built on the operator's machine
 - `2026-10-14-extract-browser-request-logic-for-testability` — Browser fetch extracts request construction instead of excluding itself from coverage
+- `2026-10-14-parallel-crawl-targets` — Crawl targets run in parallel; the browser pool is what actually bounds it
 - `2026-10-14-pipeline-purity-idgen` — Pipeline idGen injectable; delay() in stageWithRetry is intentional

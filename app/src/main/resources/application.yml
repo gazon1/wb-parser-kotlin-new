@@ -86,6 +86,9 @@ crawler:
       - k17bnqsi
       - kxpu63n
     browser-retry-limit: 3
+    # How many crawl targets run at once. Matched to the profile count above: the pool
+    # serialises per profile, so more workers queue rather than parallelise.
+    target-concurrency: 5
     # Anti-bot session warm-up is paid once per AdsPower profile, not per page:
     # ~2 s of challenge wait on the very first request of each profile, then every
     # later request reuses the warm page.

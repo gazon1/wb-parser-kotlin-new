@@ -1,5 +1,6 @@
 package ru.wbparser.infra.pipeline
 
+import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.pipeline.JobOp
 import ru.wbparser.domain.pipeline.Side
@@ -23,6 +24,31 @@ class LogInterpreter : Interpreter<Side.Log> {
 class NoOpMetricInterpreter : Interpreter<Side.Metric> {
     override suspend fun handle(side: Side.Metric) {
         logger.trace("metric {}={} tags={}", side.name, side.value, side.tags)
+    }
+}
+
+/**
+ * [Interpreter] that records [Side.Metric] events to a Micrometer [MeterRegistry].
+ *
+ * Counters are incremented; values are appended as a tag value so they appear in
+ *Prometheus/Grafana without a separate histogram per value.
+ *
+ * Key metrics recorded:
+ * - `crawl.pages` — pages successfully crawled
+ * - `crawl.items` — items persisted to DB
+ * - `crawl.errors` — non-retryable errors
+ * - `crawl.retries` — retry attempts (by signal type)
+ * - `crawl.drops` — items dropped by filter
+ * - `crawl.circuit_breaker` — circuit breaker state transitions
+ */
+class MicrometerMetricInterpreter(
+    private val registry: MeterRegistry,
+) : Interpreter<Side.Metric> {
+    override suspend fun handle(side: Side.Metric) {
+        val name = "crawl.${side.name}"
+        val tagPairs = side.tags.flatMap { listOf(it.key, it.value) }.toTypedArray()
+
+        registry.counter(name, *tagPairs).increment(side.value.toDouble())
     }
 }
 
@@ -66,7 +92,7 @@ class JobEventInterpreter : Interpreter<Side.JobEvent> {
  *
  * ## Save stage asymmetry
  *
- * The save stage's retry loop ([saveOne][ru.wbparser.domain.pipeline.Pipeline.saveOne])
+ * The save stage's retry loop ([saveBatch][ru.wbparser.domain.pipeline.Pipeline.saveBatch])
  * also runs inline with [delay] but does **not** emit [Side.ScheduleRetry]. This is
  * intentional: download and parse are I/O stages where retry events are useful for
  * metrics and alerting, whereas save failures are infrastructure-level and are

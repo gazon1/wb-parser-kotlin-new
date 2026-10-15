@@ -1,7 +1,6 @@
 package ru.wbparser.infra.db.repositories
 
 import org.jetbrains.exposed.sql.AndOp
-import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.statements.BatchUpsertStatement
@@ -10,6 +9,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.ScrapedItemsTable
+import ru.wbparser.infra.db.exposedOnce
 import java.math.BigDecimal
 import java.sql.Connection
 import java.time.Instant
@@ -42,7 +42,7 @@ fun DataSource.upsertSavedItems(
 
     // Initialize Exposed's thread-local transaction manager for this DataSource.
     // Exposed caches by URL, so this is idempotent — calling it multiple times is safe.
-    Database.connect(this)
+    exposedOnce()
 
     transaction(Connection.TRANSACTION_SERIALIZABLE) {
         for (item in items) {
