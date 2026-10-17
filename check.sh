@@ -28,7 +28,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 SKIP_DB="${SKIP_DB:-0}"
-TOTAL=9
+TOTAL=10
 
 step() { echo -e "\n${YELLOW}=== [$1/$TOTAL] $2 ===${NC}"; }
 fail() { echo -e "${RED}$1${NC}"; exit 1; }
@@ -62,33 +62,42 @@ step 5 "app:compileKotlin"
 ./gradlew :app:compileKotlin --quiet || fail "app:compileKotlin FAILED"
 echo -e "${GREEN}app:compileKotlin passed${NC}"
 
-# --- [6] executed test counts -------------------------------------------------
+# --- [6] compileOnly/runtime classpath ----------------------------------------
+# A compileOnly dep missing at runtime causes NoClassDefFoundError at startup —
+# tests pass because the test classpath includes it, but bootJar crashes.
+# bootJar transitively resolves the full runtime classpath and fails fast.
+step 6 "compileOnly/runtime gate (bootJar)"
+chmod +x scripts/ci/check-compileonly-runtime.sh
+bash scripts/ci/check-compileonly-runtime.sh || fail "compileOnly/runtime gate FAILED"
+echo -e "${GREEN}compileOnly/runtime gate passed${NC}"
+
+# --- [7] executed test counts -------------------------------------------------
 # "Tests passed" is not "the tests ran". Gradle reports BUILD SUCCESSFUL whether a
 # suite executed 227 tests or none, and a task that is UP-TO-DATE does not
 # rewrite its results directory at all. A floor compared against a committed
 # count is the only thing that notices. Run this AFTER the test steps, never
 # before — it reads the XML they produced.
-step 6 "executed test counts"
+step 7 "executed test counts"
 python3 scripts/check-test-runs.py || fail "a test source set ran fewer tests than its recorded floor"
 
-# --- [7] kover coverage -------------------------------------------------------
+# --- [8] kover coverage -------------------------------------------------------
 # Kover verify enforces the line-coverage floor from config/gates/coverage-floor.txt.
 # Coverage must not regress below the recorded baseline.
-step 7 "wbparser: line coverage ≥ 45%"
+step 8 "wbparser: line coverage ≥ 45%"
 ./gradlew :wbparser:koverVerify --quiet || fail "coverage below floor (see config/gates/coverage-floor.txt)"
 echo -e "${GREEN}kover verify passed${NC}"
 
-# --- [8] lint ------------------------------------------------------------------
+# --- [9] lint ------------------------------------------------------------------
 # ktlint and detekt are applied in the root build's `subprojects { }` block, so
 # every module has both tasks. They were declared in the version catalogue and
 # never applied, which is why ci.yml's `lint` job could only ever fail with
 # "Task not found" — a gate that reports success forever because it cannot run
 # is the class of defect Part A of check-gate-wiring.py now prevents.
-step 8 "ktlint + detekt (all modules)"
+step 9 "ktlint + detekt (all modules)"
 ./gradlew ktlintCheck detekt --quiet || fail "lint reported violations"
 echo -e "${GREEN}lint passed${NC}"
 
-# --- [9] gates are reachable and can fail -------------------------------------
+# --- [10] gates are reachable and can fail -------------------------------------
 # Part A2 asks whether every Gradle task a gate names actually exists — the direct
 # guard on the "Task not found" failure that let ktlintCheck and detekt report
 # success forever. Part A3 asks the follow-up a static scan cannot: whether
@@ -101,7 +110,7 @@ echo -e "${GREEN}lint passed${NC}"
 # deliberately broken input. It lives here rather than in the static registry
 # because Parts A2/A3 need a JVM, and a gate that proves another gate works
 # inherits that gate's preconditions and runs at its own time.
-step 9 "gates are reachable, in the lifecycle, and can fail"
+step 10 "gates are reachable, in the lifecycle, and can fail"
 python3 scripts/check-gate-wiring.py --tasks-exist --can-fail \
     || fail "gate wiring check FAILED — an unreachable gate, or one that cannot fail"
 

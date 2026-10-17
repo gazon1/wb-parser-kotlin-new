@@ -457,6 +457,7 @@ data class Pipeline(
      * Saves [items] in one call to [save], with retry and exponential back-off.
      * Returns the number of items saved (0 or [items.size]).
      */
+    @Suppress("ReturnCount")
     private suspend fun saveBatch(
         items: List<SavedItem>,
         sides: MutableList<Side>,
@@ -481,8 +482,23 @@ data class Pipeline(
                     return items.size
                 }
                 is Fail -> {
-                    sides += Side.Log(LogLevel.ERROR, "Save stage failed: ${step.failure.message}")
-                    return 0
+                    val signal =
+                        ru.wbparser.domain.pipeline.Retry
+                            .Database()
+                    if (!step.failure.isRetryable) {
+                        sides += Side.Log(LogLevel.ERROR, "Save stage failed (non-retryable): ${step.failure.message}")
+                        return 0
+                    }
+                    if (!shouldRetry(attempt + 1, retryPolicy)) {
+                        sides +=
+                            Side.Log(
+                                LogLevel.ERROR,
+                                "Save stage retry exhausted after ${retryPolicy.maxAttempts} attempts: ${step.failure.message}",
+                            )
+                        return 0
+                    }
+                    attempt++
+                    delayFn(retryDelayMs(attempt - 1, signal, retryPolicy).milliseconds)
                 }
                 is Retry -> {
                     if (!shouldRetry(attempt + 1, retryPolicy)) {

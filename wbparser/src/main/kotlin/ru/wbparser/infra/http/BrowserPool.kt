@@ -191,9 +191,43 @@ class BrowserPool(
         @Volatile
         var warm: Boolean = false
 
+        /**
+         * Quick CDP roundtrip to verify the browser process is still alive.
+         *
+         * Catches the case where AdsPower shows the profile as "Active" but the Chrome process
+         * has died (killed externally, OOM, crash). `page.isClosed` can return `false` even
+         * when the underlying CDP connection is dead — a subsequent Playwright call then throws
+         * a confusing exception. A proactive ping detects the dead browser *before* the caller
+         * gets it.
+         *
+         * @return true if the browser responds to a minimal CDP command, false if it is dead.
+         */
+        private fun checkBrowserHealth(): Boolean =
+            page?.let { p ->
+                runCatching {
+                    // page.title() is a minimal CDP roundtrip; a healthy browser responds in <500 ms.
+                    // Any exception means the CDP connection is dead and the browser must be restarted.
+                    p.title()
+                    true
+                }.getOrElse {
+                    logForProfile(profileConfig.profileId, "Browser health check failed: {}", it.message)
+                    false
+                }
+            } ?: false
+
         fun getOrCreatePage(): Page {
             if (page != null && page!!.isClosed.not()) {
-                return page!!
+                // Defensively ping the browser: a dead Chrome can show isClosed=false
+                // until Playwright discovers the truth on the next call.
+                if (!checkBrowserHealth()) {
+                    logForProfile(profileConfig.profileId, "Browser health check failed — forcing reconnect")
+                    browser?.close()
+                    browser = null
+                    page = null
+                    warm = false
+                } else {
+                    return page!!
+                }
             }
 
             // Shut down stale handle and reconnect
@@ -208,7 +242,18 @@ class BrowserPool(
             logForProfile(profileConfig.profileId, "Connecting via CDP: {}", cdpUrl)
 
             val playwright = Playwright.create()
-            val b = playwright.chromium().connectOverCDP(cdpUrl)
+            val b =
+                try {
+                    playwright.chromium().connectOverCDP(cdpUrl)
+                } catch (e: Throwable) {
+                    logForProfile(
+                        profileConfig.profileId,
+                        "CDP connection failed: {} | class={}",
+                        e.message,
+                        e::class.java.name,
+                    )
+                    throw e
+                }
             val ctx: BrowserContext =
                 b.contexts().firstOrNull()
                     ?: throw IllegalStateException("No browser context in profile ${profileConfig.profileId}")
@@ -233,25 +278,110 @@ class BrowserPool(
                 )
                 return scanForCdpUrl(this)
             }
+
             try {
-                val url = java.net.URL("$adsPowerApiBase/api/v1/browser/active?profile_id=${profileConfig.profileId}&api-key=$apiKey")
-                with(url.openConnection()) {
-                    @Suppress("UNCHECKED_CAST")
-                    readTimeout = 5000
-                    val resp = endpointMapper.readValue(inputStream, Map::class.java)
-                    val data = resp["data"] as? Map<*, *>
-                    if (data?.get("status") == 0) {
-                        val ws = data["ws"] as? Map<*, *>
-                        val devtools = ws?.get("devtools") as? String
-                        if (!devtools.isNullOrBlank()) return devtools
-                    }
-                }
+                // Step 1: check if profile is already active
+                val activeWs = checkActiveV2(apiKey)
+                if (activeWs != null) return activeWs
+
+                // Step 2: start the profile via V2 API
+                val startedWs = startProfileV2(apiKey)
+                if (startedWs != null) return startedWs
             } catch (_: Exception) {
-                // fall through
+                // fall through to port scan
             }
 
-            // Fallback: port scan
+            // Final fallback: port scan
             return scanForCdpUrl(this)
+        }
+
+        /**
+         * Calls V2 GET /active — returns CDP WS URL if already Active, null otherwise.
+         *
+         * Unlike V1, the V2 API returns the WebSocket endpoint directly in the active response,
+         * so if the browser is already running we do NOT need to call /start separately.
+         */
+        private fun checkActiveV2(apiKey: String): String? {
+            // V2 API: GET /api/v2/browser-profile/active?profile_id=xxx
+            val encodedId = java.net.URLEncoder.encode(profileConfig.profileId, "UTF-8")
+            val conn =
+                java.net
+                    .URL("$adsPowerApiBase/api/v2/browser-profile/active?profile_id=$encodedId")
+                    .openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "GET"
+            conn.setRequestProperty("Accept", "application/json")
+            conn.readTimeout = 5000
+
+            if (conn.responseCode != 200) {
+                conn.disconnect()
+                return null
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val resp = endpointMapper.readValue(conn.inputStream, Map::class.java)
+            conn.disconnect()
+
+            val code = resp["code"] as? Number
+            if (code?.toInt() != 0) return null
+
+            val data = resp["data"] as? Map<*, *>
+            if (data?.get("status") != "Active") return null
+
+            val ws = data["ws"] as? Map<*, *>
+            val puppeteerWs = ws?.get("puppeteer") as? String
+            if (puppeteerWs.isNullOrBlank()) return null
+
+            logForProfile(profileConfig.profileId, "V2 /active — already active, CDP: {}", puppeteerWs)
+            return puppeteerWs
+        }
+
+        /** Calls V2 /start — returns CDP WS URL on success, null on failure. */
+        private fun startProfileV2(apiKey: String): String? {
+            val conn =
+                java.net
+                    .URL("$adsPowerApiBase/api/v2/browser-profile/start")
+                    .openConnection() as java.net.HttpURLConnection
+            conn.requestMethod = "POST"
+            conn.setRequestProperty("Content-Type", "application/json")
+            conn.setRequestProperty("Accept", "application/json")
+            conn.readTimeout = 30_000
+            conn.doOutput = true
+            conn.outputStream.write(
+                """
+                {
+                    "profile_id": "${profileConfig.profileId}",
+                    "launch_args": ["--disable-blink-features=AutomationControlled", "--remote-allow-origins=*"],
+                    "last_opened_tabs": "0"
+                }
+                """.trimIndent().toByteArray(),
+            )
+
+            if (conn.responseCode != 200) {
+                logForProfile(profileConfig.profileId, "V2 /start HTTP {} — falling through", conn.responseCode)
+                conn.disconnect()
+                return null
+            }
+
+            @Suppress("UNCHECKED_CAST")
+            val resp = endpointMapper.readValue(conn.inputStream, Map::class.java)
+            conn.disconnect()
+
+            val code = resp["code"] as? Number
+            if (code?.toInt() != 0) {
+                logForProfile(profileConfig.profileId, "V2 /start API error: {}", resp)
+                return null
+            }
+
+            val data = resp["data"] as? Map<*, *>
+            val ws = data?.get("ws") as? Map<*, *>
+            val puppeteerWs = ws?.get("puppeteer") as? String
+            if (puppeteerWs.isNullOrBlank()) {
+                logForProfile(profileConfig.profileId, "V2 /start response missing ws: {}", resp)
+                return null
+            }
+
+            logForProfile(profileConfig.profileId, "V2 /start — launched, CDP: {}", puppeteerWs)
+            return puppeteerWs
         }
 
         /**

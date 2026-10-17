@@ -60,6 +60,15 @@ jobs:
       - name: Build with Gradle
         run: ./gradlew build --no-daemon -x ktlintCheck -x detekt
 
+      # compileOnly/runtime gate: a compileOnly dep that is missing at runtime causes
+      # NoClassDefFoundError at startup — tests pass (test classpath includes it) but
+      # bootJar crashes. bootJar transitively resolves the full runtime classpath.
+      # Runs after build so Gradle caching makes it fast on repeated runs.
+      - name: compileOnly/runtime gate
+        run: |
+          chmod +x scripts/ci/check-compileonly-runtime.sh
+          bash scripts/ci/check-compileonly-runtime.sh
+
       - name: Run tests
         run: ./gradlew test --no-daemon
 
