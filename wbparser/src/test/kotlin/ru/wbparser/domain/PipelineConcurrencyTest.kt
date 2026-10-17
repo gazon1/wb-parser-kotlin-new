@@ -11,6 +11,7 @@ import ru.wbparser.domain.model.ParsedItem
 import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.Pipeline
+import ru.wbparser.domain.pipeline.Stage
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.value.CrawlHttpStatusCode
@@ -59,14 +60,15 @@ class PipelineConcurrencyTest :
 
                 val pipeline =
                     Pipeline(
-                        download = { task ->
-                            startOrder.add("start-${task.url}")
-                            Step.Done(fetched(task))
-                        },
-                        parse = { f -> Step.Done(parsedPage(f.task)) },
-                        filter = { Step.Done(it) },
-                        enrich = { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
-                        save = { Step.Done(Unit) },
+                        download =
+                            Stage { task: Crawling ->
+                                startOrder.add("start-${task.url}")
+                                Step.Done(fetched(task))
+                            },
+                        parse = Stage { f: Fetched -> Step.Done(parsedPage(f.task)) },
+                        filter = Stage { item: ParsedItem -> Step.Done(item) },
+                        enrich = Stage { item: ParsedItem -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
+                        save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 3) Stop.MaxPagesReached else null },
                         clock = clock,
                     )
@@ -100,20 +102,21 @@ class PipelineConcurrencyTest :
 
                 val pipeline =
                     Pipeline(
-                        download = { task ->
-                            val current = concurrentDownloads.incrementAndGet()
-                            downloadStartOrder.add("start-${task.url}")
-                            if (current > maxConcurrent) maxConcurrent = current
-                            // Yield to ensure all 3 coroutines can start before any completes
-                            delay(10)
-                            val result = fetched(task)
-                            concurrentDownloads.decrementAndGet()
-                            Step.Done(result)
-                        },
-                        parse = { f -> Step.Done(parsedPage(f.task)) },
-                        filter = { Step.Done(it) },
-                        enrich = { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
-                        save = { Step.Done(Unit) },
+                        download =
+                            Stage { task: Crawling ->
+                                val current = concurrentDownloads.incrementAndGet()
+                                downloadStartOrder.add("start-${task.url}")
+                                if (current > maxConcurrent) maxConcurrent = current
+                                // Yield to ensure all 3 coroutines can start before any completes
+                                delay(10)
+                                val result = fetched(task)
+                                concurrentDownloads.decrementAndGet()
+                                Step.Done(result)
+                            },
+                        parse = Stage { f: Fetched -> Step.Done(parsedPage(f.task)) },
+                        filter = Stage { item: ParsedItem -> Step.Done(item) },
+                        enrich = Stage { item: ParsedItem -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
+                        save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 3) Stop.MaxPagesReached else null },
                         clock = clock,
                     )
@@ -137,11 +140,11 @@ class PipelineConcurrencyTest :
             runTest {
                 val pipeline =
                     Pipeline(
-                        download = { task -> Step.Done(fetched(task)) },
-                        parse = { f -> Step.Done(parsedPage(f.task)) },
-                        filter = { Step.Done(it) },
-                        enrich = { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
-                        save = { Step.Done(Unit) },
+                        download = Stage { task: Crawling -> Step.Done(fetched(task)) },
+                        parse = Stage { f: Fetched -> Step.Done(parsedPage(f.task)) },
+                        filter = Stage { item: ParsedItem -> Step.Done(item) },
+                        enrich = Stage { item: ParsedItem -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
+                        save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 1) Stop.MaxPagesReached else null },
                         clock = clock,
                     )

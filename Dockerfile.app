@@ -37,12 +37,37 @@ RUN --mount=type=cache,target=/root/.gradle \
     ./gradlew --no-daemon :app:bootJar -x test -x ktlintCheck -x detekt
 
 # ── runtime ──────────────────────────────────────────────────────────────────
-FROM eclipse-temurin:21-jre-alpine AS runtime
+# NOTE: eclipse-temurin:21-jre (Debian) not Alpine — Playwright Java bundles a
+# Node.js binary linked against glibc/libstdc++, which Alpine's musl libc does
+# not provide. All deps below satisfy both the Node.js runtime and the Chromium
+# browser binary that Playwright downloads.
+FROM eclipse-temurin:21-jre AS runtime
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libstdc++6 \
+    libgcc-s1 \
+    libglib2.0-0 \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2t64 \
+    libpangocairo-1.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Non-root: a crawler reaching out to the internet under a shell account has no
 # business owning the jar it runs.
-RUN addgroup -S -g 1001 crawler && adduser -S -u 1001 -G crawler crawler
+RUN groupadd -g 1001 crawler && useradd -u 1001 -g crawler crawler
 
 COPY --from=builder --chown=crawler:crawler /app/app/build/libs/app.jar app.jar
 

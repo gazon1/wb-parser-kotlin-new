@@ -64,7 +64,7 @@ class WbCatalogStageTest :
         test("non-WB URL returns ParseFailure") {
             runTest {
                 val stage = WbCatalogStage(okDownloader(fetched(crawling("https://example.com"))))
-                val result = stage.invoke(crawling("https://example.com/not-a-catalog"))
+                val result = stage.stage.run(crawling("https://example.com/not-a-catalog"))
                 val fail = result as Step.Fail<*, *>
                 fail.failure.shouldBeInstanceOf<ru.wbparser.domain.pipeline.StageFailure.ParseFailure>()
             }
@@ -74,7 +74,7 @@ class WbCatalogStageTest :
             runTest {
                 val error = NetworkError("Connection refused", null, "https://www.wildberries.ru/catalog/123/list.aspx", isAntibot = false)
                 val stage = WbCatalogStage(errorDownloader(error))
-                val result = stage.invoke(crawling("https://www.wildberries.ru/catalog/123/list.aspx"))
+                val result = stage.stage.run(crawling("https://www.wildberries.ru/catalog/123/list.aspx"))
                 val fail = result as Step.Fail<*, *>
                 fail.failure.shouldBeInstanceOf<ru.wbparser.domain.pipeline.StageFailure.Network>()
             }
@@ -84,7 +84,7 @@ class WbCatalogStageTest :
             runTest {
                 val error = NetworkError("HTTP 498", null, "https://www.wildberries.ru/catalog/123/list.aspx", isAntibot = true)
                 val stage = WbCatalogStage(errorDownloader(error))
-                val result = stage.invoke(crawling("https://www.wildberries.ru/catalog/123/list.aspx"))
+                val result = stage.stage.run(crawling("https://www.wildberries.ru/catalog/123/list.aspx"))
                 val fail = result as Step.Fail<*, *>
                 fail.failure.shouldBeInstanceOf<ru.wbparser.domain.pipeline.StageFailure.Antibot>()
             }
@@ -95,7 +95,7 @@ class WbCatalogStageTest :
                 val task = crawling("https://www.wildberries.ru/catalog/123/list.aspx?page=1")
                 val body = """{"data":{"products":[]}}"""
                 val stage = WbCatalogStage(okDownloader(fetched(task, body)))
-                val result = stage.invoke(task)
+                val result = stage.stage.run(task)
                 result.shouldBeInstanceOf<Step.Done<Crawling, ParsedPage>>()
                 result.output.items shouldBe emptyList()
             }
@@ -118,7 +118,7 @@ class WbCatalogStageTest :
                     )
                 val downloader: suspend (Crawling) -> Either<NetworkError, Fetched> = { Either.Right(fetchedResp) }
                 val stage = WbCatalogStage(downloader)
-                val result = stage.invoke(task)
+                val result = stage.stage.run(task)
                 result.shouldBeInstanceOf<Step.Done<Crawling, ParsedPage>>()
                 result.output.items.isNotEmpty() shouldBe true
             }
@@ -130,7 +130,7 @@ class WbCatalogStageTest :
                     throw RuntimeException("Unexpected network error")
                 }
                 val stage = WbCatalogStage(crashingDownloader)
-                val result = stage.invoke(crawling("https://www.wildberries.ru/catalog/123/list.aspx"))
+                val result = stage.stage.run(crawling("https://www.wildberries.ru/catalog/123/list.aspx"))
                 val fail = result as Step.Fail<*, *>
                 fail.failure.shouldBeInstanceOf<ru.wbparser.domain.pipeline.StageFailure.Network>()
             }

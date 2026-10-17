@@ -1,0 +1,94 @@
+# =============================================================================
+# Local debug stack with AdsPower browser automation.
+#
+#   ADSPOWER_API_KEY=<key> docker compose -f deploy/docker-compose.adspower.yml up --build
+#
+# All services use network_mode: host — AdsPower Local API и CDP debug ports
+# доступны только через loopback хоста, и Docker bridge не помогает.
+# Postgres тоже на host-сети (published port 5433 на хосте).
+# =============================================================================
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:${POSTGRES_IMAGE_TAG:-17-alpine}
+    container_name: wbparser-postgres
+    restart: unless-stopped
+    network_mode: "host"
+    environment:
+      POSTGRES_DB: wbparser
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - wbparser-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d wbparser"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── AdsPower Browser Runtime ────────────────────────────────────────────────
+  # Xvfb + Fluxbox + x11vnc + adspower-browser.
+  # network_mode: host → Local API at localhost:50325, CDP at 127.0.0.1:<port>.
+  adspower:
+    build:
+      context: ./docker.adspower
+      dockerfile: Dockerfile
+    container_name: wbparser-adspower
+    restart: unless-stopped
+    network_mode: "host"
+    ipc: host
+    environment:
+      - ADSPOWER_API_KEY=${ADSPOWER_API_KEY:-}
+    volumes:
+      - ${HOME}/.adspowerCli:/root/.adspowerCli
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:50325/v1/policies/status || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Application ────────────────────────────────────────────────────────────
+  app:
+    build:
+      context: ..
+      dockerfile: Dockerfile.debug
+    container_name: wbparser-app
+    restart: unless-stopped
+    network_mode: "host"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      adspower:
+        condition: service_started
+    environment:
+      SPRING_FLYWAY_ENABLED: "true"
+      SERVER_PORT: "8082"
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-dev-password}
+      # Postgres on host loopback
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5432"
+      DB_NAME: wbparser
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      # AdsPower: Local API at localhost (same as host loopback)
+      ADSPOWER_API_KEY: ${ADSPOWER_API_KEY:-}
+      CRAWLER_WORKER_ENABLED: "true"
+      CRAWLER_SCHEDULE_CRON: "*/30 * * * * *"
+      LOGGING_LEVEL_ROOT: DEBUG
+      LOGGING_LEVEL_RU_WBPARSER: DEBUG
+      # Playwright driver extracted to /tmp — skip re-download of browsers since
+      # /root/.cache/ms-playwright is mounted from host at /tmp/pw-browsers
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+    ports:
+      - "127.0.0.1:8082:8082"
+    volumes:
+      - ../app/build/libs/app.jar:/app/app.jar:ro
+      - ../logs:/logs
+      - /tmp/pw-browsers:/root/.cache/ms-playwright:ro
+
+volumes:
+  wbparser-postgres-data:

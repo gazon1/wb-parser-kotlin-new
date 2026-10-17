@@ -80,9 +80,10 @@ crawler:
   spider:
     use-browser-fetch: true
     browser-profiles:
-      - k18a6v75
+      # Only include profiles currently open in AdsPower.
+      # k18a6v75 — Inactive
       - k18a6j35
-      - k187fu14
+      # k187fu14 — Inactive, Chrome 142 not ready
       - k17bnqsi
       - kxpu63n
     browser-retry-limit: 3

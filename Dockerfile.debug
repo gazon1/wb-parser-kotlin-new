@@ -6,9 +6,34 @@
 # of its own — deploy/docker-compose.debug.yml bind-mounts the jar as a FILE
 # (a directory mount onto /app/app.jar is what produced "Invalid or corrupt
 # jarfile" the first time).
-FROM eclipse-temurin:21-jre-alpine
+#
+# NOTE: alpine is NOT used here because the Playwright Java driver bundles a
+# Node.js binary linked against glibc/libstdc++, which does not exist in Alpine
+# (Alpine uses musl). Using eclipse-temurin:21-jre (Debian-based) instead.
+FROM eclipse-temurin:21-jre
 
-RUN apk add --no-cache wget
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    libstdc++6 \
+    libgcc-s1 \
+    curl \
+    libglib2.0-0 \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libpango-1.0-0 \
+    libcairo2 \
+    libasound2t64 \
+    libpangocairo-1.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

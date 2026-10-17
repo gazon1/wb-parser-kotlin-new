@@ -55,8 +55,8 @@ dependencies {
     // DB
     implementation("org.postgresql:postgresql:42.7.4")
     implementation("com.zaxxer:HikariCP:5.1.0")
-    implementation("org.flywaydb:flyway-core:10.17.0")
-    implementation("org.flywaydb:flyway-database-postgresql:10.17.0")
+    implementation("org.flywaydb:flyway-core:11.20.3")
+    implementation("org.flywaydb:flyway-database-postgresql:11.20.3")
 
     // Resilience
     implementation("io.github.resilience4j:resilience4j-kotlin:$resilience4jVersion")

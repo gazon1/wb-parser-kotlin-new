@@ -33,21 +33,15 @@ class CrawlerConfig {
 
     @Bean
     fun browserPool(properties: CrawlProperties): BrowserPool {
-        // Primary: direct CDP WS URLs for profiles known to be running.
-        // Fallback: BrowserPool will use AdsPower API + port-scan to discover.
-        val knownCdpUrls =
-            mapOf(
-                "k18a6v75" to "ws://127.0.0.1:36931/devtools/browser/81540c1d-ca4a-4c12-b612-bddcba957879",
-                "k18a6j35" to null,
-                "k187fu14" to null,
-                "k17bnqsi" to null,
-                "kxpu63n" to null,
-            )
+        // No hardcoded CDP WS URLs — BrowserPool.resolveCdpUrl() will call the
+        // AdsPower V2 /active endpoint, and if no browser is running it will call
+        // V2 /start to launch one with --remote-allow-origins=* so Playwright's
+        // CDP-over-WebSocket connection is accepted.
         val profiles =
             properties.spider.browserProfiles.map { profileId ->
                 BrowserProfileConfig(
                     profileId = profileId,
-                    cdpWsUrl = knownCdpUrls[profileId],
+                    cdpWsUrl = null,
                 )
             }
         return BrowserPool(profiles = profiles)

@@ -18,7 +18,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** skip domain unit tests for "quick fixes" — the <1 s execution time makes it free to run. _(from `2026-09-08-domain-coverage-pr4`)
 - New code in `domain/pipeline/**` **MUST** include a unit test in `domain/src/test/kotlin/` that uses `FakeSideInterpreterRegistry`. _(from `2026-09-08-domain-coverage-pr4`)
 - **Always** use `SideInterpreterRegistry` to register all side-effect handlers before calling `Pipeline.run()`. _(from `2026-09-08-functional-pipeline-refactor`)
-- **Never** call `delay()` or `UUID.randomUUID()` inside a `Stage` — inject timing/id generation through `PipelineContext` if needed. _(from `2026-09-08-functional-pipeline-refactor`)
+- **Never** call `delay()` or `UUID.randomUUID()` inside a `Stage` body — Stage functions must remain referentially transparent. The `delayFn` (for retry back-off) and `idGen` (for pagination task IDs) live in the `Pipeline` coordinator and are injected via the `Pipeline` constructor; they are called by the coordinator, never by a Stage. _(from `2026-09-08-functional-pipeline-refactor`)
 - **Never** emit a `Side` from a stage without a corresponding interpreter registered — the pipeline will throw at runtime. _(from `2026-09-08-functional-pipeline-refactor`)
 - New code in `domain/pipeline/**` **MUST** be accompanied by a pure-Kotlin test in `domain/src/test/kotlin/` using a fake registry. _(from `2026-09-08-functional-pipeline-refactor`)
 - **Always** call `server.baseUrl()` inside the test lambda (not at class instantiation), because the port is assigned on `start()` _(from `2026-09-08-integration-testing-pr7`)
@@ -54,6 +54,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** open as many AdsPower profiles as `target-concurrency`, or lower the setting. The _(from `2026-10-14-parallel-crawl-targets`)
 - **Never** read a pool-exhaustion error as evidence that WB blocked us. It means no slot freed _(from `2026-10-14-parallel-crawl-targets`)
 - **Never** set `target-concurrency` from a guess about how many browsers are open. The pool _(from `2026-10-14-parallel-crawl-targets`)
+- **Always** inject `BrowserAutomation` via constructor for testability — never call `Playwright` directly in `ProfileState`. _(from `2026-10-17-browser-automation-interface`)
+- **Always** inject `AdsPowerApi` via constructor for testability — never call `HttpURLConnection` directly in `ProfileState`. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)
+- **Always** handle back-off delays at the coordinator level (inside `Pipeline.run()` or `processItems`) — never inside `async {}`. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)
 
 ## Per-tag
 
@@ -68,30 +71,47 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `architecture`
 
+- `BorrowedPage` remains unchanged — it still wraps a real `Page`. _(from `2026-10-17-browser-automation-interface`)_
 - **Breaking**: `installCrawler` extension function is deleted — any external callers would break (there were none) _(from `2026-09-09-scheduler-wireup-pr18`)_
+- `BrowserPool` remains the pool manager (round-robin, locking); `BrowserAutomation` handles only the browser lifecycle. _(from `2026-10-17-browser-automation-interface`)_
+- `Coordinator` is the sole owner of deduplication and retry attempt state _(from `2026-10-17-coordinator-extraction`)_
 - Crawler: `tests` floor 31 → 44. Storefront: per-file floors in _(from `2026-10-08-gates-that-can-fail`)_
 - Default remains sequential (`1`) — users must explicitly set `crawler.spider.concurrency` in YAML to get parallelism _(from `2026-09-09-concurrency-wiring-pr17`)_
+- Dispatcher threads are never blocked by retry back-off. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - `DomainError` still has `isStopped()` / `isDrop()` defaults — zero callers confirmed, removal deferred _(from `2026-09-09-dead-code-purge-pr9`)_
 - `domain:test` now runs ~50 pure domain unit tests (previously NO-SOURCE) _(from `2026-09-09-test-module-boundary-pr10`)_
+- Existing tests that construct `Pipeline` directly with lambdas continue to work via the secondary constructor _(from `2026-10-17-stage-data-class-dsl`)_
+- `FakeAdsPowerApi` lives in `src/test/kotlin/` alongside the tests that use it. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
+- `FakeBrowserAutomation` lives in `src/test/kotlin/` alongside `BrowserPoolTest`. _(from `2026-10-17-browser-automation-interface`)_
 - Future work: surface `Spider.concurrency` in a Spring `@Bean` configuration (covered in PR 18) _(from `2026-09-09-concurrency-wiring-pr17`)_
+- `.invoke()` calls become `.run.invoke()` (the function is now a property named `run`) _(from `2026-10-17-stage-data-class-dsl`)_
 - `isStopped()` / `isDrop()` defaults in `DomainError` still present — zero callers confirmed, removal deferred _(from `2026-09-09-test-module-boundary-pr10`)_
+- New `stage()` DSL makes stage bodies read like domain language _(from `2026-10-17-stage-data-class-dsl`)_
 - **Note**: `crawler.lock.timeout-minutes` is still not read — future work if multi-instance deployment is needed (ShedLock) _(from `2026-09-09-scheduler-wireup-pr18`)_
 - Pagination task IDs and the start task ID are now explicitly controllable — critical for _(from `2026-10-14-pipeline-purity-idgen`)_
+- `Pipeline` no longer has `delayFn` as constructor parameter — `run()` uses `kotlinx.coroutines.delay` directly. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - `Pipeline.run()` is still not referentially transparent due to `delay()` in retry loops, _(from `2026-10-14-pipeline-purity-idgen`)_
 - `Pipeline.run()` save-stage `when` is still exhaustive (added explicit `Cont` comment) _(from `2026-09-09-dead-code-purge-pr9`)_
+- `Pipeline.run` signature simplified: removed `seenFingerprints` parameter _(from `2026-10-17-coordinator-extraction`)_
+- Playwright/CDP connection remains an integration concern — no attempt to mock it in unit tests. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
 - **Positive**: `crawler.schedule.cron` from YAML controls the schedule _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: Scheduler now actually runs when `worker` profile is active and `crawler.worker.enabled = true` _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: `Spider.concurrency` now reaches `CrawlRunner` via `CrawlerConfig` _(from `2026-09-09-scheduler-wireup-pr18`)_
-- `SaveBatchInterpreter` and `ScheduleRetryInterpreter` are not optional — they must be registered in every `runTarget`. _(from `2026-09-08-functional-pipeline-refactor`)_
+- Retry logic in `runDownloadStage` / `runParseStage` / `saveBatch` is fully deterministic and testable with fake clocks. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
+- `SaveBatchInterpreter` and `ScheduleRetryInterpreter` must be registered (satisfying the `SideInterpreterRegistry` API), but production uses `NoOp*` variants — the actual save path goes through `CrawlRunner.runTarget` directly, and the actual retry delay is handled inline by the coordinator loop. _(from `2026-09-08-functional-pipeline-refactor`)_
 - `Spider.concurrency` from `application.yml` now actually controls download concurrency _(from `2026-09-09-concurrency-wiring-pr17`)_
 - `StageFailure` sealed interface now has 6 variants (was 7) _(from `2026-09-09-dead-code-purge-pr9`)_
+- `Stage` is no longer a typealias — `Stage(...)` construction required in a few places _(from `2026-10-17-stage-data-class-dsl`)_
+- `stageWithRetry` (deleted) is replaced by an inline retry loop in each coordinator — slightly more code but explicit and correct. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share _(from `2026-10-08-discover-test-migrations`)_
+- `TaskOutcome` and `CrawlingFingerprint` are now in `Coordinator.kt` instead of `Pipeline.kt` _(from `2026-10-17-coordinator-extraction`)_
 - `tests:test` still runs integration tests (fake HTTP + SQLite) _(from `2026-09-09-test-module-boundary-pr10`)_
 - The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same _(from `2026-10-08-discover-test-migrations`)_
 - The executed-test floors are raised in the same commit that adds tests, in both _(from `2026-10-08-gates-that-can-fail`)_
 - `toDomainError()` has 6 branches (was 7) _(from `2026-09-09-dead-code-purge-pr9`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
 - `WbCatalogInterceptors.kt` reduced to 2 typealiases (was 3 — 1 function) _(from `2026-09-09-dead-code-purge-pr9`)_
+- `WbCatalogStage` now exposes `.stage` property instead of being a `Stage` _(from `2026-10-17-stage-data-class-dsl`)_
 
 ### `arrow`
 
@@ -106,9 +126,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `browser`
 
+- `BorrowedPage` remains unchanged — it still wraps a real `Page`. _(from `2026-10-17-browser-automation-interface`)_
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
 - `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. _(from `2026-10-14-parallel-crawl-targets`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
+- `BrowserPool` remains the pool manager (round-robin, locking); `BrowserAutomation` handles only the browser lifecycle. _(from `2026-10-17-browser-automation-interface`)_
+- `FakeAdsPowerApi` lives in `src/test/kotlin/` alongside the tests that use it. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
+- `FakeBrowserAutomation` lives in `src/test/kotlin/` alongside `BrowserPoolTest`. _(from `2026-10-17-browser-automation-interface`)_
+- Playwright/CDP connection remains an integration concern — no attempt to mock it in unit tests. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
 - SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No _(from `2026-10-14-parallel-crawl-targets`)_
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 
@@ -144,7 +169,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `concurrency`
 
 - `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. _(from `2026-10-14-parallel-crawl-targets`)_
+- Dispatcher threads are never blocked by retry back-off. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
+- `Pipeline` no longer has `delayFn` as constructor parameter — `run()` uses `kotlinx.coroutines.delay` directly. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
+- Retry logic in `runDownloadStage` / `runParseStage` / `saveBatch` is fully deterministic and testable with fake clocks. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No _(from `2026-10-14-parallel-crawl-targets`)_
+- `stageWithRetry` (deleted) is replaced by an inline retry loop in each coordinator — slightly more code but explicit and correct. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 
 ### `configuration`
 
@@ -189,7 +218,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Integration tests in `tests/` still cover the full stack; they complement, not replace, domain tests. _(from `2026-09-08-domain-coverage-pr4`)_
 - **Positive**: Cleaner domain model, no dead code _(from `2026-09-09-dead-code-purge-pr19`)_
 - **Positive**: Honest documentation (effect-recording vs pure) _(from `2026-09-09-dead-code-purge-pr19`)_
-- `SaveBatchInterpreter` and `ScheduleRetryInterpreter` are not optional — they must be registered in every `runTarget`. _(from `2026-09-08-functional-pipeline-refactor`)_
+- `SaveBatchInterpreter` and `ScheduleRetryInterpreter` must be registered (satisfying the `SideInterpreterRegistry` API), but production uses `NoOp*` variants — the actual save path goes through `CrawlRunner.runTarget` directly, and the actual retry delay is handled inline by the coordinator loop. _(from `2026-09-08-functional-pipeline-refactor`)_
 
 ### `either`
 
@@ -222,24 +251,36 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Adding a new stage (e.g. `dedup`) is now a mechanical extract step _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 - A dropped item is counted separately: `Crawled.itemsSaved` excludes it, and one _(from `2026-10-09-wire-business-rules-into-filter`)_
 - `arrow-either-anti-patterns` skill now has accurate guidance with the `map { side-effect; value }` distinction _(from `2026-09-09-arrow-either-pr20`)_
+- `Coordinator` is the sole owner of deduplication and retry attempt state _(from `2026-10-17-coordinator-extraction`)_
 - Default remains sequential (`1`) — users must explicitly set `crawler.spider.concurrency` in YAML to get parallelism _(from `2026-09-09-concurrency-wiring-pr17`)_
+- Dispatcher threads are never blocked by retry back-off. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - Each helper is independently testable _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+- Existing tests that construct `Pipeline` directly with lambdas continue to work via the secondary constructor _(from `2026-10-17-stage-data-class-dsl`)_
 - Future reviews will correctly identify true `map` anti-patterns (last expression = `Unit`) _(from `2026-09-09-arrow-either-pr20`)_
 - Future work: surface `Spider.concurrency` in a Spring `@Bean` configuration (covered in PR 18) _(from `2026-09-09-concurrency-wiring-pr17`)_
 - HTTP errors (500/429/connection) are now correctly retried up to `maxAttempts`. _(from `2026-09-08-retry-semantics-pr8`)_
 - Integration tests in `tests/` still cover the full stack; they complement, not replace, domain tests. _(from `2026-09-08-domain-coverage-pr4`)_
+- `.invoke()` calls become `.run.invoke()` (the function is now a property named `run`) _(from `2026-10-17-stage-data-class-dsl`)_
+- New `stage()` DSL makes stage bodies read like domain language _(from `2026-10-17-stage-data-class-dsl`)_
 - Pagination remains inline — defer extraction until a concrete need arises _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 - Pagination task IDs and the start task ID are now explicitly controllable — critical for _(from `2026-10-14-pipeline-purity-idgen`)_
 - `PipelineFailure` third-Either variant remains available as a future option if more _(from `2026-10-09-pipelinefailure-carries-sides`)_
+- `Pipeline` no longer has `delayFn` as constructor parameter — `run()` uses `kotlinx.coroutines.delay` directly. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - `Pipeline.run()` is still not referentially transparent due to `delay()` in retry loops, _(from `2026-10-14-pipeline-purity-idgen`)_
 - `PipelineRunner` code is unchanged (already correct) _(from `2026-09-09-arrow-either-pr20`)_
 - `Pipeline.run()` reduced from 113 lines to ~55 lines _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 - `Pipeline.run` return type is a breaking change; all call sites that pattern-match on _(from `2026-10-09-pipelinefailure-carries-sides`)_
+- `Pipeline.run` signature simplified: removed `seenFingerprints` parameter _(from `2026-10-17-coordinator-extraction`)_
 - `Retry.*` data classes kept for test expressiveness and future signal-specific behaviour _(from `2026-09-09-retry-backoff-collapse-pr9-5`)_
 - `retryDelayMs()` reduced from 19 lines to 11 lines _(from `2026-09-09-retry-backoff-collapse-pr9-5`)_
+- Retry logic in `runDownloadStage` / `runParseStage` / `saveBatch` is fully deterministic and testable with fake clocks. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - Rules read `priceKopecks`, `salePriceKopecks`, `inStock` and `category` from `ParsedItem`, _(from `2026-10-09-wire-business-rules-into-filter`)_
-- `SaveBatchInterpreter` and `ScheduleRetryInterpreter` are not optional — they must be registered in every `runTarget`. _(from `2026-09-08-functional-pipeline-refactor`)_
+- `SaveBatchInterpreter` and `ScheduleRetryInterpreter` must be registered (satisfying the `SideInterpreterRegistry` API), but production uses `NoOp*` variants — the actual save path goes through `CrawlRunner.runTarget` directly, and the actual retry delay is handled inline by the coordinator loop. _(from `2026-09-08-functional-pipeline-refactor`)_
 - `Spider.concurrency` from `application.yml` now actually controls download concurrency _(from `2026-09-09-concurrency-wiring-pr17`)_
+- `Stage` is no longer a typealias — `Stage(...)` construction required in a few places _(from `2026-10-17-stage-data-class-dsl`)_
+- `stageWithRetry` (deleted) is replaced by an inline retry loop in each coordinator — slightly more code but explicit and correct. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
+- `TaskOutcome` and `CrawlingFingerprint` are now in `Coordinator.kt` instead of `Pipeline.kt` _(from `2026-10-17-coordinator-extraction`)_
+- `WbCatalogStage` now exposes `.stage` property instead of being a `Stage` _(from `2026-10-17-stage-data-class-dsl`)_
 
 ### `PR-11-5`
 
@@ -247,6 +288,17 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Each helper is independently testable _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 - Pagination remains inline — defer extraction until a concrete need arises _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 - `Pipeline.run()` reduced from 113 lines to ~55 lines _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+
+### `pr-13`
+
+- `Coordinator` is the sole owner of deduplication and retry attempt state _(from `2026-10-17-coordinator-extraction`)_
+- Existing tests that construct `Pipeline` directly with lambdas continue to work via the secondary constructor _(from `2026-10-17-stage-data-class-dsl`)_
+- `.invoke()` calls become `.run.invoke()` (the function is now a property named `run`) _(from `2026-10-17-stage-data-class-dsl`)_
+- New `stage()` DSL makes stage bodies read like domain language _(from `2026-10-17-stage-data-class-dsl`)_
+- `Pipeline.run` signature simplified: removed `seenFingerprints` parameter _(from `2026-10-17-coordinator-extraction`)_
+- `Stage` is no longer a typealias — `Stage(...)` construction required in a few places _(from `2026-10-17-stage-data-class-dsl`)_
+- `TaskOutcome` and `CrawlingFingerprint` are now in `Coordinator.kt` instead of `Pipeline.kt` _(from `2026-10-17-coordinator-extraction`)_
+- `WbCatalogStage` now exposes `.stage` property instead of being a `Stage` _(from `2026-10-17-stage-data-class-dsl`)_
 
 ### `refactoring`
 
@@ -280,10 +332,15 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `testing`
 
+- `BorrowedPage` remains unchanged — it still wraps a real `Page`. _(from `2026-10-17-browser-automation-interface`)_
+- `BrowserPool` remains the pool manager (round-robin, locking); `BrowserAutomation` handles only the browser lifecycle. _(from `2026-10-17-browser-automation-interface`)_
 - Crawler: `tests` floor 31 → 44. Storefront: per-file floors in _(from `2026-10-08-gates-that-can-fail`)_
 - `domain:test` now runs ~50 pure domain unit tests (previously NO-SOURCE) _(from `2026-09-09-test-module-boundary-pr10`)_
+- `FakeAdsPowerApi` lives in `src/test/kotlin/` alongside the tests that use it. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
+- `FakeBrowserAutomation` lives in `src/test/kotlin/` alongside `BrowserPoolTest`. _(from `2026-10-17-browser-automation-interface`)_
 - Integration tests in `tests/` still cover the full stack; they complement, not replace, domain tests. _(from `2026-09-08-domain-coverage-pr4`)_
 - `isStopped()` / `isDrop()` defaults in `DomainError` still present — zero callers confirmed, removal deferred _(from `2026-09-09-test-module-boundary-pr10`)_
+- Playwright/CDP connection remains an integration concern — no attempt to mock it in unit tests. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
 - `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share _(from `2026-10-08-discover-test-migrations`)_
 - `tests:test` still runs integration tests (fake HTTP + SQLite) _(from `2026-09-09-test-module-boundary-pr10`)_
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
@@ -322,6 +379,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-14-extract-browser-request-logic-for-testability` — infrastructure  testing  coverage  browser
 - `2026-10-14-parallel-crawl-targets` — infrastructure  concurrency  browser  performance
 - `2026-10-14-pipeline-purity-idgen` — pipeline  refactoring  architecture
+- `2026-10-17-browser-automation-interface` — browser  architecture  testing
+- `2026-10-17-browserpool-testability-adspower-api-interface` — browser  architecture  testing
+- `2026-10-17-coordinator-extraction` — pipeline  architecture  pr-13
+- `2026-10-17-pipeline-purity-delayfn-extraction` — pipeline  architecture  concurrency
+- `2026-10-17-stage-data-class-dsl` — pipeline  architecture  pr-13
 
 ## Active entries
 
@@ -348,3 +410,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-14-extract-browser-request-logic-for-testability` — Browser fetch extracts request construction instead of excluding itself from coverage
 - `2026-10-14-parallel-crawl-targets` — Crawl targets run in parallel; the browser pool is what actually bounds it
 - `2026-10-14-pipeline-purity-idgen` — Pipeline idGen injectable; delay() in stageWithRetry is intentional
+- `2026-10-17-browser-automation-interface` — BrowserAutomation interface — extract Playwright CDP lifecycle from BrowserPool.ProfileState
+- `2026-10-17-browserpool-testability-adspower-api-interface` — BrowserPool testability — AdsPowerApi interface extraction
+- `2026-10-17-coordinator-extraction` — Extract Coordinator class from Pipeline.run
+- `2026-10-17-pipeline-purity-delayfn-extraction` — Extract delayFn from async dispatcher into coordinator-level retry loop
+- `2026-10-17-stage-data-class-dsl` — Stage data class + StageDSL for readable stage construction

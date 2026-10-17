@@ -14,3 +14,4 @@
 
 ci-only:build	ci.yml runs the full build lifecycle because it is the only place that assembles the bootJar and proves the image can be packaged. Locally that is `just app::build bootJar`, which is slower than the compile check check.sh uses.
 local-only:compileKotlin	check.sh compiles the app module explicitly so a Spring wiring error surfaces in the local loop with a readable message, rather than as part of a multi-minute `build`. CI gets the same coverage from `build`, which depends on compilation.
+ci-only:compileOnly-gate	ci.yml runs the compileOnly gate after `./gradlew build` (which already includes bootJar via build's lifecycle). Locally check.sh runs it as step 6 between `compileKotlin` and `tests:test`. Both surfaces exercise bootJar; the ordering difference is because CI already builds the JAR as part of the build step.
