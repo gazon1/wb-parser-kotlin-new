@@ -11,6 +11,7 @@ import ru.wbparser.domain.pipeline.Pipeline
 import ru.wbparser.domain.pipeline.Retry
 import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Side
+import ru.wbparser.domain.pipeline.Stage
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.pipeline.dropIfInvalid
@@ -59,42 +60,46 @@ fun buildParserPipeline(
     delayFn: suspend (Duration) -> Unit = { d -> kotlinx.coroutines.delay(d) },
 ): Pipeline =
     Pipeline(
-        download = { task: Crawling ->
-            downloader(task).fold(
-                ifLeft = { _ ->
-                    // Both connection failures and HTTP 5xx errors are retryable.
-                    // HTTP 4xx errors from KtorDownloader are non-retryable but KtorDownloader
-                    // returns them as NetworkError too — they will be retried once before failing.
-                    Step.Retry(
-                        Retry.ServerError(
-                            attempt = 0, // actual attempt count is managed by stageWithRetry
-                            delayMs = null, // use policy defaults
-                        ),
-                    )
-                },
-                ifRight = { fetched -> Step.Done(fetched) },
-            )
-        },
-        parse = { fetched: Fetched ->
-            Step.Done(parser(fetched))
-        },
-        filter = { item: ParsedItem ->
-            val reason = item.dropIfInvalid(rules)
-            if (reason == null) {
-                Step.Done<ParsedItem, ParsedItem?>(item)
-            } else {
-                // The reason travels as a side so the log says *why* an item vanished,
-                // rather than every rejection reading as "filtered".
-                Step.Done<ParsedItem, ParsedItem?>(
-                    output = null,
-                    sides = listOf(Side.Drop(reason, item)),
+        download =
+            Stage<Crawling, Fetched> { task: Crawling ->
+                downloader(task).fold(
+                    ifLeft = { _ ->
+                        // Both connection failures and HTTP 5xx errors are retryable.
+                        // HTTP 4xx errors from KtorDownloader are non-retryable but KtorDownloader
+                        // returns them as NetworkError too — they will be retried once before failing.
+                        Step.Retry(
+                            Retry.ServerError(
+                                attempt = 0, // actual attempt count is managed by stageWithRetry
+                                delayMs = null, // use policy defaults
+                            ),
+                        )
+                    },
+                    ifRight = { fetched -> Step.Done(fetched) },
                 )
-            }
-        },
-        enrich = { item: ParsedItem ->
-            Step.Done(SavedItem.from(item, targetId))
-        },
-        save = save,
+            },
+        parse =
+            Stage<Fetched, ru.wbparser.domain.model.ParsedPage> { fetched: Fetched ->
+                Step.Done(parser(fetched))
+            },
+        filter =
+            Stage<ParsedItem, ParsedItem?> { item: ParsedItem ->
+                val reason = item.dropIfInvalid(rules)
+                if (reason == null) {
+                    Step.Done<ParsedItem, ParsedItem?>(item)
+                } else {
+                    // The reason travels as a side so the log says *why* an item vanished,
+                    // rather than every rejection reading as "filtered".
+                    Step.Done<ParsedItem, ParsedItem?>(
+                        output = null,
+                        sides = listOf(Side.Drop(reason, item)),
+                    )
+                }
+            },
+        enrich =
+            Stage<ParsedItem, SavedItem> { item: ParsedItem ->
+                Step.Done(SavedItem.from(item, targetId))
+            },
+        save = Stage(save),
         retryPolicy = retryPolicy,
         stopAt = stopAt,
         clock = clock,

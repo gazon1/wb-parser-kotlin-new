@@ -14,7 +14,7 @@ The two commits (`e1259e8`, `21a511e`) replaced this with a declarative `Pipelin
 
 Split the pipeline into three orthogonal layers:
 
-- **`Stage`** — pure functions `(PipelineContext) -> StageResult`. Each stage declares what side effects it needs via `emits(Side)`. No network, no DB, no `delay`.
+- **`Stage`** — a `data class` holding a `run: suspend (I) -> Step<I, O>` function. Stages are composable; they receive input and return `Step`. No network, no DB, no `delay` inside the `run` lambda.
 - **`Side`** — sealed interface enumerating all side-effect types: `HttpRequest`, `SaveBatch`, `ScheduleRetry`, `Log`.
 - **`Interpreter`** — executes a `Side` against the real environment (HTTP client, DB, scheduler, logger). A `SideInterpreterRegistry` holds all registered interpreters.
 
@@ -26,21 +26,16 @@ Adopted the three-layer model. Key files:
 
 ```
 domain/pipeline/
-  Stage.kt           — Stage, StageResult (Done / Fail / Retry / Emit)
+  Stage.kt           — Stage data class, StageInfo, StageBuilder DSL
+  Step.kt            — Step sealed interface (Done / Fail / Retry / Cont)
   Side.kt            — Side sealed interface + subclasses
-  Pipeline.kt        — Pipeline.run() declarative engine
+  Pipeline.kt        — Pipeline.run() declarative engine + Coordinator
   Interpreter.kt     — SideInterpreterRegistry, Interpreter
 
-domain/pipeline/stages/
-  HttpFetchStage.kt
-  ParseCatalogStage.kt
-  SaveBatchStage.kt
-
-domain/pipeline/interpreters/
-  HttpInterpreter.kt
-  SaveBatchInterpreter.kt
-  ScheduleRetryInterpreter.kt
-  LogInterpreter.kt
+infra/pipeline/
+  Interpreters.kt    — NoOp* production interpreters, LogInterpreter, MicrometerMetricInterpreter
+  PipelineRunner.kt  — Bridge: runs Pipeline and interprets accumulated Sides
+  PipelineFactory.kt — Builds a concrete Pipeline from downloader/parser/saver functions
 ```
 
 ## Rationale
@@ -54,12 +49,11 @@ domain/pipeline/interpreters/
 
 - **Always** use `SideInterpreterRegistry` to register all side-effect handlers before calling `Pipeline.run()`.
 - **Never** emit a `Side` from a stage without a corresponding interpreter registered — the pipeline will throw at runtime.
-- **Never** call `delay()` or `UUID.randomUUID()` inside a `Stage` — inject timing/id generation through `PipelineContext` if needed.
+- **Never** call `delay()` or `UUID.randomUUID()` inside a `Stage` body — Stage functions must remain referentially transparent. The `delayFn` (for retry back-off) and `idGen` (for pagination task IDs) live in the `Pipeline` coordinator and are injected via the `Pipeline` constructor; they are called by the coordinator, never by a Stage.
 - New code in `domain/pipeline/**` **MUST** be accompanied by a pure-Kotlin test in `domain/src/test/kotlin/` using a fake registry.
-- `SaveBatchInterpreter` and `ScheduleRetryInterpreter` are not optional — they must be registered in every `runTarget`.
+- `SaveBatchInterpreter` and `ScheduleRetryInterpreter` must be registered (satisfying the `SideInterpreterRegistry` API), but production uses `NoOp*` variants — the actual save path goes through `CrawlRunner.runTarget` directly, and the actual retry delay is handled inline by the coordinator loop.
 
 ## Links
 
 - Commit `e1259e8` — initial functional refactor
 - Commit `21a511e` — complete declarative pipeline
-- `crawl.kt` — the old imperative entry point (still present as reference, to be removed)

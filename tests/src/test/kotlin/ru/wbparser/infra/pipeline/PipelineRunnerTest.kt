@@ -12,6 +12,7 @@ import ru.wbparser.domain.model.ParsedItem
 import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.Pipeline
+import ru.wbparser.domain.pipeline.Stage
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.value.CrawlHttpStatusCode
@@ -60,24 +61,27 @@ class PipelineRunnerTest :
             )
 
         fun makePipeline(
-            download: suspend (Crawling) -> Step<Crawling, Fetched> = { task -> Step.Done(testFetched(task)) },
-            parse: suspend (Fetched) -> Step<Fetched, ParsedPage> = { fetched ->
-                Step.Done(ParsedPage(fetched, emptyList(), null, false))
-            },
-            filter: suspend (ParsedItem) -> Step<ParsedItem, ParsedItem?> = { Step.Done(it) },
-            enrich: suspend (ParsedItem) -> Step<ParsedItem, SavedItem> = { item ->
-                Step.Done(SavedItem.from(item, UUID.randomUUID()))
-            },
-            save: suspend (List<SavedItem>) -> Step<List<SavedItem>, Unit> = { items ->
-                Step.Done(
-                    Unit,
-                    sides =
-                        listOf(
-                            ru.wbparser.domain.pipeline.Side
-                                .SaveBatch(items),
-                        ),
-                )
-            },
+            download: Stage<Crawling, Fetched> = Stage { task -> Step.Done(testFetched(task)) },
+            parse: Stage<Fetched, ParsedPage> =
+                Stage { fetched ->
+                    Step.Done(ParsedPage(fetched, emptyList(), null, false))
+                },
+            filter: Stage<ParsedItem, ParsedItem?> = Stage { Step.Done(it) },
+            enrich: Stage<ParsedItem, SavedItem> =
+                Stage { item ->
+                    Step.Done(SavedItem.from(item, UUID.randomUUID()))
+                },
+            save: Stage<List<SavedItem>, Unit> =
+                Stage { items ->
+                    Step.Done(
+                        Unit,
+                        sides =
+                            listOf(
+                                ru.wbparser.domain.pipeline.Side
+                                    .SaveBatch(items),
+                            ),
+                    )
+                },
             stopAt: (Int, Int) -> Stop? = { _, _ -> null },
         ): Pipeline =
             Pipeline(
@@ -112,12 +116,13 @@ class PipelineRunnerTest :
             runTest {
                 val pipeline =
                     makePipeline(
-                        download = { _ ->
-                            Step.Fail(
-                                ru.wbparser.domain.pipeline.StageFailure
-                                    .Network("err", null, null),
-                            )
-                        },
+                        download =
+                            Stage { _ ->
+                                Step.Fail(
+                                    ru.wbparser.domain.pipeline.StageFailure
+                                        .Network("err", null, null),
+                                )
+                            },
                     )
                 val registry = SideInterpreterRegistry()
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
@@ -133,9 +138,10 @@ class PipelineRunnerTest :
                 val item = testParsedItem()
                 val pipeline =
                     makePipeline(
-                        parse = { fetched ->
-                            Step.Done(ParsedPage(fetched, listOf(item), null, false))
-                        },
+                        parse =
+                            Stage { fetched ->
+                                Step.Done(ParsedPage(fetched, listOf(item), null, false))
+                            },
                     )
                 val collector = TestSideCollector()
                 val registry =
@@ -157,9 +163,10 @@ class PipelineRunnerTest :
                 // Without pagination, the loop exits naturally before stopAt would fire.
                 val pipeline =
                     makePipeline(
-                        parse = { fetched ->
-                            Step.Done(ParsedPage(fetched, emptyList(), testCrawling().url, false))
-                        },
+                        parse =
+                            Stage { fetched ->
+                                Step.Done(ParsedPage(fetched, emptyList(), testCrawling().url, false))
+                            },
                         stopAt = { pages, _ -> if (pages >= 1) Stop.MaxPagesReached else null },
                     )
                 val registry = SideInterpreterRegistry()
@@ -178,19 +185,21 @@ class PipelineRunnerTest :
                 // parse returns a page with one item so enrich stage actually runs
                 val pipeline =
                     makePipeline(
-                        parse = { fetched ->
-                            Step.Done(ParsedPage(fetched, listOf(testParsedItem()), null, false))
-                        },
-                        enrich = { item ->
-                            Step.Done(
-                                SavedItem.from(item, UUID.randomUUID()),
-                                sides =
-                                    listOf(
-                                        ru.wbparser.domain.pipeline.Side
-                                            .Log(ru.wbparser.domain.pipeline.LogLevel.INFO, "enriched"),
-                                    ),
-                            )
-                        },
+                        parse =
+                            Stage { fetched ->
+                                Step.Done(ParsedPage(fetched, listOf(testParsedItem()), null, false))
+                            },
+                        enrich =
+                            Stage { item ->
+                                Step.Done(
+                                    SavedItem.from(item, UUID.randomUUID()),
+                                    sides =
+                                        listOf(
+                                            ru.wbparser.domain.pipeline.Side
+                                                .Log(ru.wbparser.domain.pipeline.LogLevel.INFO, "enriched"),
+                                        ),
+                                )
+                            },
                     )
                 val collector = TestSideCollector()
                 val registry =

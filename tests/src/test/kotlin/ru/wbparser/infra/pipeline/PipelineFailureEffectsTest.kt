@@ -16,6 +16,7 @@ import ru.wbparser.domain.pipeline.LogLevel
 import ru.wbparser.domain.pipeline.Pipeline
 import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Side
+import ru.wbparser.domain.pipeline.Stage
 import ru.wbparser.domain.pipeline.StageFailure
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.value.CrawlHttpStatusCode
@@ -73,23 +74,24 @@ class PipelineFailureEffectsTest :
          */
         fun pipeline(failsOn: String): Pipeline =
             Pipeline(
-                download = { t ->
-                    if (t.url.toString().contains(failsOn)) {
-                        Step.Fail(StageFailure.Network("simulated hard failure"))
-                    } else {
-                        Step.Done(
-                            fetched(t),
-                            sides =
-                                listOf(
-                                    Side.Log(LogLevel.INFO, "downloaded ${t.url}"),
-                                ),
-                        )
-                    }
-                },
-                parse = { f -> Step.Done(ParsedPage(f, listOf(item()), null, false)) },
-                filter = { Step.Done(it) },
-                enrich = { i -> Step.Done(SavedItem.from(i, UUID.randomUUID())) },
-                save = { Step.Done(Unit) },
+                download =
+                    Stage { t ->
+                        if (t.url.toString().contains(failsOn)) {
+                            Step.Fail(StageFailure.Network("simulated hard failure"))
+                        } else {
+                            Step.Done(
+                                fetched(t),
+                                sides =
+                                    listOf(
+                                        Side.Log(LogLevel.INFO, "downloaded ${t.url}"),
+                                    ),
+                            )
+                        }
+                    },
+                parse = Stage { f -> Step.Done(ParsedPage(f, listOf(item()), null, false)) },
+                filter = Stage { Step.Done(it) },
+                enrich = Stage { i -> Step.Done(SavedItem.from(i, UUID.randomUUID())) },
+                save = Stage { Step.Done(Unit) },
                 retryPolicy = RetryPolicy(maxAttempts = 1, baseDelayMs = 1, maxDelayMs = 2),
                 clock = clock,
             )

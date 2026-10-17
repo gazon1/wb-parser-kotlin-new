@@ -75,11 +75,11 @@ class PipelineTest :
         )
 
         fun makePipeline(
-            download: Stage<Crawling, Fetched> = { task -> Step.Done(testFetched(task)) },
-            parse: Stage<Fetched, ParsedPage> = { fetched -> Step.Done(testParsedPage(fetched)) },
-            filter: Stage<ParsedItem, ParsedItem?> = { Step.Done(it) },
-            enrich: Stage<ParsedItem, SavedItem> = { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
-            save: Stage<List<SavedItem>, Unit> = { Step.Done(Unit) },
+            download: Stage<Crawling, Fetched> = Stage { task -> Step.Done(testFetched(task)) },
+            parse: Stage<Fetched, ParsedPage> = Stage { fetched -> Step.Done(testParsedPage(fetched)) },
+            filter: Stage<ParsedItem, ParsedItem?> = Stage { Step.Done(it) },
+            enrich: Stage<ParsedItem, SavedItem> = Stage { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
+            save: Stage<List<SavedItem>, Unit> = Stage { Step.Done(Unit) },
             stopAt: (Int, Int) -> Stop? = { _, _ -> null },
         ): Pipeline =
             Pipeline(
@@ -94,12 +94,13 @@ class PipelineTest :
 
         test("run returns Left when download fails") {
             runTest {
-                val failDownload: Stage<Crawling, Fetched> = {
-                    Step.Fail(
-                        ru.wbparser.domain.pipeline.StageFailure
-                            .Network("network error", null, null),
-                    )
-                }
+                val failDownload: Stage<Crawling, Fetched> =
+                    Stage {
+                        Step.Fail(
+                            ru.wbparser.domain.pipeline.StageFailure
+                                .Network("network error", null, null),
+                        )
+                    }
                 val pipeline = makePipeline(download = failDownload)
                 val result = pipeline.run(listOf(testCrawling()))
 
@@ -144,12 +145,13 @@ class PipelineTest :
                 val fetched = testFetched(testCrawling())
                 val page = testParsedPage(fetched, listOf(item))
 
-                val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
+                val parseStage: Stage<Fetched, ParsedPage> = Stage { Step.Done(page) }
                 val savedItems = mutableListOf<SavedItem>()
-                val saveStage: Stage<List<SavedItem>, Unit> = { items ->
-                    savedItems += items
-                    Step.Done(Unit)
-                }
+                val saveStage: Stage<List<SavedItem>, Unit> =
+                    Stage { items ->
+                        savedItems += items
+                        Step.Done(Unit)
+                    }
 
                 val pipeline = makePipeline(parse = parseStage, save = saveStage)
                 val result = pipeline.run(listOf(testCrawling()))
@@ -166,13 +168,14 @@ class PipelineTest :
                 val item = testParsedItem()
                 val fetched = testFetched(testCrawling())
                 val page = testParsedPage(fetched, listOf(item))
-                val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
-                val filterStage: Stage<ParsedItem, ParsedItem?> = { Step.Done(null) }
+                val parseStage: Stage<Fetched, ParsedPage> = Stage { Step.Done(page) }
+                val filterStage: Stage<ParsedItem, ParsedItem?> = Stage { Step.Done(null) }
                 val savedItems = mutableListOf<SavedItem>()
-                val saveStage: Stage<List<SavedItem>, Unit> = {
-                    savedItems += it
-                    Step.Done(Unit)
-                }
+                val saveStage: Stage<List<SavedItem>, Unit> =
+                    Stage {
+                        savedItems += it
+                        Step.Done(Unit)
+                    }
 
                 val pipeline = makePipeline(parse = parseStage, filter = filterStage, save = saveStage)
                 val result = pipeline.run(listOf(testCrawling()))
@@ -194,7 +197,7 @@ class PipelineTest :
                 val fetched = testFetched(testCrawling())
                 val page = testParsedPage(fetched, listOf(item), nextPageUrl = null)
 
-                val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
+                val parseStage: Stage<Fetched, ParsedPage> = Stage { Step.Done(page) }
                 val pipeline = makePipeline(parse = parseStage)
                 val result = pipeline.run(listOf(testCrawling()))
 
@@ -213,7 +216,7 @@ class PipelineTest :
                 val fetched = testFetched(testCrawling())
                 val page = testParsedPage(fetched, items = emptyList(), nextPageUrl = null, isEmptyPage = true)
 
-                val parseStage: Stage<Fetched, ParsedPage> = { Step.Done(page) }
+                val parseStage: Stage<Fetched, ParsedPage> = Stage { Step.Done(page) }
                 val pipeline = makePipeline(parse = parseStage)
                 val result = pipeline.run(listOf(testCrawling()))
 

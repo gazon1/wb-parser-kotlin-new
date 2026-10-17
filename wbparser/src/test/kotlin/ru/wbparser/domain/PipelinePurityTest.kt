@@ -92,18 +92,18 @@ class PipelinePurityTest :
          * without any named-argument confusion.
          */
         fun makePipeline(
-            parse: Stage<Fetched, ParsedPage> = { f -> Step.Done(parsedPage(f.task)) },
+            parse: Stage<Fetched, ParsedPage> = Stage { f -> Step.Done(parsedPage(f.task)) },
             stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
             idGen: () -> String = { "gen-id" },
             delayFn: suspend (Duration) -> Unit = { },
-            download: Stage<Crawling, Fetched> = { task -> Step.Done(fetched(task)) },
-            save: Stage<List<SavedItem>, Unit> = { Step.Done(Unit) },
+            download: Stage<Crawling, Fetched> = Stage { task -> Step.Done(fetched(task)) },
+            save: Stage<List<SavedItem>, Unit> = Stage { Step.Done(Unit) },
         ): Pipeline =
             Pipeline(
                 download = download,
                 parse = parse,
-                filter = { Step.Done(it) },
-                enrich = { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
+                filter = Stage { Step.Done(it) },
+                enrich = Stage { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
                 save = save,
                 stopAt = stopAt,
                 clock = clock,
@@ -118,9 +118,10 @@ class PipelinePurityTest :
                 // At pages=2 stopAt fires and breaks, so only one pagination ID is generated.
                 val pipeline =
                     makePipeline(
-                        parse = { f ->
-                            Step.Done(parsedPage(f.task, nextPageUrl = crawlUrl("http://example.com/page2")))
-                        },
+                        parse =
+                            Stage { f ->
+                                Step.Done(parsedPage(f.task, nextPageUrl = crawlUrl("http://example.com/page2")))
+                            },
                         stopAt = { pages, _ -> if (pages >= 2) Stop.MaxPagesReached else null },
                         idGen = {
                             val id = "paginated-${generatedIds.size}"
@@ -144,9 +145,10 @@ class PipelinePurityTest :
                 // At pages=3 stopAt fires — pt3 is cleared without running.
                 val pipeline =
                     makePipeline(
-                        parse = { f ->
-                            Step.Done(parsedPage(f.task, nextPageUrl = crawlUrl("http://example.com/page2")))
-                        },
+                        parse =
+                            Stage { f ->
+                                Step.Done(parsedPage(f.task, nextPageUrl = crawlUrl("http://example.com/page2")))
+                            },
                         stopAt = { pages, _ -> if (pages >= 3) Stop.MaxPagesReached else null },
                         idGen = {
                             val id = "gen-${generatedIds.size}"
@@ -169,17 +171,18 @@ class PipelinePurityTest :
                 // Pass delayFn as the 4th positional argument (after parse, stopAt, idGen)
                 val pipeline =
                     makePipeline(
-                        parse = { f -> Step.Done(parsedPage(f.task)) },
+                        parse = Stage { f -> Step.Done(parsedPage(f.task)) },
                         stopAt = { _, _ -> null },
                         idGen = { "gen" },
                         delayFn = { d -> delays.add(d) },
-                        download = { task ->
-                            if (delays.isEmpty()) {
-                                Step.Retry(Retry.ServerError(attempt = 0, delayMs = 1_000L))
-                            } else {
-                                Step.Done(fetched(task))
-                            }
-                        },
+                        download =
+                            Stage { task ->
+                                if (delays.isEmpty()) {
+                                    Step.Retry(Retry.ServerError(attempt = 0, delayMs = 1_000L))
+                                } else {
+                                    Step.Done(fetched(task))
+                                }
+                            },
                     )
 
                 val result = pipeline.run(listOf(crawling("http://example.com/page1", depth = 0)))
@@ -199,18 +202,19 @@ class PipelinePurityTest :
                 // 1 page → 1 save call → retry (delay) → 2nd save → success
                 val pipeline =
                     makePipeline(
-                        parse = { f -> Step.Done(parsedPage(f.task, items = listOf(parsedItem()))) },
+                        parse = Stage { f -> Step.Done(parsedPage(f.task, items = listOf(parsedItem()))) },
                         stopAt = { _, _ -> null },
                         idGen = { "gen" },
                         delayFn = { d -> delays.add(d) },
-                        save = {
-                            attemptCount[0]++
-                            if (attemptCount[0] == 1) {
-                                Step.Retry(Retry.Database(delayMs = 500L))
-                            } else {
-                                Step.Done(Unit)
-                            }
-                        },
+                        save =
+                            Stage {
+                                attemptCount[0]++
+                                if (attemptCount[0] == 1) {
+                                    Step.Retry(Retry.Database(delayMs = 500L))
+                                } else {
+                                    Step.Done(Unit)
+                                }
+                            },
                     )
 
                 val result = pipeline.run(listOf(crawling("http://example.com/page1", depth = 0)))
@@ -236,17 +240,18 @@ class PipelinePurityTest :
                 val failOnce = intArrayOf(0)
                 val pipeline =
                     makePipeline(
-                        parse = { f -> Step.Done(parsedPage(f.task)) },
+                        parse = Stage { f -> Step.Done(parsedPage(f.task)) },
                         stopAt = { _, _ -> null },
                         idGen = { "gen" },
                         // delayFn not set — uses the default kotlinx.coroutines.delay
-                        download = { task ->
-                            if (failOnce[0]++ == 0) {
-                                Step.Retry(Retry.ServerError(attempt = 0, delayMs = 50L))
-                            } else {
-                                Step.Done(fetched(task))
-                            }
-                        },
+                        download =
+                            Stage { task ->
+                                if (failOnce[0]++ == 0) {
+                                    Step.Retry(Retry.ServerError(attempt = 0, delayMs = 50L))
+                                } else {
+                                    Step.Done(fetched(task))
+                                }
+                            },
                     )
                 val result = pipeline.run(listOf(crawling("http://example.com/page1", depth = 0)))
                 result.isRight() shouldBe true

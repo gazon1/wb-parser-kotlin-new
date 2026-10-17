@@ -49,11 +49,11 @@ class PipelineDedupTest :
 
         fun makePipeline(stopAt: (Int, Int) -> Stop? = { _, _ -> null }): Pipeline =
             Pipeline(
-                download = { task -> Step.Done(fetched(task)) },
-                parse = { fetched -> Step.Done(parsedPage(fetched.task)) },
-                filter = { Step.Done(it) },
-                enrich = { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
-                save = { Step.Done(Unit) },
+                download = Stage { task: Crawling -> Step.Done(fetched(task)) },
+                parse = Stage { f: Fetched -> Step.Done(parsedPage(f.task)) },
+                filter = Stage { item: ParsedItem -> Step.Done(item) },
+                enrich = Stage { item: ParsedItem -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
+                save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                 stopAt = stopAt,
                 clock = clock,
             )
@@ -64,17 +64,18 @@ class PipelineDedupTest :
                 // fp(page1,d=0) added → page1(d=1) enqueued → fp(page1,d=1) already in set → skipped.
                 val page1 = crawling("http://example.com/page1", depth = 0)
 
-                val parseStage: Stage<Fetched, ParsedPage> = { f ->
-                    Step.Done(parsedPage(f.task, nextPageUrl = crawlUrl("http://example.com/page1")))
-                }
+                val parseStage: Stage<Fetched, ParsedPage> =
+                    Stage { f: Fetched ->
+                        Step.Done(parsedPage(f.task, nextPageUrl = crawlUrl("http://example.com/page1")))
+                    }
 
                 val pipeline =
                     Pipeline(
-                        download = { task -> Step.Done(fetched(task)) },
+                        download = Stage { task: Crawling -> Step.Done(fetched(task)) },
                         parse = parseStage,
-                        filter = { Step.Done(it) },
-                        enrich = { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
-                        save = { Step.Done(Unit) },
+                        filter = Stage { item: ParsedItem -> Step.Done(item) },
+                        enrich = Stage { item: ParsedItem -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
+                        save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 3) Stop.MaxPagesReached else null },
                         clock = clock,
                     )
@@ -94,22 +95,23 @@ class PipelineDedupTest :
                 // page1(d=0) → page2(d=1) → page1(d=1) already seen → skipped.
                 val page1 = crawling("http://example.com/page1", depth = 0)
 
-                val parseStage: Stage<Fetched, ParsedPage> = { f ->
-                    val next =
-                        when (f.task.url.toString()) {
-                            "http://example.com/page1" -> crawlUrl("http://example.com/page2")
-                            else -> crawlUrl("http://example.com/page1")
-                        }
-                    Step.Done(parsedPage(f.task, nextPageUrl = next))
-                }
+                val parseStage: Stage<Fetched, ParsedPage> =
+                    Stage { f: Fetched ->
+                        val next =
+                            when (f.task.url.toString()) {
+                                "http://example.com/page1" -> crawlUrl("http://example.com/page2")
+                                else -> crawlUrl("http://example.com/page1")
+                            }
+                        Step.Done(parsedPage(f.task, nextPageUrl = next))
+                    }
 
                 val pipeline =
                     Pipeline(
-                        download = { task -> Step.Done(fetched(task)) },
+                        download = Stage { task: Crawling -> Step.Done(fetched(task)) },
                         parse = parseStage,
-                        filter = { Step.Done(it) },
-                        enrich = { item -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
-                        save = { Step.Done(Unit) },
+                        filter = Stage { item: ParsedItem -> Step.Done(item) },
+                        enrich = Stage { item: ParsedItem -> Step.Done(SavedItem.from(item, UUID.randomUUID())) },
+                        save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 2) Stop.MaxPagesReached else null },
                         clock = clock,
                     )
@@ -127,7 +129,7 @@ class PipelineDedupTest :
 
         test("same url and depth with different targetId are both deduplicated by (url,depth)") {
             runTest {
-                // CrawlingFingerprint is (url, depth) only — targetId is NOT in the fingerprint.
+                // CrawlingFingerprint (in Coordinator) is (url, depth) only — targetId is NOT in the fingerprint.
                 // So task2 with same url+depth but different targetId is still skipped.
                 val task1 = crawling("http://example.com/page1", depth = 0, targetId = UUID.randomUUID())
                 val task2 = crawling("http://example.com/page1", depth = 0, targetId = UUID.randomUUID())

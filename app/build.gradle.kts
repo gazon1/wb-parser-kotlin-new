@@ -17,8 +17,18 @@ springBoot {
     mainClass.set("ru.wbparser.app.WbParserMainKt")
 }
 
+val wbparserClassesDir = project(":wbparser").layout.buildDirectory.dir("classes/kotlin/main")
+
 tasks.bootJar {
     archiveFileName.set("app.jar")
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    // wbparser is an `implementation` project dependency. Its compiled classes
+    // are in wbparser/build/classes/kotlin/main/ — copy them into BOOT-INF/classes
+    // so they are on the application classpath at runtime.
+    dependsOn(":wbparser:classes")
+    from(wbparserClassesDir) {
+        into("BOOT-INF/classes")
+    }
 }
 
 dependencies {

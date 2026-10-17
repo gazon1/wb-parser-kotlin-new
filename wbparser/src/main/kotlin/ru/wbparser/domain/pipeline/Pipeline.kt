@@ -15,7 +15,6 @@ import ru.wbparser.domain.pipeline.Step.Done
 import ru.wbparser.domain.pipeline.Step.Fail
 import ru.wbparser.domain.pipeline.Step.Retry
 import ru.wbparser.domain.time.Clock
-import kotlin.collections.MutableSet
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -34,17 +33,6 @@ data class Crawled(
     val itemsSaved: Int,
     val stopReason: Stop,
     val durationMs: Long,
-)
-
-/**
- * Deduplication fingerprint for a [Crawling] task.
- * Combines URL and depth so the same URL at different crawl depths
- * is tracked separately (prevents depth-0 loops while allowing
- * legitimate back-navigation to shallower depths).
- */
-data class CrawlingFingerprint(
-    val url: ru.wbparser.domain.value.CrawlUrl,
-    val depth: Int,
 )
 
 /**
@@ -76,14 +64,16 @@ data class Pipeline(
     /**
      * Delay function for retry back-off.
      *
-     * Override in tests to get deterministic timing without actual sleeping.
-     * The default delegates to [kotlinx.coroutines.delay].
-     *
      * ## Purity note
      *
-     * [Pipeline] promises to be pure *except* for this function and [idGen].
+     * [Pipeline] promises to be pure *except* for [idGen] and this function.
      * All other logic is deterministic and side-effect free.
+     *
+     * @deprecated This function is called **only** from the [run] coordinator loop
+     *   (never from inside `async {}` blocks). For unit tests use `runTest { }`
+     *   which virtualises time automatically.
      */
+    @Deprecated("Use runTest { } for virtualised time in tests; delay is coordinator-only")
     val delayFn: suspend (Duration) -> Unit = { d -> kotlinx.coroutines.delay(d) },
 ) {
     /**
@@ -96,41 +86,28 @@ data class Pipeline(
             val output: O,
         ) : StageDecision<O>()
 
-        class Retry(
-            val task: Crawling,
-        ) : StageDecision<Nothing>()
-
         class Fail(
             val error: DomainError,
         ) : StageDecision<Nothing>()
 
         data object Cont : StageDecision<Nothing>()
-    }
 
-    /**
-     * Result of processing one [Crawling] task through download + parse stages.
-     * Used internally by [run] to collect results from concurrent workers.
-     */
-    private sealed class TaskOutcome {
-        /** Download or parse succeeded with the parsed page and sides collected. */
-        data class Done(
-            val task: Crawling,
-            val page: ParsedPage,
-            val sides: List<Side>,
-        ) : TaskOutcome()
-
-        /** Download or parse failed with a non-retryable error. */
-        data class Failed(
-            val task: Crawling,
-            val error: DomainError,
-            val sides: List<Side>,
-        ) : TaskOutcome()
-
-        /** Download or parse emitted a retry signal — task re-enqueued by caller. */
-        data class Retry(
-            val task: Crawling,
-            val sides: List<Side>,
-        ) : TaskOutcome()
+        /**
+         * The stage hit a retryable condition.
+         * The back-off delay is **pre-computed** here so the coordinator can call
+         * [delayFn] outside any `async {}` block (never blocking a dispatcher thread).
+         *
+         * @param attempt  the 0-based attempt number that just failed
+         * @param signal   the retry signal from the stage
+         * @param backoffMs pre-computed back-off in milliseconds
+         * @param input    the input to retry with
+         */
+        class Wait(
+            val attempt: Int,
+            val signal: ru.wbparser.domain.pipeline.Retry,
+            val backoffMs: Long,
+            val input: Crawling,
+        ) : StageDecision<Nothing>()
     }
 
     /**
@@ -152,9 +129,10 @@ data class Pipeline(
      */
     suspend fun run(
         tasks: List<Crawling>,
-        seenFingerprints: MutableSet<CrawlingFingerprint> = mutableSetOf(),
         concurrency: Int = 1,
     ): Either<Pair<DomainError, List<Side>>, Pair<Crawled, List<Side>>> {
+        val coordinator = Coordinator(retryPolicy, delayFn)
+
         val startMs = clock.now().toEpochMilli()
 
         var pagesCrawled = 0
@@ -165,21 +143,20 @@ data class Pipeline(
         var stopped: Stop = Stop.ManualStop
 
         while (pending.isNotEmpty() && stopped == Stop.ManualStop) {
-            // --- Deduplication check ---
-            val task = pending.removeFirst()
-            val fp = CrawlingFingerprint(task.url, task.depth)
-            if (seenFingerprints.add(fp).not()) {
-                sides +=
-                    Side.Log(
-                        LogLevel.DEBUG,
-                        "Skipping duplicate task: ${task.url} at depth ${task.depth}",
-                    )
-                continue
-            }
+            // --- Deduplication check via Coordinator ---
+            val rawTask = pending.removeFirst()
+            val claimedTask: Crawling =
+                when (val claim = coordinator.tryClaim(rawTask)) {
+                    is Coordinator.TryClaimResult.Skipped -> {
+                        sides += claim.log
+                        continue
+                    }
+                    is Coordinator.TryClaimResult.Claimed -> claim.task
+                }
 
             // --- Concurrent batch (download + parse stages) ---
-            val (donePages, batchSides, failureError) =
-                runConcurrentBatch(task, pending, concurrency, sides)
+            val batchResult = runConcurrentBatch(claimedTask, pending, concurrency, sides, coordinator)
+            val (donePages, batchSides, failureError, retryableTasks) = batchResult
 
             // Propagate first failure as Either.Left.
             // The Left carries all sides accumulated so far — including successful tasks
@@ -187,6 +164,28 @@ data class Pipeline(
             // PipelineRunner.fold below guarantees these sides are interpreted even on failure.
             failureError?.let {
                 return Either.Left(it to (sides + batchSides).toList())
+            }
+
+            // --- Coordinator-level retry: dispatcher threads are never blocked ---
+            // Each retryable task waits its pre-computed back-off outside any async block,
+            // then re-adds itself to the pending queue.
+            for (retryable in retryableTasks) {
+                sides += retryable.sides
+                if (!coordinator.scheduleRetry(retryable)) {
+                    // Retry exhausted at the coordinator level — treat as hard failure.
+                    // Do NOT add the task back to pending: it would create an infinite loop
+                    // since Coordinator.attemptCount would keep returning the same exhausted value.
+                    val ex =
+                        StageFailure.RetryExhausted(
+                            "Retry ${retryable.attempt + 1}/${retryPolicy.maxAttempts} failed for ${retryable.task.url}",
+                            retryable.signal,
+                        )
+                    return Either.Left(ex.toDomainError() to (sides + batchSides).toList())
+                }
+                // Only re-add to pending when retry was successfully scheduled.
+                // scheduleRetry returned true, so attemptCount has been incremented.
+                coordinator.resetForRetry(retryable.task)
+                pending.add(retryable.task)
             }
 
             sides.addAll(batchSides)
@@ -273,11 +272,16 @@ data class Pipeline(
 
     /**
      * Result of [runConcurrentBatch].
+     *
+     * [retryableTasks] carry the pre-computed back-off from the stage — the coordinator
+     * in [run] calls [delayFn] for each before re-invoking [runDownloadStage].
+     * This ensures dispatcher threads are never blocked by retry back-off.
      */
     private data class BatchResult(
         val donePages: List<TaskOutcome.Done>,
         val batchSides: List<Side>,
         val failureError: DomainError?,
+        val retryableTasks: List<TaskOutcome.Retryable>,
     )
 
     /**
@@ -296,6 +300,7 @@ data class Pipeline(
         pending: MutableList<Crawling>,
         concurrency: Int,
         sides: MutableList<Side>,
+        coordinator: Coordinator,
     ): BatchResult {
         val batchSize = minOf(concurrency.coerceAtLeast(1), pending.size + 1)
         val batch = mutableListOf(head)
@@ -303,6 +308,7 @@ data class Pipeline(
 
         val batchSides = mutableListOf<Side>()
         val donePages = mutableListOf<TaskOutcome.Done>()
+        val retryableTasks = mutableListOf<TaskOutcome.Retryable>()
         var failureError: DomainError? = null
 
         coroutineScope {
@@ -310,15 +316,22 @@ data class Pipeline(
                 .map { t ->
                     async {
                         val taskSides = mutableListOf<Side>()
+                        val attempt = coordinator.attemptCount(t.id)
 
                         val fetched: Fetched =
-                            when (val decision = runDownloadStage(t, taskSides)) {
+                            when (val decision = runDownloadStage(t, attempt, taskSides)) {
                                 is StageDecision.Done -> decision.output
                                 is StageDecision.Fail -> {
                                     return@async TaskOutcome.Failed(t, decision.error, taskSides.toList())
                                 }
-                                is StageDecision.Retry -> {
-                                    return@async TaskOutcome.Retry(t, taskSides.toList())
+                                is StageDecision.Wait -> {
+                                    return@async TaskOutcome.Retryable(
+                                        attempt,
+                                        t,
+                                        decision.signal,
+                                        decision.backoffMs,
+                                        taskSides.toList(),
+                                    )
                                 }
                                 is StageDecision.Cont -> {
                                     return@async TaskOutcome.Failed(
@@ -331,13 +344,19 @@ data class Pipeline(
                             }
 
                         val page: ParsedPage =
-                            when (val decision = runParseStage(t, fetched, taskSides)) {
+                            when (val decision = runParseStage(t, fetched, attempt, taskSides)) {
                                 is StageDecision.Done -> decision.output
                                 is StageDecision.Fail -> {
                                     return@async TaskOutcome.Failed(t, decision.error, taskSides.toList())
                                 }
-                                is StageDecision.Retry -> {
-                                    return@async TaskOutcome.Retry(t, taskSides.toList())
+                                is StageDecision.Wait -> {
+                                    return@async TaskOutcome.Retryable(
+                                        attempt,
+                                        t,
+                                        decision.signal,
+                                        decision.backoffMs,
+                                        taskSides.toList(),
+                                    )
                                 }
                                 is StageDecision.Cont -> {
                                     return@async TaskOutcome.Failed(
@@ -361,12 +380,12 @@ data class Pipeline(
                             if (failureError == null) failureError = outcome.error
                             batchSides.addAll(outcome.sides)
                         }
-                        is TaskOutcome.Retry -> pending.add(outcome.task)
+                        is TaskOutcome.Retryable -> retryableTasks.add(outcome)
                     }
                 }
         }
 
-        return BatchResult(donePages, batchSides, failureError)
+        return BatchResult(donePages, batchSides, failureError, retryableTasks.toList())
     }
 
     /**
@@ -383,7 +402,7 @@ data class Pipeline(
 
         for (item in page.items) {
             val filtered =
-                when (val r = filter(item)) {
+                when (val r = filter.run(item)) {
                     is Done<ParsedItem, ParsedItem?> -> {
                         // Collect the filter stage's own effects: it is where a specific drop
                         // reason (price out of range, out of stock, blacklisted category) is
@@ -418,7 +437,7 @@ data class Pipeline(
             }
 
             val enriched: SavedItem? =
-                when (val r = enrich(filtered)) {
+                when (val r = enrich.run(filtered)) {
                     is Done<ParsedItem, SavedItem> -> {
                         sides += r.sides()
                         r.output
@@ -466,7 +485,7 @@ data class Pipeline(
         while (true) {
             val step: Step<List<SavedItem>, Unit> =
                 try {
-                    save.invoke(items)
+                    save.run(items)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
@@ -520,81 +539,109 @@ data class Pipeline(
     }
 
     /**
-     * Runs the download stage on [task] with retry, returning a [StageDecision].
-     * Caller is responsible for handling [StageDecision.Retry] by re-adding [task] to the pending queue.
+     * Result of a one-shot stage attempt.
+     * The coordinator decides what to do with retry signals — this function never calls [delayFn].
+     */
+    private sealed class AttemptResult<out O> {
+        data class Done<O>(
+            val step: Step.Done<*, O>,
+        ) : AttemptResult<O>()
+
+        data class Failed(
+            val step: Step.Fail<*, *>,
+        ) : AttemptResult<Nothing>()
+
+        data class Retry(
+            val signal: ru.wbparser.domain.pipeline.Retry,
+        ) : AttemptResult<Nothing>()
+
+        data object Cont : AttemptResult<Nothing>()
+    }
+
+    /**
+     * Executes [stage] on [input] once (no retry loop — retry is coordinator-level).
+     * Never calls [delayFn]; the coordinator handles all back-off delays.
+     *
+     * Any exception thrown by the stage is converted to [AttemptResult.Failed]
+     * so the coordinator handles it uniformly.
+     */
+    private suspend fun <I, O> attemptStageOnce(
+        input: I,
+        stage: Stage<I, O>,
+    ): AttemptResult<O> {
+        val step =
+            try {
+                stage.run(input)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Wrap any unexpected exception as a database failure — coordinator
+                // treats it as a hard non-retryable error.
+                @Suppress("UNCHECKED_CAST")
+                Step.Fail<I, O>(StageFailure.Database("Unexpected: ${e.message}")) as Step<I, O>
+            }
+        return when (step) {
+            is Step.Done<*, O> -> AttemptResult.Done(step)
+            is Step.Fail<*, *> -> AttemptResult.Failed(step)
+            is Step.Retry<*, *> -> AttemptResult.Retry(step.signal)
+            is Step.Cont<*, *> -> AttemptResult.Cont
+        }
+    }
+
+    /**
+     * Runs the download stage on [task] with [attempt] already tracked by the coordinator.
+     *
+     * Returns [StageDecision.Wait] with the pre-computed back-off when the stage signals
+     * retry — the coordinator calls [delayFn] **outside** any `async {}` block before
+     * re-invoking this function with [attempt] + 1. The dispatcher thread is never blocked.
      */
     private suspend fun runDownloadStage(
         task: Crawling,
+        attempt: Int,
         sides: MutableList<Side>,
     ): StageDecision<Fetched> =
-        when (val result = stageWithRetry(task, download)) {
-            is Done<Crawling, Fetched> -> {
-                sides += result.sides()
-                StageDecision.Done(result.output)
+        when (val result = attemptStageOnce(task, download)) {
+            is AttemptResult.Done -> {
+                sides += result.step.sides()
+                StageDecision.Done(result.step.output)
             }
-            is Fail<Crawling, Fetched> -> StageDecision.Fail(result.failure.toDomainError())
-            is Retry<Crawling, Fetched> -> {
-                sides +=
-                    Side.ScheduleRetry(
-                        task.url.toString(),
-                        retryDelayMs(0, result.signal, retryPolicy),
-                        task.targetId,
-                    )
-                StageDecision.Retry(task)
-            }
-            is Cont<Crawling, Fetched> -> StageDecision.Cont
+            is AttemptResult.Failed -> StageDecision.Fail(result.step.failure.toDomainError())
+            is AttemptResult.Retry ->
+                StageDecision.Wait(
+                    attempt,
+                    result.signal,
+                    retryDelayMs(attempt, result.signal, retryPolicy),
+                    task,
+                )
+            is AttemptResult.Cont -> StageDecision.Cont
         }
 
     /**
-     * Runs the parse stage on [fetched] with retry, returning a [StageDecision].
-     * Caller handles [StageDecision.Retry] by re-adding the original [task] to the pending queue.
+     * Runs the parse stage on [fetched] with [attempt] already tracked by the coordinator.
+     *
+     * Returns [StageDecision.Wait] with the pre-computed back-off when the stage signals
+     * retry — the coordinator calls [delayFn] **outside** any `async {}` block before
+     * re-invoking this function with [attempt] + 1. The dispatcher thread is never blocked.
      */
     private suspend fun runParseStage(
         task: Crawling,
         fetched: Fetched,
+        attempt: Int,
         sides: MutableList<Side>,
     ): StageDecision<ParsedPage> =
-        when (val result = stageWithRetry(fetched, parse)) {
-            is Done<Fetched, ParsedPage> -> {
-                sides += result.sides()
-                StageDecision.Done(result.output)
+        when (val result = attemptStageOnce(fetched, parse)) {
+            is AttemptResult.Done -> {
+                sides += result.step.sides()
+                StageDecision.Done(result.step.output)
             }
-            is Fail<Fetched, ParsedPage> -> StageDecision.Fail(result.failure.toDomainError())
-            is Retry<Fetched, ParsedPage> -> {
-                sides +=
-                    Side.ScheduleRetry(
-                        task.url.toString(),
-                        retryDelayMs(0, result.signal, retryPolicy),
-                        task.targetId,
-                    )
-                StageDecision.Retry(task)
-            }
-            is Cont<Fetched, ParsedPage> -> StageDecision.Cont
-        }
-
-    /**
-     * Executes [stage] on [input] with retry logic.
-     * Returns [Done] on success, [Fail] when retries are exhausted, or [Retry] to request scheduling.
-     * Suspends between retry attempts to implement back-off delay.
-     */
-    private suspend fun <I, O> stageWithRetry(
-        input: I,
-        stage: Stage<I, O>,
-    ): Step<I, O> {
-        var attempt = 0
-        while (true) {
-            val result = stage.invoke(input)
-            if (result !is Retry) return result
-            if (!shouldRetry(attempt + 1, retryPolicy)) {
-                return Fail(
-                    StageFailure.RetryExhausted(
-                        "Retry ${attempt + 1}/${retryPolicy.maxAttempts} failed",
-                        result.signal,
-                    ),
+            is AttemptResult.Failed -> StageDecision.Fail(result.step.failure.toDomainError())
+            is AttemptResult.Retry ->
+                StageDecision.Wait(
+                    attempt,
+                    result.signal,
+                    retryDelayMs(attempt, result.signal, retryPolicy),
+                    task,
                 )
-            }
-            attempt++
-            delayFn(retryDelayMs(attempt - 1, result.signal, retryPolicy).milliseconds)
+            is AttemptResult.Cont -> StageDecision.Cont
         }
-    }
 }

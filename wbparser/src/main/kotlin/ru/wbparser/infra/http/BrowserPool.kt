@@ -22,6 +22,241 @@ data class BrowserProfileConfig(
 )
 
 /**
+ * Contract for the AdsPower Local API.
+ *
+ * Encapsulates the HTTP calls to `checkActiveV2` and `startProfileV2` so they can be
+ * replaced with a [ru.wbparser.infra.http.FakeAdsPowerApi] in unit tests.
+ *
+ * ## Why not sealed
+ *
+ * A sealed interface cannot be implemented across compilation-unit boundaries (main vs test
+ * source sets). Using a plain interface allows a [FakeAdsPowerApi][ru.wbparser.infra.http.FakeAdsPowerApi]
+ * in the test sourceset to implement it.
+ */
+interface AdsPowerApi {
+    /**
+     * Calls `GET /api/v2/browser-profile/active`.
+     * Returns the CDP WebSocket URL if the profile is already running, null otherwise.
+     */
+    fun checkActiveV2(profileId: String): String?
+
+    /**
+     * Calls `POST /api/v2/browser-profile/start`.
+     * Returns the CDP WebSocket URL on success, null on failure.
+     */
+    fun startProfileV2(profileId: String): String?
+}
+
+/**
+ * Production implementation of [AdsPowerApi] — calls the real AdsPower Local API.
+ */
+internal class RealAdsPowerApi(
+    private val baseUrl: String,
+    private val mapper: com.fasterxml.jackson.databind.ObjectMapper,
+) : AdsPowerApi {
+    override fun checkActiveV2(profileId: String): String? {
+        val encodedId = java.net.URLEncoder.encode(profileId, "UTF-8")
+        val conn =
+            java.net
+                .URL("$baseUrl/api/v2/browser-profile/active?profile_id=$encodedId")
+                .openConnection() as java.net.HttpURLConnection
+        conn.requestMethod = "GET"
+        conn.setRequestProperty("Accept", "application/json")
+        conn.readTimeout = 5_000
+
+        if (conn.responseCode != 200) {
+            conn.disconnect()
+            return null
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        val resp = mapper.readValue(conn.inputStream, Map::class.java)
+        conn.disconnect()
+
+        val code = resp["code"] as? Number
+        if (code?.toInt() != 0) return null
+
+        val data = resp["data"] as? Map<*, *>
+        if (data?.get("status") != "Active") return null
+
+        val ws = data["ws"] as? Map<*, *>
+        val puppeteerWs = ws?.get("puppeteer") as? String
+        return puppeteerWs?.takeIf { it.isNotBlank() }
+    }
+
+    override fun startProfileV2(profileId: String): String? {
+        val conn =
+            java.net
+                .URL("$baseUrl/api/v2/browser-profile/start")
+                .openConnection() as java.net.HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Accept", "application/json")
+        conn.readTimeout = 30_000
+        conn.doOutput = true
+        conn.outputStream.write(
+            """
+            {
+                "profile_id": "$profileId",
+                "launch_args": ["--disable-blink-features=AutomationControlled", "--remote-allow-origins=*"],
+                "last_opened_tabs": "0"
+            }
+            """.trimIndent().toByteArray(),
+        )
+
+        if (conn.responseCode != 200) {
+            conn.disconnect()
+            return null
+        }
+
+        @Suppress("UNCHECKED_CAST")
+        val resp = mapper.readValue(conn.inputStream, Map::class.java)
+        conn.disconnect()
+
+        val code = resp["code"] as? Number
+        if (code?.toInt() != 0) return null
+
+        val data = resp["data"] as? Map<*, *>
+        val ws = data?.get("ws") as? Map<*, *>
+        val puppeteerWs = ws?.get("puppeteer") as? String
+        return puppeteerWs?.takeIf { it.isNotBlank() }
+    }
+}
+
+/**
+ * Contract for the Playwright CDP browser lifecycle.
+ *
+ * Encapsulates `Playwright.create()`, `connectOverCDP()`, and `Browser.close()` so
+ * [BrowserPool.ProfileState] can be unit-tested without a real Chrome + Playwright
+ * installation. Production code uses [CdpAutomation]; tests use [FakeBrowserAutomation].
+ *
+ * ## Why an interface
+ *
+ * [BrowserPool.ProfileState] must create a fresh CDP session for each page borrow.
+ * Making this an interface means tests can supply a [FakeBrowserAutomation] that records
+ * calls without touching any browser process.
+ */
+interface BrowserAutomation {
+    /**
+     * Whether a CDP session is currently open.
+     * Defaults to false; transitions to true after a successful [connect].
+     */
+    val isConnected: Boolean
+
+    /**
+     * The currently open [Page], or null if [isConnected] is false.
+     * Valid for reading immediately after [connect] returns, and until [close] is called.
+     */
+    val currentPage: Page?
+
+    /**
+     * Quick CDP roundtrip to verify the browser process is still alive.
+     *
+     * Catches the case where the Chrome process has died (OOM, crash, killed externally).
+     * `page.isClosed` can return `false` even when the underlying CDP connection is dead —
+     * a subsequent Playwright call then throws a confusing exception.
+     *
+     * @return true if the browser responds to a minimal CDP command, false if dead.
+     */
+    fun healthCheck(): Boolean
+
+    /**
+     * Connects to the Chrome DevTools endpoint at [cdpUrl] and opens a new page.
+     *
+     * Subsequent calls close any previous session first. The returned [Page] is the
+     * only interface callers receive; the underlying [Browser] is managed internally.
+     *
+     * @param cdpUrl WebSocket URL of the Chrome DevTools endpoint (e.g. `ws://localhost:36931/...`)
+     * @return the opened [Page]
+     * @throws Exception if the connection fails — callers should treat it as a reconnect signal
+     */
+    fun connect(cdpUrl: String): Page
+
+    /** Closes the browser session. Idempotent. */
+    fun close()
+}
+
+/**
+ * Production [BrowserAutomation] — connects to a real Chrome via Playwright CDP.
+ *
+ * Each [connect] call creates a new [Playwright] instance and connects to the given URL.
+ * The Playwright instance and [Browser] are closed when [close] is called or when a new
+ * connection is established.
+ */
+internal class CdpAutomation : BrowserAutomation {
+    private var browser: Browser? = null
+    private var pageImpl: Page? = null
+
+    override val isConnected: Boolean
+        get() = browser != null && pageImpl != null && pageImpl!!.isClosed.not()
+
+    override val currentPage: Page?
+        get() = pageImpl
+
+    override fun healthCheck(): Boolean =
+        pageImpl?.let { p ->
+            runCatching {
+                // page.title() is a minimal CDP roundtrip; a healthy browser responds in <500 ms.
+                p.title()
+                true
+            }.getOrElse { false }
+        } ?: false
+
+    override fun connect(cdpUrl: String): Page {
+        // Shut down any previous session before connecting fresh.
+        browser?.close()
+        browser = null
+        pageImpl = null
+
+        val playwright = Playwright.create()
+        val b =
+            try {
+                playwright.chromium().connectOverCDP(cdpUrl)
+            } catch (e: Throwable) {
+                playwright.close()
+                throw e
+            }
+
+        val ctx: BrowserContext =
+            b.contexts().firstOrNull()
+                ?: throw IllegalStateException("No browser context in CDP session for url=$cdpUrl")
+
+        val p = ctx.newPage()
+        browser = b
+        pageImpl = p
+        return p
+    }
+
+    override fun close() {
+        runCatching { browser?.close() }
+        browser = null
+        pageImpl = null
+    }
+}
+
+/**
+ * Groups AdsPower Local API configuration for [BrowserPool].
+ *
+ * Bundling these four values into one object keeps the [BrowserPool] constructor
+ * within the `LongParameterList` detekt threshold while preserving all defaults.
+ *
+ * @param apiBase   AdsPower Local API base URL. Defaults to `http://127.0.0.1:50325`.
+ * @param apiKey    AdsPower Local API key. Read from `ADSPOWER_API_KEY` at construction
+ *                  time — a key baked into source would leak to every clone of the repo.
+ *                  When absent the pool discovers the endpoint by port scan (slower but works).
+ * @param borrowTimeoutMs  How long [borrowPage][BrowserPool.borrowPage] waits for a free slot.
+ *                         Generous by design: under normal contention the wait is sub-second;
+ *                         a timeout means a profile is genuinely wedged.
+ * @param api       The [AdsPowerApi] client. When null the pool creates a [RealAdsPowerApi].
+ */
+class AdsPowerConfig(
+    val apiBase: String = "http://127.0.0.1:50325",
+    val apiKey: String? = System.getenv("ADSPOWER_API_KEY"),
+    val borrowTimeoutMs: Long = 120_000,
+    val api: AdsPowerApi? = null,
+)
+
+/**
  * Manages a pool of Playwright [Browser] connections to pre-opened AdsPower Chrome
  * profiles, with round-robin selection.
  *
@@ -45,25 +280,14 @@ data class BrowserProfileConfig(
  */
 class BrowserPool(
     private val profiles: List<BrowserProfileConfig>,
-    private val adsPowerApiBase: String = "http://127.0.0.1:50325",
+    private val adsPower: AdsPowerConfig = AdsPowerConfig(),
     /**
-     * AdsPower Local API key, used only to look up a profile's CDP WebSocket URL.
-     *
-     * Read from `ADSPOWER_API_KEY` rather than hardcoded: it is a real credential for the
-     * AdsPower account, and a value baked into source is a value that leaks to every clone
-     * of this repository. When it is absent the pool skips the Local API entirely and
-     * discovers the endpoint by port scan, so an unset key degrades to the slower path
-     * instead of failing.
+     * Optional list of [BrowserAutomation] instances, one per [profiles] entry.
+     * When null (the default), each profile gets a fresh [CdpAutomation].
+     * When supplied, the pool uses the provided instances directly — enabling unit tests
+     * to inject a [FakeBrowserAutomation] without any real browser I/O.
      */
-    private val adsPowerApiKey: String? = System.getenv("ADSPOWER_API_KEY"),
-    /**
-     * How long [borrowPage] waits for a busy profile before giving up.
-     *
-     * Generous by design: a slot is held for the duration of one API call plus its pacing
-     * delay, so under normal contention the wait is a fraction of this. A timeout means a
-     * profile is genuinely wedged, and reporting that beats blocking the crawl forever.
-     */
-    private val borrowTimeoutMs: Long = 120_000,
+    private val browserAutomations: List<BrowserAutomation>? = null,
 ) {
     /** Discovered Chrome endpoints, resolved lazily and cached for the pool's lifetime. */
     @Volatile
@@ -82,12 +306,20 @@ class BrowserPool(
     }
 
     private val lock = ReentrantLock()
-    private val profileStates: List<ProfileState>
+    private var profileStates: List<ProfileState>
     private val cursor = AtomicInteger(0)
 
     init {
         require(profiles.isNotEmpty()) { "At least one profile is required" }
-        profileStates = profiles.map { ProfileState(it) }
+        val adsPowerApi =
+            adsPower.api ?: RealAdsPowerApi(
+                baseUrl = adsPower.apiBase,
+                mapper = jsonMapper,
+            )
+        profileStates =
+            profiles.mapIndexed { index, profile ->
+                ProfileState(profile, adsPowerApi, browserAutomations?.get(index) ?: CdpAutomation())
+            }
     }
 
     /**
@@ -133,7 +365,7 @@ class BrowserPool(
         repeat(profileStates.size) {
             val index = cursor.updateAndGet { (it + 1) % profileStates.size }
             val state = profileStates[index]
-            val acquired = state.lock.tryLock(borrowTimeoutMs, TimeUnit.MILLISECONDS)
+            val acquired = state.lock.tryLock(adsPower.borrowTimeoutMs, TimeUnit.MILLISECONDS)
             if (acquired) {
                 try {
                     return borrowLocked(state)
@@ -144,7 +376,7 @@ class BrowserPool(
             }
         }
         throw BrowserPoolExhaustedException(
-            "No browser profile freed within ${borrowTimeoutMs}ms (${profileStates.size} configured)",
+            "No browser profile freed within ${adsPower.borrowTimeoutMs}ms (${profileStates.size} configured)",
         )
     }
 
@@ -168,14 +400,10 @@ class BrowserPool(
     /** Per-profile state: lazy browser/page + lock. */
     private inner class ProfileState(
         val profileConfig: BrowserProfileConfig,
+        private val api: AdsPowerApi,
+        private val automation: BrowserAutomation,
     ) {
         val lock = ReentrantLock()
-
-        @Volatile
-        var browser: Browser? = null
-
-        @Volatile
-        var page: Page? = null
 
         /**
          * Whether this profile's page has already loaded a WB page and solved the anti-bot
@@ -191,49 +419,22 @@ class BrowserPool(
         @Volatile
         var warm: Boolean = false
 
-        /**
-         * Quick CDP roundtrip to verify the browser process is still alive.
-         *
-         * Catches the case where AdsPower shows the profile as "Active" but the Chrome process
-         * has died (killed externally, OOM, crash). `page.isClosed` can return `false` even
-         * when the underlying CDP connection is dead — a subsequent Playwright call then throws
-         * a confusing exception. A proactive ping detects the dead browser *before* the caller
-         * gets it.
-         *
-         * @return true if the browser responds to a minimal CDP command, false if it is dead.
-         */
-        private fun checkBrowserHealth(): Boolean =
-            page?.let { p ->
-                runCatching {
-                    // page.title() is a minimal CDP roundtrip; a healthy browser responds in <500 ms.
-                    // Any exception means the CDP connection is dead and the browser must be restarted.
-                    p.title()
-                    true
-                }.getOrElse {
-                    logForProfile(profileConfig.profileId, "Browser health check failed: {}", it.message)
-                    false
-                }
-            } ?: false
-
         fun getOrCreatePage(): Page {
-            if (page != null && page!!.isClosed.not()) {
-                // Defensively ping the browser: a dead Chrome can show isClosed=false
+            if (automation.isConnected) {
+                // Defensively ping the browser: a dead Chrome can show isConnected=true
                 // until Playwright discovers the truth on the next call.
-                if (!checkBrowserHealth()) {
+                if (!automation.healthCheck()) {
                     logForProfile(profileConfig.profileId, "Browser health check failed — forcing reconnect")
-                    browser?.close()
-                    browser = null
-                    page = null
+                    automation.close()
                     warm = false
                 } else {
-                    return page!!
+                    // Page is still open and healthy.
+                    return automation.currentPage!!
                 }
             }
 
             // Shut down stale handle and reconnect
-            browser?.close()
-            browser = null
-            page = null
+            automation.close()
             // A fresh CDP connection has no WB session yet: the new page must be warmed up
             // by navigating it to a WB page before the internal API will return products.
             warm = false
@@ -241,147 +442,44 @@ class BrowserPool(
             val cdpUrl = resolveCdpUrl()
             logForProfile(profileConfig.profileId, "Connecting via CDP: {}", cdpUrl)
 
-            val playwright = Playwright.create()
-            val b =
-                try {
-                    playwright.chromium().connectOverCDP(cdpUrl)
-                } catch (e: Throwable) {
-                    logForProfile(
-                        profileConfig.profileId,
-                        "CDP connection failed: {} | class={}",
-                        e.message,
-                        e::class.java.name,
-                    )
-                    throw e
-                }
-            val ctx: BrowserContext =
-                b.contexts().firstOrNull()
-                    ?: throw IllegalStateException("No browser context in profile ${profileConfig.profileId}")
-
-            val p = ctx.newPage()
-
-            browser = b
-            page = p
-            return p
+            return try {
+                automation.connect(cdpUrl)
+            } catch (e: Throwable) {
+                logForProfile(
+                    profileConfig.profileId,
+                    "CDP connection failed: {} | class={}",
+                    e.message,
+                    e::class.java.name,
+                )
+                throw e
+            }
         }
 
         private fun resolveCdpUrl(): String {
             profileConfig.cdpWsUrl?.takeIf { it.isNotBlank() }?.let { return it }
 
-            // Try AdsPower Local API first, but only if a key is configured — an unset
-            // ADSPOWER_API_KEY must not turn into a request with a literal key in the URL.
-            val apiKey = adsPowerApiKey?.takeIf { it.isNotBlank() }
-            if (apiKey == null) {
+            // Only use the AdsPower API when a key is configured; an unset key must not
+            // turn into a request with a literal string in the URL.
+            val apiKey = this@BrowserPool.adsPower.apiKey?.takeIf { it.isNotBlank() }
+            if (apiKey != null) {
+                try {
+                    val activeWs = api.checkActiveV2(profileConfig.profileId)
+                    if (activeWs != null) return activeWs
+
+                    val startedWs = api.startProfileV2(profileConfig.profileId)
+                    if (startedWs != null) return startedWs
+                } catch (_: Exception) {
+                    // fall through to port scan
+                }
+            } else {
                 logForProfile(
                     profileConfig.profileId,
                     "ADSPOWER_API_KEY not set — skipping Local API lookup, using port scan",
                 )
-                return scanForCdpUrl(this)
-            }
-
-            try {
-                // Step 1: check if profile is already active
-                val activeWs = checkActiveV2(apiKey)
-                if (activeWs != null) return activeWs
-
-                // Step 2: start the profile via V2 API
-                val startedWs = startProfileV2(apiKey)
-                if (startedWs != null) return startedWs
-            } catch (_: Exception) {
-                // fall through to port scan
             }
 
             // Final fallback: port scan
             return scanForCdpUrl(this)
-        }
-
-        /**
-         * Calls V2 GET /active — returns CDP WS URL if already Active, null otherwise.
-         *
-         * Unlike V1, the V2 API returns the WebSocket endpoint directly in the active response,
-         * so if the browser is already running we do NOT need to call /start separately.
-         */
-        private fun checkActiveV2(apiKey: String): String? {
-            // V2 API: GET /api/v2/browser-profile/active?profile_id=xxx
-            val encodedId = java.net.URLEncoder.encode(profileConfig.profileId, "UTF-8")
-            val conn =
-                java.net
-                    .URL("$adsPowerApiBase/api/v2/browser-profile/active?profile_id=$encodedId")
-                    .openConnection() as java.net.HttpURLConnection
-            conn.requestMethod = "GET"
-            conn.setRequestProperty("Accept", "application/json")
-            conn.readTimeout = 5000
-
-            if (conn.responseCode != 200) {
-                conn.disconnect()
-                return null
-            }
-
-            @Suppress("UNCHECKED_CAST")
-            val resp = endpointMapper.readValue(conn.inputStream, Map::class.java)
-            conn.disconnect()
-
-            val code = resp["code"] as? Number
-            if (code?.toInt() != 0) return null
-
-            val data = resp["data"] as? Map<*, *>
-            if (data?.get("status") != "Active") return null
-
-            val ws = data["ws"] as? Map<*, *>
-            val puppeteerWs = ws?.get("puppeteer") as? String
-            if (puppeteerWs.isNullOrBlank()) return null
-
-            logForProfile(profileConfig.profileId, "V2 /active — already active, CDP: {}", puppeteerWs)
-            return puppeteerWs
-        }
-
-        /** Calls V2 /start — returns CDP WS URL on success, null on failure. */
-        private fun startProfileV2(apiKey: String): String? {
-            val conn =
-                java.net
-                    .URL("$adsPowerApiBase/api/v2/browser-profile/start")
-                    .openConnection() as java.net.HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("Accept", "application/json")
-            conn.readTimeout = 30_000
-            conn.doOutput = true
-            conn.outputStream.write(
-                """
-                {
-                    "profile_id": "${profileConfig.profileId}",
-                    "launch_args": ["--disable-blink-features=AutomationControlled", "--remote-allow-origins=*"],
-                    "last_opened_tabs": "0"
-                }
-                """.trimIndent().toByteArray(),
-            )
-
-            if (conn.responseCode != 200) {
-                logForProfile(profileConfig.profileId, "V2 /start HTTP {} — falling through", conn.responseCode)
-                conn.disconnect()
-                return null
-            }
-
-            @Suppress("UNCHECKED_CAST")
-            val resp = endpointMapper.readValue(conn.inputStream, Map::class.java)
-            conn.disconnect()
-
-            val code = resp["code"] as? Number
-            if (code?.toInt() != 0) {
-                logForProfile(profileConfig.profileId, "V2 /start API error: {}", resp)
-                return null
-            }
-
-            val data = resp["data"] as? Map<*, *>
-            val ws = data?.get("ws") as? Map<*, *>
-            val puppeteerWs = ws?.get("puppeteer") as? String
-            if (puppeteerWs.isNullOrBlank()) {
-                logForProfile(profileConfig.profileId, "V2 /start response missing ws: {}", resp)
-                return null
-            }
-
-            logForProfile(profileConfig.profileId, "V2 /start — launched, CDP: {}", puppeteerWs)
-            return puppeteerWs
         }
 
         /**
@@ -450,9 +548,7 @@ class BrowserPool(
         }
 
         fun close() {
-            runCatching { browser?.close() }
-            browser = null
-            page = null
+            automation.close()
             warm = false
         }
     }
