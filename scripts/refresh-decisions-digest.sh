@@ -10,6 +10,18 @@
 #   3. Index — slug → tags mapping for grep / mdq.
 #
 # Idempotent. Safe to run any time. Run before any non-trivial agent task.
+#
+# The output must be byte-identical on every machine, because the gate compares
+# the committed digest with a freshly generated one. `sort` orders by the
+# locale's collation rules, and those differ: under en_US.UTF-8 a bullet
+# beginning with `**Note**` sorts near the other capitalised words, while
+# under the C locale — which is what a CI runner has — it sorts by code
+# point, in a different place. The digest was therefore committed in one
+# locale and checked in another, and the gate failed on every CI run since
+# the digest gate was introduced.
+#
+# Every sort below therefore pins LC_ALL=C, which orders by code point and is
+# available everywhere.
 
 set -euo pipefail
 
@@ -26,7 +38,7 @@ fi
 mapfile -t ENTRIES < <(
     find "$DECISIONS_DIR" -mindepth 1 -maxdepth 1 -type f \
         -regextype posix-extended -regex '.*/[0-9]{4}-[0-9]{2}-[0-9]{2}-[^/]+\.md' \
-        | sort
+        | LC_ALL=C sort
 )
 
 if [[ ${#ENTRIES[@]} -eq 0 ]]; then
@@ -128,7 +140,7 @@ done
     echo
     awk -F'\t' -v re="$CRITICAL_REGEX" '
         $2 ~ re { print $3 "\t" $2 }
-    ' "$CORPUS_TMP" | sort -u | awk -F'\t' '{ printf "- %s _(from `%s`)\n", $2, $1 }'
+    ' "$CORPUS_TMP" | LC_ALL=C sort -u | awk -F'\t' '{ printf "- %s _(from `%s`)\n", $2, $1 }'
     if [[ $(awk -F'\t' -v re="$CRITICAL_REGEX" '$2 ~ re' "$CORPUS_TMP" | wc -l) -eq 0 ]]; then
         echo "_No critical markers in current entries. Add **Always** or **Never**"
         echo "to bullets in \`## Consequences\` to surface them here._"
@@ -139,7 +151,7 @@ done
     echo "## Per-tag"
     echo
     awk -F'\t' -v re="$CRITICAL_REGEX" '!/Critical/ && $2 !~ re { print }' "$CORPUS_TMP" \
-        | sort -u \
+        | LC_ALL=C sort -u \
         | awk -F'\t' '
             function flush() {
                 if (tag != "") {
@@ -160,7 +172,7 @@ done
     # Index.
     echo "## Index (slug → tags)"
     echo
-    for slug in $(printf '%s\n' "${!TAGS_RAW[@]}" | sort); do
+    for slug in $(printf '%s\n' "${!TAGS_RAW[@]}" | LC_ALL=C sort); do
         [[ -n "${SUPERSEDED[$slug]:-}" ]] && continue
         printf -- "- \`%s\` — %s\n" "$slug" "${TAGS_RAW[$slug]:-_untagged_}"
     done
