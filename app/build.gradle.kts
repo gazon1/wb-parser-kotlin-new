@@ -36,32 +36,32 @@ tasks.bootJar {
 dependencies {
     implementation(project(":wbparser"))
 
-    implementation(kotlin("stdlib"))
-    implementation(kotlin("reflect"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-    implementation("io.arrow-kt:arrow-core:2.2.3")
-    implementation("io.github.resilience4j:resilience4j-circuitbreaker:2.2.0")
+    implementation(libs.kotlin.stdlib)
+    implementation(libs.kotlin.reflect)
+    implementation(libs.kotlin.coroutines.core)
+    implementation(libs.arrow.core)
+    implementation(libs.resilience4j.circuitbreaker)
 
-    implementation("org.springframework.boot:spring-boot-starter-web:3.4.1")
-    implementation("org.springframework.boot:spring-boot-starter-actuator:3.4.1")
-    implementation("org.springframework.boot:spring-boot-starter-security:3.4.1")
-    implementation("org.springframework.boot:spring-boot-starter-validation:3.4.1")
-    implementation("org.springframework.boot:spring-boot-starter-aop:3.4.1")
+    implementation(libs.spring.boot.starter.web)
+    implementation(libs.spring.boot.starter.actuator)
+    implementation(libs.spring.boot.starter.security)
+    implementation(libs.spring.boot.starter.validation)
+    implementation(libs.spring.boot.starter.aop)
     // The application reads `spring.datasource.*` and gets a pooled DataSource from
     // Spring Boot's auto-configuration, which only activates when spring-jdbc is on
     // the classpath. That classpath entry used to arrive by accident, through the
     // crawler's unused shedlock-provider-jdbc-template; removing it took the
     // DataSource — and with it the ability to start — away.
-    implementation("org.springframework.boot:spring-boot-starter-jdbc:3.4.1")
-    implementation("org.springframework.boot:spring-boot-configuration-processor:3.4.1")
+    implementation(libs.spring.boot.starter.jdbc)
+    implementation(libs.spring.boot.configuration.processor)
 
     // The crawler hands this module its types, so the versions are pinned here as
     // well: leaving them to the starters would mean the application and the
     // crawler could resolve different versions of the same library.
-    runtimeOnly("ch.qos.logback:logback-classic:1.5.14")
-    implementation("org.slf4j:slf4j-api:2.0.17")
-    implementation("io.micrometer:micrometer-core:1.15.0")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.19.1")
+    runtimeOnly(libs.logback.classic)
+    implementation(libs.slf4j.api)
+    implementation(libs.micrometer.core)
+    implementation(libs.jackson.databind)
 
     // Flyway belongs to this module: the migrations live in
     // src/main/resources/db/migration and the configuration in application.yml.
@@ -69,8 +69,8 @@ dependencies {
     // put it on the runtime classpath by accident — no source file names it, so
     // nothing noticed, and the day it was cleaned up every migration would have
     // stopped running.
-    runtimeOnly("org.flywaydb:flyway-core:11.20.3")
-    runtimeOnly("org.flywaydb:flyway-database-postgresql:11.20.3")
+    runtimeOnly(libs.flyway.core)
+    runtimeOnly(libs.flyway.database.postgresql)
 }
 
 tasks.test {

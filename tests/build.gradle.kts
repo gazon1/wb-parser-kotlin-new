@@ -20,36 +20,36 @@ dependencies {
     testImplementation(project(":wbparser"))
     testImplementation(project(":app"))
 
-    implementation(kotlin("stdlib"))
-    implementation(kotlin("reflect"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
+    implementation(libs.kotlin.stdlib)
+    implementation(libs.kotlin.reflect)
+    implementation(libs.kotlin.coroutines.core)
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
     testImplementation("io.arrow-kt:arrow-core:2.2.3")
 
-    testImplementation("org.springframework.boot:spring-boot-starter-test:3.4.1")
+    testImplementation(libs.spring.boot.starter.test)
     // The startup gate reads the health endpoint, and TestRestTemplate answers
     // with a ResponseEntity — a spring-web type. The application gets spring-web
     // from its own starter, but an `implementation` dependency of a project
     // dependency does not reach this module's compile classpath.
-    testImplementation("org.springframework:spring-web:6.2.1")
-    testImplementation("io.kotest:kotest-runner-junit5:6.2.4")
-    testImplementation("io.kotest:kotest-assertions-core:6.2.4")
-    testImplementation("org.testcontainers:postgresql:1.21.3")
-    testImplementation("org.testcontainers:junit-jupiter:1.21.3")
+    testImplementation(libs.spring.web)
+    testImplementation(libs.kotest.runner.junit5)
+    testImplementation(libs.kotest.assertions.core)
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.testcontainers.junit.jupiter)
     // Compile-time access to the driver so tests can build a DataSource against the
     // Testcontainers instance (infrastructure declares it as `implementation` only).
-    testImplementation("org.postgresql:postgresql:42.7.4")
+    testImplementation(libs.postgresql)
     // Compile-time access to Database.connect so tests can build a DatabaseHandle for
     // CrawlRunner (infrastructure declares exposed as `implementation` only).
-    testImplementation("org.jetbrains.exposed:exposed-core:0.55.0")
+    testImplementation(libs.exposed.core)
     // SQLite for integration tests
-    testImplementation("org.xerial:sqlite-jdbc:3.46.0.0")
+    testImplementation(libs.sqlite.jdbc)
     // Ktor client (CIO engine) for NoRetryKtorDownloader in integration tests
-    testImplementation("io.ktor:ktor-client-core:2.3.13")
-    testImplementation("io.ktor:ktor-client-cio:2.3.13")
-    testImplementation("io.ktor:ktor-client-logging:2.3.13")
+    testImplementation(libs.ktor.client.core)
+    testImplementation(libs.ktor.client.cio)
+    testImplementation(libs.ktor.client.logging)
     // Needed for debug deserialization checks in integration tests
-    testImplementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    testImplementation(libs.kotlin.serialization.json)
 }
 
 tasks.test {

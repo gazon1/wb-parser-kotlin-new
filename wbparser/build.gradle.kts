@@ -15,12 +15,6 @@ kotlin {
     }
 }
 
-val coroutinesVersion = "1.10.2"
-val ktorVersion = "2.3.13"
-val exposedVersion = "0.55.0"
-val resilience4jVersion = "2.2.0"
-val shedlockVersion = "5.14.0"
-
 // ==============================================================================
 // The module boundary
 // ==============================================================================
@@ -37,25 +31,25 @@ val shedlockVersion = "5.14.0"
 // lists as "should be modified" is an `api` dependency below.
 dependencies {
     // Kotlin
-    implementation(kotlin("stdlib"))
-    implementation(kotlin("reflect"))
-    api("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
-    runtimeOnly("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:$coroutinesVersion")
-    api("org.jetbrains.kotlinx:kotlinx-serialization-core:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation(libs.kotlin.stdlib)
+    implementation(libs.kotlin.reflect)
+    api(libs.kotlin.coroutines.core)
+    runtimeOnly(libs.kotlin.coroutines.reactor)
+    api(libs.kotlin.serialization.core)
+    implementation(libs.kotlin.serialization.json)
 
     // Arrow
-    api("io.arrow-kt:arrow-core:2.2.3")
-    implementation("io.arrow-kt:arrow-exception-utils:2.2.3")
+    api(libs.arrow.core)
+    implementation(libs.arrow.exception.utils)
 
     // Ktor
-    implementation("io.ktor:ktor-client-core:$ktorVersion")
-    implementation("io.ktor:ktor-client-cio:$ktorVersion")
-    implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
-    implementation("io.ktor:ktor-client-logging:$ktorVersion")
-    implementation("io.ktor:ktor-http:$ktorVersion")
-    implementation("io.ktor:ktor-serialization:$ktorVersion")
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.logging)
+    implementation(libs.ktor.http)
+    implementation(libs.ktor.serialization)
 
     // Exposed. `exposed-core` is `api`: the public API hands out Exposed types
     // (DatabaseHandle, ExposedTables). The rest are `implementation` or
@@ -64,60 +58,60 @@ dependencies {
     // Every module below is `implementation` or `runtimeOnly`, never `compileOnly`:
     // a compileOnly dependency is absent from the runtime classpath, and these
     // classes are loaded when the crawler first touches a table.
-    api("org.jetbrains.exposed:exposed-core:$exposedVersion")
-    runtimeOnly("org.jetbrains.exposed:exposed-dao:$exposedVersion")
-    runtimeOnly("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
-    implementation("org.jetbrains.exposed:exposed-json:$exposedVersion")
+    api(libs.exposed.core)
+    runtimeOnly(libs.exposed.dao)
+    runtimeOnly(libs.exposed.jdbc)
+    implementation(libs.exposed.json)
     // `datetime()` in ExposedTables.kt resolves to JavaDateColumnTypeKt in this
     // module. Declared compileOnly, the whole suite passed and the crawler died
     // on its first query with NoClassDefFoundError — the tests module added it
     // back as a test dependency, so only a real run against a real database ever
     // saw the missing jar. A schema column type is not compile-time metadata; it
     // is called on every read and write.
-    implementation("org.jetbrains.exposed:exposed-java-time:$exposedVersion")
+    implementation(libs.exposed.java.time)
 
     // DB
     // The driver is loaded by name at runtime; no source file names it, so it is
     // `runtimeOnly` here and `testImplementation` for the suite below, which
     // builds a DataSource against the Testcontainers instance.
-    runtimeOnly("org.postgresql:postgresql:42.7.4")
-    implementation("com.zaxxer:HikariCP:5.1.0")
+    runtimeOnly(libs.postgresql)
+    implementation(libs.hikaricp)
 
     // Resilience
-    implementation("io.github.resilience4j:resilience4j-kotlin:$resilience4jVersion")
-    implementation("io.github.resilience4j:resilience4j-core:$resilience4jVersion")
-    api("io.github.resilience4j:resilience4j-circuitbreaker:$resilience4jVersion")
+    implementation(libs.resilience4j.kotlin)
+    implementation(libs.resilience4j.core)
+    api(libs.resilience4j.circuitbreaker)
 
     // Browser automation (Playwright — requires native binaries)
-    api("com.microsoft.playwright:playwright:1.49.0") {
+    api(libs.playwright) {
         exclude(group = "org.slf4j")
     }
 
     // Logging
     // The binding is a runtime concern: no source file names it, and the
     // application gets its own through the Spring Boot starter.
-    runtimeOnly("ch.qos.logback:logback-classic:1.5.14")
-    implementation("io.github.microutils:kotlin-logging:3.0.5")
-    implementation("org.slf4j:slf4j-api:2.0.17")
+    runtimeOnly(libs.logback.classic)
+    implementation(libs.kotlin.logging)
+    implementation(libs.slf4j.api)
 
     // JSON
     // The code uses ObjectMapper and JsonNode directly, so the artifact is
     // declared — it used to arrive transitively, through the YAML module.
-    api("com.fasterxml.jackson.core:jackson-databind:2.18.2")
+    api(libs.jackson.databind)
 
     // Metrics — Micrometer. `api`: the crawler hands MeterRegistry to its
     // callers, and the application records through it.
-    api("io.micrometer:micrometer-core:1.15.0")
+    api(libs.micrometer.core)
 
     // Test
-    testImplementation("io.kotest:kotest-runner-junit5:6.2.4")
-    testImplementation("io.kotest:kotest-assertions-core:6.2.4")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
-    testImplementation("io.mockk:mockk:1.14.11")
+    testImplementation(libs.kotest.runner.junit5)
+    testImplementation(libs.kotest.assertions.core)
+    testImplementation(libs.kotlin.coroutines.test)
+    testImplementation(libs.mockk)
     // The suite builds a DataSource against the Testcontainers instance, so it
     // needs the driver at compile time.
-    testImplementation("org.postgresql:postgresql:42.7.4")
-    testRuntimeOnly("org.testcontainers:postgresql:1.20.4")
+    testImplementation(libs.postgresql)
+    testRuntimeOnly(libs.testcontainers.postgresql)
 }
 
 tasks.test {
