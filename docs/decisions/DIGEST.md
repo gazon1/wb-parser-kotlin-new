@@ -67,6 +67,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** add an entry to the accepted-findings list in `build.gradle.kts` without a reason in a _(from `2026-10-19-dependency-analysis-plugin`)
 - **Never** declare a dependency in `implementation` when only the runtime needs it. A runtime-only _(from `2026-10-19-dependency-analysis-plugin`)
 - **Never** run `fixDependencies` in CI. It rewrites build scripts and cannot see runtime-only _(from `2026-10-19-dependency-analysis-plugin`)
+- **Never** switch off the `usedTransitiveDependencies` rule for a module to make the gate quiet. _(from `2026-10-19-dependency-analysis-plugin`)
 - **Always** declare a dependency in the module that uses it. A dependency that reaches the _(from `2026-10-19-explicit-module-boundary`)
 - **Always** use `runtimeOnly` for a dependency that is loaded but never named in source — a _(from `2026-10-19-explicit-module-boundary`)
 - **Never** duplicate a dependency in a consumer to make it compile. If the consumer needs the _(from `2026-10-19-explicit-module-boundary`)

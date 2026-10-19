@@ -121,13 +121,6 @@ configure<com.autonomousapps.DependencyAnalysisExtension> {
 
             }
         }
-
-        project(":tests") {
-            // Temporary: until the wbparser → app boundary is explicit, the
-            // test module legitimately re-declares what wbparser hides behind
-            // `implementation`. Removed once the boundary uses `api`.
-            onUsedTransitiveDependencies { severity("ignore") }
-        }
     }
     reporting {
         // The report goes to a file (CI uploads it as an artifact); the console

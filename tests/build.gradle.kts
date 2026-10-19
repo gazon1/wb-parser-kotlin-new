@@ -50,6 +50,18 @@ dependencies {
     testImplementation(libs.ktor.client.logging)
     // Needed for debug deserialization checks in integration tests
     testImplementation(libs.kotlin.serialization.json)
+
+    // The suites name these types directly, so they are declared here rather
+    // than inherited transitively:
+    //  - io.ktor.http.* — status codes and headers in the fake HTTP server
+    //  - io.micrometer.core.* — the meter registry the crawler is handed
+    //  - org.junit.jupiter.api.* — the JUnit annotations the suites are written in
+    // The dependency-analysis plugin reported all three as "should be declared
+    // directly" once the used-transitive rule was switched on for this module.
+    testImplementation(libs.ktor.http)
+    testImplementation(libs.micrometer.core)
+    testImplementation(platform(libs.junit.bom))
+    testImplementation(libs.junit.jupiter.api)
 }
 
 tasks.test {

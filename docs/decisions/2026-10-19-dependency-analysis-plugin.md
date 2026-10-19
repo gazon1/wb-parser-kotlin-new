@@ -63,6 +63,13 @@ The gate runs on both surfaces: `./check.sh` (step 10) and the `dependency-healt
 `ci.yml`. It needs a JVM and build output, so it cannot live in `scripts/ci/static-gates.sh` —
 that registry is for gates that need neither.
 
+All three modules are analyzed under the same rules. The `usedTransitiveDependencies` rule — the
+one that says "this module names a type that comes in through somebody else's dependency, so
+declare it yourself" — was switched off for `tests` while the `wbparser → app` boundary was
+implicit, because the test module legitimately re-declared what `wbparser` hid behind
+`implementation`. The boundary is explicit now, so the rule is on for every module: `tests`
+declares `ktor-http`, `micrometer-core` and `junit-jupiter-api` itself instead of inheriting them.
+
 ## Rationale
 
 The plugin is the only tool in this stack that compares declarations against bytecode, and it
@@ -88,6 +95,10 @@ to the build.
 - **Never** declare a dependency in `implementation` when only the runtime needs it. A runtime-only
   dependency belongs in `runtimeOnly`; that is what the plugin asks for, and it is the difference
   between a dependency the compiler can check and one it cannot.
+- **Never** switch off the `usedTransitiveDependencies` rule for a module to make the gate quiet.
+  The rule was temporarily off for `tests` while the module boundary was implicit; it is on for
+  every module now, and the fix for a finding is to declare the dependency, not to silence the
+  rule.
 - **Always** report a dependency that the plugin flags but that we know to be false as an accepted
   finding with a reason — never by deleting the report, weakening the severity, or turning the
   gate off.
