@@ -57,6 +57,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** inject `BrowserAutomation` via constructor for testability — never call `Playwright` directly in `ProfileState`. _(from `2026-10-17-browser-automation-interface`)
 - **Always** inject `AdsPowerApi` via constructor for testability — never call `HttpURLConnection` directly in `ProfileState`. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)
 - **Always** handle back-off delays at the coordinator level (inside `Pipeline.run()` or `processItems`) — never inside `async {}`. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)
+- **Always** remove the accepted-findings entry in the same change that fixes the problem it _(from `2026-10-19-dependency-analysis-plugin`)
+- **Always** report a dependency that the plugin flags but that we know to be false as an accepted _(from `2026-10-19-dependency-analysis-plugin`)
+- **Never** add an entry to the accepted-findings list in `build.gradle.kts` without a reason in a _(from `2026-10-19-dependency-analysis-plugin`)
+- **Never** declare a dependency in `implementation` when only the runtime needs it. A runtime-only _(from `2026-10-19-dependency-analysis-plugin`)
+- **Never** run `fixDependencies` in CI. It rewrites build scripts and cannot see runtime-only _(from `2026-10-19-dependency-analysis-plugin`)
 
 ## Per-tag
 
@@ -142,10 +147,17 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - A DB blip no longer fails the entire crawl. The save still fails the item _(from `2026-09-09-save-stage-retry-pr11`)_
 - HTTP errors (500/429/connection) are now correctly retried up to `maxAttempts`. _(from `2026-09-08-retry-semantics-pr8`)_
 
+### `build`
+
+- Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
+- The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
+
 ### `ci`
 
 - Crawler: `tests` floor 31 → 44. Storefront: per-file floors in _(from `2026-10-08-gates-that-can-fail`)_
+- Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
 - The executed-test floors are raised in the same commit that adds tests, in both _(from `2026-10-08-gates-that-can-fail`)_
+- The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
 
 ### `cleanup`
 
@@ -204,6 +216,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Positive**: Cleaner domain model, no dead code _(from `2026-09-09-dead-code-purge-pr19`)_
 - **Positive**: Honest documentation (effect-recording vs pure) _(from `2026-09-09-dead-code-purge-pr19`)_
 
+### `dependencies`
+
+- Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
+- The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
+
 ### `deployment`
 
 - The crawler reaching Wildberries from the VPS is a separate question from _(from `2026-10-14-deploy-crawler-as-registry-image`)_
@@ -228,6 +245,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `G10`
 
 - A DB blip no longer fails the entire crawl. The save still fails the item _(from `2026-09-09-save-stage-retry-pr11`)_
+
+### `gates`
+
+- Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
+- The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
 
 ### `infrastructure`
 
@@ -384,6 +406,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-coordinator-extraction` — pipeline  architecture  pr-13
 - `2026-10-17-pipeline-purity-delayfn-extraction` — pipeline  architecture  concurrency
 - `2026-10-17-stage-data-class-dsl` — pipeline  architecture  pr-13
+- `2026-10-19-dependency-analysis-plugin` — build  dependencies  gates  ci
 
 ## Active entries
 
@@ -415,3 +438,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-coordinator-extraction` — Extract Coordinator class from Pipeline.run
 - `2026-10-17-pipeline-purity-delayfn-extraction` — Extract delayFn from async dispatcher into coordinator-level retry loop
 - `2026-10-17-stage-data-class-dsl` — Stage data class + StageDSL for readable stage construction
+- `2026-10-19-dependency-analysis-plugin` — Dependency drift is a gate, not a reviewer's job

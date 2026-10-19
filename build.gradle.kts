@@ -1,7 +1,10 @@
 plugins {
-    kotlin("jvm") version "2.4.21" apply false
-    kotlin("plugin.spring") version "2.4.21" apply false
-    kotlin("plugin.serialization") version "2.4.21" apply false
+    // No `version` here: the Kotlin plugins are already on the settings classloader
+    // (see settings.gradle.kts) and Gradle rejects a version for a plugin that is
+    // already on the classpath.
+    id("org.jetbrains.kotlin.jvm") apply false
+    id("org.jetbrains.kotlin.plugin.spring") apply false
+    id("org.jetbrains.kotlin.plugin.serialization") apply false
     id("org.springframework.boot") version "3.4.1" apply false
     id("io.gitlab.arturbosch.detekt") version "1.23.7" apply false
     // The Gradle plugin's own version is independent of the ktlint CLI version pinned in
@@ -63,3 +66,119 @@ subprojects {
 tasks.register<Delete>("clean") {
     delete(layout.buildDirectory)
 }
+
+// ==============================================================================
+// Dependency analysis (DAGP)
+// ==============================================================================
+// The plugin compares what the build declares against what the bytecode
+// actually uses. Anything it reports and we have not consciously accepted
+// fails the build.
+//
+// The accepted-findings list lives here, in the plugin's own DSL, and it is
+// the baseline: `exclude("group:artifact")` suppresses that dependency, and
+// everything outside the list breaks the build. The list may only shrink —
+// see docs/decisions/2026-10-19-dependency-analysis-plugin.md.
+configure<com.autonomousapps.DependencyAnalysisExtension> {
+    issues {
+        all {
+            onAny {
+                severity("fail")
+
+                // ── The accepted-findings list (the baseline) ──────────────────
+                // Every entry is a finding we have consciously accepted. Entries
+                // are removed as the underlying problems are fixed; the list may
+                // only shrink, and a new entry needs a reason in a comment.
+
+                // -- Spring Boot application module ------------------------------
+                // A starter artifact carries no classes of its own, and the
+                // framework behind it is wired by auto-configuration, not by a
+                // bytecode reference. Bytecode analysis cannot see that usage,
+                // so the whole family is accepted as-is.
+                excludeRegex(
+                    "org\\.springframework(\\.[a-z]+)?:.*",
+                    "org\\.apache\\.tomcat\\.embed:.*",
+                    "org\\.hibernate\\.validator:.*",
+                    "org\\.apache\\.logging\\.log4j:.*",
+                    "com\\.fasterxml\\.jackson\\.(datatype|module):.*",
+                )
+
+                // -- Aggregator artifacts -----------------------------------------
+                // Kotest and MockK are declared as one artifact each; the parts
+                // they are built from are implementation detail.
+                exclude(
+                    "io.kotest:kotest-assertions-shared",
+                    "io.kotest:kotest-common",
+                    "io.kotest:kotest-framework-engine",
+                    "io.mockk:mockk-core",
+                    "io.mockk:mockk-dsl",
+                )
+
+                // -- The test module needs the app's resources, not its classes ---
+                // `db/migration` and `application.yml` live in the app module and
+                // reach the test classpath through it. Bytecode analysis sees no
+                // class reference and calls the dependency unused; it is not.
+                exclude(":app")
+
+                // -- The test module consumes wbparser for its tests only --------
+                exclude(":wbparser")
+
+                // -- Declared but not yet used: removed in the cleanup PRs ------
+                exclude(
+                    "com.github.ben-manes.caffeine:caffeine",
+                    "com.github.crawler-commons:crawler-commons",
+                    "org.jsoup:jsoup",
+                    "org.apache.commons:commons-csv",
+                    "io.ktor:ktor-client-mock",
+                    "io.github.resilience4j:resilience4j-retry",
+                    "net.javacrumbs.shedlock:shedlock-spring",
+                    "net.javacrumbs.shedlock:shedlock-provider-jdbc-template",
+                    "io.github.microutils:kotlin-logging",
+                    "org.jetbrains.kotlinx:kotlinx-serialization-json",
+                    "org.jetbrains.exposed:exposed-java-time",
+                    "io.kotest:kotest-assertions-core",
+                    "io.kotest:kotest-property",
+                    "org.testcontainers:junit-jupiter",
+                )
+
+                // -- Used transitively: declared directly in the boundary PR ----
+                exclude(
+                    "com.fasterxml.jackson.core:jackson-databind",
+                    "io.micrometer:micrometer-core",
+                    "org.slf4j:slf4j-api",
+                    "io.arrow-kt:arrow-core",
+                    "io.arrow-kt:arrow-exception-utils",
+                    "org.jetbrains.kotlinx:kotlinx-coroutines-core",
+                    "org.jetbrains.kotlinx:kotlinx-serialization-core",
+                    "org.jetbrains.kotlinx:kotlinx-coroutines-reactor",
+                    "io.github.resilience4j:resilience4j-circuitbreaker",
+                    "io.github.resilience4j:resilience4j-core",
+                    "com.microsoft.playwright:playwright",
+                    "io.ktor:ktor-http",
+                    "io.ktor:ktor-serialization",
+                    "org.jetbrains.exposed:exposed-core",
+                    "org.jetbrains.exposed:exposed-dao",
+                    "org.jetbrains.exposed:exposed-jdbc",
+                    "org.flywaydb:flyway-core",
+                    "org.flywaydb:flyway-database-postgresql",
+                    "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml",
+                    "ch.qos.logback:logback-classic",
+                    "org.postgresql:postgresql",
+                    "org.testcontainers:postgresql",
+                )
+            }
+        }
+
+        project(":tests") {
+            // Temporary: until the wbparser → app boundary is explicit, the
+            // test module legitimately re-declares what wbparser hides behind
+            // `implementation`. Removed once the boundary uses `api`.
+            onUsedTransitiveDependencies { severity("ignore") }
+        }
+    }
+    reporting {
+        // The report goes to a file (CI uploads it as an artifact); the console
+        // stays readable.
+        printBuildHealth(false)
+    }
+}
+

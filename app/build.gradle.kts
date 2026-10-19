@@ -1,7 +1,9 @@
 plugins {
-    kotlin("jvm") version "2.4.21"
-    kotlin("plugin.spring") version "2.4.21"
-    kotlin("plugin.serialization") version "2.4.21"
+    // No `version`: the Kotlin plugins live on the settings classloader (see
+    // settings.gradle.kts) — DAGP needs them there to analyze Kotlin modules.
+    id("org.jetbrains.kotlin.jvm")
+    id("org.jetbrains.kotlin.plugin.spring")
+    id("org.jetbrains.kotlin.plugin.serialization")
     id("org.springframework.boot") version "3.4.1"
 }
 
