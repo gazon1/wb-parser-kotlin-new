@@ -53,6 +53,16 @@ gate found on its first run were all in the model, and the model was fixed:
   `crawl_targets.updated_at` are `TIMESTAMPTZ`, so the model uses
   `timestampWithTimeZone` and writes a real instant.
 
+One table was missing from the model altogether: `crawl_jobs`. The crawler wrote
+it with hand-written SQL — `INSERT INTO crawl_jobs …`, `setTimestamp`, string
+literals for the status — so the gate had nothing to compare against it and the
+table was the one place where a drift could not be caught. `crawl_jobs` is now
+described by `CrawlJobsTable`, and the write path goes through Exposed like
+every other table. Two things came with that: the timestamps are written as
+`OffsetDateTime` in UTC instead of `setTimestamp` in the JVM's zone (the same
+shift the naive timestamp column caused, one level up), and the status values
+are the ones the model declares instead of strings spelled out at the call site.
+
 ## Rationale
 
 Letting the model create the schema removes the second description entirely:
@@ -77,6 +87,9 @@ applied. A test that compared a mock would have compared the model with itself.
 - **Always** write instants through a zoned column type. A naive timestamp in a
   `TIMESTAMPTZ` column is a silent shift by the machine's offset, and the test
   suite cannot see it on a UTC host.
+- **Never** write a table with hand-written SQL while the model describes the
+  rest of the schema. A table without a description is a table the drift gate
+  cannot see, which makes it the one place a drift hides.
 - The gate compares columns — names, types, nullability. It does not compare
   defaults, indexes or constraints: the unique index on
   `(target_id, content_hash)` and the `now()` defaults are described in the

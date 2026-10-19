@@ -99,6 +99,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** change the model and the migration in the same commit when a column _(from `2026-10-19-schema-drift-gate`)
 - **Always** write instants through a zoned column type. A naive timestamp in a _(from `2026-10-19-schema-drift-gate`)
 - **Never** change the schema to match the model. The model is the description; _(from `2026-10-19-schema-drift-gate`)
+- **Never** write a table with hand-written SQL while the model describes the _(from `2026-10-19-schema-drift-gate`)
 
 ## Per-tag
 

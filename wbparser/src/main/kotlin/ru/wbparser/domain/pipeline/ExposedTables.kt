@@ -94,3 +94,34 @@ object CrawlTargetsTable : Table("crawl_targets") {
     val createdAt: Column<OffsetDateTime> = timestampWithTimeZone("created_at")
     val updatedAt: Column<OffsetDateTime> = timestampWithTimeZone("updated_at")
 }
+
+/**
+ * One run of a spider.
+ *
+ * This table is the crawler's own log: it is what a diagnostic reads to find
+ * out what a run did. It used to be written with hand-written SQL, which meant
+ * two things nobody checked — that the columns still matched the schema, and
+ * that the timestamps were instants. The timestamps were not: a naive
+ * `setTimestamp` sends local wall time, which PostgreSQL reads as UTC, so every
+ * recorded time was shifted by the machine's offset.
+ *
+ * The status column carries `CHECK (status IN ('Created', 'Running', 'Completed',
+ * 'Failed', 'Cancelled', 'Crashed'))` — the same six values as
+ * [ru.wbparser.domain.value.JobStatus], which is what the write path sends.
+ */
+object CrawlJobsTable : Table("crawl_jobs") {
+    val id: Column<UUID> = uuid("id")
+    val targetId: Column<UUID> = uuid("target_id")
+    val status: Column<String> = varchar("status", 50)
+    val startedAt: Column<OffsetDateTime?> = timestampWithTimeZone("started_at").nullable()
+    val completedAt: Column<OffsetDateTime?> = timestampWithTimeZone("completed_at").nullable()
+    val lastHeartbeatAt: Column<OffsetDateTime?> = timestampWithTimeZone("last_heartbeat_at").nullable()
+    val requestsTotal: Column<Int> = integer("requests_total")
+    val requestsSucceeded: Column<Int> = integer("requests_succeeded")
+    val requestsFailed: Column<Int> = integer("requests_failed")
+    val pagesCrawled: Column<Int> = integer("pages_crawled")
+    val itemsSaved: Column<Int> = integer("items_saved")
+    val triggeredBy: Column<String?> = varchar("triggered_by", 100).nullable()
+    val errorMessage: Column<String?> = text("error_message").nullable()
+    val createdAt: Column<OffsetDateTime> = timestampWithTimeZone("created_at")
+}
