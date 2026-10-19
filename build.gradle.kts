@@ -119,52 +119,6 @@ configure<com.autonomousapps.DependencyAnalysisExtension> {
                 // class reference and calls the dependency unused; it is not.
                 exclude(":app")
 
-                // -- The test module consumes wbparser for its tests only --------
-                exclude(":wbparser")
-
-                // -- Declared but not yet used: removed in the cleanup PRs ------
-                exclude(
-                    "com.github.ben-manes.caffeine:caffeine",
-                    "com.github.crawler-commons:crawler-commons",
-                    "org.jsoup:jsoup",
-                    "org.apache.commons:commons-csv",
-                    "io.ktor:ktor-client-mock",
-                    "io.github.resilience4j:resilience4j-retry",
-                    "net.javacrumbs.shedlock:shedlock-spring",
-                    "net.javacrumbs.shedlock:shedlock-provider-jdbc-template",
-                    "io.github.microutils:kotlin-logging",
-                    "org.jetbrains.kotlinx:kotlinx-serialization-json",
-                    "org.jetbrains.exposed:exposed-java-time",
-                    "io.kotest:kotest-assertions-core",
-                    "io.kotest:kotest-property",
-                    "org.testcontainers:junit-jupiter",
-                )
-
-                // -- Used transitively: declared directly in the boundary PR ----
-                exclude(
-                    "com.fasterxml.jackson.core:jackson-databind",
-                    "io.micrometer:micrometer-core",
-                    "org.slf4j:slf4j-api",
-                    "io.arrow-kt:arrow-core",
-                    "io.arrow-kt:arrow-exception-utils",
-                    "org.jetbrains.kotlinx:kotlinx-coroutines-core",
-                    "org.jetbrains.kotlinx:kotlinx-serialization-core",
-                    "org.jetbrains.kotlinx:kotlinx-coroutines-reactor",
-                    "io.github.resilience4j:resilience4j-circuitbreaker",
-                    "io.github.resilience4j:resilience4j-core",
-                    "com.microsoft.playwright:playwright",
-                    "io.ktor:ktor-http",
-                    "io.ktor:ktor-serialization",
-                    "org.jetbrains.exposed:exposed-core",
-                    "org.jetbrains.exposed:exposed-dao",
-                    "org.jetbrains.exposed:exposed-jdbc",
-                    "org.flywaydb:flyway-core",
-                    "org.flywaydb:flyway-database-postgresql",
-                    "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml",
-                    "ch.qos.logback:logback-classic",
-                    "org.postgresql:postgresql",
-                    "org.testcontainers:postgresql",
-                )
             }
         }
 

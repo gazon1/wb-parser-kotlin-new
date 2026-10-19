@@ -40,6 +40,7 @@ dependencies {
     implementation(kotlin("reflect"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("io.arrow-kt:arrow-core:2.2.3")
+    implementation("io.github.resilience4j:resilience4j-circuitbreaker:2.2.0")
 
     implementation("org.springframework.boot:spring-boot-starter-web:3.4.1")
     implementation("org.springframework.boot:spring-boot-starter-actuator:3.4.1")
@@ -57,7 +58,7 @@ dependencies {
     // The crawler hands this module its types, so the versions are pinned here as
     // well: leaving them to the starters would mean the application and the
     // crawler could resolve different versions of the same library.
-    implementation("ch.qos.logback:logback-classic:1.5.14")
+    runtimeOnly("ch.qos.logback:logback-classic:1.5.14")
     implementation("org.slf4j:slf4j-api:2.0.17")
     implementation("io.micrometer:micrometer-core:1.15.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.19.1")
@@ -70,11 +71,6 @@ dependencies {
     // stopped running.
     runtimeOnly("org.flywaydb:flyway-core:11.20.3")
     runtimeOnly("org.flywaydb:flyway-database-postgresql:11.20.3")
-
-    testImplementation("org.springframework.security:spring-security-test:6.1.0")
-    testImplementation("io.kotest:kotest-assertions-core:6.2.4")
-    testImplementation("io.mockk:mockk:1.14.11")
-    testImplementation("org.testcontainers:junit-jupiter:1.21.3")
 }
 
 tasks.test {
