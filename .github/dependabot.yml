@@ -43,3 +43,15 @@ updates:
     open-pull-requests-limit: 3
     labels:
       - dependencies
+
+  # The base images of Dockerfile.app and Dockerfile.debug. The JDK inside them is
+  # pinned to the version the build asks for, so a bump of the base image is a
+  # pull request to review — not a surprise on the next build.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies

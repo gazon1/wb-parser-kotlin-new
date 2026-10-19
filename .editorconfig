@@ -1,5 +1,18 @@
 root = true
 
 [*.kt]
-ktlint_standard_function_signature = disabled
-ktlint_standard_function_expression_body = disabled
+# The rules are on. They used to be switched off here, with the property names
+# `ktlint_standard_function_signature` and
+# `ktlint_standard_function_expression_body` — but ktlint builds the property
+# name from the rule id, and the rule ids use dashes:
+# `ktlint_standard_function-expression-body`. A property with underscores is a
+# property ktlint has never heard of, so it was ignored, and the two rules were
+# enforced all along.
+#
+# That was checked rather than assumed: a file with a function body written as
+# `{ return a + 1 }` is reported as `standard:function-expression-body`, with
+# these lines present and with them removed.
+#
+# The correct spelling would switch the rules off. They are left on: the code
+# already satisfies them, so switching them off would weaken the check for
+# nothing.
