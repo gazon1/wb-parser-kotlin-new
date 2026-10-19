@@ -122,7 +122,10 @@ class CrawlRunner(
         withContext(Dispatchers.IO) {
             val lockResult: Either<LockUnavailable, RunResult> = advisoryLock.withLock { runUnsafe() }
             lockResult.fold(
-                ifLeft = { RunResult.AlreadyRunning },
+                // The reason travels with the result: "another instance holds the lock"
+                // and "waited for the lock and gave up" are different situations, and
+                // the operator sees only this.
+                ifLeft = { RunResult.AlreadyRunning(it.message) },
                 ifRight = { it },
             )
         }
@@ -434,7 +437,15 @@ class CrawlRunner(
             fun exitCode(): Int = EXIT_CODE_FAILURE
         }
 
-        data object AlreadyRunning : RunResult() {
+        /**
+         * The crawl was not started: the advisory lock was not taken.
+         *
+         * [reason] says why — another instance holds the lock, or the wait for it
+         * timed out.
+         */
+        data class AlreadyRunning(
+            val reason: String,
+        ) : RunResult() {
             fun exitCode(): Int = EXIT_CODE_LOCKED
         }
     }

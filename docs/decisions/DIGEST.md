@@ -57,6 +57,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** inject `BrowserAutomation` via constructor for testability — never call `Playwright` directly in `ProfileState`. _(from `2026-10-17-browser-automation-interface`)
 - **Always** inject `AdsPowerApi` via constructor for testability — never call `HttpURLConnection` directly in `ProfileState`. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)
 - **Always** handle back-off delays at the coordinator level (inside `Pipeline.run()` or `processItems`) — never inside `async {}`. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)
+- **Always** carry the reason a run was skipped to the operator: a scheduled _(from `2026-10-19-advisory-lock-timeout`)
+- **Always** state which one a timeout bounds. "Lock acquisition timed out" and _(from `2026-10-19-advisory-lock-timeout`)
+- **Always** take and release an advisory lock on the same connection. _(from `2026-10-19-advisory-lock-timeout`)
+- **Never** treat a timeout of zero as "no waiting". Zero means wait forever, _(from `2026-10-19-advisory-lock-timeout`)
+- **Never** wrap the body of a lock-scoped block in the acquisition timeout. A _(from `2026-10-19-advisory-lock-timeout`)
 - **Always** keep the startup gate green: `./check.sh` runs it as part of `tests:test`, and a _(from `2026-10-19-application-startup-gate`)
 - **Always** supply `ADMIN_API_KEY` to the test JVM as an environment variable. The filter reads _(from `2026-10-19-application-startup-gate`)
 - **Never** add a dependency that is needed only at runtime to `implementation` when the _(from `2026-10-19-application-startup-gate`)
@@ -479,6 +484,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-coordinator-extraction` — pipeline  architecture  pr-13
 - `2026-10-17-pipeline-purity-delayfn-extraction` — pipeline  architecture  concurrency
 - `2026-10-17-stage-data-class-dsl` — pipeline  architecture  pr-13
+- `2026-10-19-advisory-lock-timeout` — concurrency  runtime  correctness
 - `2026-10-19-application-startup-gate` — testing  gates  spring  database  flyway
 - `2026-10-19-coverage-floor-gate` — build  tests  gate  coverage
 - `2026-10-19-dependency-analysis-plugin` — build  dependencies  gates  ci
@@ -517,6 +523,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-coordinator-extraction` — Extract Coordinator class from Pipeline.run
 - `2026-10-17-pipeline-purity-delayfn-extraction` — Extract delayFn from async dispatcher into coordinator-level retry loop
 - `2026-10-17-stage-data-class-dsl` — Stage data class + StageDSL for readable stage construction
+- `2026-10-19-advisory-lock-timeout` — The lock timeout bounds the wait, not the work
 - `2026-10-19-application-startup-gate` — The application must be startable, and something must prove it
 - `2026-10-19-coverage-floor-gate` — The coverage floor lives in one file, and the gate reads the report
 - `2026-10-19-dependency-analysis-plugin` — Dependency drift is a gate, not a reviewer's job

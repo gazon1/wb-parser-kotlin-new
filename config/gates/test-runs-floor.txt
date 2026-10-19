@@ -3,5 +3,5 @@
 # that adds tests; lowering it is allowed only when tests are deleted.
 
 app 16
-tests 80
+tests 84
 wbparser 303

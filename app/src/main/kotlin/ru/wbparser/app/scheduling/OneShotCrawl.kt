@@ -69,7 +69,7 @@ class OneShotCrawl(
                 result.exitCode()
             }
             is CrawlRunner.RunResult.AlreadyRunning -> {
-                log.warn("Crawl not started: advisory lock held by another instance")
+                log.warn("Crawl not started: {}", result.reason)
                 result.exitCode()
             }
         }
