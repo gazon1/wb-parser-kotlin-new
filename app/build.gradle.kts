@@ -53,7 +53,38 @@ dependencies {
     // crawler's unused shedlock-provider-jdbc-template; removing it took the
     // DataSource — and with it the ability to start — away.
     implementation(libs.spring.boot.starter.jdbc)
-    implementation(libs.spring.boot.configuration.processor)
+
+    // The framework jars behind the starters.
+    //
+    // A starter carries no classes of its own — it is a pom that pulls other jars
+    // in — so the dependency-analysis plugin could not see through it, and the
+    // whole of Spring was invisible to the gate. The regex that used to hide
+    // that (`org\.springframework(\.[a-z]+)?:.*`) also hid the real libraries
+    // from analysis. Declaring them here makes the runtime classpath reviewable
+    // and lets the gate see what the application actually uses.
+    implementation(libs.spring.boot)
+    implementation(libs.spring.boot.autoconfigure)
+    implementation(libs.spring.core)
+    implementation(libs.spring.context)
+    implementation(libs.spring.web)
+    implementation(libs.spring.security.core)
+    implementation(libs.spring.security.config)
+    implementation(libs.spring.security.web)
+    // The embedded Tomcat carries the jakarta.servlet API that the security filter
+    // compiles against. The starter deliberately excludes `tomcat-annotations-api`
+    // from it, and declaring the artifact directly would silently undo that: the
+    // annotations jar would come back into the runtime classpath, and into the image.
+    implementation(libs.tomcat.embed.core) {
+        exclude(group = "org.apache.tomcat", module = "tomcat-annotations-api")
+    }
+
+    // The Spring Boot configuration processor used to be declared here, as
+    // `implementation` — which put it on the runtime classpath, and into the image.
+    // It never did anything: the processor is a javac annotation processor, so on a
+    // Kotlin project it needs kapt to see the @ConfigurationProperties classes, and
+    // this project has neither kapt nor Java sources. The dependency-analysis plugin
+    // flagged it as unused, and it was right. If the metadata is ever wanted, add
+    // kapt and declare the processor on the `annotationProcessor` configuration.
 
     // The crawler hands this module its types, so the versions are pinned here as
     // well: leaving them to the starters would mean the application and the

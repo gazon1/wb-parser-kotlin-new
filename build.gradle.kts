@@ -106,17 +106,19 @@ configure<com.autonomousapps.DependencyAnalysisExtension> {
                 // are removed as the underlying problems are fixed; the list may
                 // only shrink, and a new entry needs a reason in a comment.
 
-                // -- Spring Boot application module ------------------------------
-                // A starter artifact carries no classes of its own, and the
-                // framework behind it is wired by auto-configuration, not by a
-                // bytecode reference. Bytecode analysis cannot see that usage,
-                // so the whole family is accepted as-is.
+                // -- Spring Boot starters -----------------------------------------
+                // A starter is a pom that carries no classes of its own: it pulls
+                // other artifacts in. Bytecode analysis sees no class in it and
+                // calls the dependency unused, which is a true statement about the
+                // starter and a false statement about the application.
+                //
+                // This used to be one broad regex — `org.springframework(\.[a-z]+)?:.*`
+                // — which hid the whole of Spring from the gate, real libraries
+                // included. It is narrowed to the starters: everything behind them
+                // is now declared by the module that uses it, so the gate can see
+                // it.
                 excludeRegex(
-                    "org\\.springframework(\\.[a-z]+)?:.*",
-                    "org\\.apache\\.tomcat\\.embed:.*",
-                    "org\\.hibernate\\.validator:.*",
-                    "org\\.apache\\.logging\\.log4j:.*",
-                    "com\\.fasterxml\\.jackson\\.(datatype|module):.*",
+                    "org\\.springframework\\.boot:spring-boot-starter-.*",
                 )
 
                 // -- Aggregator artifacts -----------------------------------------
@@ -129,12 +131,6 @@ configure<com.autonomousapps.DependencyAnalysisExtension> {
                     "io.mockk:mockk-core",
                     "io.mockk:mockk-dsl",
                 )
-
-                // -- The test module needs the app's resources, not its classes ---
-                // `db/migration` and `application.yml` live in the app module and
-                // reach the test classpath through it. Bytecode analysis sees no
-                // class reference and calls the dependency unused; it is not.
-                exclude(":app")
 
             }
         }

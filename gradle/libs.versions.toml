@@ -14,7 +14,13 @@
 [versions]
 kotlin = "2.4.21"
 spring-boot = "3.4.1"
-spring-web = "6.2.1"
+# The Spring Framework jars the application names. Spring Boot 3.4.1 manages
+# Spring Framework 6.2.1, so this is the version the BOM would pick anyway —
+# written down here because the dependency-analysis plugin asks for these
+# artifacts to be declared directly.
+spring = "6.2.1"
+spring-security = "6.4.2"
+tomcat-embed = "10.1.34"
 ktor = "2.3.13"
 exposed = "0.55.0"
 flyway = "11.20.3"
@@ -58,9 +64,19 @@ spring-boot-starter-security = { group = "org.springframework.boot", name = "spr
 spring-boot-starter-validation = { group = "org.springframework.boot", name = "spring-boot-starter-validation", version.ref = "spring-boot" }
 spring-boot-starter-aop = { group = "org.springframework.boot", name = "spring-boot-starter-aop", version.ref = "spring-boot" }
 spring-boot-starter-jdbc = { group = "org.springframework.boot", name = "spring-boot-starter-jdbc", version.ref = "spring-boot" }
-spring-boot-configuration-processor = { group = "org.springframework.boot", name = "spring-boot-configuration-processor", version.ref = "spring-boot" }
 spring-boot-starter-test = { group = "org.springframework.boot", name = "spring-boot-starter-test", version.ref = "spring-boot" }
-spring-web = { group = "org.springframework", name = "spring-web", version.ref = "spring-web" }
+spring-boot = { group = "org.springframework.boot", name = "spring-boot", version.ref = "spring-boot" }
+spring-boot-autoconfigure = { group = "org.springframework.boot", name = "spring-boot-autoconfigure", version.ref = "spring-boot" }
+spring-boot-test = { group = "org.springframework.boot", name = "spring-boot-test", version.ref = "spring-boot" }
+spring-web = { group = "org.springframework", name = "spring-web", version.ref = "spring" }
+spring-core = { group = "org.springframework", name = "spring-core", version.ref = "spring" }
+spring-context = { group = "org.springframework", name = "spring-context", version.ref = "spring" }
+spring-beans = { group = "org.springframework", name = "spring-beans", version.ref = "spring" }
+spring-test = { group = "org.springframework", name = "spring-test", version.ref = "spring" }
+spring-security-core = { group = "org.springframework.security", name = "spring-security-core", version.ref = "spring-security" }
+spring-security-config = { group = "org.springframework.security", name = "spring-security-config", version.ref = "spring-security" }
+spring-security-web = { group = "org.springframework.security", name = "spring-security-web", version.ref = "spring-security" }
+tomcat-embed-core = { group = "org.apache.tomcat.embed", name = "tomcat-embed-core", version.ref = "tomcat-embed" }
 
 # Ktor Client
 ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }

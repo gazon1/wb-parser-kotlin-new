@@ -54,6 +54,14 @@ The accepted-findings list is the `exclude(...)`/`excludeRegex(...)` block in th
 `build.gradle.kts`. It is the baseline: every finding outside it fails the build, and entries are
 removed one at a time as the underlying problems are fixed.
 
+The list is deliberately narrow. It started with a regex that hid the whole of Spring from the
+analysis — `org\.springframework(\.[a-z]+)?:.*` — on the reasoning that a Spring Boot starter
+carries no classes of its own, so bytecode analysis cannot see through it. That was true of the
+starter and false of everything behind it: the gate could not see `spring-web`, `spring-core` or
+`spring-security-*` at all. The starters are now excluded by name, and the libraries behind them
+are declared by the module that uses them — so the gate sees them, and the runtime classpath is
+reviewable in a diff.
+
 The Kotlin plugins move to the settings script classloader (`plugins { … apply false }` in
 `settings.gradle.kts`). The plugin resolves `KotlinProjectExtension` to analyze Kotlin modules;
 without the Kotlin plugin on the settings classloader it reports "KGP not found on classpath" and
@@ -105,3 +113,9 @@ to the build.
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of
   `scripts/check-gate-wiring.py` compares the two surfaces.
 - Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer.
+- **Never** exclude a family of artifacts to silence one member of it. The Spring regex hid
+  nine real libraries from the gate; naming the starters instead of the family brought them
+  back, and the findings that returned were closed by declaring the dependency, not by
+  widening the list.
+- **Never** accept a finding that a line of source can close. A finding the plugin reports
+  about a project dependency is usually a dependency nobody named.

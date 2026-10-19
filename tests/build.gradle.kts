@@ -27,6 +27,11 @@ dependencies {
     testImplementation("io.arrow-kt:arrow-core:2.2.3")
 
     testImplementation(libs.spring.boot.starter.test)
+    // The jars behind the starter, declared directly for the same reason the
+    // application declares its own: the plugin cannot see through a starter.
+    testImplementation(libs.spring.boot.test)
+    testImplementation(libs.spring.beans)
+    testImplementation(libs.spring.test)
     // The startup gate reads the health endpoint, and TestRestTemplate answers
     // with a ResponseEntity — a spring-web type. The application gets spring-web
     // from its own starter, but an `implementation` dependency of a project

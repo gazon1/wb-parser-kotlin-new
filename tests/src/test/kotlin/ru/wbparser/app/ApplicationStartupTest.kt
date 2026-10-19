@@ -66,7 +66,16 @@ private const val TABLES_SQL =
  * created by the security chain in every profile but `once`. It is set on the test
  * task in `tests/build.gradle.kts`, not here: a system property would not be read.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(
+    // The application class is named explicitly rather than found by scanning the
+    // package of the test. The scan was a coincidence of where this file sits, and
+    // it hid the dependency: nothing in the test bytecode referenced the app, so
+    // the dependency-analysis plugin called the project dependency unused, and the
+    // baseline had to exclude it. Naming the class says what the suite boots — and
+    // makes the dependency visible to the gate.
+    classes = [WbParser::class],
+    webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+)
 @ActiveProfiles("public")
 @Testcontainers
 class ApplicationStartupTest {

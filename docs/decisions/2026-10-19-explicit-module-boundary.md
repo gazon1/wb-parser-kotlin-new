@@ -52,7 +52,10 @@ Kotlin reactor coroutines, the SLF4J binding.
 migrations and the configuration that use them.
 
 The `tests` module depends on both projects through `testImplementation`: it has no main source
-set, and it needs the app for its resources rather than for its classes.
+set, and it needs the app for its resources — the migrations and `application.yml` that live
+there. The startup gate also names the application class explicitly
+(`@SpringBootTest(classes = [WbParser::class])`), so the dependency is visible to the
+dependency-analysis plugin instead of being an accepted finding.
 
 ## Rationale
 
@@ -80,5 +83,9 @@ declared where it is used is now a finding, not a coincidence that survives unti
   migrations and the Flyway configuration are in `app`, so Flyway is in `app`.
 - **Never** duplicate a dependency in a consumer to make it compile. If the consumer needs the
   type, the producer exposes it with `api`.
-- The `tests` module needs the `app` project for its resources. That is a legitimate reason for
-  the dependency, and it is the one case where a module appears unused to bytecode analysis.
+- **Always** name the application class in the startup gate. The `tests` module needs the
+  `app` project for its resources, and an unnamed dependency on a module is invisible to
+  bytecode analysis — the gate called it unused, and the only fix was an accepted finding.
+  Naming the class says what the suite boots and makes the dependency visible.
+- **Never** accept a finding about a project dependency that the code can name. A finding
+  that a single line of source removes is not a finding to accept.
