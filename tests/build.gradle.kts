@@ -54,4 +54,10 @@ tasks.test {
     // Testcontainers can reach the host engine.
     systemProperty("api.version", "1.44")
     environment("DOCKER_API_VERSION", "1.44")
+    // AdminApiKeyFilter reads ADMIN_API_KEY with System.getenv and throws in its
+    // constructor when it is missing, and the security chain creates that filter in
+    // every profile but `once`. The startup gate boots the real application, so the
+    // variable has to exist in the test JVM's environment — a system property would
+    // not be read.
+    environment("ADMIN_API_KEY", "test-admin-key")
 }

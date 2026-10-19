@@ -57,6 +57,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** inject `BrowserAutomation` via constructor for testability — never call `Playwright` directly in `ProfileState`. _(from `2026-10-17-browser-automation-interface`)
 - **Always** inject `AdsPowerApi` via constructor for testability — never call `HttpURLConnection` directly in `ProfileState`. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)
 - **Always** handle back-off delays at the coordinator level (inside `Pipeline.run()` or `processItems`) — never inside `async {}`. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)
+- **Always** keep the startup gate green: `./check.sh` runs it as part of `tests:test`, and a _(from `2026-10-19-application-startup-gate`)
+- **Always** supply `ADMIN_API_KEY` to the test JVM as an environment variable. The filter reads _(from `2026-10-19-application-startup-gate`)
+- **Never** add a dependency that is needed only at runtime to `implementation` when the _(from `2026-10-19-application-startup-gate`)
+- **Never** make the startup gate depend on a browser, the network or AdsPower. The `public` _(from `2026-10-19-application-startup-gate`)
+- **Never** weaken the migration assertion to a fixed list of versions. The expected set is _(from `2026-10-19-application-startup-gate`)
 - **Always** remove the accepted-findings entry in the same change that fixes the problem it _(from `2026-10-19-dependency-analysis-plugin`)
 - **Always** report a dependency that the plugin flags but that we know to be false as an accepted _(from `2026-10-19-dependency-analysis-plugin`)
 - **Never** add an entry to the accepted-findings list in `build.gradle.kts` without a reason in a _(from `2026-10-19-dependency-analysis-plugin`)
@@ -208,6 +213,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share _(from `2026-10-08-discover-test-migrations`)_
 - The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same _(from `2026-10-08-discover-test-migrations`)_
+- The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
 
 ### `dead-code`
@@ -242,6 +248,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `PipelineFailure` third-Either variant remains available as a future option if more _(from `2026-10-09-pipelinefailure-carries-sides`)_
 - `Pipeline.run` return type is a breaking change; all call sites that pattern-match on _(from `2026-10-09-pipelinefailure-carries-sides`)_
 
+### `flyway`
+
+- The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
+
 ### `G10`
 
 - A DB blip no longer fails the entire crawl. The save still fails the item _(from `2026-09-09-save-stage-retry-pr11`)_
@@ -250,6 +260,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
+- The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
 
 ### `infrastructure`
 
@@ -351,6 +362,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Positive**: `crawler.schedule.cron` from YAML controls the schedule _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: Scheduler now actually runs when `worker` profile is active and `crawler.worker.enabled = true` _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: `Spider.concurrency` now reaches `CrawlRunner` via `CrawlerConfig` _(from `2026-09-09-scheduler-wireup-pr18`)_
+- The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
 
 ### `testing`
 
@@ -368,6 +380,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 - The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same _(from `2026-10-08-discover-test-migrations`)_
 - The executed-test floors are raised in the same commit that adds tests, in both _(from `2026-10-08-gates-that-can-fail`)_
+- The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
 
 ### `workflow`
@@ -406,6 +419,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-coordinator-extraction` — pipeline  architecture  pr-13
 - `2026-10-17-pipeline-purity-delayfn-extraction` — pipeline  architecture  concurrency
 - `2026-10-17-stage-data-class-dsl` — pipeline  architecture  pr-13
+- `2026-10-19-application-startup-gate` — testing  gates  spring  database  flyway
 - `2026-10-19-dependency-analysis-plugin` — build  dependencies  gates  ci
 
 ## Active entries
@@ -438,4 +452,5 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-coordinator-extraction` — Extract Coordinator class from Pipeline.run
 - `2026-10-17-pipeline-purity-delayfn-extraction` — Extract delayFn from async dispatcher into coordinator-level retry loop
 - `2026-10-17-stage-data-class-dsl` — Stage data class + StageDSL for readable stage construction
+- `2026-10-19-application-startup-gate` — The application must be startable, and something must prove it
 - `2026-10-19-dependency-analysis-plugin` — Dependency drift is a gate, not a reviewer's job
