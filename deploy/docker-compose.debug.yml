@@ -109,6 +109,15 @@ services:
       # A FILE, not a directory. `app/build/libs:/app/app.jar` mounts the
       # directory over the jar's path, and the JVM then reports "Invalid or
       # corrupt jarfile app.jar" for a perfectly good build.
+      #
+      # Because the jar is mounted as a file, the container keeps the inode it was
+      # started with. Rebuilding the jar in place leaves the running JVM reading a
+      # half-rewritten archive: classes that were not yet loaded fail with
+      # "NoClassDefFoundError: org/apache/tomcat/util/net/SocketBufferHandler" the
+      # moment a request touches them — the crawl keeps running and the HTTP port
+      # answers with nothing. So: after `./gradlew :app:bootJar`, always recreate
+      # the container (`docker compose -f deploy/docker-compose.debug.yml up -d
+      # --force-recreate app`), do not just restart it.
       # Path is relative to the compose file location (deploy/), so ../ goes to project root.
       - ../app/build/libs/app.jar:/app/app.jar:ro
       - ./logs:/logs
