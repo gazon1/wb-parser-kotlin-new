@@ -56,7 +56,6 @@ dependencies {
     implementation("io.ktor:ktor-client-logging:$ktorVersion")
     implementation("io.ktor:ktor-http:$ktorVersion")
     implementation("io.ktor:ktor-serialization:$ktorVersion")
-    implementation("io.ktor:ktor-client-mock:$ktorVersion")
 
     // Exposed. `exposed-core` is `api`: the public API hands out Exposed types
     // (DatabaseHandle, ExposedTables). The rest are `implementation` or
@@ -88,21 +87,6 @@ dependencies {
     implementation("io.github.resilience4j:resilience4j-kotlin:$resilience4jVersion")
     implementation("io.github.resilience4j:resilience4j-core:$resilience4jVersion")
     api("io.github.resilience4j:resilience4j-circuitbreaker:$resilience4jVersion")
-    implementation("io.github.resilience4j:resilience4j-retry:$resilience4jVersion")
-
-    // HTML parsing
-    implementation("org.jsoup:jsoup:1.18.3")
-    implementation("com.github.crawler-commons:crawler-commons:1.6")
-
-    // Caching
-    implementation("com.github.ben-manes.caffeine:caffeine:3.2.0")
-
-    // CSV
-    implementation("org.apache.commons:commons-csv:1.12.0")
-
-    // ShedLock
-    implementation("net.javacrumbs.shedlock:shedlock-spring:$shedlockVersion")
-    implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:$shedlockVersion")
 
     // Browser automation (Playwright — requires native binaries)
     api("com.microsoft.playwright:playwright:1.49.0") {
@@ -133,8 +117,6 @@ dependencies {
     // The suite builds a DataSource against the Testcontainers instance, so it
     // needs the driver at compile time.
     testImplementation("org.postgresql:postgresql:42.7.4")
-    testImplementation("io.kotest:kotest-property:6.2.4")
-    testImplementation("org.testcontainers:junit-jupiter:1.20.4")
     testRuntimeOnly("org.testcontainers:postgresql:1.20.4")
 }
 

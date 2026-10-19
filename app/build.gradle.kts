@@ -38,8 +38,6 @@ dependencies {
 
     implementation(kotlin("stdlib"))
     implementation(kotlin("reflect"))
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    implementation("net.javacrumbs.shedlock:shedlock-spring:5.14.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("io.arrow-kt:arrow-core:2.2.3")
 
@@ -48,13 +46,18 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security:3.4.1")
     implementation("org.springframework.boot:spring-boot-starter-validation:3.4.1")
     implementation("org.springframework.boot:spring-boot-starter-aop:3.4.1")
+    // The application reads `spring.datasource.*` and gets a pooled DataSource from
+    // Spring Boot's auto-configuration, which only activates when spring-jdbc is on
+    // the classpath. That classpath entry used to arrive by accident, through the
+    // crawler's unused shedlock-provider-jdbc-template; removing it took the
+    // DataSource — and with it the ability to start — away.
+    implementation("org.springframework.boot:spring-boot-starter-jdbc:3.4.1")
     implementation("org.springframework.boot:spring-boot-configuration-processor:3.4.1")
 
     // The crawler hands this module its types, so the versions are pinned here as
     // well: leaving them to the starters would mean the application and the
     // crawler could resolve different versions of the same library.
     implementation("ch.qos.logback:logback-classic:1.5.14")
-    implementation("io.github.microutils:kotlin-logging:3.0.5")
     implementation("org.slf4j:slf4j-api:2.0.17")
     implementation("io.micrometer:micrometer-core:1.15.0")
     implementation("com.fasterxml.jackson.core:jackson-databind:2.19.1")
@@ -68,13 +71,9 @@ dependencies {
     runtimeOnly("org.flywaydb:flyway-core:11.20.3")
     runtimeOnly("org.flywaydb:flyway-database-postgresql:11.20.3")
 
-    testImplementation("org.springframework.boot:spring-boot-starter-test:3.4.1")
     testImplementation("org.springframework.security:spring-security-test:6.1.0")
-    testImplementation("io.kotest:kotest-runner-junit5:6.2.4")
     testImplementation("io.kotest:kotest-assertions-core:6.2.4")
-    testImplementation("io.kotest:kotest-property:6.2.4")
     testImplementation("io.mockk:mockk:1.14.11")
-    testImplementation("org.testcontainers:postgresql:1.21.3")
     testImplementation("org.testcontainers:junit-jupiter:1.21.3")
 }
 
