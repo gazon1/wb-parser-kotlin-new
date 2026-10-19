@@ -36,7 +36,9 @@ dependencies {
     api(libs.kotlin.coroutines.core)
     runtimeOnly(libs.kotlin.coroutines.reactor)
     api(libs.kotlin.serialization.core)
-    implementation(libs.kotlin.serialization.json)
+    // `api`: the table definitions expose `JsonElement` in a public property, so the
+    // type is part of the module's API and has to be on the consumer's compile classpath.
+    api(libs.kotlin.serialization.json)
 
     // Arrow
     api(libs.arrow.core)

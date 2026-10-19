@@ -85,6 +85,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** read `jdeps` output rather than its exit code. It reports missing _(from `2026-10-19-runtime-classpath-gate`)
 - **Never** ship a class twice. A class that exists both loose and in a jar can _(from `2026-10-19-runtime-classpath-gate`)
 - **Never** trust `gradle dependencies` output as a classpath. It collapses _(from `2026-10-19-runtime-classpath-gate`)
+- **Always** change the model and the migration in the same commit when a column _(from `2026-10-19-schema-drift-gate`)
+- **Always** write instants through a zoned column type. A naive timestamp in a _(from `2026-10-19-schema-drift-gate`)
+- **Never** change the schema to match the model. The model is the description; _(from `2026-10-19-schema-drift-gate`)
 
 ## Per-tag
 
@@ -115,7 +118,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `.invoke()` calls become `.run.invoke()` (the function is now a property named `run`) _(from `2026-10-17-stage-data-class-dsl`)_
 - `isStopped()` / `isDrop()` defaults in `DomainError` still present — zero callers confirmed, removal deferred _(from `2026-09-09-test-module-boundary-pr10`)_
 - New `stage()` DSL makes stage bodies read like domain language _(from `2026-10-17-stage-data-class-dsl`)_
-- **Note**: `crawler.lock.timeout-minutes` is still not read — future work if multi-instance deployment is needed (ShedLock) _(from `2026-09-09-scheduler-wireup-pr18`)_
+- **Note**: `crawler.lock.timeout-minutes` was not read at the time — it has since been wired to _(from `2026-09-09-scheduler-wireup-pr18`)_
 - Pagination task IDs and the start task ID are now explicitly controllable — critical for _(from `2026-10-14-pipeline-purity-idgen`)_
 - `Pipeline` no longer has `delayFn` as constructor parameter — `run()` uses `kotlinx.coroutines.delay` directly. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - `Pipeline.run()` is still not referentially transparent due to `delay()` in retry loops, _(from `2026-10-14-pipeline-purity-idgen`)_
@@ -232,6 +235,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share _(from `2026-10-08-discover-test-migrations`)_
 - The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same _(from `2026-10-08-discover-test-migrations`)_
+- The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
 
@@ -293,6 +297,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No _(from `2026-10-14-parallel-crawl-targets`)_
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 - The crawler reaching Wildberries from the VPS is a separate question from _(from `2026-10-14-deploy-crawler-as-registry-image`)_
+
+### `migrations`
+
+- The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
 
 ### `packaging`
 
@@ -376,10 +384,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `scheduler`
 
 - **Breaking**: `installCrawler` extension function is deleted — any external callers would break (there were none) _(from `2026-09-09-scheduler-wireup-pr18`)_
-- **Note**: `crawler.lock.timeout-minutes` is still not read — future work if multi-instance deployment is needed (ShedLock) _(from `2026-09-09-scheduler-wireup-pr18`)_
+- **Note**: `crawler.lock.timeout-minutes` was not read at the time — it has since been wired to _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: `crawler.schedule.cron` from YAML controls the schedule _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: Scheduler now actually runs when `worker` profile is active and `crawler.worker.enabled = true` _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: `Spider.concurrency` now reaches `CrawlRunner` via `CrawlerConfig` _(from `2026-09-09-scheduler-wireup-pr18`)_
+
+### `schema`
+
+- The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
 
 ### `side-effects`
 
@@ -389,7 +401,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `spring`
 
 - **Breaking**: `installCrawler` extension function is deleted — any external callers would break (there were none) _(from `2026-09-09-scheduler-wireup-pr18`)_
-- **Note**: `crawler.lock.timeout-minutes` is still not read — future work if multi-instance deployment is needed (ShedLock) _(from `2026-09-09-scheduler-wireup-pr18`)_
+- **Note**: `crawler.lock.timeout-minutes` was not read at the time — it has since been wired to _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: `crawler.schedule.cron` from YAML controls the schedule _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: Scheduler now actually runs when `worker` profile is active and `crawler.worker.enabled = true` _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: `Spider.concurrency` now reaches `CrawlRunner` via `CrawlerConfig` _(from `2026-09-09-scheduler-wireup-pr18`)_
@@ -413,6 +425,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The executed-test floors are raised in the same commit that adds tests, in both _(from `2026-10-08-gates-that-can-fail`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
+
+### `test`
+
+- The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
 
 ### `workflow`
 
@@ -455,6 +471,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-explicit-module-boundary` — build  architecture  dependencies  spring
 - `2026-10-19-jdk-toolchain` — build  toolchain  ci  docker
 - `2026-10-19-runtime-classpath-gate` — build  runtime  gate  packaging
+- `2026-10-19-schema-drift-gate` — database  schema  test  migrations
 
 ## Active entries
 
@@ -491,3 +508,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-explicit-module-boundary` — The boundary between the crawler and the application is declared, not implied
 - `2026-10-19-jdk-toolchain` — The JDK version is one number in one place, and the toolchain provisions itself
 - `2026-10-19-runtime-classpath-gate` — The image is compared with the classpath the build resolved
+- `2026-10-19-schema-drift-gate` — The table definitions are compared with the schema the migrations create

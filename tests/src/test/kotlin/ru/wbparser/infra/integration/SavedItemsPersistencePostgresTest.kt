@@ -202,9 +202,11 @@ class SavedItemsPersistencePostgresTest :
                     else -> error("unexpected TIMESTAMPTZ mapping: ${raw?.javaClass}")
                 }
 
-            // Writing a LocalDateTime into TIMESTAMPTZ shifts the value by the JVM offset on a
-            // non-UTC host; a narrow window cannot absorb that by accident.
+            // The column is TIMESTAMPTZ and the model writes a real instant, so the value
+            // lands where it was written. A naive timestamp would be written as local wall
+            // time and read back as UTC — shifted by the machine's offset, which a window
+            // of a minute cannot absorb on a host that is not on UTC.
             (stored >= before) shouldBe true
-            (stored <= Instant.now().plusSeconds(60)) shouldBe true
+            (stored <= before.plusSeconds(5)) shouldBe true
         }
     })

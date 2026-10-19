@@ -13,6 +13,7 @@ import ru.wbparser.infra.db.exposedOnce
 import java.math.BigDecimal
 import java.sql.Connection
 import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -93,7 +94,7 @@ private fun upsertOneItem(
     statement[ScrapedItemsTable.cashbackPercent] = item.cashbackPercent?.let { BigDecimal.valueOf(it) }
     statement[ScrapedItemsTable.data] = item
     statement[ScrapedItemsTable.contentHash] = item.contentHash
-    statement[ScrapedItemsTable.scrapedAt] = now
+    statement[ScrapedItemsTable.scrapedAt] = now.atOffset(ZoneOffset.UTC)
     statement[ScrapedItemsTable.subjectId] = item.subjectId
     statement[ScrapedItemsTable.subjectParentId] = item.subjectParentId
     statement[ScrapedItemsTable.matchId] = item.matchId

@@ -1,14 +1,25 @@
 package ru.wbparser.domain.pipeline
 
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.javatime.timestamp
+import org.jetbrains.exposed.sql.TextColumnType
+import org.jetbrains.exposed.sql.javatime.timestampWithTimeZone
 import org.jetbrains.exposed.sql.json.jsonb
 import ru.wbparser.domain.model.SavedItem
 import java.math.BigDecimal
-import java.time.Instant
+import java.time.OffsetDateTime
 import java.util.UUID
+
+/**
+ * The JSON format the JSONB columns are written with.
+ *
+ * The application layer serializes and deserializes with kotlinx.serialization,
+ * and the database column is JSONB, so the format has to be the same in both
+ * directions — hence one instance for the whole file rather than one per table.
+ */
+private val json = Json { ignoreUnknownKeys = true }
 
 /**
  * Exposed table definitions mirroring the Flyway migrations.
@@ -38,11 +49,16 @@ object ScrapedItemsTable : Table("scraped_items") {
     val cashback: Column<BigDecimal?> = decimal("cashback", 10, 2).nullable()
     val cashbackPercent: Column<BigDecimal?> = decimal("cashback_percent", 5, 2).nullable()
 
-    // JSONB stored as text; the application layer serializes/deserializes with kotlinx.serialization.
-    private val json = Json { ignoreUnknownKeys = true }
-    val data: Column<SavedItem> = jsonb("data", json, SavedItem.serializer())
+    // Nullable, because V1 declares the column as `data JSONB` — without NOT NULL.
+    val data: Column<SavedItem?> = jsonb("data", json, SavedItem.serializer()).nullable()
     val contentHash: Column<String> = varchar("content_hash", 128)
-    val scrapedAt: Column<Instant> = timestamp("scraped_at")
+
+    // TIMESTAMPTZ, so the column has to carry a zone. `timestamp()` would be a
+    // naive timestamp: the instant would be written as local wall time and read
+    // back as UTC, shifting it by the machine's offset.
+    //
+    // No default on the client side: the database fills the column with now().
+    val scrapedAt: Column<OffsetDateTime> = timestampWithTimeZone("scraped_at")
     val subjectId: Column<Long?> = long("subject_id").nullable()
     val subjectParentId: Column<Long?> = long("subject_parent_id").nullable()
     val matchId: Column<Long?> = long("match_id").nullable()
@@ -60,16 +76,21 @@ object CrawlTargetsTable : Table("crawl_targets") {
     val id: Column<UUID> = uuid("id")
     val name: Column<String> = varchar("name", 255)
     val startUrl: Column<String> = text("start_url")
-    val allowedDomains: Column<String?> = text("allowed_domains").nullable()
+
+    // V1 declares this as `TEXT[]` — a list of domains, not a string.
+    val allowedDomains: Column<List<String>?> = array("allowed_domains", TextColumnType()).nullable()
     val maxDepth: Column<Int> = integer("max_depth").default(1)
 
-    // JSONB stored as text; the application layer holds this as a raw JSON string.
-    val parsingRules: Column<String?> = text("parsing_rules").nullable()
+    // V1 declares this as `JSONB`. The rules are raw JSON, so they are held as a
+    // JSON element rather than as a string that claims to be JSON.
+    val parsingRules: Column<JsonElement?> = jsonb("parsing_rules", json, JsonElement.serializer()).nullable()
     val isActive: Column<Boolean> = bool("is_active").default(true)
     val knownPagesLimit: Column<Int?> = integer("known_pages_limit").nullable()
     val wbCatalogId: Column<String?> = varchar("wb_catalog_id", 100).nullable()
     val wbParentCatalogId: Column<String?> = varchar("wb_parent_catalog_id", 100).nullable()
     val rootCategoryName: Column<String?> = varchar("root_category_name", 255).nullable()
-    val createdAt: Column<Instant> = timestamp("created_at").default(Instant.now())
-    val updatedAt: Column<Instant> = timestamp("updated_at").default(Instant.now())
+
+    // TIMESTAMPTZ, and the database fills both with now().
+    val createdAt: Column<OffsetDateTime> = timestampWithTimeZone("created_at")
+    val updatedAt: Column<OffsetDateTime> = timestampWithTimeZone("updated_at")
 }
