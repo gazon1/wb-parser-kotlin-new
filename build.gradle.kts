@@ -10,6 +10,9 @@ plugins {
     // The Gradle plugin's own version is independent of the ktlint CLI version pinned in
     // the version catalogue (`ktlint = "1.3.0"`), which the ktlint extension below reuses.
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1" apply false
+    // One version for the coverage plugin: it is applied in more than one module,
+    // and two versions of the same plugin do not share a report.
+    id("org.jetbrains.kotlinx.kover") version "0.9.11" apply false
 }
 
 allprojects {
@@ -93,8 +96,12 @@ tasks.register<Delete>("clean") {
 //
 // The accepted-findings list lives here, in the plugin's own DSL, and it is
 // the baseline: `exclude("group:artifact")` suppresses that dependency, and
-// everything outside the list breaks the build. The list may only shrink —
-// see docs/decisions/2026-10-19-dependency-analysis-plugin.md.
+// everything outside the list breaks the build. The list may only shrink in
+// substance: an entry that describes how a dependency is packaged — a starter
+// is a pom that carries no classes, an aggregator brings parts that cannot be
+// declared apart — cannot be removed by any change in this repository, while an
+// entry that hides a finding a line of source could close must never be added.
+// See docs/decisions/2026-10-19-dependency-analysis-plugin.md.
 configure<com.autonomousapps.DependencyAnalysisExtension> {
     issues {
         all {

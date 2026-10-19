@@ -62,6 +62,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** add a dependency that is needed only at runtime to `implementation` when the _(from `2026-10-19-application-startup-gate`)
 - **Never** make the startup gate depend on a browser, the network or AdsPower. The `public` _(from `2026-10-19-application-startup-gate`)
 - **Never** weaken the migration assertion to a fixed list of versions. The expected set is _(from `2026-10-19-application-startup-gate`)
+- **Always** give every module with tests a floor in `config/gates/coverage-floor.txt` _(from `2026-10-19-coverage-floor-gate`)
+- **Always** keep the coverage floor in `config/gates/coverage-floor.txt` and _(from `2026-10-19-coverage-floor-gate`)
+- **Always** raise the floor in the same commit that raises the coverage, with _(from `2026-10-19-coverage-floor-gate`)
+- **Never** lower a coverage floor without `--allow-drop '<reason>'`, and never _(from `2026-10-19-coverage-floor-gate`)
+- **Never** rewrite a floor file from a partial run. If the results are not _(from `2026-10-19-coverage-floor-gate`)
+- **Never** treat a missing coverage report as zero coverage. It is an absent _(from `2026-10-19-coverage-floor-gate`)
 - **Always** remove the accepted-findings entry in the same change that fixes the problem it _(from `2026-10-19-dependency-analysis-plugin`)
 - **Always** report a dependency that the plugin flags but that we know to be false as an accepted _(from `2026-10-19-dependency-analysis-plugin`)
 - **Never** accept a finding that a line of source can close. A finding the plugin reports _(from `2026-10-19-dependency-analysis-plugin`)
@@ -176,6 +182,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `build`
 
 - Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
+- The coverage gate runs in `./check.sh` (step 7) and in ci.yml's `coverage` _(from `2026-10-19-coverage-floor-gate`)_
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
 - The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
 
@@ -230,6 +237,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `coverage`
 
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
+- The coverage gate runs in `./check.sh` (step 7) and in ci.yml's `coverage` _(from `2026-10-19-coverage-floor-gate`)_
 
 ### `database`
 
@@ -287,6 +295,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `gate`
 
+- The coverage gate runs in `./check.sh` (step 7) and in ci.yml's `coverage` _(from `2026-10-19-coverage-floor-gate`)_
 - The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
 
 ### `infrastructure`
@@ -426,6 +435,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
 
+### `tests`
+
+- The coverage gate runs in `./check.sh` (step 7) and in ci.yml's `coverage` _(from `2026-10-19-coverage-floor-gate`)_
+
 ### `test`
 
 - The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
@@ -467,6 +480,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-pipeline-purity-delayfn-extraction` — pipeline  architecture  concurrency
 - `2026-10-17-stage-data-class-dsl` — pipeline  architecture  pr-13
 - `2026-10-19-application-startup-gate` — testing  gates  spring  database  flyway
+- `2026-10-19-coverage-floor-gate` — build  tests  gate  coverage
 - `2026-10-19-dependency-analysis-plugin` — build  dependencies  gates  ci
 - `2026-10-19-explicit-module-boundary` — build  architecture  dependencies  spring
 - `2026-10-19-jdk-toolchain` — build  toolchain  ci  docker
@@ -504,6 +518,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-pipeline-purity-delayfn-extraction` — Extract delayFn from async dispatcher into coordinator-level retry loop
 - `2026-10-17-stage-data-class-dsl` — Stage data class + StageDSL for readable stage construction
 - `2026-10-19-application-startup-gate` — The application must be startable, and something must prove it
+- `2026-10-19-coverage-floor-gate` — The coverage floor lives in one file, and the gate reads the report
 - `2026-10-19-dependency-analysis-plugin` — Dependency drift is a gate, not a reviewer's job
 - `2026-10-19-explicit-module-boundary` — The boundary between the crawler and the application is declared, not implied
 - `2026-10-19-jdk-toolchain` — The JDK version is one number in one place, and the toolchain provisions itself

@@ -15,6 +15,8 @@ handling, the counting. The policy itself is checked by each script's
 """
 
 import importlib.util
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -40,6 +42,7 @@ def load(name: str, filename: str):
 
 BASELINE = load("baseline_ratchet", "check-baseline-ratchet.py")
 TEST_RUNS = load("test_runs", "check-test-runs.py")
+COVERAGE = load("coverage", "check-coverage.py")
 
 
 def write(tmp: str, name: str, content: str) -> Path:
@@ -219,6 +222,118 @@ class TestJUnitCounting(unittest.TestCase):
             (results / "TEST-broken.xml").write_text("<testsuite", encoding="utf-8")
             with self.assertRaises(ValueError):
                 TEST_RUNS.count_in_dir(results)
+
+
+class TestCoverageFloorParsing(unittest.TestCase):
+    def test_parses_and_skips_comments(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "floor.txt", "# comment\n\napp 25  # inline comment\nwbparser 50\n")
+            self.assertEqual(COVERAGE.parse_floor_file(path), {"app": 25, "wbparser": 50})
+
+    def test_rejects_row_without_a_percentage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "floor.txt", "wbparser\n")
+            with self.assertRaises(ValueError):
+                COVERAGE.parse_floor_file(path)
+
+    def test_rejects_non_numeric_percentage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "floor.txt", "wbparser most\n")
+            with self.assertRaises(ValueError):
+                COVERAGE.parse_floor_file(path)
+
+    def test_rejects_percentage_out_of_range(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "floor.txt", "wbparser 101\n")
+            with self.assertRaises(ValueError):
+                COVERAGE.parse_floor_file(path)
+
+    def test_missing_file_raises_rather_than_returning_empty(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(FileNotFoundError):
+                COVERAGE.parse_floor_file(Path(tmp) / "absent.txt")
+
+
+class TestCoverageReportParsing(unittest.TestCase):
+    def test_reads_the_line_counter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "report.xml", _kover_report(covered=50, missed=50))
+            self.assertAlmostEqual(COVERAGE.line_coverage(path), 50.0)
+
+    def test_rejects_a_report_without_a_line_counter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "report.xml", '<?xml version="1.0" ?>\n<report/>\n')
+            with self.assertRaises(ValueError):
+                COVERAGE.line_coverage(path)
+
+    def test_rejects_malformed_xml(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "report.xml", "<report")
+            with self.assertRaises(ValueError):
+                COVERAGE.line_coverage(path)
+
+    def test_rejects_a_report_without_any_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "report.xml", _kover_report(covered=0, missed=0))
+            with self.assertRaises(ValueError):
+                COVERAGE.line_coverage(path)
+
+
+class TestCoverageGateCanFail(unittest.TestCase):
+    """The end-to-end control: the gate must fail on a floor it does not meet.
+
+    It runs against a fixture report and a fixture floor file, so it works in CI
+    where no build output exists — a control that needs the build is a control
+    that never runs where the gate runs.
+    """
+
+    def _run(self, floor_text: str, report_text: str | None, report_name: str = "report.xml") -> subprocess.CompletedProcess:
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp, True)
+        floor_path = Path(tmp) / "floor.txt"
+        floor_path.write_text(floor_text, encoding="utf-8")
+        command = [
+            sys.executable,
+            str(SCRIPTS / "check-coverage.py"),
+            "--floor-file",
+            str(floor_path),
+        ]
+        if report_text is not None:
+            report_path = Path(tmp) / report_name
+            report_path.write_text(report_text, encoding="utf-8")
+        else:
+            report_path = Path(tmp) / report_name
+        command += ["--report", f"fixture={report_path}"]
+        return subprocess.run(command, capture_output=True, text=True, check=False)
+
+    def test_a_floor_below_the_measurement_passes(self):
+        result = self._run("fixture 40\n", _kover_report(covered=50, missed=50))
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_a_floor_above_the_measurement_fails(self):
+        result = self._run("fixture 60\n", _kover_report(covered=50, missed=50))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("below", result.stderr)
+
+    def test_a_missing_report_is_not_the_same_as_no_coverage(self):
+        result = self._run("fixture 40\n", None, report_name="never-written.xml")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("did not run", result.stderr)
+
+    def test_a_malformed_report_is_refused(self):
+        result = self._run("fixture 40\n", "<report")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("not valid XML", result.stderr)
+
+
+def _kover_report(covered: int, missed: int) -> str:
+    """A kover XML report with one LINE counter, as the plugin writes it."""
+    return (
+        '<?xml version="1.0" ?>\n'
+        "<report name=\"fixture\">\n"
+        f'  <counter type="LINE" missed="{missed}" covered="{covered}"/>\n'
+        "</report>\n"
+    )
 
 
 if __name__ == "__main__":

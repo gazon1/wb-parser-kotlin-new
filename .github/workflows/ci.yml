@@ -111,14 +111,23 @@ jobs:
           echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
           echo "org.gradle.caching=true" >> ~/.gradle/gradle.properties
 
-      - name: Verify coverage
-        run: ./gradlew koverVerify --no-daemon
+      - name: Produce the coverage report
+        run: ./gradlew koverXmlReport --no-daemon
+
+      # The floor lives in config/gates/coverage-floor.txt, one row per module, and
+      # scripts/check-coverage.py is the gate. The build script no longer carries a
+      # second copy of the number: two numbers for one guarantee is how the build
+      # ended up enforcing 45% while the repository recorded 44%.
+      - name: Check the coverage floor
+        run: python3 scripts/check-coverage.py
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
           name: kover-report
-          path: wbparser/build/reports/kover/xml/report.xml
+          path: |
+            wbparser/build/reports/kover/report.xml
+            app/build/reports/kover/report.xml
 
   lint:
     runs-on: ubuntu-latest

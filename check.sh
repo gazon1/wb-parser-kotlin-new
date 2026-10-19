@@ -80,12 +80,19 @@ echo -e "${GREEN}compileOnly/runtime gate passed${NC}"
 step 6 "executed test counts"
 python3 scripts/check-test-runs.py || fail "a test source set ran fewer tests than its recorded floor"
 
-# --- [7] kover coverage -------------------------------------------------------
-# Kover verify enforces the line-coverage floor from config/gates/coverage-floor.txt.
-# Coverage must not regress below the recorded baseline.
-step 7 "wbparser: line coverage ≥ 45%"
-./gradlew :wbparser:koverVerify --quiet || fail "coverage below floor (see config/gates/coverage-floor.txt)"
-echo -e "${GREEN}kover verify passed${NC}"
+# --- [7] line coverage --------------------------------------------------------
+# The floor lives in config/gates/coverage-floor.txt, one `<module> <percent>` row per
+# module, and scripts/check-coverage.py is the gate: it reads the report the build
+# produced and compares it with the floor. The floor used to live in the build script
+# as `minBound(45)` while the file said 44 — two numbers for one guarantee, and the
+# build enforced the one nobody had recorded. The build script now only produces the
+# report; the file decides what is enough.
+#
+# The report task is not skipped on failure: a missing report means "the coverage task
+# did not run", which is not the same as "no coverage".
+step 7 "line coverage ≥ floor (config/gates/coverage-floor.txt)"
+./gradlew koverXmlReport --quiet || fail "coverage report was not produced"
+python3 scripts/check-coverage.py || fail "coverage below floor (see config/gates/coverage-floor.txt)"
 
 # --- [8] lint ------------------------------------------------------------------
 # ktlint and detekt are applied in the root build's `subprojects { }` block, so

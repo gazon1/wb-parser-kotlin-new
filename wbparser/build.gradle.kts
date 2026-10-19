@@ -4,7 +4,7 @@ plugins {
     id("java-library")
     id("org.jetbrains.kotlin.jvm")
     id("org.jetbrains.kotlin.plugin.serialization")
-    id("org.jetbrains.kotlinx.kover") version "0.9.11"
+    id("org.jetbrains.kotlinx.kover")
 }
 
 kotlin {
@@ -121,14 +121,13 @@ tasks.test {
 }
 
 kover {
+    // The report only. The floor lives in config/gates/coverage-floor.txt and is
+    // enforced by scripts/check-coverage.py, so there is one number in one place:
+    // the build script used to carry `minBound(45)` while the file said 44, and
+    // the build enforced a floor the repository did not record.
     reports {
         total {
             xml { onCheck = true }
-        }
-        verify {
-            rule {
-                minBound(45)
-            }
         }
     }
 }

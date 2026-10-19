@@ -5,6 +5,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.spring")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("org.springframework.boot") version "3.4.1"
+    // The coverage plugin, applied here as well: the application module is where
+    // the wiring lives, and wiring is exactly what nothing measures.
+    id("org.jetbrains.kotlinx.kover")
 }
 
 kotlin {
@@ -50,6 +53,16 @@ tasks.register("writeRuntimeClasspath") {
                 .map { it.absolutePath }
                 .sorted()
         outputFile.get().asFile.writeText(paths.joinToString(separator = "\n", postfix = "\n"))
+    }
+}
+
+kover {
+    // The report only — the floor lives in config/gates/coverage-floor.txt and is
+    // enforced by scripts/check-coverage.py.
+    reports {
+        total {
+            xml { onCheck = true }
+        }
     }
 }
 

@@ -1,5 +1,17 @@
-# Minimum line coverage percentage for wbparser module.
-# 45% — baseline from first instrumentation (2026-10-10).
-# 44% — raise after PRs 37-41: CircuitBreaker, BatchUpsert, MicrometerMetrics (2026-10-14).
-# Raise when coverage grows: ./scripts/raise-kover-floor.py
-44
+# Minimum line coverage percentage, one per module: `<module> <percent>`.
+# The floor is the gate: scripts/check-coverage.py compares it with the report
+# the build produced. Raise it when coverage grows: ./scripts/raise-kover-floor.py
+#
+# The floor used to live in wbparser/build.gradle.kts as `minBound(45)` while this
+# file said 44 — two numbers for one guarantee, and the build enforced the one
+# nobody had recorded. This file is the only place the floor exists now.
+#
+# History:
+# - 45% — baseline from first instrumentation (2026-10-10).
+# - 44% — raise after PRs 37-41: CircuitBreaker, BatchUpsert, MicrometerMetrics (2026-10-14).
+# - 50% / 25% — the floors as measured after the advisory-lock and crawl_jobs work;
+#   `app` entered the record at 25%, the share of the application module's own
+#   lines that its unit tests reach.
+
+app 25
+wbparser 50
