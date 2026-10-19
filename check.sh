@@ -28,7 +28,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 SKIP_DB="${SKIP_DB:-0}"
-TOTAL=10
+TOTAL=11
 
 step() { echo -e "\n${YELLOW}=== [$1/$TOTAL] $2 ===${NC}"; }
 fail() { echo -e "${RED}$1${NC}"; exit 1; }
@@ -127,6 +127,22 @@ python3 scripts/check-gate-wiring.py --tasks-exist --can-fail \
 step 10 "dependency health (DAGP)"
 ./gradlew buildHealth --quiet || fail "dependency analysis FAILED — a new finding, or the plugin did not run"
 echo -e "${GREEN}dependency health passed${NC}"
+
+# --- [11] runtime classpath --------------------------------------------------
+# The build believes one classpath; the image ships another. Nothing compared
+# them, so the difference stayed invisible until a class was missing at runtime —
+# the compileOnly leak, the library the module boundary promised and the
+# application never received.
+#
+# The gate unpacks the fat jar and compares it with the resolved runtime
+# classpath: nothing extra ships, nothing declared is missing, no class ships
+# twice, and every class the code references is in the image. It needs a JVM
+# and build output, so it cannot live in scripts/ci/static-gates.sh; it runs
+# here and in ci.yml's `build` job.
+step 11 "runtime classpath (fat jar ↔ resolved classpath)"
+./gradlew :app:writeRuntimeClasspath --quiet || fail "writeRuntimeClasspath FAILED"
+python3 scripts/ci/check-runtime-classpath.py || fail "runtime classpath gate FAILED"
+echo -e "${GREEN}runtime classpath gate passed${NC}"
 
 echo
 echo -e "${GREEN}=== ALL CHECKS PASSED ===${NC}"

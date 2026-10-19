@@ -81,6 +81,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** set the JDK through the toolchain in the root build's `subprojects { }` _(from `2026-10-19-jdk-toolchain`)
 - **Never** bump one surface alone. The version, `ci.yml`, `Dockerfile.app` and _(from `2026-10-19-jdk-toolchain`)
 - **Never** pin `org.gradle.java.home` in a committed `gradle.properties`. A path that _(from `2026-10-19-jdk-toolchain`)
+- **Always** compare the artifact that ships with the classpath the build _(from `2026-10-19-runtime-classpath-gate`)
+- **Always** read `jdeps` output rather than its exit code. It reports missing _(from `2026-10-19-runtime-classpath-gate`)
+- **Never** ship a class twice. A class that exists both loose and in a jar can _(from `2026-10-19-runtime-classpath-gate`)
+- **Never** trust `gradle dependencies` output as a classpath. It collapses _(from `2026-10-19-runtime-classpath-gate`)
 
 ## Per-tag
 
@@ -170,6 +174,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
+- The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
 
 ### `ci`
 
@@ -276,6 +281,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
 
+### `gate`
+
+- The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
+
 ### `infrastructure`
 
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
@@ -284,6 +293,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No _(from `2026-10-14-parallel-crawl-targets`)_
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 - The crawler reaching Wildberries from the VPS is a separate question from _(from `2026-10-14-deploy-crawler-as-registry-image`)_
+
+### `packaging`
+
+- The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
 
 ### `performance`
 
@@ -355,6 +368,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Pagination task IDs and the start task ID are now explicitly controllable — critical for _(from `2026-10-14-pipeline-purity-idgen`)_
 - `Pipeline.run()` is still not referentially transparent due to `delay()` in retry loops, _(from `2026-10-14-pipeline-purity-idgen`)_
 - `Pipeline.run()` reduced from 113 lines to ~55 lines _(from `2026-09-09-pipeline-extraction-pr11-5`)_
+
+### `runtime`
+
+- The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
 
 ### `scheduler`
 
@@ -437,6 +454,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-dependency-analysis-plugin` — build  dependencies  gates  ci
 - `2026-10-19-explicit-module-boundary` — build  architecture  dependencies  spring
 - `2026-10-19-jdk-toolchain` — build  toolchain  ci  docker
+- `2026-10-19-runtime-classpath-gate` — build  runtime  gate  packaging
 
 ## Active entries
 
@@ -472,3 +490,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-dependency-analysis-plugin` — Dependency drift is a gate, not a reviewer's job
 - `2026-10-19-explicit-module-boundary` — The boundary between the crawler and the application is declared, not implied
 - `2026-10-19-jdk-toolchain` — The JDK version is one number in one place, and the toolchain provisions itself
+- `2026-10-19-runtime-classpath-gate` — The image is compared with the classpath the build resolved

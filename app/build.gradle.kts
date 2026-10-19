@@ -19,17 +19,37 @@ springBoot {
     mainClass.set("ru.wbparser.app.WbParserMainKt")
 }
 
-val wbparserClassesDir = project(":wbparser").layout.buildDirectory.dir("classes/kotlin/main")
-
 tasks.bootJar {
     archiveFileName.set("app.jar")
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    // wbparser is an `implementation` project dependency. Its compiled classes
-    // are in wbparser/build/classes/kotlin/main/ — copy them into BOOT-INF/classes
-    // so they are on the application classpath at runtime.
-    dependsOn(":wbparser:classes")
-    from(wbparserClassesDir) {
-        into("BOOT-INF/classes")
+    // The crawler module reaches the image as a jar in BOOT-INF/lib, the way every
+    // other dependency does. It used to be copied into BOOT-INF/classes as well, on
+    // the reasoning that a project dependency's classes are not in its jar — they
+    // are. The copy shipped every crawler class twice, and the runtime-classpath
+    // gate reports exactly that: a class present both loose and in a jar can come
+    // from two places, and only one of them is the one the build produced.
+}
+
+/**
+ * Writes the resolved runtime classpath — one absolute path per line.
+ *
+ * The runtime-classpath gate compares this with what the fat jar actually
+ * contains. `gradle dependencies` cannot be used for that: it collapses repeated
+ * subtrees, so the list it prints is not the classpath.
+ */
+tasks.register("writeRuntimeClasspath") {
+    val runtimeClasspath = configurations.named("runtimeClasspath")
+    val outputFile = layout.buildDirectory.file("runtime-classpath.txt")
+    inputs.files(runtimeClasspath)
+    outputs.file(outputFile)
+    doLast {
+        val paths =
+            runtimeClasspath
+                .get()
+                .files
+                .map { it.absolutePath }
+                .sorted()
+        outputFile.get().asFile.writeText(paths.joinToString(separator = "\n", postfix = "\n"))
     }
 }
 

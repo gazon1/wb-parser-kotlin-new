@@ -69,6 +69,11 @@ jobs:
           chmod +x scripts/ci/check-compileonly-runtime.sh
           bash scripts/ci/check-compileonly-runtime.sh
 
+      - name: Runtime classpath gate
+        run: |
+          ./gradlew :app:writeRuntimeClasspath --no-daemon
+          python3 scripts/ci/check-runtime-classpath.py
+
       - name: Run tests
         run: ./gradlew test --no-daemon
 
