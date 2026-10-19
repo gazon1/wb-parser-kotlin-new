@@ -122,6 +122,22 @@ dependencies {
     // stopped running.
     runtimeOnly(libs.flyway.core)
     runtimeOnly(libs.flyway.database.postgresql)
+
+    // The application module had no tests at all: every line of wiring — the admin
+    // filter, the configuration binding, the health probe — was exercised only by the
+    // startup gate in the `tests` module, which boots the whole context and asserts
+    // that it starts. "It starts" is not "it works": nothing noticed that the admin
+    // filter accepted every key, or that the lock timeout was read as minutes when
+    // the code wanted milliseconds.
+    testImplementation(libs.kotest.runner.junit5)
+    testImplementation(libs.kotest.assertions.core)
+    // MockHttpServletRequest / MockHttpServletResponse — the servlet API itself
+    // arrives with the embedded Tomcat, which is an `implementation` dependency.
+    testImplementation(libs.spring.test)
+    // SQLite for the health probe: a real database that needs no server and no
+    // container, so the readiness check is tested against a working DataSource
+    // rather than against a stand-in for one.
+    testImplementation(libs.sqlite.jdbc)
 }
 
 tasks.test {

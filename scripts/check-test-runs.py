@@ -61,6 +61,7 @@ FLOOR_FILE = ROOT / "config" / "gates" / "test-runs-floor.txt"
 
 #: module → where Gradle writes that module's JUnit XML.
 RESULT_DIRS = {
+    "app": "app/build/test-results/test",
     "wbparser": "wbparser/build/test-results/test",
     "tests": "tests/build/test-results/test",
 }
