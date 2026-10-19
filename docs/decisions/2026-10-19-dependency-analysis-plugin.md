@@ -62,6 +62,22 @@ starter and false of everything behind it: the gate could not see `spring-web`, 
 are declared by the module that uses them — so the gate sees them, and the runtime classpath is
 reviewable in a diff.
 
+Six entries remain, and they are of two kinds that no change to this repository can close:
+
+- **One regex for the starters themselves** (`org\.springframework\.boot:spring-boot-starter-.*`).
+  A starter is a pom that carries no classes of its own: bytecode analysis sees no class in it and
+  calls the dependency unused, which is a true statement about the starter and a false statement
+  about the application. No line of source makes a pom start carrying classes.
+- **Five aggregator artifacts**: `io.kotest:kotest-assertions-shared`, `io.kotest:kotest-common`,
+  `io.kotest:kotest-framework-engine`, `io.mockk:mockk-core`, `io.mockk:mockk-dsl`. Kotest and
+  MockK are each declared as a single artifact; the parts they are built from are implementation
+  detail of that artifact and cannot be declared, or removed, separately.
+
+Neither kind can be closed by writing code — one is a property of the dependency's packaging, the
+other of its aggregation. That is why the rule below is about the *substance* of the list rather
+than about how many entries it has: a finding that a line of source could close must never enter
+the list, and an entry that no line of source can close is not debt.
+
 The Kotlin plugins move to the settings script classloader (`plugins { … apply false }` in
 `settings.gradle.kts`). The plugin resolves `KotlinProjectExtension` to analyze Kotlin modules;
 without the Kotlin plugin on the settings classloader it reports "KGP not found on classpath" and
@@ -89,14 +105,19 @@ are real.
 Using the plugin's DSL instead of a bespoke script keeps the baseline reviewable in a diff of a
 build file. It also means the "baseline may only shrink" rule is not enforced by code — it is
 enforced by review, by the rule below, and by the fact that the list is visible in every change
-to the build.
+to the build. The rule is deliberately about substance rather than length: an entry that describes
+the packaging of a dependency cannot be removed by any change here, so demanding that it be
+removed would only produce an entry deleted for show and reinstated by the next analysis.
 
 ## Consequences
 
 - **Never** add an entry to the accepted-findings list in `build.gradle.kts` without a reason in a
   comment next to it. The list is a record of known problems, not a place to make the gate quiet.
 - **Always** remove the accepted-findings entry in the same change that fixes the problem it
-  describes. The list may only shrink.
+  describes. The list may only shrink **in substance**: an entry that describes a structural
+  property of a dependency — a starter is a pom that carries no classes, an aggregator brings
+  parts that cannot be declared apart — cannot be removed by any change in this repository, so it
+  stays; what must never happen is a new entry hiding a finding that a line of source could close.
 - **Never** run `fixDependencies` in CI. It rewrites build scripts and cannot see runtime-only
   dependencies, so it can remove one that the application needs at startup. It is a manual tool,
   and `./check.sh` must pass afterwards.

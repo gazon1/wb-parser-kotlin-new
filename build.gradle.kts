@@ -111,7 +111,10 @@ configure<com.autonomousapps.DependencyAnalysisExtension> {
                 // ── The accepted-findings list (the baseline) ──────────────────
                 // Every entry is a finding we have consciously accepted. Entries
                 // are removed as the underlying problems are fixed; the list may
-                // only shrink, and a new entry needs a reason in a comment.
+                // only shrink in substance, and a new entry needs a reason in a
+                // comment. The two kinds below are the exceptions that no change
+                // in this repository can close: a pom does not start carrying
+                // classes, and an aggregator does not stop aggregating.
 
                 // -- Spring Boot starters -----------------------------------------
                 // A starter is a pom that carries no classes of its own: it pulls
