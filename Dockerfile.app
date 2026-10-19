@@ -31,6 +31,18 @@ COPY gradle ./gradle
 RUN --mount=type=cache,target=/root/.gradle \
     ./gradlew --no-daemon --version
 
+# Resolve the external dependencies before the sources are copied. The build
+# files are what the resolution depends on, so copying them first means a
+# change to a source file leaves this layer intact: Kotlin, Spring, Ktor and
+# Arrow are fetched once instead of on every rebuild.
+COPY settings.gradle.kts build.gradle.kts ./
+COPY wbparser/build.gradle.kts wbparser/
+COPY app/build.gradle.kts app/
+COPY tests/build.gradle.kts tests/
+
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew --no-daemon :app:resolveExternalDependenciesMain
+
 COPY . .
 
 RUN --mount=type=cache,target=/root/.gradle \
