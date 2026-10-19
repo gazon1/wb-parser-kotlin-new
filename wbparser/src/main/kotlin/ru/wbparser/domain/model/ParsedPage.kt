@@ -42,6 +42,11 @@ data class ParsedItem(
     val pageUrl: CrawlUrl,
     val brandId: Long?,
     val subjectId: Long?,
+    /**
+     * Parent of [subjectId] in WB's subject hierarchy — the edge that lets the
+     * category tree be rebuilt from the scraped rows.
+     */
+    val subjectParentId: Long? = null,
     val supplierId: Long?,
     val matchId: Long? = null,
     val seller: String? = null,

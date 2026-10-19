@@ -8,6 +8,7 @@ import kotlinx.coroutines.test.runTest
 import ru.wbparser.domain.coroutines.loggingBackgroundFailureHandler
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.SavedItem
+import ru.wbparser.domain.pipeline.Dropped
 import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
@@ -17,6 +18,7 @@ import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
+import ru.wbparser.testing.DropTestInterpreter
 import ru.wbparser.testing.LogTestInterpreter
 import ru.wbparser.testing.SaveBatchTestInterpreter
 import ru.wbparser.testing.ScheduleRetryTestInterpreter
@@ -51,7 +53,7 @@ class WbParserHappyPathTest :
                 ?.readText()
                 ?: throw IllegalStateException("Fixture not found")
 
-        test("pipeline writes 5 scraped_items to sqlite from a fake WB server") {
+        test("pipeline writes the priced products to sqlite and drops the one without a price") {
             runTest {
                 server.route("/catalog", 200, fixtureBody)
 
@@ -82,6 +84,7 @@ class WbParserHappyPathTest :
                         log = LogTestInterpreter(collector),
                         saveBatch = SaveBatchTestInterpreter(collector),
                         scheduleRetry = ScheduleRetryTestInterpreter(collector),
+                        drop = DropTestInterpreter(collector),
                     )
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
@@ -98,10 +101,10 @@ class WbParserHappyPathTest :
                 result.isRight() shouldBe true
                 val crawled = (result as Either.Right).value
                 crawled.pagesCrawled shouldBe 1
-                crawled.itemsSaved shouldBe 5
+                crawled.itemsSaved shouldBe 4
 
                 // DB assertions
-                db.count("scraped_items") shouldBe 5
+                db.count("scraped_items") shouldBe 4
 
                 // Assert specific product fields
                 db.findItem(100000001L) {
@@ -114,6 +117,11 @@ class WbParserHappyPathTest :
                     priceKopecks shouldBe 129900L
                     brand shouldBe "БрендБ"
                 }
+
+                // The product without a price is dropped by the EmptyPrice rule. The rule
+                // was dead code before: the old mapping reported a missing sale price as 0
+                // rather than null, and the rule asks for "no price AND no sale price".
+                collector.drops.map { it.reason } shouldBe listOf(Dropped.EmptyPrice)
 
                 // HTTP assertions
                 server.requestCount("/catalog") shouldBe 1

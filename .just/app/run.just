@@ -29,4 +29,8 @@ run:
 run-docker:
     #!/bin/bash
     set -euo pipefail
+    # The debug image does NOT build the jar — it runs the one the host built, mounted
+    # in as a file. `docker compose up --build` builds the *image*, not the jar, so
+    # without this the container starts and dies with "Unable to access jarfile app.jar".
+    just app::build bootJar
     docker compose -f deploy/docker-compose.debug.yml up --build

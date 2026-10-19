@@ -45,6 +45,15 @@ open class BrowserDownloader(
     private val objectMapper: ObjectMapper = DEFAULT_JSON_MAPPER,
     /** Navigation timeout, challenge wait and per-request pacing. See [BrowserFetchTiming]. */
     private val timing: BrowserFetchTiming = BrowserFetchTiming(),
+    /**
+     * How long a profile that answered with an anti-bot status rests before it is used again.
+     *
+     * WB's 498 is a statement about the session that sent the request, not about the whole
+     * IP: the cookies that got flagged belong to one AdsPower profile. Leaving it in the
+     * rotation means every following request of that profile is refused as well, and the
+     * crawl burns its retries on a session that was never going to answer.
+     */
+    private val antibotCooldownMs: Long = BrowserPool.DEFAULT_ANTIBOT_COOLDOWN_MS,
 ) {
     private val log = LoggerFactory.getLogger(BrowserDownloader::class.java)
 
@@ -60,14 +69,25 @@ open class BrowserDownloader(
             val startNs = System.nanoTime()
             var result: Either<NetworkError, Fetched>
             try {
-                val (catalogId, pageNum) = WbCatalogRequest.parseCatalogUrl(task.url.toString())
-                val apiUrl = WbCatalogRequest.buildWbApiUrl(catalogId, pageNum)
+                val catalogPage = WbCatalogRequest.parseCatalogUrl(task.url.toString())
+                val apiUrl = WbCatalogRequest.buildWbApiUrl(catalogPage.page, catalogPage.searchQuery)
 
-                log.debug("BrowserDownloader fetching {} (catalog={}, page={})", apiUrl, catalogId, pageNum)
+                log.debug(
+                    "BrowserDownloader fetching {} (catalog={}, page={}, token={})",
+                    apiUrl,
+                    catalogPage.catalogId,
+                    catalogPage.page,
+                    catalogPage.searchQuery,
+                )
+
+                // Global pacing: all profiles share one egress IP, so the rate limit is
+                // global too. Waiting before the request — not after — keeps the burst
+                // away from WB instead of merely delaying the reaction to it.
+                pool.awaitRequestSlot()
 
                 val borrowedPage = pool.borrowPage()
                 try {
-                    val fetchResult = fetchViaEvaluate(borrowedPage, apiUrl, catalogId)
+                    val fetchResult = fetchViaEvaluate(borrowedPage, apiUrl, catalogPage.catalogId)
                     val durationMs = (System.nanoTime() - startNs) / 1_000_000
 
                     result =
@@ -96,6 +116,13 @@ open class BrowserDownloader(
                                     apiUrl,
                                     isAntibot,
                                 )
+                                if (isAntibot) {
+                                    // WB flagged *this session*. Keeping the profile in the
+                                    // rotation would send the next request through the same
+                                    // blocked cookies; the profile rests for a while and the
+                                    // next borrower gets another one.
+                                    borrowedPage.markAntibot(antibotCooldownMs)
+                                }
                                 Either.Left(
                                     NetworkError(
                                         message = "HTTP ${fetchResult.statusCode}",

@@ -72,6 +72,10 @@ class OneShotCrawl(
                 log.warn("Crawl not started: {}", result.reason)
                 result.exitCode()
             }
+            is CrawlRunner.RunResult.NothingDue -> {
+                log.warn("Crawl had nothing to do: no active target is due")
+                result.exitCode()
+            }
         }
     }
 

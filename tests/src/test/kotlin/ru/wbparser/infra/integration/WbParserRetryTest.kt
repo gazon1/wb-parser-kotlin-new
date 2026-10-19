@@ -15,6 +15,7 @@ import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
+import ru.wbparser.testing.DropTestInterpreter
 import ru.wbparser.testing.LogTestInterpreter
 import ru.wbparser.testing.NoRetryKtorDownloader
 import ru.wbparser.testing.SaveBatchTestInterpreter
@@ -88,6 +89,7 @@ class WbParserRetryTest :
                     log = LogTestInterpreter(collector),
                     saveBatch = SaveBatchTestInterpreter(collector),
                     scheduleRetry = ScheduleRetryTestInterpreter(collector),
+                    drop = DropTestInterpreter(collector),
                 )
             val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
@@ -101,7 +103,7 @@ class WbParserRetryTest :
             result.isRight() shouldBe true
             val crawled = (result as Either.Right).value
             crawled.pagesCrawled shouldBe 1
-            crawled.itemsSaved shouldBe 5
+            crawled.itemsSaved shouldBe 4
 
             // HTTP: two requests were made (500 then 200)
             // Note: stageWithRetry handles retry via internal delay() — it does not emit
@@ -110,6 +112,6 @@ class WbParserRetryTest :
             server.requestCount("/catalog") shouldBe 2
 
             // DB: 5 items persisted
-            db.count("scraped_items") shouldBe 5
+            db.count("scraped_items") shouldBe 4
         }
     })

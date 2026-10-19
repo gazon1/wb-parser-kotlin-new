@@ -42,9 +42,9 @@ class WbCatalogStage(
      */
     val stage: Stage<Crawling, ParsedPage> =
         stage<Crawling, ParsedPage>("wb-catalog-download", "Fetches and parses a WB catalog page") { task ->
-            val catalogId =
+            val catalogPage =
                 runCatching {
-                    WbCatalogRequest.parseCatalogUrl(task.url.toString()).first
+                    WbCatalogRequest.parseCatalogUrl(task.url.toString())
                 }.getOrElse { e ->
                     return@stage Step.Fail(
                         StageFailure.ParseFailure(
@@ -53,6 +53,21 @@ class WbCatalogStage(
                         ),
                     )
                 }
+
+            // A crawl URL without WB's catalog token asks for the rotating popular list —
+            // a page of products that has nothing to do with the target category. Failing
+            // here is the honest outcome: the alternative is storing unrelated products
+            // under the category name.
+            if (catalogPage.searchQuery == null) {
+                return@stage Step.Fail(
+                    StageFailure.ParseFailure(
+                        message =
+                            "Catalog ${catalogPage.catalogId} has no WB search token in ${task.url}: " +
+                                "the request would return WB's popular list instead of the catalog",
+                        url = task.url.toString(),
+                    ),
+                )
+            }
 
             val downloadResult: Either<NetworkError, Fetched> =
                 try {

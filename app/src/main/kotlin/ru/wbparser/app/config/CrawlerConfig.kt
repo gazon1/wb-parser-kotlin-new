@@ -44,7 +44,10 @@ class CrawlerConfig {
                     cdpWsUrl = null,
                 )
             }
-        return BrowserPool(profiles = profiles)
+        return BrowserPool(
+            profiles = profiles,
+            minRequestIntervalMs = properties.spider.browserMinRequestIntervalMs,
+        )
     }
 
     @Bean
@@ -108,6 +111,10 @@ class CrawlerConfig {
             targetConcurrency = properties.spider.targetConcurrency,
             lockTimeoutMs = properties.lock.timeoutMinutes * 60_000,
             meterRegistry = deps.meterRegistry,
+            // One parameter for the cadence; the cron expression is only the tick.
+            freshness =
+                ru.wbparser.infra.scheduler
+                    .FreshnessPolicy(properties.schedule.freshnessMinutes),
         )
     }
 

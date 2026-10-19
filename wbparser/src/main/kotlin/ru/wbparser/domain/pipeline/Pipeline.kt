@@ -241,9 +241,18 @@ data class Pipeline(
 
             val nextUrl = done.page.nextPageUrl
             if (nextUrl != null) {
-                val paginationStop = stopAt(pagesCrawled, done.task.depth + 1)
+                // The successor of a page is the *next page of the same catalog*, not a
+                // level deeper in the category tree — so it inherits the depth instead of
+                // increasing it.
+                //
+                // With depth+1 the depth limit stopped the crawl at page 2 of every
+                // catalog (`max_depth = 2`), which is invisible in the counters: the run
+                // reported "2 pages" and a healthy item count. Depth measures how deep
+                // the crawl descended into the tree; paging through one catalog does not
+                // descend.
+                val paginationStop = stopAt(pagesCrawled, done.task.depth)
                 if (paginationStop == null) {
-                    pending.add(Crawling(id = idGen(), url = nextUrl, depth = done.task.depth + 1, targetId = done.task.targetId))
+                    pending.add(Crawling(id = idGen(), url = nextUrl, depth = done.task.depth, targetId = done.task.targetId))
                 } else {
                     stopped = paginationStop
                     break

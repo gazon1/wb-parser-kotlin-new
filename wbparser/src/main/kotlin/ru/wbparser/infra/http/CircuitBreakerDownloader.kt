@@ -5,6 +5,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry
 import io.github.resilience4j.kotlin.circuitbreaker.executeSuspendFunction
+import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.error.NetworkError
 import ru.wbparser.domain.model.Crawling
@@ -57,6 +58,13 @@ class CircuitBreakerDownloader(
             .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
             .slidingWindowSize(10)
             .build(),
+    /**
+     * How long a request waits for an OPEN circuit to become half-open before it gives up.
+     *
+     * The wait has to outlast the circuit's own open window (30 s by default), otherwise the
+     * request gives up exactly when the circuit is about to let it through.
+     */
+    private val maxOpenWaitMs: Long = DEFAULT_MAX_OPEN_WAIT_MS,
 ) {
     private val log = LoggerFactory.getLogger(CircuitBreakerDownloader::class.java)
 
@@ -79,15 +87,20 @@ class CircuitBreakerDownloader(
     /**
      * Downloads via [delegate] with circuit breaker protection.
      *
-     * When the circuit is OPEN, returns a non-retryable [NetworkError] immediately —
-     * retrying against an OPEN circuit would waste resources on requests WB is not
-     * going to answer.
+     * When the circuit is OPEN the request **waits** for the open window to elapse instead
+     * of failing right away.
+     *
+     * Failing fast looked reasonable and was the opposite of what the crawl needed: the
+     * retry loop burned all five attempts within a second — every attempt hitting an OPEN
+     * circuit — and the target was recorded as failed while WB was merely slow to answer.
+     * A crawl that waits for the window is slow; a crawl that gives up is wrong.
      */
     suspend fun download(task: Crawling): Either<NetworkError, Fetched> {
-        if (circuitBreaker.state == CircuitBreaker.State.OPEN) {
+        if (!awaitPermit(task)) {
             log.warn(
-                "[{}] Circuit OPEN — skipping request to {} (WB may be blocking this IP)",
+                "[{}] Circuit stayed OPEN for {}ms — giving up on {} (WB may be blocking this IP)",
                 task.targetId,
+                maxOpenWaitMs,
                 task.url,
             )
             return Either.Left(
@@ -129,6 +142,31 @@ class CircuitBreakerDownloader(
     }
 
     /**
+     * Waits until the circuit permits a call.
+     *
+     * Returns false when the circuit stayed OPEN for [maxOpenWaitMs] — the caller then
+     * reports the failure instead of waiting forever.
+     */
+    private suspend fun awaitPermit(task: Crawling): Boolean {
+        val deadline = System.nanoTime() + maxOpenWaitMs * 1_000_000L
+        var waited = false
+        while (circuitBreaker.state == CircuitBreaker.State.OPEN) {
+            if (System.nanoTime() >= deadline) return false
+            if (!waited) {
+                waited = true
+                log.warn(
+                    "[{}] Circuit OPEN — waiting up to {}ms for WB to let requests through again ({})",
+                    task.targetId,
+                    maxOpenWaitMs,
+                    task.url,
+                )
+            }
+            delay(OPEN_WAIT_POLL_MS)
+        }
+        return true
+    }
+
+    /**
      * Current state of the WB circuit breaker. Useful for health endpoints.
      */
     fun circuitState(): CircuitBreaker.State = circuitBreaker.state
@@ -136,4 +174,12 @@ class CircuitBreakerDownloader(
     private class AntibotCircuitBreakerException(
         message: String?,
     ) : Exception(message)
+
+    companion object {
+        /** 75 s — comfortably longer than the 30 s open window of the default config. */
+        const val DEFAULT_MAX_OPEN_WAIT_MS: Long = 75_000L
+
+        /** How often the wait re-checks the circuit state. */
+        const val OPEN_WAIT_POLL_MS: Long = 1_000L
+    }
 }

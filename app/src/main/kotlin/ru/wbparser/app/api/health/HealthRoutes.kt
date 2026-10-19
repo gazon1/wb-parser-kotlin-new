@@ -4,6 +4,8 @@ import arrow.core.Either
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import ru.wbparser.infra.db.repositories.countSubjects
+import ru.wbparser.infra.db.repositories.countTargetsWithoutSearchToken
 import javax.sql.DataSource
 
 /**
@@ -31,6 +33,34 @@ class HealthRoutes(
                 allHealthy = false
             }
         }
+
+        // Data-readiness checks. These do NOT make the service unready: the crawl works
+        // without them, it just produces less useful rows. They are reported so that
+        // "the crawler is running but the data is thin" is visible instead of inferred.
+        runCatching { datasource.countSubjects() }.fold(
+            onSuccess = { count ->
+                checks["subject_dictionary"] =
+                    if (count > 0) {
+                        "UP ($count subjects)"
+                    } else {
+                        "EMPTY — products are stored without category names"
+                    }
+            },
+            onFailure = { checks["subject_dictionary"] = "UNKNOWN: ${it.message}" },
+        )
+
+        runCatching { datasource.countTargetsWithoutSearchToken() }.fold(
+            onSuccess = { count ->
+                checks["targets_without_search_token"] =
+                    if (count == 0L) {
+                        "UP"
+                    } else {
+                        "$count target(s) cannot be crawled — the internal API would answer " +
+                            "with WB's popular list instead of the category"
+                    }
+            },
+            onFailure = { checks["targets_without_search_token"] = "UNKNOWN: ${it.message}" },
+        )
 
         return mapOf(
             "status" to if (allHealthy) "UP" else "DOWN",

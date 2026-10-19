@@ -16,14 +16,19 @@ import java.util.UUID
  * turned into an empty page, and it nests prices under `sizes[0].price`, which the top-level
  * lookup missed and turned into a zero price. Neither raised an error, so a crawl looked
  * successful while storing nothing useful.
+ *
+ * The prices are numbers in kopecks — the shape the current endpoint sends.
  */
 class WbCatalogParserTest :
     FunSpec({
 
-        fun fetched(body: String): Fetched {
-            val url = CrawlUrl.of("https://www.wildberries.ru/catalog/131954/list.aspx").getOrNull()!!
+        fun fetched(
+            body: String,
+            url: String = "https://www.wildberries.ru/catalog/131954/list.aspx?search=menu_v3_131954",
+        ): Fetched {
+            val crawlUrl = CrawlUrl.of(url).getOrNull()!!
             return Fetched(
-                task = Crawling("task-1", url, 0, UUID.randomUUID()),
+                task = Crawling("task-1", crawlUrl, 0, UUID.randomUUID()),
                 statusCode = CrawlHttpStatusCode(200),
                 body = body,
                 headers = emptyMap(),
@@ -31,12 +36,12 @@ class WbCatalogParserTest :
             )
         }
 
-        test("reads products sent as a top-level array, as the __internal endpoint does") {
+        test("reads products sent as a top-level array, as the catalog endpoint does") {
             val body =
                 """
                 {"products":[
-                  {"id":1,"name":"Первый","sizes":[{"price":{"basic":"100.00","product":"50.00"}}]},
-                  {"id":2,"name":"Второй","sizes":[{"price":{"basic":"200.00","product":"70.00"}}]}
+                  {"id":1,"name":"Первый","sizes":[{"price":{"basic":10000,"product":5000}}]},
+                  {"id":2,"name":"Второй","sizes":[{"price":{"basic":20000,"product":7000}}]}
                 ]}
                 """.trimIndent()
 
@@ -49,7 +54,7 @@ class WbCatalogParserTest :
         test("carries the nested price through to the parsed item") {
             val body =
                 """
-                {"products":[{"id":1,"name":"Товар","sizes":[{"price":{"basic":"1000.00","product":"450.00"}}]}]}
+                {"products":[{"id":1,"name":"Товар","sizes":[{"price":{"basic":100000,"product":45000}}]}]}
                 """.trimIndent()
 
             val item = parseWbCatalog(fetched(body)).items.single()
@@ -64,7 +69,7 @@ class WbCatalogParserTest :
             parseWbCatalog(fetched(body)).items.map { it.name } shouldBe listOf("Из data")
         }
 
-        test("reads the payload.products wrapper and picks up nextPage") {
+        test("an explicit nextPage wins over the derived one") {
             val body =
                 """
                 {"payload":{"products":[{"id":1,"name":"Из payload"}],
@@ -77,11 +82,36 @@ class WbCatalogParserTest :
             page.nextPageUrl.toString() shouldBe "https://www.wildberries.ru/catalog/0/list.aspx?page=2"
         }
 
-        test("an empty products array is an empty page, not an error") {
+        test("the next page is derived from the crawled URL — the endpoint sends no marker") {
+            val body = """{"products":[{"id":1,"name":"Товар"}]}"""
+
+            val page = parseWbCatalog(fetched(body))
+
+            page.nextPageUrl.toString() shouldBe
+                "https://www.wildberries.ru/catalog/131954/list.aspx?search=menu_v3_131954&page=2"
+        }
+
+        test("the derived next page increments an explicit page number") {
+            val body = """{"products":[{"id":1,"name":"Товар"}]}"""
+
+            val page =
+                parseWbCatalog(
+                    fetched(
+                        body,
+                        url = "https://www.wildberries.ru/catalog/131954/list.aspx?search=menu_v3_131954&page=4",
+                    ),
+                )
+
+            page.nextPageUrl.toString() shouldBe
+                "https://www.wildberries.ru/catalog/131954/list.aspx?search=menu_v3_131954&page=5"
+        }
+
+        test("an empty products array is an empty page and ends the pagination") {
             val page = parseWbCatalog(fetched("""{"products":[]}"""))
 
             page.items shouldBe emptyList()
             page.isEmptyPage shouldBe true
+            page.nextPageUrl shouldBe null
         }
 
         test("a blank body is an empty page") {
@@ -109,7 +139,7 @@ class WbCatalogParserTest :
             val body =
                 """
                 {"products":[{"id":7,"name":"С полями","totalQuantity":3,"feedbacks":12,
-                 "rating":4.8,"sizes":[{"price":{"basic":"10.00"},"wh":123}]}]}
+                 "rating":4.8,"sizes":[{"price":{"basic":1000},"wh":123}]}]}
                 """.trimIndent()
 
             parseWbCatalog(fetched(body)).items.single().name shouldBe "С полями"

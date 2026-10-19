@@ -1,6 +1,9 @@
 package ru.wbparser.infra.http
 
 import ru.wbparser.domain.util.WB_BASE_URL
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.ThreadLocalRandom
 
 /**
@@ -10,16 +13,59 @@ import java.util.concurrent.ThreadLocalRandom
  * URL and the header set, and given bounds it produces a pacing delay. That is deliberate.
  *
  * `BrowserDownloader` originally owned all of this as private methods, which left the only
- * interesting decisions in the change — *which* `dest`, *which* page number, *which* referer —
- * reachable only by standing up a real AdsPower Chrome. Two of them had already gone wrong
- * silently in production. Extracting them makes the request a value you can assert on.
+ * interesting decisions in the change — *which* page number, *which* query — reachable only by
+ * standing up a real AdsPower Chrome. Two of them had already gone wrong silently in
+ * production. Extracting them makes the request a value you can assert on.
+ *
+ * ## Which endpoint, and why it matters
+ *
+ * The crawler used to talk to `__internal/u-recom/personal/v9/search` with
+ * `resultset=catalog&sort=popular` and **no catalog filter at all**. That endpoint answers with
+ * a rotating selection of WB's *popular presets*: a pool of roughly 1 200 products that is
+ * unrelated to the requested category and differs from request to request. Every catalog
+ * therefore returned nearly the same goods, all of them filed under the category name of a
+ * target that had nothing to do with them.
+ *
+ * The endpoint the storefront itself uses for a catalog page is
+ * `__internal/u-search/exactmatch/ru/common/v18/search`, and the category is selected by the
+ * `query` parameter — WB's own menu token, e.g. `menu_v3_9467 карты памяти`
+ * (the `searchQuery` field of the node in `main-menu-by-ru-v3.json`). With that token the
+ * response is the real catalog: memory cards for `menu_v3_9467`, smartphones for
+ * `menu_v3_9463`, and so on.
+ *
+ * The catalog id itself is **not** a parameter of the API call — the token carries the
+ * identity. The id still travels in the crawl URL, because that is what identifies the
+ * target in the crawl history and in the referer.
+ *
+ * ## Pagination
+ *
+ * Pages are requested by incrementing `page`. WB serves 100 products per page and answers an
+ * empty `products` array once the catalog is exhausted — there is no "last page" marker, so an
+ * empty response *is* the end of the pagination.
  *
  * The constants here were captured from a real browser session via CDP intercept; see
  * `scripts/wb_browser_fetch.py` for the equivalent Python path.
  */
 internal object WbCatalogRequest {
     private val CATALOG_ID_REGEX = Regex("/catalog/(\\d+)")
-    private val PAGE_REGEX = Regex("[?&]page=(\\d+)")
+    private val PAGE_PARAM_REGEX = Regex("[?&]page=(\\d+)")
+    private val PAGE_VALUE_REGEX = Regex("page=\\d+")
+    private val SEARCH_PARAM = "search"
+
+    /**
+     * A crawl URL resolved into the three things the crawler needs from it.
+     *
+     * @param catalogId the numeric WB catalog id, e.g. `9467`.
+     * @param page the 1-based page number, `1` when the URL carries no `page` parameter.
+     * @param searchQuery WB's catalog search token, e.g. `menu_v3_9467 карты памяти`.
+     *   Null when the URL carries none — which means the request would be an unfiltered
+     *   "popular" search and is rejected by the caller rather than answered.
+     */
+    data class CatalogPage(
+        val catalogId: String,
+        val page: Int,
+        val searchQuery: String?,
+    )
 
     /**
      * The JS evaluated inside the page. Kept as a constant so it can be asserted on directly:
@@ -59,34 +105,80 @@ internal object WbCatalogRequest {
     fun catalogUrlOf(catalogId: String): String = "$WB_BASE_URL/catalog/$catalogId/list.aspx"
 
     /**
-     * Extracts `(catalogId, pageNumber)` from a WB catalog URL.
+     * Builds the crawl URL of a catalog, carrying WB's search token when one is known.
+     *
+     * The token travels in the URL because the URL is the unit of work: the downloader
+     * builds the API request from it, and the pagination step derives the next URL from it.
+     * A URL without a token would ask WB for the unfiltered popular list, so [searchQuery]
+     * is required for a crawl to be meaningful.
+     */
+    fun crawlUrlOf(
+        catalogId: String,
+        searchQuery: String?,
+    ): String {
+        val base = catalogUrlOf(catalogId)
+        val token = searchQuery?.takeIf { it.isNotBlank() } ?: return base
+        return "$base?$SEARCH_PARAM=${encode(token)}"
+    }
+
+    /**
+     * Extracts the catalog id, the page number and the search token from a WB catalog URL.
      *
      * @throws IllegalArgumentException when the URL carries no catalog ID — crawling such a
      *   target would otherwise silently target catalog `0` and store a plausible-looking page
      *   of nothing.
      */
-    fun parseCatalogUrl(url: String): Pair<String, Int> {
+    fun parseCatalogUrl(url: String): CatalogPage {
         val catalogId =
             CATALOG_ID_REGEX.find(url)?.groupValues?.get(1)
                 ?: throw IllegalArgumentException("Not a WB catalog URL: $url")
         val page =
-            PAGE_REGEX
+            PAGE_PARAM_REGEX
                 .find(url)
                 ?.groupValues
                 ?.get(1)
                 ?.toIntOrNull() ?: 1
-        return catalogId to page
+        return CatalogPage(
+            catalogId = catalogId,
+            page = page,
+            searchQuery = searchQueryOf(url, SEARCH_PARAM),
+        )
+    }
+
+    /**
+     * The next page of the same catalog: the same URL with `page` incremented by one.
+     *
+     * Returns null when [url] is not a WB catalog URL — there is nothing to paginate.
+     */
+    fun nextPageUrl(url: String): String? {
+        if (!CATALOG_ID_REGEX.containsMatchIn(url)) return null
+        val current =
+            PAGE_PARAM_REGEX
+                .find(url)
+                ?.groupValues
+                ?.get(1)
+                ?.toIntOrNull() ?: 1
+        val next = current + 1
+        return if (PAGE_VALUE_REGEX.containsMatchIn(url)) {
+            url.replace(PAGE_VALUE_REGEX, "page=$next")
+        } else if (url.contains('?')) {
+            "$url&page=$next"
+        } else {
+            "$url?page=$next"
+        }
     }
 
     /**
      * Builds the internal API URL for a catalog page.
      *
-     * The endpoint is `__internal/u-recom/personal/v9/search` with `resultset=catalog`. These
-     * parameters were captured via CDP intercept of a real WB catalog page load.
+     * The endpoint is `__internal/u-search/exactmatch/ru/common/v18/search` with
+     * `resultset=catalog` — the one the storefront itself calls for a catalog page. The
+     * category is selected through [searchQuery]; without it WB answers with its rotating
+     * popular list, which is what made every catalog look alike.
      */
     fun buildWbApiUrl(
-        catalogId: String,
         page: Int,
+        searchQuery: String?,
         dest: String = DEFAULT_DEST,
     ): String {
         val params =
@@ -100,13 +192,11 @@ internal object WbCatalogRequest {
                 "lang" to "ru",
                 "locale" to "ru",
                 "page" to page.toString(),
-                "query" to "0",
+                "query" to (searchQuery ?: ""),
                 "resultset" to "catalog",
                 "sort" to "popular",
             )
-        val query = params.joinToString("&") { (k, v) -> "$k=$v" }
-        // catalogId is part of the URL for readability but the endpoint selects the catalog
-        // through `dest`; keeping it in the path makes the request traceable in WB-side logs.
+        val query = params.joinToString("&") { (k, v) -> "$k=${encode(v)}" }
         return "$WB_BASE_URL/$API_PATH?$query"
     }
 
@@ -159,8 +249,32 @@ internal object WbCatalogRequest {
         return ThreadLocalRandom.current().nextLong(lo, hi)
     }
 
-    private const val API_PATH = "__internal/u-recom/personal/v9/search"
+    private const val API_PATH = "__internal/u-search/exactmatch/ru/common/v18/search"
 
     /** Moscow, matching the AdsPower profile's egress IP. */
     private const val DEFAULT_DEST = "1259570991"
 }
+
+/**
+ * The `search` parameter of [url], decoded, or null when it carries none.
+ *
+ * A file-level function rather than a member of [WbCatalogRequest]: the object is about
+ * building requests, and the URL plumbing is not a decision a caller makes.
+ */
+private fun searchQueryOf(
+    url: String,
+    searchParam: String,
+): String? {
+    val raw =
+        url
+            .substringAfter('?', "")
+            .split('&')
+            .firstOrNull { it.startsWith("$searchParam=") }
+            ?.removePrefix("$searchParam=")
+            ?: return null
+    return decode(raw).takeIf { it.isNotBlank() }
+}
+
+private fun encode(value: String): String = URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20")
+
+private fun decode(value: String): String = URLDecoder.decode(value, StandardCharsets.UTF_8)

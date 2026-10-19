@@ -7,6 +7,7 @@ import com.microsoft.playwright.Playwright
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 
 /**
@@ -45,83 +46,89 @@ interface AdsPowerApi {
      * Returns the CDP WebSocket URL on success, null on failure.
      */
     fun startProfileV2(profileId: String): String?
+
+    /**
+     * Whether the AdsPower Local API is reachable.
+     *
+     * This is what separates "the API is down" from "the API is up but this
+     * profile is not available". The distinction matters: when the API answers,
+     * a profile that cannot be started is a real error to report, not a reason
+     * to fall back to a blind port scan and hand the profile whichever browser
+     * happens to be listening — two profiles sharing one browser means one
+     * anti-bot session wearing two names.
+     */
+    fun isAvailable(): Boolean
 }
 
 /**
  * Production implementation of [AdsPowerApi] — calls the real AdsPower Local API.
+ *
+ * The base URL is resolved lazily through [baseUrlProvider] rather than fixed at
+ * construction time: the AdsPower runtime may not be up when the pool is built,
+ * and it may move to a different port between two crawls. A resolved base is
+ * cached, and dropped again as soon as a call against it fails, so the next
+ * attempt re-runs discovery instead of repeating a request to a dead endpoint.
  */
 internal class RealAdsPowerApi(
-    private val baseUrl: String,
+    private val baseUrlProvider: () -> String?,
     private val mapper: com.fasterxml.jackson.databind.ObjectMapper,
+    private val onBaseUrlInvalidated: () -> Unit = {},
 ) : AdsPowerApi {
-    override fun checkActiveV2(profileId: String): String? {
-        val encodedId = java.net.URLEncoder.encode(profileId, "UTF-8")
-        val conn =
-            java.net
-                .URI("$baseUrl/api/v2/browser-profile/active?profile_id=$encodedId")
-                .toURL()
-                .openConnection() as java.net.HttpURLConnection
-        conn.requestMethod = "GET"
-        conn.setRequestProperty("Accept", "application/json")
-        conn.readTimeout = 5_000
+    @Volatile
+    private var resolvedBaseUrl: String? = null
 
-        if (conn.responseCode != 200) {
-            conn.disconnect()
+    private fun baseUrl(): String? {
+        resolvedBaseUrl?.let { return it }
+        val resolved = baseUrlProvider()
+        resolvedBaseUrl = resolved
+        return resolved
+    }
+
+    /** Drops the cached base so the next call re-runs discovery. */
+    private fun invalidateBaseUrl() {
+        resolvedBaseUrl = null
+        onBaseUrlInvalidated()
+    }
+
+    private fun client(): AdsPowerApiClient? = baseUrl()?.let { AdsPowerApiClient(it, mapper) }
+
+    override fun checkActiveV2(profileId: String): String? {
+        val client = client() ?: return null
+        val encodedId = java.net.URLEncoder.encode(profileId, "UTF-8")
+        val envelope = client.get("/api/v2/browser-profile/active?profile_id=$encodedId")
+        if (envelope == null) {
+            // No answer at all: the runtime is gone or moved. Drop the cached
+            // base so the next call re-runs discovery against the new port.
+            invalidateBaseUrl()
             return null
         }
-
-        @Suppress("UNCHECKED_CAST")
-        val resp = mapper.readValue(conn.inputStream, Map::class.java)
-        conn.disconnect()
-
-        val code = resp["code"] as? Number
-        if (code?.toInt() != 0) return null
-
-        val data = resp["data"] as? Map<*, *>
-        if (data?.get("status") != "Active") return null
-
-        val ws = data["ws"] as? Map<*, *>
-        val puppeteerWs = ws?.get("puppeteer") as? String
-        return puppeteerWs?.takeIf { it.isNotBlank() }
+        if (!envelope.isSuccess || envelope.data?.get("status") != "Active") return null
+        return envelope.puppeteerWs?.takeIf { it.isNotBlank() }
     }
 
     override fun startProfileV2(profileId: String): String? {
-        val conn =
-            java.net
-                .URI("$baseUrl/api/v2/browser-profile/start")
-                .toURL()
-                .openConnection() as java.net.HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("Accept", "application/json")
-        conn.readTimeout = 30_000
-        conn.doOutput = true
-        conn.outputStream.write(
+        val client = client() ?: return null
+        val body =
             """
             {
                 "profile_id": "$profileId",
                 "launch_args": ["--disable-blink-features=AutomationControlled", "--remote-allow-origins=*"],
                 "last_opened_tabs": "0"
             }
-            """.trimIndent().toByteArray(),
-        )
+            """.trimIndent()
+        val envelope =
+            client.post("/api/v2/browser-profile/start", body)
+                ?: run {
+                    invalidateBaseUrl()
+                    return null
+                }
+        if (!envelope.isSuccess) return null
+        return envelope.puppeteerWs?.takeIf { it.isNotBlank() }
+    }
 
-        if (conn.responseCode != 200) {
-            conn.disconnect()
-            return null
-        }
-
-        @Suppress("UNCHECKED_CAST")
-        val resp = mapper.readValue(conn.inputStream, Map::class.java)
-        conn.disconnect()
-
-        val code = resp["code"] as? Number
-        if (code?.toInt() != 0) return null
-
-        val data = resp["data"] as? Map<*, *>
-        val ws = data?.get("ws") as? Map<*, *>
-        val puppeteerWs = ws?.get("puppeteer") as? String
-        return puppeteerWs?.takeIf { it.isNotBlank() }
+    override fun isAvailable(): Boolean {
+        val client = client() ?: return false
+        return client.probe()
     }
 }
 
@@ -242,17 +249,27 @@ internal class CdpAutomation : BrowserAutomation {
  * Bundling these four values into one object keeps the [BrowserPool] constructor
  * within the `LongParameterList` detekt threshold while preserving all defaults.
  *
- * @param apiBase   AdsPower Local API base URL. Defaults to `http://127.0.0.1:50325`.
- * @param apiKey    AdsPower Local API key. Read from `ADSPOWER_API_KEY` at construction
- *                  time — a key baked into source would leak to every clone of the repo.
- *                  When absent the pool discovers the endpoint by port scan (slower but works).
+ * @param apiBase   Preferred AdsPower Local API base URL, read from `ADSPOWER_API_BASE`.
+ *                  null means "discover it" — see [AdsPowerApiResolver]. The port is not
+ *                  fixed across AdsPower distributions: the classic desktop app serves
+ *                  50325, the `adspower-browser` CLI serves 50725. A value set here is a
+ *                  *preference*, not a pin: if it does not answer, discovery still runs.
+ * @param apiKey    AdsPower Local API key, read from `ADSPOWER_API_KEY`.
+ *                  A key baked into source would leak to every clone of the repo, so it
+ *                  is read from the environment instead.
+ *                  It is *not* sent to the API — the Local API listens on loopback and
+ *                  answers unauthenticated. Its presence only records that AdsPower is
+ *                  configured at all, and the pre-flight check reports on it.
+ *                  (It used to gate whether the API was consulted at all, which meant
+ *                  that without the key the crawler silently fell back to a blind port
+ *                  scan. It does not gate anything any more.)
  * @param borrowTimeoutMs  How long [borrowPage][BrowserPool.borrowPage] waits for a free slot.
  *                         Generous by design: under normal contention the wait is sub-second;
  *                         a timeout means a profile is genuinely wedged.
  * @param api       The [AdsPowerApi] client. When null the pool creates a [RealAdsPowerApi].
  */
 class AdsPowerConfig(
-    val apiBase: String = "http://127.0.0.1:50325",
+    val apiBase: String? = System.getenv("ADSPOWER_API_BASE"),
     val apiKey: String? = System.getenv("ADSPOWER_API_KEY"),
     val borrowTimeoutMs: Long = 120_000,
     val api: AdsPowerApi? = null,
@@ -290,7 +307,25 @@ class BrowserPool(
      * to inject a [FakeBrowserAutomation] without any real browser I/O.
      */
     private val browserAutomations: List<BrowserAutomation>? = null,
+    /**
+     * Minimum milliseconds between two requests leaving this pool.
+     *
+     * All profiles of a deployment share one egress IP, so the limit has to be global:
+     * per-profile pacing multiplies into a burst rate that WB's rate limiter sees exactly
+     * as a bot. See [RequestPacer].
+     */
+    private val minRequestIntervalMs: Long = 0L,
 ) {
+    /** Global request pacing — shared by every profile, because they share one IP. */
+    private val pacer = RequestPacer(minRequestIntervalMs)
+
+    /**
+     * Waits until the next request may be sent to WB.
+     *
+     * Called by the downloader before every fetch.
+     */
+    suspend fun awaitRequestSlot() = pacer.awaitSlot()
+
     /** Discovered Chrome endpoints, resolved lazily and cached for the pool's lifetime. */
     @Volatile
     private var cachedEndpoints: List<String>? = null
@@ -311,12 +346,26 @@ class BrowserPool(
     private var profileStates: List<ProfileState>
     private val cursor = AtomicInteger(0)
 
+    /**
+     * The AdsPower client this pool talks to.
+     *
+     * Exposed so the startup pre-flight check can ask the same client the pool
+     * uses — a separate client would resolve a different port and could disagree
+     * with the pool about whether AdsPower is up.
+     */
+    lateinit var adsPowerApi: AdsPowerApi
+        private set
+
     init {
         require(profiles.isNotEmpty()) { "At least one profile is required" }
-        val adsPowerApi =
+        adsPowerApi =
             adsPower.api ?: RealAdsPowerApi(
-                baseUrl = adsPower.apiBase,
+                baseUrlProvider = { AdsPowerApiResolver.resolve(adsPower.apiBase) },
                 mapper = jsonMapper,
+                // The resolver caches the discovered port for the process; a failed
+                // call must drop that cache too, or discovery would keep returning
+                // the dead endpoint.
+                onBaseUrlInvalidated = { AdsPowerApiResolver.invalidate() },
             )
         profileStates =
             profiles.mapIndexed { index, profile ->
@@ -349,15 +398,26 @@ class BrowserPool(
         // Two passes over the pool: the first takes anything free, the second waits on the
         // round-robin cursor. Sweeping all profiles before blocking means a caller that
         // arrives while another profile is mid-connect still finds the idle ones.
-        repeat(profileStates.size) {
-            val index = cursor.updateAndGet { (it + 1) % profileStates.size }
-            val state = profileStates[index]
-            if (state.lock.tryLock()) {
-                try {
-                    return borrowLocked(state)
-                } catch (e: Exception) {
-                    state.close()
-                    log.warn("Profile {} unusable, trying next: {}", state.profileConfig.profileId, e.message)
+        //
+        // The first pass skips profiles that WB has just flagged — their session is refused,
+        // so asking them again only wastes the request. The second pass takes a flagged
+        // profile if every profile is flagged: resting all of them would stall the crawl
+        // until the cooldown expires, which is worse than trying a session that may have
+        // recovered.
+        for (pass in 0..1) {
+            for (i in 0 until profileStates.size) {
+                val index = cursor.updateAndGet { (it + 1) % profileStates.size }
+                val state = profileStates[index]
+                // Pass 0 takes a profile that WB has not flagged, pass 1 a flagged one.
+                val flagged = state.isFlagged()
+                if (flagged != (pass == 1)) continue
+                if (state.lock.tryLock()) {
+                    try {
+                        return borrowLocked(state)
+                    } catch (e: Exception) {
+                        state.close()
+                        log.warn("Profile {} unusable, trying next: {}", state.profileConfig.profileId, e.message)
+                    }
                 }
             }
         }
@@ -390,8 +450,12 @@ class BrowserPool(
             // Snapshot under the profile lock: `warm` only flips while this lock
             // is held by this borrower, so a stale read is impossible here.
             isWarm = state.warm,
-            onWarm = { state.warm = true },
-            closer = { release(state) },
+            hooks =
+                BorrowedPageHooks(
+                    onWarm = { state.warm = true },
+                    onAntibot = { cooldownMs -> state.flagFor(cooldownMs) },
+                    onClose = { release(state) },
+                ),
         )
     }
 
@@ -420,6 +484,38 @@ class BrowserPool(
          */
         @Volatile
         var warm: Boolean = false
+
+        /**
+         * Epoch milliseconds until which WB is considered to have flagged this profile.
+         *
+         * WB's 498 belongs to the session that sent the request — its cookies, its
+         * fingerprint. Keeping that profile in the rotation means every following request
+         * of it is refused as well, and the crawl spends its retries on a session that was
+         * never going to answer. The profile rests for [antibotCooldownMs] and is used
+         * again afterwards.
+         */
+        private val flaggedUntil = AtomicLong(0L)
+
+        /** True while the profile is still resting after an anti-bot response. */
+        fun isFlagged(now: Long = System.currentTimeMillis()): Boolean = flaggedUntil.get() > now
+
+        /**
+         * Puts the profile to rest for [cooldownMs].
+         *
+         * The profile is also marked cold again: WB's anti-bot answer belongs to the
+         * *session*, and the session of this page is now the flagged one. Keeping the page
+         * warm would mean the next request goes out with the same refused cookies — the
+         * profile would stay poisoned until the browser was restarted. Marking it cold
+         * makes the next borrower navigate to the catalog page again and pay the challenge
+         * wait, which is what re-establishes a usable session.
+         */
+        fun flagFor(cooldownMs: Long) {
+            val until = System.currentTimeMillis() + cooldownMs.coerceAtLeast(0L)
+            // Never shorten a cooldown that is already running: two anti-bot responses in a
+            // row mean the profile is not going to recover sooner.
+            flaggedUntil.accumulateAndGet(until) { current, candidate -> maxOf(current, candidate) }
+            warm = false
+        }
 
         fun getOrCreatePage(): Page {
             if (automation.isConnected) {
@@ -460,27 +556,37 @@ class BrowserPool(
         private fun resolveCdpUrl(): String {
             profileConfig.cdpWsUrl?.takeIf { it.isNotBlank() }?.let { return it }
 
-            // Only use the AdsPower API when a key is configured; an unset key must not
-            // turn into a request with a literal string in the URL.
-            val apiKey = this@BrowserPool.adsPower.apiKey?.takeIf { it.isNotBlank() }
-            if (apiKey != null) {
+            // The Local API is asked first, and unconditionally.
+            //
+            // It used to be gated on ADSPOWER_API_KEY being set. But the Local API
+            // listens on loopback and answers unauthenticated — the key was never sent
+            // anywhere, it only decided whether we tried. Without it the crawler
+            // skipped the API entirely and fell back to a blind port scan, which
+            // assigns browsers to profiles by index and can hand two profiles the
+            // same one: one anti-bot session wearing two names.
+            val profileId = profileConfig.profileId
+            val fromApi =
                 try {
-                    val activeWs = api.checkActiveV2(profileConfig.profileId)
-                    if (activeWs != null) return activeWs
-
-                    val startedWs = api.startProfileV2(profileConfig.profileId)
-                    if (startedWs != null) return startedWs
-                } catch (_: Exception) {
-                    // fall through to port scan
+                    api.checkActiveV2(profileId) ?: api.startProfileV2(profileId)
+                } catch (e: Exception) {
+                    logForProfile(profileId, "AdsPower Local API call failed: {}", e.message)
+                    null
                 }
-            } else {
-                logForProfile(
-                    profileConfig.profileId,
-                    "ADSPOWER_API_KEY not set — skipping Local API lookup, using port scan",
+            if (fromApi != null) return fromApi
+
+            if (api.isAvailable()) {
+                // The API is up and this profile is not available. Falling back to the
+                // scan would silently attach this profile to an arbitrary browser, so
+                // report the real problem instead of hiding it behind a wrong browser.
+                throw IllegalStateException(
+                    "AdsPower Local API is reachable but profile '$profileId' could not be " +
+                        "started. Open the profile in AdsPower, and check that its profile " +
+                        "directory is writable by the user running the AdsPower runtime.",
                 )
             }
 
-            // Final fallback: port scan
+            // The API is down: the DevTools port scan is the only way left to find a browser.
+            logForProfile(profileId, "AdsPower Local API is unreachable — falling back to the DevTools port scan")
             return scanForCdpUrl(this)
         }
 
@@ -500,25 +606,14 @@ class BrowserPool(
         private fun scanEndpoints(): List<String> = probeChromeEndpoints(listeningPorts())
 
         /** Listening ports above the ephemeral range that are worth probing. */
-        private fun listeningPorts(): List<Int> =
-            runCatching {
-                val output =
-                    ProcessBuilder("ss", "-tlnp")
-                        .start()
-                        .inputStream
-                        .bufferedReader()
-                        .readText()
-                Regex(":(\\d{4,5})\\b")
-                    .findAll(output)
-                    .map { it.groupValues[1].toInt() }
-                    .filter { it > 10_000 }
-                    .distinct()
-                    .sorted()
-                    .toList()
-            }.getOrElse {
-                log.warn("Could not list listening ports ({}); falling back to {}", it.message, DEFAULT_CDP_PORT)
-                listOf(DEFAULT_CDP_PORT)
+        private fun listeningPorts(): List<Int> {
+            val ports = listeningTcpPorts()
+            if (ports.isEmpty()) {
+                log.warn("Could not list listening ports (is 'ss' installed?); falling back to {}", DEFAULT_CDP_PORT)
+                return listOf(DEFAULT_CDP_PORT)
             }
+            return ports
+        }
 
         /**
          * Endpoint for [state], assigned by the profile's index among the discovered browsers.
@@ -561,6 +656,15 @@ class BrowserPool(
     }
 
     companion object {
+        /**
+         * How long a profile rests after WB answered it with an anti-bot status.
+         *
+         * Three minutes is long enough for the block to age out and for the session to be
+         * re-established, and short enough that the pool does not run dry when several
+         * profiles are flagged at once.
+         */
+        const val DEFAULT_ANTIBOT_COOLDOWN_MS: Long = 180_000L
+
         /** AdsPower's default DevTools port, used when `ss` is unavailable. */
         private const val DEFAULT_CDP_PORT = 36931
 
@@ -585,13 +689,34 @@ class BorrowedPage(
     val page: Page,
     val profileId: String,
     val isWarm: Boolean,
-    private val onWarm: () -> Unit,
-    private val closer: () -> Unit,
+    private val hooks: BorrowedPageHooks,
 ) {
-    fun markWarm() = onWarm()
+    fun markWarm() = hooks.onWarm()
 
-    fun close() = closer()
+    /**
+     * Reports that WB answered this profile with an anti-bot status.
+     *
+     * The profile rests for [cooldownMs]; the next borrower gets another one. WB's 498 is
+     * a statement about the session that sent the request, so continuing with the same
+     * cookies only collects more 498s.
+     */
+    fun markAntibot(cooldownMs: Long) = hooks.onAntibot(cooldownMs)
+
+    fun close() = hooks.onClose()
 }
+
+/**
+ * What a borrower of a profile may report back to the pool.
+ *
+ * Grouped into one holder so [BorrowedPage] stays a small value type: three separate
+ * callback parameters made it a six-parameter constructor, and the interesting part of it
+ * is the page, not the plumbing.
+ */
+class BorrowedPageHooks(
+    val onWarm: () -> Unit,
+    val onAntibot: (Long) -> Unit,
+    val onClose: () -> Unit,
+)
 
 /** Thrown when no browser in the pool is available. */
 class BrowserPoolExhaustedException(

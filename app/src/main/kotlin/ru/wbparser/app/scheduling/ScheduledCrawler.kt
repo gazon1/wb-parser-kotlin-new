@@ -33,6 +33,9 @@ class ScheduledCrawler(
                 is CrawlRunner.RunResult.Success -> {
                     log.info("Crawl completed: ${result.pagesCrawled} pages, ${result.itemsSaved} items")
                 }
+                is CrawlRunner.RunResult.NothingDue -> {
+                    log.info("Nothing to crawl: no target is due yet (freshness window not reached)")
+                }
                 is CrawlRunner.RunResult.Failure -> {
                     log.error("Crawl failed: ${result.message}")
                 }
