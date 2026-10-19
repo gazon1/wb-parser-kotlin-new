@@ -20,7 +20,7 @@ verbose:
     ./gradlew :tests:test --info
 
 [group('tests')]
-[doc('Run full check: domain + infra + tests + app:compileKotlin')]
+[doc('Run full check: wbparser + tests + static gates (./check.sh)')]
 [working-directory(justfile_directory())]
 check:
     #!/bin/bash
