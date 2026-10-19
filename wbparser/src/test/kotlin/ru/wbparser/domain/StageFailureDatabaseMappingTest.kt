@@ -29,7 +29,7 @@ class StageFailureDatabaseMappingTest :
             val failure = StageFailure.Database("DB unavailable")
             val error = failure.toDomainError()
             error.shouldBeInstanceOf<NetworkError>()
-            (error as NetworkError).message shouldBe "DB unavailable"
+            error.message shouldBe "DB unavailable"
             error.isRetryable() shouldBe true
         }
 

@@ -18,7 +18,6 @@ import ru.wbparser.domain.pipeline.dropIfInvalid
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
 import java.util.UUID
-import kotlin.time.Duration
 
 /**
  * Builds a [Pipeline] for parsing a WB catalog.
@@ -44,7 +43,6 @@ import kotlin.time.Duration
  * @param stopAt    called after each page; return a [Stop] reason to halt, or null to continue.
  * @param clock     time source; defaults to [SystemClock].
  * @param idGen     ID generator for pagination tasks; defaults to [UUID.randomUUID].
- * @param delayFn   delay function for retry back-off; defaults to [kotlinx.coroutines.delay].
  */
 @Suppress("LongParameterList")
 fun buildParserPipeline(
@@ -57,7 +55,6 @@ fun buildParserPipeline(
     stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
     clock: Clock = SystemClock,
     idGen: () -> String = { UUID.randomUUID().toString() },
-    delayFn: suspend (Duration) -> Unit = { d -> kotlinx.coroutines.delay(d) },
 ): Pipeline =
     Pipeline(
         download =
@@ -104,5 +101,4 @@ fun buildParserPipeline(
         stopAt = stopAt,
         clock = clock,
         idGen = idGen,
-        delayFn = delayFn,
     )

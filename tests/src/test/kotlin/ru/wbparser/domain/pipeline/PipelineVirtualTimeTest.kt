@@ -4,7 +4,6 @@ import arrow.core.Either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.error.NetworkError
@@ -17,7 +16,6 @@ import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.infra.pipeline.buildParserPipeline
 import java.time.Instant
 import java.util.UUID
-import kotlin.time.Duration
 
 /**
  * Verifies that Pipeline.run() works correctly with runTest's virtual time.
@@ -27,7 +25,7 @@ import kotlin.time.Duration
  *
  * Key behaviors tested:
  * 1. Success path returns Either.Right
- * 2. Retry path calls delayFn and succeeds on second attempt
+ * 2. Retry path waits the back-off and succeeds on second attempt
  * 3. Exhausted retries return Either.Left
  */
 class PipelineVirtualTimeTest :
@@ -38,7 +36,6 @@ class PipelineVirtualTimeTest :
         val testTask = Crawling(id = "1", url = testUrl, depth = 0, targetId = targetId)
 
         fun makePipeline(
-            delayFn: suspend (Duration) -> Unit = { delay(it) },
             downloadBlock: suspend (Crawling) -> Either<NetworkError, Fetched> = {
                 Either.Right(Fetched(it, CrawlHttpStatusCode(200), "<html></html>", emptyMap(), 1))
             },
@@ -60,13 +57,12 @@ class PipelineVirtualTimeTest :
                 retryPolicy = RetryPolicy(maxAttempts = 3, baseDelayMs = 100),
                 clock = clock,
                 idGen = { "test-id" },
-                delayFn = delayFn,
             )
         }
 
         test("successful download returns Either.Right quickly") {
             runTest {
-                val pipeline = makePipeline(delayFn = { d -> delay(d) })
+                val pipeline = makePipeline()
                 val result = pipeline.run(listOf(testTask), concurrency = 1)
                 result.shouldBeInstanceOf<Either.Right<Pair<Crawled, List<Side>>>>()
                 result.value.first.pagesCrawled shouldBe 1
@@ -78,7 +74,6 @@ class PipelineVirtualTimeTest :
                 var attempt = 0
                 val pipeline =
                     makePipeline(
-                        delayFn = { d -> delay(d) },
                         downloadBlock = { _ ->
                             attempt++
                             if (attempt == 1) {
@@ -99,7 +94,6 @@ class PipelineVirtualTimeTest :
             runTest {
                 val pipeline =
                     makePipeline(
-                        delayFn = { d -> delay(d) },
                         downloadBlock = {
                             Either.Left(NetworkError("always fails", null, testUrl.toString()))
                         },

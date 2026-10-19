@@ -27,6 +27,9 @@ import ru.wbparser.domain.value.CrawlUrl
  */
 class WbItemMappingTest :
     FunSpec({
+        // One Json instance for the whole spec: creating a format per use is wasteful,
+        // and the compiler says so.
+        val catalogJson = Json { ignoreUnknownKeys = true }
 
         val basePageUrl = "https://www.wildberries.ru/catalog/"
 
@@ -133,7 +136,7 @@ class WbItemMappingTest :
                 {"products":[{"id":1,"name":"Раз","sizes":[{"price":{"basic":"10.00","product":"5.00"}}]}]}
                 """.trimIndent()
 
-            val page = Json { ignoreUnknownKeys = true }.decodeFromString<WbCatalogEnvelope>(json).toProductsPage()
+            val page = catalogJson.decodeFromString<WbCatalogEnvelope>(json).toProductsPage()
 
             page.items.size shouldBe 1
             page.items.first().name shouldBe "Раз"
@@ -145,7 +148,7 @@ class WbItemMappingTest :
                 {"data":{"products":[{"id":1,"name":"Из data"}]}}
                 """.trimIndent()
 
-            val page = Json { ignoreUnknownKeys = true }.decodeFromString<WbCatalogEnvelope>(json).toProductsPage()
+            val page = catalogJson.decodeFromString<WbCatalogEnvelope>(json).toProductsPage()
 
             page.items.map { it.name } shouldBe listOf("Из data")
         }
@@ -156,7 +159,7 @@ class WbItemMappingTest :
                 {"payload":{"products":[{"id":1,"name":"Из payload"}],"nextPage":"https://www.wildberries.ru/catalog/0/list.aspx?page=2"}}
                 """.trimIndent()
 
-            val page = Json { ignoreUnknownKeys = true }.decodeFromString<WbCatalogEnvelope>(json).toProductsPage()
+            val page = catalogJson.decodeFromString<WbCatalogEnvelope>(json).toProductsPage()
 
             page.items.map { it.name } shouldBe listOf("Из payload")
             page.nextPage shouldBe "https://www.wildberries.ru/catalog/0/list.aspx?page=2"

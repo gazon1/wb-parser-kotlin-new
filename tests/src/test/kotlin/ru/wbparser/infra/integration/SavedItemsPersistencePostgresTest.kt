@@ -196,7 +196,7 @@ class SavedItemsPersistencePostgresTest :
             db.ds.upsertSavedItems(listOf(db.item(targetId, productId = 5005L, name = "Часы")), targetId)
 
             val stored =
-                when (val raw = db.row("SELECT scraped_at FROM scraped_items WHERE product_id = 5005")!!["scraped_at"]) {
+                when (val raw = db.row("SELECT scraped_at FROM scraped_items WHERE product_id = 5005")["scraped_at"]) {
                     is java.sql.Timestamp -> raw.toInstant()
                     is OffsetDateTime -> raw.toInstant()
                     else -> error("unexpected TIMESTAMPTZ mapping: ${raw?.javaClass}")

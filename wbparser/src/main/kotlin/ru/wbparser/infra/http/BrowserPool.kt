@@ -58,7 +58,8 @@ internal class RealAdsPowerApi(
         val encodedId = java.net.URLEncoder.encode(profileId, "UTF-8")
         val conn =
             java.net
-                .URL("$baseUrl/api/v2/browser-profile/active?profile_id=$encodedId")
+                .URI("$baseUrl/api/v2/browser-profile/active?profile_id=$encodedId")
+                .toURL()
                 .openConnection() as java.net.HttpURLConnection
         conn.requestMethod = "GET"
         conn.setRequestProperty("Accept", "application/json")
@@ -87,7 +88,8 @@ internal class RealAdsPowerApi(
     override fun startProfileV2(profileId: String): String? {
         val conn =
             java.net
-                .URL("$baseUrl/api/v2/browser-profile/start")
+                .URI("$baseUrl/api/v2/browser-profile/start")
+                .toURL()
                 .openConnection() as java.net.HttpURLConnection
         conn.requestMethod = "POST"
         conn.setRequestProperty("Content-Type", "application/json")
@@ -608,7 +610,7 @@ internal fun probeChromeEndpoints(ports: List<Int>): List<String> =
     ports
         .mapNotNull { port ->
             runCatching {
-                val url = java.net.URL("http://localhost:$port/json/version")
+                val url = java.net.URI("http://localhost:$port/json/version").toURL()
                 with(url.openConnection()) {
                     @Suppress("UNCHECKED_CAST")
                     readTimeout = 1_000

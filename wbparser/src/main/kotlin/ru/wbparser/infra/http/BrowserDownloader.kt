@@ -1,7 +1,6 @@
 package ru.wbparser.infra.http
 
 import arrow.core.Either
-import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.microsoft.playwright.Page
 import kotlinx.coroutines.Dispatchers
@@ -229,8 +228,7 @@ open class BrowserDownloader(
                 response["body"] as? String
                     ?: return FetchResult.JsError("No body in fetch response")
 
-            @Suppress("UNCHECKED_CAST")
-            val products = (objectMapper.readTree(jsonBody).get("products") as? JsonNode)
+            val products = objectMapper.readTree(jsonBody).get("products")
             if (products == null || products.isEmpty) {
                 // Empty catalog — not an error, just no data
                 return FetchResult.Success(jsonBody)

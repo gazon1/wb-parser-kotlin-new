@@ -54,11 +54,11 @@ class StageTest :
 
                 val firstResult: Step<String, Int> = s1("hello")
                 firstResult.shouldBeInstanceOf<Step.Done<String, Int>>()
-                val output1 = (firstResult as Step.Done<String, Int>).output
+                val output1 = firstResult.output
 
                 val secondResult: Step<Int, Boolean> = s2(output1)
                 secondResult.shouldBeInstanceOf<Step.Done<Int, Boolean>>()
-                (secondResult as Step.Done<Int, Boolean>).output shouldBe true
+                secondResult.output shouldBe true
             }
         }
 
