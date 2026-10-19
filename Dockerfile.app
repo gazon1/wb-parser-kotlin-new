@@ -3,7 +3,7 @@
 # Two stages on purpose.
 #
 # The builder needs a JDK, not a JRE: Kotlin compilation invokes javac through
-# Gradle, and `eclipse-temurin:21-jre-alpine` has no compiler at all, so the
+# Gradle, and `eclipse-temurin:22-jre-alpine` has no compiler at all, so the
 # build died with "No Java compiler found, please ensure you are running Gradle
 # with a JDK" — which reads like a misconfiguration rather than a wrong base
 # image for the stage.
@@ -12,7 +12,7 @@
 # and not shipping a compiler is most of why it is smaller.
 
 # ── builder ──────────────────────────────────────────────────────────────────
-FROM eclipse-temurin:21-jdk-alpine AS builder
+FROM eclipse-temurin:22-jdk-alpine AS builder
 WORKDIR /app
 
 # Gradle writes outside /app and the build is not reproducible byte-for-byte
@@ -49,11 +49,11 @@ RUN --mount=type=cache,target=/root/.gradle \
     ./gradlew --no-daemon :app:bootJar -x test -x ktlintCheck -x detekt
 
 # ── runtime ──────────────────────────────────────────────────────────────────
-# NOTE: eclipse-temurin:21-jre (Debian) not Alpine — Playwright Java bundles a
+# NOTE: eclipse-temurin:22-jre (Debian) not Alpine — Playwright Java bundles a
 # Node.js binary linked against glibc/libstdc++, which Alpine's musl libc does
 # not provide. All deps below satisfy both the Node.js runtime and the Chromium
 # browser binary that Playwright downloads.
-FROM eclipse-temurin:21-jre AS runtime
+FROM eclipse-temurin:22-jre AS runtime
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

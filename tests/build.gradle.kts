@@ -5,7 +5,7 @@ plugins {
 }
 
 kotlin {
-    jvmToolchain(21)
+    // The JDK version is set once, in the root build's `subprojects { }` block.
     compilerOptions {
         allWarningsAsErrors.set(false)
         freeCompilerArgs.add("-Xjsr305=strict")

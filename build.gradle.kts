@@ -21,6 +21,23 @@ allprojects {
 }
 
 subprojects {
+    // The JDK version of the whole project, in one place.
+    //
+    // It used to be repeated as `jvmToolchain(21)` in each of the three module
+    // scripts, which meant three places to forget: a module could compile against
+    // a different JVM than its neighbours, and nothing would say so until a
+    // class-file version mismatch showed up at runtime. CI and the Docker image
+    // pinned their own copies on top of that.
+    //
+    // The toolchain provisions itself: the foojay resolver in settings.gradle.kts
+    // downloads a matching JDK when the machine does not have one, so a fresh
+    // clone builds without installing anything.
+    plugins.withId("org.jetbrains.kotlin.jvm") {
+        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension> {
+            jvmToolchain(22)
+        }
+    }
+
     // The linters were declared in the version catalogue but never applied, so the
     // `ktlintCheck` / `detekt` tasks the CI workflow invokes did not exist — the lint
     // job could only ever fail with "Task not found". Applying them here makes the

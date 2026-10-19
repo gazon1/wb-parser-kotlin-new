@@ -44,11 +44,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up JDK 21
+      - name: Set up JDK 22
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "22"
 
       - name: Configure Gradle
         run: |
@@ -93,11 +93,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up JDK 21
+      - name: Set up JDK 22
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "22"
 
       - name: Configure Gradle
         run: |
@@ -123,11 +123,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up JDK 21
+      - name: Set up JDK 22
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "22"
 
       # `ktlintCheck` and `detekt` are applied to every module by the root
       # build's `subprojects { }` block. Before that they were declared in the
@@ -158,11 +158,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up JDK 21
+      - name: Set up JDK 22
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "22"
 
       - name: Configure Gradle
         run: |
@@ -197,11 +197,11 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Set up JDK 21
+      - name: Set up JDK 22
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: "22"
 
       - name: Every Gradle task a gate names actually exists
         run: python3 scripts/check-gate-wiring.py --tasks-exist

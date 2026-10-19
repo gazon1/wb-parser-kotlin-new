@@ -73,6 +73,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** duplicate a dependency in a consumer to make it compile. If the consumer needs the _(from `2026-10-19-explicit-module-boundary`)
 - **Never** let a module's dependencies be the application's dependencies by accident. The _(from `2026-10-19-explicit-module-boundary`)
 - **Never** use `implementation` for a type that appears in a public signature. It belongs in _(from `2026-10-19-explicit-module-boundary`)
+- **Always** keep the CI and the Docker image on the same JDK version as the _(from `2026-10-19-jdk-toolchain`)
+- **Always** set the JDK through the toolchain in the root build's `subprojects { }` _(from `2026-10-19-jdk-toolchain`)
+- **Never** bump one surface alone. The version, `ci.yml`, `Dockerfile.app` and _(from `2026-10-19-jdk-toolchain`)
+- **Never** pin `org.gradle.java.home` in a committed `gradle.properties`. A path that _(from `2026-10-19-jdk-toolchain`)
 
 ## Per-tag
 
@@ -432,6 +436,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-application-startup-gate` — testing  gates  spring  database  flyway
 - `2026-10-19-dependency-analysis-plugin` — build  dependencies  gates  ci
 - `2026-10-19-explicit-module-boundary` — build  architecture  dependencies  spring
+- `2026-10-19-jdk-toolchain` — build  toolchain  ci  docker
 
 ## Active entries
 
@@ -466,3 +471,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-application-startup-gate` — The application must be startable, and something must prove it
 - `2026-10-19-dependency-analysis-plugin` — Dependency drift is a gate, not a reviewer's job
 - `2026-10-19-explicit-module-boundary` — The boundary between the crawler and the application is declared, not implied
+- `2026-10-19-jdk-toolchain` — The JDK version is one number in one place, and the toolchain provisions itself

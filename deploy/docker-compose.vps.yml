@@ -42,7 +42,7 @@ services:
     networks:
       - caddy_net
     healthcheck:
-      # wget, not curl: eclipse-temurin:21-jre-alpine ships no curl, so a
+      # wget, not curl: eclipse-temurin:22-jre-alpine ships no curl, so a
       # `curl -fsS …` healthcheck could never pass and the container would be
       # reported unhealthy forever. BusyBox wget exits non-zero on a 5xx and
       # zero on a 2xx, which is all this needs.

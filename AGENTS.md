@@ -28,6 +28,10 @@ just t                 # алиас
 # ./check.sh — 10 нумерованных шагов. Шаг [1] вызывает scripts/ci/static-gates.sh,
 # тот же реестр, что джоб `static` в ci.yml: один реестр, два вызывающих.
 
+# JDK: версия 22 задана один раз — в root build (`subprojects { }` → `jvmToolchain(22)`).
+# Toolchain сам скачивает нужный JDK (foojay-резолвер в settings.gradle.kts), ставить
+# ничего не нужно. CI и Docker-образы пинят 22 явно.
+
 # Модульные тесты
 just wbparser::test    # crawler module unit tests
 just tests::common     # integration tests
@@ -141,6 +145,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 12. **Расширять exclude-лист DAGP** — список принятых находок в `build.gradle.kts` может только уменьшаться. Новая запись — только с причиной в ADR. Запись удаляется в том же коммите, что чинит находку.
 13. **Запускать `fixDependencies` в CI** — он переписывает build-скрипты и не видит runtime-only зависимости. Только вручную, с ревью диффа.
 14. **Объявлять в `implementation` тип, который утекает в публичную сигнатуру** — такой тип должен быть в `api` модуля `wbparser`.
+15. **Пинить `org.gradle.java.home` в закоммиченном `gradle.properties`** — путь к JDK одного разработчика делает репозиторий несобираемым на любой другой машине. Версия задаётся toolchain'ом в root build, а локальный JDK подтягивается foojay-резолвером.
 
 ---
 
@@ -154,6 +159,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 | `docs/decisions/2026-10-19-dependency-analysis-plugin.md` | DAGP как гейт: baseline = exclude-лист, который только уменьшается; `fixDependencies` — только вручную |
 | `docs/decisions/2026-10-19-application-startup-gate.md` | Приложение обязано стартовать, и что-то обязано это доказывать (`@SpringBootTest` + Testcontainers) |
 | `docs/decisions/2026-10-19-explicit-module-boundary.md` | Граница `wbparser → app` объявлена (`java-library`, `api`/`runtimeOnly`), а не подразумевается |
+| `docs/decisions/2026-10-19-jdk-toolchain.md` | Версия JDK — одно число в одном месте; toolchain сам себя обеспечивает |
 
 ---
 
