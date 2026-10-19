@@ -1,0 +1,57 @@
+# Dependency updates.
+#
+# The dependency-analysis plugin tells us whether a dependency is *used*; it
+# cannot tell us whether the version is current — there is no outdated-dependency
+# task in it. This file covers that half, and it does it the same way the
+# repository handles everything else: it opens a pull request, and the gates
+# decide whether the change is good.
+#
+# The Gradle ecosystem reads both the build files and gradle/libs.versions.toml,
+# so a version bump arrives as a one-line change in the catalogue and is
+# reviewed like any other change.
+version: 2
+
+updates:
+  - package-ecosystem: gradle
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+    groups:
+      # Kotlin moves the compiler and the standard library together; splitting
+      # them across pull requests produces a build that cannot be tested.
+      kotlin:
+        patterns:
+          - "org.jetbrains.kotlin*"
+      spring:
+        patterns:
+          - "org.springframework*"
+      test:
+        patterns:
+          - "io.kotest*"
+          - "io.mockk*"
+          - "org.testcontainers*"
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+
+  # The base images of Dockerfile.app and Dockerfile.debug. The JDK inside them is
+  # pinned to the version the build asks for, so a bump of the base image is a
+  # pull request to review — not a surprise on the next build.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies

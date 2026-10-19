@@ -6,6 +6,8 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.longs.shouldBeGreaterThanOrEqual
 import io.kotest.matchers.longs.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
@@ -22,19 +24,21 @@ import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.ProductId
 import ru.wbparser.testing.fixedClockOf
 import java.util.UUID
-import kotlin.time.Duration
 
 /**
- * Tests for [Pipeline] purity — verifying [delayFn] and [idGen] are used correctly.
+ * Tests for [Pipeline] purity — verifying the back-off wait and [idGen] are used correctly.
  *
- * ## Why delayFn is injected rather than called directly
+ * ## How the back-off wait is observed
  *
- * [Pipeline] is designed to be testable without real coroutine delays.
- * By injecting [Pipeline.delayFn], tests can record back-off durations
- * deterministically without introducing non-deterministic timing dependencies.
+ * The pipeline waits with `kotlinx.coroutines.delay`, and `runTest` virtualises that
+ * wait: the test does not spend real time, and the virtual clock advances by exactly
+ * the duration the pipeline asked for. So the assertion is made on the virtual clock
+ * (`currentTime`) rather than on a recorded list of durations — the pipeline has one
+ * less seam, and the test still proves *which* back-off was waited.
  *
  * Cluster B (purity): B1 and B2 from the tech-debt plan.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class PipelinePurityTest :
     FunSpec({
 
@@ -95,7 +99,6 @@ class PipelinePurityTest :
             parse: Stage<Fetched, ParsedPage> = Stage { f -> Step.Done(parsedPage(f.task)) },
             stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
             idGen: () -> String = { "gen-id" },
-            delayFn: suspend (Duration) -> Unit = { },
             download: Stage<Crawling, Fetched> = Stage { task -> Step.Done(fetched(task)) },
             save: Stage<List<SavedItem>, Unit> = Stage { Step.Done(Unit) },
         ): Pipeline =
@@ -108,7 +111,6 @@ class PipelinePurityTest :
                 stopAt = stopAt,
                 clock = clock,
                 idGen = idGen,
-                delayFn = delayFn,
             )
 
         test("idGen is called for pagination task IDs") {
@@ -165,19 +167,18 @@ class PipelinePurityTest :
             }
         }
 
-        test("delayFn is called with correct duration on download retry") {
+        test("the download retry waits the back-off the signal asked for") {
             runTest {
-                val delays = mutableListOf<Duration>()
-                // Pass delayFn as the 4th positional argument (after parse, stopAt, idGen)
+                var downloadAttempts = 0
                 val pipeline =
                     makePipeline(
                         parse = Stage { f -> Step.Done(parsedPage(f.task)) },
                         stopAt = { _, _ -> null },
                         idGen = { "gen" },
-                        delayFn = { d -> delays.add(d) },
                         download =
                             Stage { task ->
-                                if (delays.isEmpty()) {
+                                downloadAttempts++
+                                if (downloadAttempts == 1) {
                                     Step.Retry(Retry.ServerError(attempt = 0, delayMs = 1_000L))
                                 } else {
                                     Step.Done(fetched(task))
@@ -185,27 +186,27 @@ class PipelinePurityTest :
                             },
                     )
 
+                val before = currentTime
                 val result = pipeline.run(listOf(crawling("http://example.com/page1", depth = 0)))
+                val waited = currentTime - before
 
                 result.isRight() shouldBe true
-                delays.size shouldBe 1
-                // Allow tolerance for test timing variance
-                delays.first().inWholeMilliseconds shouldBeGreaterThanOrEqual 900L
-                delays.first().inWholeMilliseconds shouldBeLessThanOrEqual 1200L
+                downloadAttempts shouldBe 2
+                // The signal asked for 1 000 ms; the policy adds up to 10 % of jitter.
+                waited shouldBeGreaterThanOrEqual 900L
+                waited shouldBeLessThanOrEqual 1200L
             }
         }
 
-        test("delayFn is called on save retry") {
+        test("the save retry waits the back-off the signal asked for") {
             runTest {
-                val delays = mutableListOf<Duration>()
                 val attemptCount = intArrayOf(0)
-                // 1 page → 1 save call → retry (delay) → 2nd save → success
+                // 1 page → 1 save call → retry (wait) → 2nd save → success
                 val pipeline =
                     makePipeline(
                         parse = Stage { f -> Step.Done(parsedPage(f.task, items = listOf(parsedItem()))) },
                         stopAt = { _, _ -> null },
                         idGen = { "gen" },
-                        delayFn = { d -> delays.add(d) },
                         save =
                             Stage {
                                 attemptCount[0]++
@@ -217,12 +218,15 @@ class PipelinePurityTest :
                             },
                     )
 
+                val before = currentTime
                 val result = pipeline.run(listOf(crawling("http://example.com/page1", depth = 0)))
+                val waited = currentTime - before
 
                 result.isRight() shouldBe true
-                delays.size shouldBe 1
-                delays.first().inWholeMilliseconds shouldBeGreaterThanOrEqual 400L
-                delays.first().inWholeMilliseconds shouldBeLessThanOrEqual 700L
+                attemptCount[0] shouldBe 2
+                // The signal asked for 500 ms; the policy adds up to 10 % of jitter.
+                waited shouldBeGreaterThanOrEqual 400L
+                waited shouldBeLessThanOrEqual 700L
             }
         }
 
@@ -235,7 +239,7 @@ class PipelinePurityTest :
             }
         }
 
-        test("delayFn defaults to kotlinx.coroutines.delay when not provided") {
+        test("a retry signal without an explicit delay still waits the policy back-off") {
             runTest {
                 val failOnce = intArrayOf(0)
                 val pipeline =
@@ -243,18 +247,24 @@ class PipelinePurityTest :
                         parse = Stage { f -> Step.Done(parsedPage(f.task)) },
                         stopAt = { _, _ -> null },
                         idGen = { "gen" },
-                        // delayFn not set — uses the default kotlinx.coroutines.delay
                         download =
                             Stage { task ->
                                 if (failOnce[0]++ == 0) {
-                                    Step.Retry(Retry.ServerError(attempt = 0, delayMs = 50L))
+                                    // No delayMs — the policy decides, and the pipeline waits.
+                                    Step.Retry(Retry.ServerError(attempt = 0))
                                 } else {
                                     Step.Done(fetched(task))
                                 }
                             },
                     )
+                val before = currentTime
                 val result = pipeline.run(listOf(crawling("http://example.com/page1", depth = 0)))
+                val waited = currentTime - before
+
                 result.isRight() shouldBe true
+                // The default policy's base delay is 1 000 ms, plus up to 10 % of jitter.
+                waited shouldBeGreaterThanOrEqual 900L
+                waited shouldBeLessThanOrEqual 1200L
             }
         }
     })

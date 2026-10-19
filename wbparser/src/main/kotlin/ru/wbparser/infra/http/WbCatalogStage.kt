@@ -74,12 +74,12 @@ class WbCatalogStage(
                     val failure: StageFailure =
                         if (error.isAntibot) {
                             StageFailure.Antibot(
-                                message = error.message ?: "Antibot blocked",
+                                message = error.message,
                                 url = task.url.toString(),
                             )
                         } else {
                             StageFailure.Network(
-                                message = error.message ?: "download failed",
+                                message = error.message,
                                 cause = error.cause,
                                 url = task.url.toString(),
                             )

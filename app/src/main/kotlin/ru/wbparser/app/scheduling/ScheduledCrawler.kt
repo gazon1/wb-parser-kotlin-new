@@ -28,7 +28,7 @@ class ScheduledCrawler(
         try {
             when (val result = crawler.run()) {
                 is CrawlRunner.RunResult.AlreadyRunning -> {
-                    log.info("Crawl already running, skipping")
+                    log.info("Crawl not started: {}", result.reason)
                 }
                 is CrawlRunner.RunResult.Success -> {
                     log.info("Crawl completed: ${result.pagesCrawled} pages, ${result.itemsSaved} items")

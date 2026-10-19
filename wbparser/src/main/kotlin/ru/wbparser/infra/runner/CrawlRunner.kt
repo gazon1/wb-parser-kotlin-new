@@ -11,12 +11,17 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.insert
+import org.jetbrains.exposed.sql.transactions.transaction
+import org.jetbrains.exposed.sql.update
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.coroutines.loggingBackgroundFailureHandler
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.BusinessRules
+import ru.wbparser.domain.pipeline.CrawlJobsTable
 import ru.wbparser.domain.pipeline.Retry
 import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Step
@@ -31,6 +36,7 @@ import ru.wbparser.infra.advisory.LockUnavailable
 import ru.wbparser.infra.advisory.PostgresAdvisoryLock
 import ru.wbparser.infra.advisory.withLock
 import ru.wbparser.infra.db.DatabaseHandle
+import ru.wbparser.infra.db.exposedOnce
 import ru.wbparser.infra.db.repositories.fetchActiveTargets
 import ru.wbparser.infra.db.repositories.upsertSavedItems
 import ru.wbparser.infra.pipeline.PipelineRunner
@@ -40,10 +46,10 @@ import ru.wbparser.infra.scheduler.Freshness
 import ru.wbparser.infra.scheduler.FreshnessPolicy
 import ru.wbparser.infra.scheduler.markCrawled
 import ru.wbparser.infra.scheduler.targetsDue
-import java.sql.Timestamp
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.time.Duration
 import ru.wbparser.domain.pipeline.Pipeline as DomainPipeline
 
 /**
@@ -94,11 +100,6 @@ class CrawlRunner(
      * When null, a [NoOpMetricInterpreter] is used instead.
      */
     private val meterRegistry: MeterRegistry? = null,
-    /**
-     * Delay function for retry back-off inside [DomainPipeline].
-     * Defaults to [kotlinx.coroutines.delay]; override in tests to avoid actual sleeping.
-     */
-    private val delayFn: suspend (Duration) -> Unit = { d -> kotlinx.coroutines.delay(d) },
 ) {
     /**
      * Context for a crawl job — passed to [onCrawlStart] and [onCrawlEnd] hooks.
@@ -128,7 +129,10 @@ class CrawlRunner(
         withContext(Dispatchers.IO) {
             val lockResult: Either<LockUnavailable, RunResult> = advisoryLock.withLock { runUnsafe() }
             lockResult.fold(
-                ifLeft = { RunResult.AlreadyRunning },
+                // The reason travels with the result: "another instance holds the lock"
+                // and "waited for the lock and gave up" are different situations, and
+                // the operator sees only this.
+                ifLeft = { RunResult.AlreadyRunning(it.message) },
                 ifRight = { it },
             )
         }
@@ -305,7 +309,6 @@ class CrawlRunner(
                 },
                 clock = clock,
                 idGen = startTaskIdGen,
-                delayFn = delayFn,
             )
 
         val registry =
@@ -373,22 +376,16 @@ class CrawlRunner(
 
     private fun openJob(targetId: UUID): UUID {
         val id = UUID.randomUUID()
-        val now = Timestamp.from(java.time.Instant.now())
-        db.ds.connection.use { conn ->
-            conn
-                .prepareStatement(
-                    """
-                    INSERT INTO crawl_jobs (id, target_id, status, started_at, created_at)
-                    VALUES (?, ?, ?, ?, ?)
-                    """.trimIndent(),
-                ).use { ps ->
-                    ps.setObject(1, id)
-                    ps.setObject(2, targetId)
-                    ps.setString(3, JobStatus.Running.name)
-                    ps.setTimestamp(4, now)
-                    ps.setTimestamp(5, now)
-                    ps.executeUpdate()
-                }
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
+        db.ds.exposedOnce()
+        transaction {
+            CrawlJobsTable.insert {
+                it[CrawlJobsTable.id] = id
+                it[CrawlJobsTable.targetId] = targetId
+                it[CrawlJobsTable.status] = JobStatus.Running.name
+                it[CrawlJobsTable.startedAt] = now
+                it[CrawlJobsTable.createdAt] = now
+            }
         }
         return id
     }
@@ -407,23 +404,17 @@ class CrawlRunner(
         itemsSaved: Int = 0,
         errorMessage: String? = null,
     ) {
-        db.ds.connection.use { conn ->
-            conn
-                .prepareStatement(
-                    """
-                    UPDATE crawl_jobs
-                    SET status = ?, completed_at = ?, pages_crawled = ?, items_saved = ?, error_message = ?
-                    WHERE id = ?
-                    """.trimIndent(),
-                ).use { ps ->
-                    ps.setString(1, status.name)
-                    ps.setTimestamp(2, Timestamp.from(java.time.Instant.now()))
-                    ps.setInt(3, pagesCrawled)
-                    ps.setInt(4, itemsSaved)
-                    ps.setString(5, errorMessage)
-                    ps.setObject(6, id)
-                    ps.executeUpdate()
-                }
+        db.ds.exposedOnce()
+        transaction {
+            CrawlJobsTable.update({
+                CrawlJobsTable.id eq id
+            }) {
+                it[CrawlJobsTable.status] = status.name
+                it[CrawlJobsTable.completedAt] = OffsetDateTime.now(ZoneOffset.UTC)
+                it[CrawlJobsTable.pagesCrawled] = pagesCrawled
+                it[CrawlJobsTable.itemsSaved] = itemsSaved
+                it[CrawlJobsTable.errorMessage] = errorMessage
+            }
         }
     }
 
@@ -441,7 +432,15 @@ class CrawlRunner(
             fun exitCode(): Int = EXIT_CODE_FAILURE
         }
 
-        data object AlreadyRunning : RunResult() {
+        /**
+         * The crawl was not started: the advisory lock was not taken.
+         *
+         * [reason] says why — another instance holds the lock, or the wait for it
+         * timed out.
+         */
+        data class AlreadyRunning(
+            val reason: String,
+        ) : RunResult() {
             fun exitCode(): Int = EXIT_CODE_LOCKED
         }
     }

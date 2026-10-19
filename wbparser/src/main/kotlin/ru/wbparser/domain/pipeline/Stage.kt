@@ -150,7 +150,7 @@ class StageBuilder<I> {
     fun retry(signal: ru.wbparser.domain.pipeline.Retry): Step<I, Nothing> = Step.Retry(signal)
 
     /**
-     * Returns `Step.Done(output)` if [output] is non-null, or [done] if null.
+     * Returns `Step.Done(output)` — with a null output when [output] is null.
      *
      * Useful for filter-like stages that may drop an item:
      * ```kotlin
@@ -158,11 +158,17 @@ class StageBuilder<I> {
      *     doneIf(item.takeIf { it.inStock })
      * }
      * ```
+     *
+     * The output type of such a stage is nullable, and that is the point: a dropped
+     * item is a `Done` carrying null, which is what the pipeline's filter stage reads
+     * as "dropped". The previous implementation cast a `Done(Unit)` to the stage's
+     * output type, which would have handed the consumer a `Unit` where it expected
+     * the item — a ClassCastException waiting for the first dropped item.
      */
     fun <O : Any> doneIf(
         output: O?,
         sides: List<Side> = emptyList(),
-    ): Step<I, O> = output?.let { Step.Done(it, sides) } ?: done() as Step<I, O>
+    ): Step<I, O?> = Step.Done(output, sides)
 }
 
 /**

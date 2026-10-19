@@ -40,6 +40,8 @@ web-frontend/.next/
 # Kotlin
 *.kt.bak
 *.kts.bak
+# The Kotlin Gradle plugin's per-project session directory — build state, not source.
+.kotlin/
 
 # Test output
 hs_err_pid*.log

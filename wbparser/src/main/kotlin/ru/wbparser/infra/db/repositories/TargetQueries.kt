@@ -35,8 +35,8 @@ fun DataSource.fetchActiveTargets(): List<Target> {
                 maxDepth = row[CrawlTargetsTable.maxDepth],
                 isActive = row[CrawlTargetsTable.isActive],
                 priority = 0,
-                // updated_at is NOT NULL DEFAULT now() in V1 — stored and read as Instant.
-                lastScheduledAt = row[CrawlTargetsTable.updatedAt],
+                // updated_at is TIMESTAMPTZ — read as an instant, not as a wall time.
+                lastScheduledAt = row[CrawlTargetsTable.updatedAt].toInstant(),
                 nextScheduledAt = null,
                 wbCatalogId = row[CrawlTargetsTable.wbCatalogId],
             )

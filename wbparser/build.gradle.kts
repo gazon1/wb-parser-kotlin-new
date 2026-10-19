@@ -1,106 +1,119 @@
 plugins {
-    kotlin("jvm") version "2.4.21"
-    kotlin("plugin.serialization") version "2.4.21"
-    id("org.jetbrains.kotlinx.kover") version "0.9.11"
+    // No `version`: the Kotlin plugins live on the settings classloader (see
+    // settings.gradle.kts) — DAGP needs them there to analyze Kotlin modules.
+    id("java-library")
+    id("org.jetbrains.kotlin.jvm")
+    id("org.jetbrains.kotlin.plugin.serialization")
+    id("org.jetbrains.kotlinx.kover")
 }
 
 kotlin {
-    jvmToolchain(21)
+    // The JDK version is set once, in the root build's `subprojects { }` block.
     compilerOptions {
-        allWarningsAsErrors.set(false)
+        allWarningsAsErrors.set(true)
         freeCompilerArgs.add("-Xjsr305=strict")
     }
 }
 
-val coroutinesVersion = "1.10.2"
-val ktorVersion = "2.3.13"
-val exposedVersion = "0.55.0"
-val resilience4jVersion = "2.2.0"
-val shedlockVersion = "5.14.0"
-
+// ==============================================================================
+// The module boundary
+// ==============================================================================
+// `api` means "a consumer's code has to name this type to call ours", `implementation`
+// means "we use it, our consumers do not". Getting that wrong is not a style
+// question: with `implementation` everywhere, `app` and `tests` could not see the
+// crawler's types and each re-declared exposed-core, postgresql, ktor, arrow-core
+// and kotlinx-serialization-json by hand — and `flyway-core` reached the runtime
+// classpath through this module by accident, although the migrations and the Flyway
+// configuration live in `app`.
+//
+// The dependency-analysis plugin decides what is `api`: it looks at the bytecode and
+// reports the types that appear in this module's public signatures. Everything it
+// lists as "should be modified" is an `api` dependency below.
 dependencies {
     // Kotlin
-    implementation(kotlin("stdlib"))
-    implementation(kotlin("reflect"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:$coroutinesVersion")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    implementation(libs.kotlin.stdlib)
+    implementation(libs.kotlin.reflect)
+    api(libs.kotlin.coroutines.core)
+    runtimeOnly(libs.kotlin.coroutines.reactor)
+    api(libs.kotlin.serialization.core)
+    // `api`: the table definitions expose `JsonElement` in a public property, so the
+    // type is part of the module's API and has to be on the consumer's compile classpath.
+    api(libs.kotlin.serialization.json)
 
     // Arrow
-    implementation("io.arrow-kt:arrow-core:2.2.3")
+    api(libs.arrow.core)
+    implementation(libs.arrow.exception.utils)
 
     // Ktor
-    implementation("io.ktor:ktor-client-core:$ktorVersion")
-    implementation("io.ktor:ktor-client-cio:$ktorVersion")
-    implementation("io.ktor:ktor-client-content-negotiation:$ktorVersion")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:$ktorVersion")
-    implementation("io.ktor:ktor-client-logging:$ktorVersion")
-    implementation("io.ktor:ktor-client-mock:$ktorVersion")
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.logging)
+    implementation(libs.ktor.http)
+    implementation(libs.ktor.serialization)
 
-    // Exposed. Every module below is `implementation`, not `compileOnly`: a
-    // compileOnly dependency is absent from the runtime classpath, and these
+    // Exposed. `exposed-core` is `api`: the public API hands out Exposed types
+    // (DatabaseHandle, ExposedTables). The rest are `implementation` or
+    // `runtimeOnly` — they are loaded, but no consumer names them.
+    //
+    // Every module below is `implementation` or `runtimeOnly`, never `compileOnly`:
+    // a compileOnly dependency is absent from the runtime classpath, and these
     // classes are loaded when the crawler first touches a table.
-    implementation("org.jetbrains.exposed:exposed-core:$exposedVersion")
-    implementation("org.jetbrains.exposed:exposed-dao:$exposedVersion")
-    implementation("org.jetbrains.exposed:exposed-jdbc:$exposedVersion")
-    implementation("org.jetbrains.exposed:exposed-json:$exposedVersion")
+    api(libs.exposed.core)
+    runtimeOnly(libs.exposed.dao)
+    runtimeOnly(libs.exposed.jdbc)
+    implementation(libs.exposed.json)
     // `datetime()` in ExposedTables.kt resolves to JavaDateColumnTypeKt in this
     // module. Declared compileOnly, the whole suite passed and the crawler died
     // on its first query with NoClassDefFoundError — the tests module added it
     // back as a test dependency, so only a real run against a real database ever
     // saw the missing jar. A schema column type is not compile-time metadata; it
     // is called on every read and write.
-    implementation("org.jetbrains.exposed:exposed-java-time:$exposedVersion")
+    implementation(libs.exposed.java.time)
 
     // DB
-    implementation("org.postgresql:postgresql:42.7.4")
-    implementation("com.zaxxer:HikariCP:5.1.0")
-    implementation("org.flywaydb:flyway-core:11.20.3")
-    implementation("org.flywaydb:flyway-database-postgresql:11.20.3")
+    // The driver is loaded by name at runtime; no source file names it, so it is
+    // `runtimeOnly` here and `testImplementation` for the suite below, which
+    // builds a DataSource against the Testcontainers instance.
+    runtimeOnly(libs.postgresql)
+    implementation(libs.hikaricp)
 
     // Resilience
-    implementation("io.github.resilience4j:resilience4j-kotlin:$resilience4jVersion")
-    implementation("io.github.resilience4j:resilience4j-retry:$resilience4jVersion")
-    implementation("io.github.resilience4j:resilience4j-circuitbreaker:$resilience4jVersion")
-
-    // HTML parsing
-    implementation("org.jsoup:jsoup:1.18.3")
-    implementation("com.github.crawler-commons:crawler-commons:1.6")
-
-    // Caching
-    implementation("com.github.ben-manes.caffeine:caffeine:3.2.0")
+    implementation(libs.resilience4j.kotlin)
+    implementation(libs.resilience4j.core)
+    api(libs.resilience4j.circuitbreaker)
 
     // Browser automation (Playwright — requires native binaries)
-    implementation("com.microsoft.playwright:playwright:1.49.0") {
+    api(libs.playwright) {
         exclude(group = "org.slf4j")
     }
 
     // Logging
-    implementation("ch.qos.logback:logback-classic:1.5.14")
-    implementation("io.github.microutils:kotlin-logging:3.0.5")
+    // The binding is a runtime concern: no source file names it, and the
+    // application gets its own through the Spring Boot starter.
+    runtimeOnly(libs.logback.classic)
+    implementation(libs.kotlin.logging)
+    implementation(libs.slf4j.api)
 
-    // YAML config
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.2")
+    // JSON
+    // The code uses ObjectMapper and JsonNode directly, so the artifact is
+    // declared — it used to arrive transitively, through the YAML module.
+    api(libs.jackson.databind)
 
-    // ShedLock
-    implementation("net.javacrumbs.shedlock:shedlock-spring:$shedlockVersion")
-    implementation("net.javacrumbs.shedlock:shedlock-provider-jdbc-template:$shedlockVersion")
-
-    // CSV
-    implementation("org.apache.commons:commons-csv:1.12.0")
-
-    // Metrics — Micrometer (already in app/ via spring-boot-starter-actuator;
-    // declared here so wbparser can record metrics without a Spring dependency).
-    implementation("io.micrometer:micrometer-core:1.15.0")
+    // Metrics — Micrometer. `api`: the crawler hands MeterRegistry to its
+    // callers, and the application records through it.
+    api(libs.micrometer.core)
 
     // Test
-    testImplementation("io.kotest:kotest-runner-junit5:6.2.4")
-    testImplementation("io.kotest:kotest-assertions-core:6.2.4")
-    testImplementation("io.kotest:kotest-property:6.2.4")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesVersion")
-    testImplementation("io.mockk:mockk:1.14.11")
-    testImplementation("org.testcontainers:postgresql:1.20.4")
-    testImplementation("org.testcontainers:junit-jupiter:1.20.4")
+    testImplementation(libs.kotest.runner.junit5)
+    testImplementation(libs.kotest.assertions.core)
+    testImplementation(libs.kotlin.coroutines.test)
+    testImplementation(libs.mockk)
+    // The suite builds a DataSource against the Testcontainers instance, so it
+    // needs the driver at compile time.
+    testImplementation(libs.postgresql)
+    testRuntimeOnly(libs.testcontainers.postgresql)
 }
 
 tasks.test {
@@ -108,14 +121,13 @@ tasks.test {
 }
 
 kover {
+    // The report only. The floor lives in config/gates/coverage-floor.txt and is
+    // enforced by scripts/check-coverage.py, so there is one number in one place:
+    // the build script used to carry `minBound(45)` while the file said 44, and
+    // the build enforced a floor the repository did not record.
     reports {
         total {
             xml { onCheck = true }
-        }
-        verify {
-            rule {
-                minBound(45)
-            }
         }
     }
 }

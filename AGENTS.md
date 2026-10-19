@@ -8,11 +8,15 @@
 
 ```
 wb-parser-kotlin/
-├── domain/          — чистый Kotlin: Stage/Side/Interpreter, модели, Repo interfaces
-├── infrastructure/  — Ktor client + Exposed + Flyway migrations
-├── app/              — Spring Boot 3.4.1, REST-контроллеры, Scheduler
-└── tests/           — integration tests (Testcontainers, реальная БД)
+├── wbparser/       — crawler module (java-library): Stage/Side/Interpreter, модели,
+│                     Repo interfaces, Ktor client, Exposed. Чистая логика без Spring.
+├── app/            — Spring Boot 3.4.1: REST-контроллеры, Scheduler, Flyway migrations
+└── tests/          — integration tests (Testcontainers, реальная БД) + гейт старта приложения
 ```
+
+Граница `wbparser → app` явная: `wbparser` — `java-library` (`api` — только то, что
+действительно в типе публичного API модуля), `app` — потребитель. Flyway-миграции
+живут в `app`, `app` зависит от `wbparser`, обратной зависимости нет.
 
 ## Gradle команды / Gradle Commands
 
@@ -21,13 +25,20 @@ wb-parser-kotlin/
 just tests::check      # или: ./check.sh — единственная точка входа
 just t                 # алиас
 
-# ./check.sh — 8 нумерованных шагов. Шаг [1] вызывает scripts/ci/static-gates.sh,
+# ./check.sh — 10 нумерованных шагов. Шаг [1] вызывает scripts/ci/static-gates.sh,
 # тот же реестр, что джоб `static` в ci.yml: один реестр, два вызывающих.
 
+# JDK: версия 22 задана один раз — в root build (`subprojects { }` → `jvmToolchain(22)`).
+# Toolchain сам скачивает нужный JDK (foojay-резолвер в settings.gradle.kts), ставить
+# ничего не нужно. CI и Docker-образы пинят 22 явно.
+
 # Модульные тесты
-just domain::test      # domain module unit tests
-just infra::test       # infrastructure module unit tests
+just wbparser::test    # crawler module unit tests
 just tests::common     # integration tests
+
+# Зависимости
+just deps::health      # DAGP: падает на новых находках
+just deps::report      # текстовый отчёт DAGP
 
 # Сборка / Build
 just app::build bootJar    # собрать JAR
@@ -44,7 +55,8 @@ just deploy <tag>          # задеплоить уже запушенный т
 just deploy::build         # one-shot: build + push image (минуя CI)
 just deploy::dry-run <tag> # ansible --check --diff
 
-# Just aliases: b=build, br=run, td=domain::test, ti=infra::test, t=tests::check, d=deploy
+# Just aliases: b=build, br=run, td=wbparser::test, ti=wbparser::test-verbose,
+#               ld=wbparser::lint, li=wbparser::lint, t=tests::check, d=deploy
 ```
 
 ## 🤖 Decision log workflow
@@ -125,11 +137,15 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 4. **Игнорировать `Side.Log(ERROR)`** — в save-стадии `else -> {}` молчаливо проглатывает ошибки;StageFailure — тоже logging
 5. **`runCatching` без обработки** — ошибка должна либо попасть в `StageFailure`, либо быть залогирована через `LogInterpreter`
 6. **Мокки / Mockito** — используй Fake* классы (fake over mock convention)
-7. **Чистый код в `infrastructure/`** — Exposed queries, Ktor client, Flyway migrations; domain-only логика должна жить в `domain/`
+7. **Чистый код в `wbparser/`** — Ktor client, Exposed-запросы и доменная логика живут в `wbparser/`; Spring-специфичное (REST, Scheduler, Flyway-миграции) — в `app/`. Модуль `wbparser` — `java-library` и не должен тянуть Spring Boot в `api`.
 8. **CHANGELOG.md** — не создавай; git log + PR-серии в commit messages покрывают
 9. **Save-стадия без retry-loop** — DB/HTTP/внешние ресурсы должны использовать retry-loop (per PR 11, G10). Транзитный DB-блип не должен ронять весь crawl.
 10. **`compileOnly` для класса, который грузится в рантайме** — `compileOnly` означает «нет в рантайм-класспате». `exposed-java-time` был объявлен так, при этом `tests/` добавлял его обратно как test-зависимость: все тесты зелёные, а прод падает на первом же запросе к таблице. Тип колонки в схеме — не compile-time метаданные, его вызывают при каждом чтении и записи. **Always** проверять рантайм-класспат сборкой `bootJar`, а не только тестами.
 11. **`exitProcess()` в `main()` после `SpringApplication.run()`** — `run()` для веб-сервера возвращается почти сразу, и `exitProcess` убивал JVM через ~70 мс после «Started». В серверном режиме `main()` просто возвращается: Tomcat держит процесс на non-daemon-потоках. Выходить явно нужно только там, где веб-сервера нет (`web-application-type: none`, one-shot-профиль).
+12. **Расширять exclude-лист DAGP** — список принятых находок в `build.gradle.kts` может только уменьшаться **по существу**: запись, описывающая упаковку зависимости (starter — pom без классов; агрегатор — неразделимая на части), неустранима никаким изменением в этом репозитории и остаётся; запись, скрывающая находку, которую закрыла бы строка кода, запрещена. Новая запись — только с причиной в ADR. Запись удаляется в том же коммите, что чинит находку.
+13. **Запускать `fixDependencies` в CI** — он переписывает build-скрипты и не видит runtime-only зависимости. Только вручную, с ревью диффа.
+14. **Объявлять в `implementation` тип, который утекает в публичную сигнатуру** — такой тип должен быть в `api` модуля `wbparser`.
+15. **Пинить `org.gradle.java.home` в закоммиченном `gradle.properties`** — путь к JDK одного разработчика делает репозиторий несобираемым на любой другой машине. Версия задаётся toolchain'ом в root build, а локальный JDK подтягивается foojay-резолвером.
 
 ---
 
@@ -140,6 +156,10 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 | `docs/decisions/2026-09-08-functional-pipeline-refactor.md` | Stage/Side/Interpreter модель; **Always** регистрировать все интерпретаторы |
 | `docs/decisions/2026-09-08-domain-coverage-pr4.md` | Domain unit tests; **MUST** тестировать `domain/pipeline/**` |
 | `docs/decisions/2026-09-08-conventional-commits-and-cleanup-prs.md` | Commit conventions: `feat:`, `fix:`, `refactor:`, `chore:`, `test:`, `docs:` + `PR N` |
+| `docs/decisions/2026-10-19-dependency-analysis-plugin.md` | DAGP как гейт: baseline = exclude-лист, уменьшающийся по существу (структурные записи неустранимы); `fixDependencies` — только вручную |
+| `docs/decisions/2026-10-19-application-startup-gate.md` | Приложение обязано стартовать, и что-то обязано это доказывать (`@SpringBootTest` + Testcontainers) |
+| `docs/decisions/2026-10-19-explicit-module-boundary.md` | Граница `wbparser → app` объявлена (`java-library`, `api`/`runtimeOnly`), а не подразумевается |
+| `docs/decisions/2026-10-19-jdk-toolchain.md` | Версия JDK — одно число в одном месте; toolchain сам себя обеспечивает |
 
 ---
 

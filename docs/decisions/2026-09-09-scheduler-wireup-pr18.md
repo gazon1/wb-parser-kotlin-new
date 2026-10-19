@@ -47,7 +47,9 @@ Binds to `crawler.worker.enabled` in YAML, enabling `@ConditionalOnProperty`.
 - **Positive**: `crawler.schedule.cron` from YAML controls the schedule
 - **Positive**: `Spider.concurrency` now reaches `CrawlRunner` via `CrawlerConfig`
 - **Breaking**: `installCrawler` extension function is deleted — any external callers would break (there were none)
-- **Note**: `crawler.lock.timeout-minutes` is still not read — future work if multi-instance deployment is needed (ShedLock)
+- **Note**: `crawler.lock.timeout-minutes` was not read at the time — it has since been wired to
+  `PostgresAdvisoryLock`, the crawler's own advisory lock, so multi-instance deployments do
+  not need ShedLock. The ShedLock dependency was removed as unused.
 
 ## Alternatives Considered
 

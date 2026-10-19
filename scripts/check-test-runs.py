@@ -61,6 +61,7 @@ FLOOR_FILE = ROOT / "config" / "gates" / "test-runs-floor.txt"
 
 #: module → where Gradle writes that module's JUnit XML.
 RESULT_DIRS = {
+    "app": "app/build/test-results/test",
     "wbparser": "wbparser/build/test-results/test",
     "tests": "tests/build/test-results/test",
 }
@@ -178,17 +179,21 @@ def main() -> int:
         directory = ROOT / relative
         floor = floors.get(module)
 
-        if floor is None:
-            problems.append(f"{module}: no floor recorded in {FLOOR_FILE.relative_to(ROOT)}")
-            continue
-
-        # A floor of 0 is a real statement: this module currently has no tests.
-        # Gradle writes no results directory at all in that case, and treating
-        # the absence as an error would make the gate impossible to satisfy
-        # while the honest record is "this module is untested". So the absence is
-        # accepted *only* against a floor of 0, and it is reported as the gap it
-        # is rather than passed over quietly.
         if not directory.is_dir():
+            if floor is None:
+                # A module with neither results nor a recorded floor: there is nothing to
+                # measure. In update mode it is left out; in compare mode it is a finding,
+                # because the floor file has to account for every module — including the
+                # ones that have no tests, which record a floor of 0.
+                if not args.update:
+                    problems.append(f"{module}: no floor recorded in {FLOOR_FILE.relative_to(ROOT)}")
+                continue
+            # A floor of 0 is a real statement: this module currently has no tests.
+            # Gradle writes no results directory at all in that case, and treating
+            # the absence as an error would make the gate impossible to satisfy
+            # while the honest record is "this module is untested". So the absence is
+            # accepted *only* against a floor of 0, and it is reported as the gap it
+            # is rather than passed over quietly.
             if floor == 0:
                 print(f"  ⚠️  {module}: no tests (floor 0) — see ADR 2026-09-09-test-module-boundary")
                 measured[module] = 0
@@ -217,6 +222,13 @@ def main() -> int:
             problems.append(f"{module}: results are stale")
 
         measured[module] = count
+        if floor is None:
+            # A module that has results but no floor yet — one that gained its first
+            # tests. The update records what it actually ran; the comparison has
+            # nothing to compare against and says so.
+            if not args.update:
+                problems.append(f"{module}: no floor recorded in {FLOOR_FILE.relative_to(ROOT)}")
+            continue
         if count < floor:
             problems.append(
                 f"{module}: ran {count} tests, floor is {floor} ({files} result files)"
@@ -225,6 +237,20 @@ def main() -> int:
             print(f"  ·  {module}: {count} tests (floor {floor}, {files} files)")
 
     if args.update:
+        if problems:
+            # Rewriting the floor from a partial run is how a floor silently degrades:
+            # a suite that ran three classes would record three classes' worth of
+            # tests and the next full run would pass against it. The floor is only
+            # rewritten when every module's results are there.
+            print("", file=sys.stderr)
+            for problem in problems:
+                print(f"❌ {problem}", file=sys.stderr)
+            print(
+                "\nThe floor file was not rewritten: the results are incomplete. "
+                "Run the full test suite first, then update.",
+                file=sys.stderr,
+            )
+            return 1
         lines = [
             "# Executed-test floors, one per module: `<module> <count>`.",
             "# Managed by scripts/check-test-runs.py --update. Raise it in the same commit",

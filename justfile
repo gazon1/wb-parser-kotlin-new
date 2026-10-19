@@ -6,20 +6,21 @@
 # Module recipes: just <module>::<recipe>
 #   just app::build bootJar
 #   just app::run
-#   just domain::test
-#   just infra::test
+#   just wbparser::test
+#   just wbparser::lint
 #   just tests::check
+#   just deps::health
 #   just scripts::refresh-decisions
 # =============================================================================
 
 mod config   '.just/config'
 mod app      '.just/app'
-mod domain   '.just/domain'
-mod infra    '.just/infra'
+mod wbparser '.just/wbparser'
 mod tests    '.just/tests'
 mod scripts  '.just/scripts'
 mod deploy   '.just/deploy'
 mod catalog  '.just/catalog'
+mod deps     '.just/deps'
 
 set shell := ["bash", "-uc"]
 set unstable
@@ -49,13 +50,13 @@ alias tclean := tests::clean
 # ----- Deploy -----
 alias d     := deploy::deploy
 
-# ----- Module tests -----
-alias td    := domain::test
-alias ti    := infra::test
+# ----- Module tests (domain + infrastructure merged into :wbparser) -----
+alias td    := wbparser::test
+alias ti    := wbparser::test-verbose
 
 # ----- Lint shortcuts -----
-alias ld    := domain::lint
-alias li    := infra::lint
+alias ld    := wbparser::lint
+alias li    := wbparser::lint
 
 # ----- Scripts shortcuts -----
 alias rd    := scripts::refresh-decisions

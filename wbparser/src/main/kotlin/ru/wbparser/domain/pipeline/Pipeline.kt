@@ -4,6 +4,7 @@ import arrow.core.Either
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
@@ -16,7 +17,6 @@ import ru.wbparser.domain.pipeline.Step.Fail
 import ru.wbparser.domain.pipeline.Step.Retry
 import ru.wbparser.domain.time.Clock
 import kotlin.coroutines.cancellation.CancellationException
-import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -61,20 +61,6 @@ data class Pipeline(
             .randomUUID()
             .toString()
     },
-    /**
-     * Delay function for retry back-off.
-     *
-     * ## Purity note
-     *
-     * [Pipeline] promises to be pure *except* for [idGen] and this function.
-     * All other logic is deterministic and side-effect free.
-     *
-     * @deprecated This function is called **only** from the [run] coordinator loop
-     *   (never from inside `async {}` blocks). For unit tests use `runTest { }`
-     *   which virtualises time automatically.
-     */
-    @Deprecated("Use runTest { } for virtualised time in tests; delay is coordinator-only")
-    val delayFn: suspend (Duration) -> Unit = { d -> kotlinx.coroutines.delay(d) },
 ) {
     /**
      * Outcome of a stage execution inside [run].
@@ -94,8 +80,8 @@ data class Pipeline(
 
         /**
          * The stage hit a retryable condition.
-         * The back-off delay is **pre-computed** here so the coordinator can call
-         * [delayFn] outside any `async {}` block (never blocking a dispatcher thread).
+         * The back-off delay is **pre-computed** here so the coordinator can wait
+         * outside any `async {}` block (never blocking a dispatcher thread).
          *
          * @param attempt  the 0-based attempt number that just failed
          * @param signal   the retry signal from the stage
@@ -131,7 +117,7 @@ data class Pipeline(
         tasks: List<Crawling>,
         concurrency: Int = 1,
     ): Either<Pair<DomainError, List<Side>>, Pair<Crawled, List<Side>>> {
-        val coordinator = Coordinator(retryPolicy, delayFn)
+        val coordinator = Coordinator(retryPolicy) { d -> delay(d) }
 
         val startMs = clock.now().toEpochMilli()
 
@@ -274,7 +260,7 @@ data class Pipeline(
      * Result of [runConcurrentBatch].
      *
      * [retryableTasks] carry the pre-computed back-off from the stage — the coordinator
-     * in [run] calls [delayFn] for each before re-invoking [runDownloadStage].
+     * in [run] waits for each before re-invoking [runDownloadStage].
      * This ensures dispatcher threads are never blocked by retry back-off.
      */
     private data class BatchResult(
@@ -517,7 +503,7 @@ data class Pipeline(
                         return 0
                     }
                     attempt++
-                    delayFn(retryDelayMs(attempt - 1, signal, retryPolicy).milliseconds)
+                    delay(retryDelayMs(attempt - 1, signal, retryPolicy).milliseconds)
                 }
                 is Retry -> {
                     if (!shouldRetry(attempt + 1, retryPolicy)) {
@@ -529,7 +515,7 @@ data class Pipeline(
                         return 0
                     }
                     attempt++
-                    delayFn(retryDelayMs(attempt - 1, step.signal, retryPolicy).milliseconds)
+                    delay(retryDelayMs(attempt - 1, step.signal, retryPolicy).milliseconds)
                 }
                 is Cont -> {
                     return 0
@@ -540,7 +526,7 @@ data class Pipeline(
 
     /**
      * Result of a one-shot stage attempt.
-     * The coordinator decides what to do with retry signals — this function never calls [delayFn].
+     * The coordinator decides what to do with retry signals — this function never waits.
      */
     private sealed class AttemptResult<out O> {
         data class Done<O>(
@@ -560,7 +546,7 @@ data class Pipeline(
 
     /**
      * Executes [stage] on [input] once (no retry loop — retry is coordinator-level).
-     * Never calls [delayFn]; the coordinator handles all back-off delays.
+     * Never waits; the coordinator handles all back-off delays.
      *
      * Any exception thrown by the stage is converted to [AttemptResult.Failed]
      * so the coordinator handles it uniformly.
@@ -592,7 +578,7 @@ data class Pipeline(
      * Runs the download stage on [task] with [attempt] already tracked by the coordinator.
      *
      * Returns [StageDecision.Wait] with the pre-computed back-off when the stage signals
-     * retry — the coordinator calls [delayFn] **outside** any `async {}` block before
+     * retry — the coordinator waits **outside** any `async {}` block before
      * re-invoking this function with [attempt] + 1. The dispatcher thread is never blocked.
      */
     private suspend fun runDownloadStage(
@@ -620,7 +606,7 @@ data class Pipeline(
      * Runs the parse stage on [fetched] with [attempt] already tracked by the coordinator.
      *
      * Returns [StageDecision.Wait] with the pre-computed back-off when the stage signals
-     * retry — the coordinator calls [delayFn] **outside** any `async {}` block before
+     * retry — the coordinator waits **outside** any `async {}` block before
      * re-invoking this function with [attempt] + 1. The dispatcher thread is never blocked.
      */
     private suspend fun runParseStage(
