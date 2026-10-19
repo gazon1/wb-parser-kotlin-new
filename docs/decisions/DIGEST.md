@@ -67,6 +67,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** add an entry to the accepted-findings list in `build.gradle.kts` without a reason in a _(from `2026-10-19-dependency-analysis-plugin`)
 - **Never** declare a dependency in `implementation` when only the runtime needs it. A runtime-only _(from `2026-10-19-dependency-analysis-plugin`)
 - **Never** run `fixDependencies` in CI. It rewrites build scripts and cannot see runtime-only _(from `2026-10-19-dependency-analysis-plugin`)
+- **Always** declare a dependency in the module that uses it. A dependency that reaches the _(from `2026-10-19-explicit-module-boundary`)
+- **Always** use `runtimeOnly` for a dependency that is loaded but never named in source — a _(from `2026-10-19-explicit-module-boundary`)
+- **Never** duplicate a dependency in a consumer to make it compile. If the consumer needs the _(from `2026-10-19-explicit-module-boundary`)
+- **Never** let a module's dependencies be the application's dependencies by accident. The _(from `2026-10-19-explicit-module-boundary`)
+- **Never** use `implementation` for a type that appears in a public signature. It belongs in _(from `2026-10-19-explicit-module-boundary`)
 
 ## Per-tag
 
@@ -118,6 +123,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `tests:test` still runs integration tests (fake HTTP + SQLite) _(from `2026-09-09-test-module-boundary-pr10`)_
 - The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same _(from `2026-10-08-discover-test-migrations`)_
 - The executed-test floors are raised in the same commit that adds tests, in both _(from `2026-10-08-gates-that-can-fail`)_
+- The `tests` module needs the `app` project for its resources. That is a legitimate reason for _(from `2026-10-19-explicit-module-boundary`)_
 - `toDomainError()` has 6 branches (was 7) _(from `2026-09-09-dead-code-purge-pr9`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
 - `WbCatalogInterceptors.kt` reduced to 2 typealiases (was 3 — 1 function) _(from `2026-09-09-dead-code-purge-pr9`)_
@@ -156,6 +162,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
+- The `tests` module needs the `app` project for its resources. That is a legitimate reason for _(from `2026-10-19-explicit-module-boundary`)_
 
 ### `ci`
 
@@ -226,6 +233,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
+- The `tests` module needs the `app` project for its resources. That is a legitimate reason for _(from `2026-10-19-explicit-module-boundary`)_
 
 ### `deployment`
 
@@ -363,6 +371,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Positive**: Scheduler now actually runs when `worker` profile is active and `crawler.worker.enabled = true` _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: `Spider.concurrency` now reaches `CrawlRunner` via `CrawlerConfig` _(from `2026-09-09-scheduler-wireup-pr18`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
+- The `tests` module needs the `app` project for its resources. That is a legitimate reason for _(from `2026-10-19-explicit-module-boundary`)_
 
 ### `testing`
 
@@ -421,6 +430,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-stage-data-class-dsl` — pipeline  architecture  pr-13
 - `2026-10-19-application-startup-gate` — testing  gates  spring  database  flyway
 - `2026-10-19-dependency-analysis-plugin` — build  dependencies  gates  ci
+- `2026-10-19-explicit-module-boundary` — build  architecture  dependencies  spring
 
 ## Active entries
 
@@ -454,3 +464,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-stage-data-class-dsl` — Stage data class + StageDSL for readable stage construction
 - `2026-10-19-application-startup-gate` — The application must be startable, and something must prove it
 - `2026-10-19-dependency-analysis-plugin` — Dependency drift is a gate, not a reviewer's job
+- `2026-10-19-explicit-module-boundary` — The boundary between the crawler and the application is declared, not implied

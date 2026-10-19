@@ -37,11 +37,9 @@ dependencies {
     implementation(project(":wbparser"))
 
     implementation(kotlin("stdlib"))
+    implementation(kotlin("reflect"))
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("net.javacrumbs.shedlock:shedlock-spring:5.14.0")
-    implementation("org.jetbrains.exposed:exposed-core:0.55.0")
-    implementation("org.jetbrains.exposed:exposed-jdbc:0.55.0")
-    implementation(kotlin("reflect"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
     implementation("io.arrow-kt:arrow-core:2.2.3")
 
@@ -52,8 +50,23 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-aop:3.4.1")
     implementation("org.springframework.boot:spring-boot-configuration-processor:3.4.1")
 
-    implementation("ch.qos.logback:logback-classic")
+    // The crawler hands this module its types, so the versions are pinned here as
+    // well: leaving them to the starters would mean the application and the
+    // crawler could resolve different versions of the same library.
+    implementation("ch.qos.logback:logback-classic:1.5.14")
     implementation("io.github.microutils:kotlin-logging:3.0.5")
+    implementation("org.slf4j:slf4j-api:2.0.17")
+    implementation("io.micrometer:micrometer-core:1.15.0")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.19.1")
+
+    // Flyway belongs to this module: the migrations live in
+    // src/main/resources/db/migration and the configuration in application.yml.
+    // It used to be an `implementation` dependency of the crawler module, which
+    // put it on the runtime classpath by accident — no source file names it, so
+    // nothing noticed, and the day it was cleaned up every migration would have
+    // stopped running.
+    runtimeOnly("org.flywaydb:flyway-core:11.20.3")
+    runtimeOnly("org.flywaydb:flyway-database-postgresql:11.20.3")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test:3.4.1")
     testImplementation("org.springframework.security:spring-security-test:6.1.0")

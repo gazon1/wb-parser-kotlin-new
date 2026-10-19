@@ -13,8 +13,12 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":wbparser"))
-    implementation(project(":app"))
+    // This module has no main source set — it is a test-only module, so both
+    // project dependencies are `testImplementation`. The app dependency is not
+    // there for its classes: it is there for its *resources* (the Flyway
+    // migrations and application.yml), which reach the test classpath through it.
+    testImplementation(project(":wbparser"))
+    testImplementation(project(":app"))
 
     implementation(kotlin("stdlib"))
     implementation(kotlin("reflect"))
