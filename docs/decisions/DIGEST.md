@@ -69,6 +69,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** weaken the migration assertion to a fixed list of versions. The expected set is _(from `2026-10-19-application-startup-gate`)
 - **Always** give every module with tests a floor in `config/gates/coverage-floor.txt` _(from `2026-10-19-coverage-floor-gate`)
 - **Always** keep the coverage floor in `config/gates/coverage-floor.txt` and _(from `2026-10-19-coverage-floor-gate`)
+- **Always** keep the floor at least a percentage point below the measurement. _(from `2026-10-19-coverage-floor-gate`)
 - **Always** raise the floor in the same commit that raises the coverage, with _(from `2026-10-19-coverage-floor-gate`)
 - **Never** lower a coverage floor without `--allow-drop '<reason>'`, and never _(from `2026-10-19-coverage-floor-gate`)
 - **Never** rewrite a floor file from a partial run. If the results are not _(from `2026-10-19-coverage-floor-gate`)

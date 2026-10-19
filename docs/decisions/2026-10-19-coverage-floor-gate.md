@@ -61,6 +61,21 @@ three exit codes:
 refuses to lower it without `--allow-drop '<reason>'`: the floor is a ratchet,
 and a drop is a deliberate act, not an accident of a refactor.
 
+The floor it writes is a whole percentage at least one point *below* the
+measurement, which leaves a margin. The margin matters, and it is not
+cosmetic: the application module measured exactly 25.0000% — 65 of 260 lines
+— so a floor of 25% had no margin at all, and adding one uncovered line to
+the module would have taken it to 24.9% and turned the gate red over a
+change that lost nothing covered. The crawler module measured 50.05%, which
+is a margin of a single line, and one line is not a margin but a rounding
+error waiting for a slow machine.
+
+A floor that trips on an unrelated edit is a tripwire rather than a ratchet,
+and it teaches people to ignore the gate. One percentage point is about two
+lines in the application module and about twenty in the crawler module: enough
+room for ordinary work, small enough that a real loss of coverage is still
+caught.
+
 The application module joins the record. It gets unit tests — the admin filter,
 the configuration binding, the health probe — and an entry in the floor file,
 and `scripts/check-test-runs.py` learns the `app` source set, so a suite that
@@ -90,6 +105,9 @@ looks like a passing one.
   build script is a second claim about it.
 - **Always** raise the floor in the same commit that raises the coverage, with
   `./scripts/raise-kover-floor.py`.
+- **Always** keep the floor at least a percentage point below the measurement.
+  A floor that sits on the measurement is tripped by any edit that adds an
+  uncovered line, and a floor one line above it is a rounding error.
 - **Never** lower a coverage floor without `--allow-drop '<reason>'`, and never
   without a reason in the commit that does it.
 - **Never** treat a missing coverage report as zero coverage. It is an absent
