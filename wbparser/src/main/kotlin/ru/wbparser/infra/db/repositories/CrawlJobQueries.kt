@@ -1,9 +1,9 @@
 package ru.wbparser.infra.db.repositories
 
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.and
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.or
+import org.jetbrains.exposed.sql.and
+import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import ru.wbparser.domain.pipeline.CrawlJobsTable
@@ -103,13 +103,13 @@ fun DataSource.reconcileOrphanedJobs(staleAfter: Duration = CrawlJobQueries.DEFA
                             CrawlJobsTable.startedAt.isNull() and
                             (CrawlJobsTable.createdAt less cutoff)
                     )
-                    )
+                )
         }) {
             it[CrawlJobsTable.status] = JobStatus.Crashed.name
             it[CrawlJobsTable.completedAt] = now
             it[CrawlJobsTable.errorMessage] =
                 "Job was left in Running by a process that is no longer alive " +
-                    "(no heartbeat for more than ${staleAfter.toMinutes()} minutes)."
+                "(no heartbeat for more than ${staleAfter.toMinutes()} minutes)."
         }
     }
 }

@@ -495,7 +495,7 @@ class CrawlRunner(
 
     private fun openJob(targetId: UUID): UUID {
         val id = UUID.randomUUID()
-val now = OffsetDateTime.now(ZoneOffset.UTC)
+        val now = OffsetDateTime.now(ZoneOffset.UTC)
         db.ds.exposedOnce()
         transaction {
             CrawlJobsTable.insert {

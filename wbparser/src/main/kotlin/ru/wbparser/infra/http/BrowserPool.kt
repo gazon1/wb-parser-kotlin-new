@@ -353,8 +353,7 @@ class BrowserPool(
      * uses — a separate client would resolve a different port and could disagree
      * with the pool about whether AdsPower is up.
      */
-    lateinit var adsPowerApi: AdsPowerApi
-        private set
+    val adsPowerApi: AdsPowerApi
 
     init {
         require(profiles.isNotEmpty()) { "At least one profile is required" }

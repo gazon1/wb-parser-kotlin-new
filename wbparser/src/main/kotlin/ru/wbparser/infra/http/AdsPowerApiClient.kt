@@ -2,7 +2,6 @@ package ru.wbparser.infra.http
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.net.HttpURLConnection
-import java.net.URL
 
 /**
  * The AdsPower Local API's JSON envelope.
@@ -76,7 +75,10 @@ internal class AdsPowerApiClient(
     ): AdsPowerEnvelope? {
         val conn =
             runCatching {
-                URL("$baseUrl$path").openConnection() as HttpURLConnection
+                java.net
+                    .URI("$baseUrl$path")
+                    .toURL()
+                    .openConnection() as HttpURLConnection
             }.getOrNull() ?: return null
 
         return try {
