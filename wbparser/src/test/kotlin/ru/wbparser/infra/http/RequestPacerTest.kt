@@ -2,6 +2,7 @@ package ru.wbparser.infra.http
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.currentTime
@@ -14,6 +15,7 @@ import kotlinx.coroutines.test.runTest
  * every profile of the deployment shares one egress IP, so the request rate that matters
  * is the sum over the profiles, not the rate of one profile.
  */
+@OptIn(ExperimentalCoroutinesApi::class)
 class RequestPacerTest :
     FunSpec({
 

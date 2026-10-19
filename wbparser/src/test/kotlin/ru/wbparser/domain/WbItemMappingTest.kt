@@ -115,7 +115,7 @@ class WbItemMappingTest :
                  "products":[{"id":1,"name":"Карта"}],"total":49619}
                 """.trimIndent()
 
-            val envelope = Json { ignoreUnknownKeys = true }.decodeFromString<WbCatalogEnvelope>(json)
+            val envelope = catalogJson.decodeFromString<WbCatalogEnvelope>(json)
 
             envelope.total shouldBe 49619
             envelope.metadata?.catalogType shouldBe "catalog-merger"
