@@ -290,6 +290,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** дублировать правило свежести в SQL и в коде: правило одно, и его _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
 - **Never** отдавать аренду раньше, чем цель обработана: чужая машина возьмёт её _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
 - **Never** считать, что один хост за адресом — это весь трафик на адрес. _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Always** читать каталог через его собственный пул и роль. _(from `2026-10-26-the-catalog-reads-from-a-replica`)
+- **MUST** сообщать в готовности, что каталог читает не оттуда же, куда пишет _(from `2026-10-26-the-catalog-reads-from-a-replica`)
+- **Never** выдавать отставание реплики за ошибку данных. _(from `2026-10-26-the-catalog-reads-from-a-replica`)
+- **Never** направлять писателя на реплику: потерянные данные не выглядят как _(from `2026-10-26-the-catalog-reads-from-a-replica`)
+- **Never** принимать решение о месте агрегатов вместе с решением о реплике: это _(from `2026-10-26-the-catalog-reads-from-a-replica`)
 - **Always** отделять антибот (498) от транспортного сброса (статус 0) в любом _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 - **Always** писать измеренные числа в репозиторий рядом с решением, которое на них _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 - **Always** считать параллельную работу на одном адресе отдельным фактором: адрес _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
@@ -956,6 +961,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
 - `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — architecture  database  concurrency  antibot
+- `2026-10-26-the-catalog-reads-from-a-replica` — architecture  database  operations  catalog
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — antibot  operations  infrastructure  measurement
 
 ## Active entries
@@ -1038,4 +1044,5 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна
 - `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — Работа и бюджет живут там, где про них известно
+- `2026-10-26-the-catalog-reads-from-a-replica` — Каталог читает с реплики, краулер пишет в primary
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — Измерение не даёт оснований покупать второй адрес
