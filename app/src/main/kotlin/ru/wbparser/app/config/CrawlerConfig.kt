@@ -94,7 +94,8 @@ class CrawlerConfig {
         browserDownloader: BrowserDownloader,
         meterRegistry: MeterRegistry,
         groups: EgressGroups.Resolved,
-    ): CrawlDependencies = CrawlDependencies(browserDownloader, meterRegistry, groups)
+        egressRouter: EgressRouter,
+    ): CrawlDependencies = CrawlDependencies(browserDownloader, meterRegistry, groups, egressRouter)
 
     /**
      * Groups the HTTP/monitoring dependencies that are conditionally used based on [CrawlProperties.spider].
@@ -110,6 +111,13 @@ class CrawlerConfig {
         val meterRegistry: MeterRegistry,
         /** The groups the crawler runs on, and the number of profiles they own. */
         val groups: EgressGroups.Resolved,
+        /**
+         * The router that decides which egress group serves the next request.
+         *
+         * The runner asks it whose fault a failure is; without it the target is the
+         * only suspect.
+         */
+        val egressRouter: EgressRouter,
     )
 
     @Bean
@@ -133,6 +141,9 @@ class CrawlerConfig {
                 CrawlSource(
                     downloader = downloader,
                     parser = { fetched -> parseWbCatalog(fetched) },
+                    // Only the browser path has an egress side; the plain HTTP path has
+                    // one address and no groups to attribute a failure to.
+                    egress = if (properties.spider.useBrowserFetch) deps.egressRouter else null,
                 ),
             config =
                 CrawlRunnerConfig(

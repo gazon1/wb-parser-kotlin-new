@@ -8,7 +8,9 @@ import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.Retry
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
+import ru.wbparser.domain.scheduling.FailureClass
 import ru.wbparser.domain.scheduling.Target
+import ru.wbparser.domain.scheduling.failureClass
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.db.repositories.SubjectNameLookup
@@ -35,6 +37,13 @@ internal data class TargetResult(
     val pages: Int,
     val items: Int,
     val error: String? = null,
+    /**
+     * Whose fault the failure is, when there was one.
+     *
+     * Null means the target was read. The runner uses it to decide whether the target
+     * is put aside for its own reasons or for the address's.
+     */
+    val failureClass: FailureClass? = null,
 )
 
 /**
@@ -162,12 +171,27 @@ internal class TargetCrawl(
             // as "Completed" with a NULL error_message. A failed crawl has to say so.
             is Either.Left -> {
                 @Suppress("USELESS_ELVIS") // DomainError.message can be null; fallback is a safety net
-                TargetResult(0, 0, error = result.value.message ?: "crawl failed")
+                TargetResult(
+                    pages = 0,
+                    items = 0,
+                    error = result.value.message ?: "crawl failed",
+                    failureClass = result.value.failureClass(),
+                )
             }
             is Either.Right -> {
                 val crawled: ru.wbparser.domain.pipeline.Crawled = result.value
                 metrics.record(target, crawled.pagesCrawled, crawled.itemsSaved, crawled.stopReason)
-                TargetResult(crawled.pagesCrawled, crawled.itemsSaved)
+                // WB answered, and what it answered was not the catalog: not a single
+                // product came out of it. A burnt address answers like this too, so it
+                // is a candidate and not a verdict — the runner decides once it knows
+                // how the address is doing.
+                val empty = crawled.itemsSaved == 0
+                TargetResult(
+                    pages = crawled.pagesCrawled,
+                    items = crawled.itemsSaved,
+                    error = null,
+                    failureClass = if (empty) FailureClass.TargetCandidate else null,
+                )
             }
         }
     }

@@ -19,6 +19,31 @@ data class Target(
     val priority: Int = 0,
     val lastScheduledAt: Instant? = null,
     val nextScheduledAt: Instant? = null,
+    /**
+     * When the target was last read.
+     *
+     * The state of a target lives in the database, not in the crawler's memory: a
+     * restart used to make every target look unread, and the crawler read the whole
+     * catalog again.
+     */
+    val lastCrawledAt: Instant? = null,
+    /**
+     * How many times in a row the target failed for its own reasons.
+     */
+    val consecutiveFailures: Int = 0,
+    /**
+     * When the target may be read again. Null means "as soon as freshness allows".
+     */
+    val nextAttemptAt: Instant? = null,
+    /**
+     * How many times in a row the target failed because the address did.
+     */
+    val egressFailureCount: Int = 0,
+    /**
+     * The egress group that last answered this target with something that was not the
+     * catalog.
+     */
+    val anomalyGroup: String? = null,
     /** Numeric WB catalog ID (e.g. "9463"). Used by BrowserDownloader to construct API URLs. */
     val wbCatalogId: String? = null,
     /**

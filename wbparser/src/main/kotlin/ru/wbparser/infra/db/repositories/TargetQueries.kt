@@ -27,7 +27,11 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import ru.wbparser.domain.pipeline.CrawlTargetsTable
 import ru.wbparser.domain.scheduling.Target
+import ru.wbparser.domain.scheduling.TargetBackoff
 import ru.wbparser.infra.db.exposedOnce
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -106,7 +110,104 @@ private fun ResultRow.toTarget(): Target =
         rootCategoryName = this[CrawlTargetsTable.rootCategoryName],
         knownPagesLimit = this[CrawlTargetsTable.knownPagesLimit],
         wbSearchQuery = this[CrawlTargetsTable.wbSearchQuery],
+        lastCrawledAt = this[CrawlTargetsTable.lastCrawledAt]?.toInstant(),
+        consecutiveFailures = this[CrawlTargetsTable.consecutiveFailures],
+        nextAttemptAt = this[CrawlTargetsTable.nextAttemptAt]?.toInstant(),
+        egressFailureCount = this[CrawlTargetsTable.egressFailureCount],
+        anomalyGroup = this[CrawlTargetsTable.anomalyGroup],
     )
+
+/**
+ * Records that the target was read.
+ *
+ * The freshness window starts here, and the counters go back to zero: a target that
+ * was read successfully has no failures to remember.
+ */
+fun DataSource.markTargetCrawled(
+    targetId: UUID,
+    now: Instant = Instant.now(),
+) {
+    exposedOnce()
+    transaction {
+        CrawlTargetsTable.update({ CrawlTargetsTable.id eq targetId }) {
+            it[CrawlTargetsTable.lastCrawledAt] = now.atOffset(ZoneOffset.UTC)
+            it[CrawlTargetsTable.consecutiveFailures] = 0
+            it[CrawlTargetsTable.egressFailureCount] = 0
+            it[CrawlTargetsTable.nextAttemptAt] = null
+            it[CrawlTargetsTable.anomalyGroup] = null
+        }
+    }
+}
+
+/**
+ * Records that the target failed for its own reasons, and puts it aside.
+ *
+ * The back-off grows with every failure and is capped at a day: a catalog that WB
+ * keeps refusing to serve is not going to be served by trying again in five minutes.
+ *
+ * @return how long the target was put aside for.
+ */
+fun DataSource.markTargetFailed(
+    targetId: UUID,
+    now: Instant = Instant.now(),
+): Duration {
+    val failures = targetFailureCounts(targetId).first + 1
+    val delay = TargetBackoff.targetDelay(failures)
+    exposedOnce()
+    transaction {
+        CrawlTargetsTable.update({ CrawlTargetsTable.id eq targetId }) {
+            it[CrawlTargetsTable.consecutiveFailures] = failures
+            it[CrawlTargetsTable.nextAttemptAt] = now.plus(delay).atOffset(ZoneOffset.UTC)
+            it[CrawlTargetsTable.egressFailureCount] = 0
+            it[CrawlTargetsTable.anomalyGroup] = null
+        }
+    }
+    return delay
+}
+
+/**
+ * Records that the target could not be read because the address failed.
+ *
+ * The target is not blamed: its own counter stays where it was, and the pause it gets
+ * is the short one. The anomaly group is remembered when the failure looked like the
+ * catalog's — the same anomaly seen from another group is the catalog's fault.
+ *
+ * @return how long the target was put aside for.
+ */
+fun DataSource.markTargetRequeued(
+    targetId: UUID,
+    now: Instant = Instant.now(),
+    anomalyGroup: String? = null,
+): Duration {
+    val failures = targetFailureCounts(targetId).second + 1
+    val delay = TargetBackoff.egressDelay(failures)
+    exposedOnce()
+    transaction {
+        CrawlTargetsTable.update({ CrawlTargetsTable.id eq targetId }) {
+            it[CrawlTargetsTable.egressFailureCount] = failures
+            it[CrawlTargetsTable.nextAttemptAt] = now.plus(delay).atOffset(ZoneOffset.UTC)
+            if (anomalyGroup != null) {
+                it[CrawlTargetsTable.anomalyGroup] = anomalyGroup
+            }
+        }
+    }
+    return delay
+}
+
+/**
+ * The target's own failure count and its egress failure count.
+ */
+private fun DataSource.targetFailureCounts(targetId: UUID): Pair<Int, Int> {
+    exposedOnce()
+    return transaction {
+        CrawlTargetsTable
+            .selectAll()
+            .where { CrawlTargetsTable.id eq targetId }
+            .map { row ->
+                row[CrawlTargetsTable.consecutiveFailures] to row[CrawlTargetsTable.egressFailureCount]
+            }.firstOrNull() ?: (0 to 0)
+    }
+}
 
 /**
  * The writable half of a target, as accepted by the admin API.

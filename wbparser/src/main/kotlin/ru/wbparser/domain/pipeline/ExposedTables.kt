@@ -99,6 +99,43 @@ object CrawlTargetsTable : Table("crawl_targets") {
      */
     val wbSearchQuery: Column<String?> = text("wb_search_query").nullable()
 
+    /**
+     * When the target was last read.
+     *
+     * It moves only for a target that was actually read. A target that failed keeps
+     * its old value and stays due.
+     */
+    val lastCrawledAt: Column<OffsetDateTime?> = timestampWithTimeZone("last_crawled_at").nullable()
+
+    /**
+     * How many times in a row the target failed for its own reasons.
+     *
+     * Grows into a back-off of up to a day. A failure that belongs to the address is
+     * counted in [egressFailureCount] instead.
+     */
+    val consecutiveFailures: Column<Int> = integer("consecutive_failures").default(0)
+
+    /**
+     * When the target may be read again.
+     *
+     * Null means "as soon as the freshness window allows it".
+     */
+    val nextAttemptAt: Column<OffsetDateTime?> = timestampWithTimeZone("next_attempt_at").nullable()
+
+    /**
+     * How many times in a row the target failed because the address did.
+     */
+    val egressFailureCount: Column<Int> = integer("egress_failure_count").default(0)
+
+    /**
+     * The egress group that last answered this target with something that was not the
+     * catalog.
+     *
+     * The same anomaly seen from another group is the target's fault; the same anomaly
+     * seen from the same group is more likely the address's.
+     */
+    val anomalyGroup: Column<String?> = varchar("anomaly_group", 64).nullable()
+
     // TIMESTAMPTZ, and the database fills both with now().
     val createdAt: Column<OffsetDateTime> = timestampWithTimeZone("created_at")
     val updatedAt: Column<OffsetDateTime> = timestampWithTimeZone("updated_at")

@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -45,6 +46,45 @@ data class GroupState(
     val requests: Long,
     val refused: Long,
     val circuitState: CircuitBreaker.State,
+)
+
+/**
+ * What the runner needs to know about the egress side of a crawl.
+ *
+ * The runner has to decide whether a failure that looks like the catalog's fault
+ * really is: a burnt address answers with a degraded body as well, and punishing
+ * the target for that would put a healthy catalog to sleep for a day. The address
+ * side knows how its own requests are going, so it answers the question.
+ */
+interface EgressAttribution {
+    /**
+     * The group that served this target last, if any.
+     */
+    fun lastGroupFor(targetId: UUID): String?
+
+    /**
+     * Whether the group is answering normally.
+     *
+     * A group that is refusing most of its requests is not a witness whose word about
+     * a broken catalog can be trusted.
+     */
+    fun isGroupHealthy(groupId: String): Boolean
+}
+
+/**
+ * The tunables of the router.
+ *
+ * @param circuitConfig the circuit's thresholds — the ones the single global circuit used.
+ * @param maxOpenWaitMs how long the router waits for an address to answer again before
+ *   it gives up and reports that no group could serve the request.
+ * @param healthWindowMs the window over which a group's refusal rate is measured.
+ * @param healthRefusalThreshold the refusal rate above which a group is not healthy.
+ */
+data class EgressRouterConfig(
+    val circuitConfig: CircuitBreakerConfig = EgressRouter.defaultCircuitConfig(),
+    val maxOpenWaitMs: Long = EgressRouter.DEFAULT_MAX_OPEN_WAIT_MS,
+    val healthWindowMs: Long = EgressRouter.DEFAULT_HEALTH_WINDOW_MS,
+    val healthRefusalThreshold: Double = EgressRouter.DEFAULT_HEALTH_REFUSAL_THRESHOLD,
 )
 
 /**
@@ -90,9 +130,9 @@ data class GroupState(
 class EgressRouter(
     private val pool: BrowserPool,
     private val meterRegistry: MeterRegistry? = null,
-    private val circuitConfig: CircuitBreakerConfig = defaultCircuitConfig(),
-    private val maxOpenWaitMs: Long = DEFAULT_MAX_OPEN_WAIT_MS,
-) {
+    private val config: EgressRouterConfig = EgressRouterConfig(),
+    private val now: () -> Long = System::currentTimeMillis,
+) : EgressAttribution {
     private val log = LoggerFactory.getLogger(EgressRouter::class.java)
 
     /** Round-robin tie-break between groups whose pacer frees up at the same moment. */
@@ -114,7 +154,7 @@ class EgressRouter(
         pool.egressGroupIds.associateWith { groupId ->
             val circuit =
                 CircuitBreakerRegistry
-                    .of(circuitConfig)
+                    .of(config.circuitConfig)
                     .circuitBreaker("egress-$groupId")
             circuit.eventPublisher.onStateTransition { event ->
                 log.warn(
@@ -136,7 +176,7 @@ class EgressRouter(
     suspend fun borrow(): BorrowedPage {
         val groups = pool.egressGroupIds.toList()
         require(groups.isNotEmpty()) { "The pool has no egress groups" }
-        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(maxOpenWaitMs)
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.maxOpenWaitMs)
         var warned = false
 
         while (true) {
@@ -167,7 +207,7 @@ class EgressRouter(
             if (System.nanoTime() >= deadline) {
                 meterRegistry?.counter("crawl.egress.all_down")?.increment()
                 throw AllEgressGroupsUnavailable(
-                    "No egress group could serve a request within ${maxOpenWaitMs}ms: " +
+                    "No egress group could serve a request within ${config.maxOpenWaitMs}ms: " +
                         groups.joinToString { "$it(${breaker(it).state})" },
                 )
             }
@@ -175,7 +215,7 @@ class EgressRouter(
                 warned = true
                 log.warn(
                     "Every egress group is unavailable — waiting up to {}ms for one to answer again",
-                    maxOpenWaitMs,
+                    config.maxOpenWaitMs,
                 )
             }
             delay(OPEN_WAIT_POLL_MS)
@@ -195,7 +235,7 @@ class EgressRouter(
         targetId: UUID? = null,
     ) {
         val groupId = page.egressGroup
-        books.computeIfAbsent(groupId) { GroupBook() }.record(outcome)
+        books.computeIfAbsent(groupId) { GroupBook() }.record(now(), outcome)
         targetId?.let { lastGroupByTarget[it] = groupId }
         recordCircuit(groupId, outcome)
         recordMetrics(groupId, outcome)
@@ -222,7 +262,19 @@ class EgressRouter(
      * target's fault or the address's: a group that is refusing everything is a
      * different story from a group that is answering fine.
      */
-    fun lastGroupFor(targetId: UUID): String? = lastGroupByTarget[targetId]
+    override fun lastGroupFor(targetId: UUID): String? = lastGroupByTarget[targetId]
+
+    /**
+     * Whether the group is answering normally.
+     *
+     * A group with no requests in the window counts as healthy: there is nothing to
+     * blame it for, and the target is the only suspect left.
+     */
+    override fun isGroupHealthy(groupId: String): Boolean {
+        val book = books[groupId] ?: return true
+        val rate = book.refusalRate(now(), config.healthWindowMs)
+        return rate < config.healthRefusalThreshold
+    }
 
     /**
      * Groups ordered by when their pacer frees up.
@@ -322,15 +374,57 @@ class EgressRouter(
     private class GroupBook {
         private val requests = AtomicLong(0)
         private val refused = AtomicLong(0)
-
-        fun record(outcome: DownloadOutcome) {
-            requests.incrementAndGet()
-            if (outcome == DownloadOutcome.Antibot) refused.incrementAndGet()
-        }
+        private val window = ConcurrentLinkedQueue<Sample>()
 
         val requestCount: Long get() = requests.get()
         val refusedCount: Long get() = refused.get()
+
+        fun record(
+            now: Long,
+            outcome: DownloadOutcome,
+        ) {
+            requests.incrementAndGet()
+            if (outcome == DownloadOutcome.Antibot) refused.incrementAndGet()
+            window.add(Sample(now, outcome == DownloadOutcome.Antibot))
+        }
+
+        /**
+         * The refusal rate over the last [windowMs] milliseconds.
+         *
+         * A window and not a total: a group that refused everything an hour ago and
+         * answers everything now is healthy, and a group that answered everything an
+         * hour ago and refuses everything now is not.
+         */
+        fun refusalRate(
+            now: Long,
+            windowMs: Long,
+        ): Double {
+            trim(now, windowMs)
+            val samples = window.toList()
+            if (samples.isEmpty()) return 0.0
+            return samples.count { it.refused }.toDouble() / samples.size
+        }
+
+        private fun trim(
+            now: Long,
+            windowMs: Long,
+        ) {
+            val oldest = now - windowMs
+            while (true) {
+                val head = window.peek() ?: return
+                if (head.at >= oldest) return
+                window.remove(head)
+            }
+        }
     }
+
+    /**
+     * One request's outcome, with the time it happened.
+     */
+    private class Sample(
+        val at: Long,
+        val refused: Boolean,
+    )
 
     /**
      * The failure a group's circuit is told about.
@@ -359,6 +453,12 @@ class EgressRouter(
 
         /** 75 s — comfortably longer than the 30 s open window of the default config. */
         const val DEFAULT_MAX_OPEN_WAIT_MS: Long = 75_000L
+
+        /** How far back a group's refusal rate is measured. */
+        const val DEFAULT_HEALTH_WINDOW_MS: Long = 600_000L
+
+        /** The refusal rate above which a group is not a reliable witness. */
+        const val DEFAULT_HEALTH_REFUSAL_THRESHOLD: Double = 0.10
 
         /** How often the wait re-checks the circuit state. */
         const val OPEN_WAIT_POLL_MS: Long = 1_000L

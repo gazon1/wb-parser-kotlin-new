@@ -3,7 +3,6 @@ package ru.wbparser.infra.scheduler
 import ru.wbparser.domain.scheduling.Target
 import java.time.Duration
 import java.time.Instant
-import java.util.UUID
 
 /**
  * Freshness policy configuration.
@@ -16,38 +15,34 @@ data class FreshnessPolicy(
 )
 
 /**
- * Tracks when targets were last crawled.
+ * The targets that are due for a crawl.
+ *
+ * ## The state is in the database
+ *
+ * A target carries when it was last read and when it may be tried again, and both
+ * come from `crawl_targets`. The crawler used to keep that in its own memory, which
+ * died with the process: after a restart every target looked unread, and the
+ * crawler read the whole catalog again an hour after it had already read it.
+ *
+ * ## Two reasons a target is not due
+ *
+ * - it was read recently — the freshness window has not passed;
+ * - it is waiting — a failure put it aside, and the pause has not passed.
+ *
+ * @param now the current time; the caller's clock, so a test can say what "now" is.
  */
-data class Freshness(
-    val state: Map<UUID, Instant> = emptyMap(),
-)
-
-/**
- * Marks a target as crawled at the given time.
- */
-fun Freshness.markCrawled(
-    targetId: UUID,
-    now: Instant = Instant.now(),
-): Freshness = copy(state = state + (targetId to now))
-
-/**
- * Returns targets that are due for crawling based on freshness policy.
- */
-fun Freshness.targetsDue(
+fun targetsDue(
     targets: List<Target>,
     policy: FreshnessPolicy,
-): List<Target> {
-    val now = Instant.now()
-    return targets.filter { target ->
-        val lastCrawl = state[target.id]
-        when {
-            lastCrawl == null -> true
-            !target.isActive -> false
-            else -> {
-                val freshnessMs = policy.defaultFreshnessMinutes * 60 * 1000
-                val elapsed = Duration.between(lastCrawl, now).toMillis()
-                elapsed >= freshnessMs
-            }
-        }
+    now: Instant = Instant.now(),
+): List<Target> =
+    targets.filter { target ->
+        if (!target.isActive) return@filter false
+
+        val nextAttempt = target.nextAttemptAt
+        if (nextAttempt != null && nextAttempt.isAfter(now)) return@filter false
+
+        val lastCrawled = target.lastCrawledAt ?: return@filter true
+        val freshnessMs = policy.defaultFreshnessMinutes * 60 * 1000
+        Duration.between(lastCrawled, now).toMillis() >= freshnessMs
     }
-}
