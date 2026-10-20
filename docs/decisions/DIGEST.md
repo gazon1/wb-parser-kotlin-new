@@ -191,6 +191,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** выставлять `known_pages_limit` по круглому числу: сначала измерить длину _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** грузить в БД цель без `wb_search_query`. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** оставлять в каталоге поле, которое никто не читает. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Always** keep the security policy's scope narrow and honest. A policy _(from `2026-10-20-the-repository-measures-its-own-posture`)
+- **Always** pin an action to a commit and keep the version in a comment. _(from `2026-10-20-the-repository-measures-its-own-posture`)
+- **Always** protect `main` with the pipeline's own gates as the required _(from `2026-10-20-the-repository-measures-its-own-posture`)
+- **Never** let a score be the thing that is maintained. The scorecard _(from `2026-10-20-the-repository-measures-its-own-posture`)
+- **Never** require approving reviews in a repository with one maintainer. _(from `2026-10-20-the-repository-measures-its-own-posture`)
 - **Always** задавать темп через `RequestPacer`. Второй источник задержки делает интервал _(from `2026-10-20-the-request-rate-has-one-owner`)
 - **Always** клампить границы jitter в ноль: отрицательная задержка — это падение, а не «быстрее». _(from `2026-10-20-the-request-rate-has-one-owner`)
 - **Never** ждать перед запросом в `BrowserDownloader`: pacer уже это сделал, а лишнее ожидание _(from `2026-10-20-the-request-rate-has-one-owner`)
@@ -368,6 +373,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The executed-test floors are raised in the same commit that adds tests, in both _(from `2026-10-08-gates-that-can-fail`)_
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
 - The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
+- The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
 
 ### `cleanup`
 
@@ -525,6 +531,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - The coverage gate runs in `./check.sh` (step 7) and in ci.yml's `coverage` _(from `2026-10-19-coverage-floor-gate`)_
 - The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
+- The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
 - The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
 
 ### `gates`
@@ -683,9 +690,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
 
+### `scorecard`
+
+- The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
+
 ### `security`
 
 - The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
+- The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
 
 ### `side-effects`
@@ -701,6 +713,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Positive**: `Spider.concurrency` now reaches `CrawlRunner` via `CrawlerConfig` _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: `crawler.schedule.cron` from YAML controls the schedule _(from `2026-09-09-scheduler-wireup-pr18`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
+
+### `supply-chain`
+
+- The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
 
 ### `test`
 
@@ -802,6 +818,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-big-classes-are-split-by-decision` — architecture  refactoring  maintainability
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — build  tests  gate  coverage
 - `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
+- `2026-10-20-the-repository-measures-its-own-posture` — ci  security  supply-chain  scorecard  gate
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
@@ -867,6 +884,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-big-classes-are-split-by-decision` — The three large classes are split by the decision they hold, not by the layer they live in
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — Покрытие меряется по коду, а не по модулю, которому он принадлежит
 - `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
+- `2026-10-20-the-repository-measures-its-own-posture` — The repository measures its own posture, and the actions it runs are pinned
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню
