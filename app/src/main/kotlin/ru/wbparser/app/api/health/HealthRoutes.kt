@@ -70,6 +70,10 @@ class HealthRoutes(
             // The counters are a section of their own: "checks" says whether the data
             // is ready, this says how the crawl is going.
             "crawler" to crawlerStats(meterRegistry),
+            // The egress state is a third section: which address each group leaves
+            // from, and whether it is still answering. Without it the numbers above
+            // have nothing to be compared with.
+            "egress" to egressStats(meterRegistry, datasource),
         )
     }
 }

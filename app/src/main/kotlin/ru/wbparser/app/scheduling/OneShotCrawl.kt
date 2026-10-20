@@ -76,6 +76,10 @@ class OneShotCrawl(
                 log.warn("Crawl had nothing to do: no active target is due")
                 result.exitCode()
             }
+            is CrawlRunner.RunResult.NoEgressAvailable -> {
+                log.warn("Crawl not started: no egress group can serve a request right now")
+                result.exitCode()
+            }
         }
     }
 

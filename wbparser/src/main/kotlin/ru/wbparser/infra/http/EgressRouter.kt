@@ -69,6 +69,15 @@ interface EgressAttribution {
      * a broken catalog can be trusted.
      */
     fun isGroupHealthy(groupId: String): Boolean
+
+    /**
+     * Whether any group can serve a request right now.
+     *
+     * The runner asks this before it opens a run: a run that starts when every
+     * address is refusing serves nothing, fails every target at once, and then
+     * looks in the history like a crawl that broke.
+     */
+    fun isAnyGroupAvailable(): Boolean
 }
 
 /**
@@ -282,6 +291,14 @@ class EgressRouter(
      * different story from a group that is answering fine.
      */
     override fun lastGroupFor(targetId: UUID): String? = lastGroupByTarget[targetId]
+
+    /**
+     * Whether any group can serve a request right now.
+     *
+     * A group whose circuit is open is not asked — the address it stands for is
+     * refusing, and the addresses that still answer must not be silenced with it.
+     */
+    override fun isAnyGroupAvailable(): Boolean = breakers.values.any { it.state != CircuitBreaker.State.OPEN }
 
     /**
      * Whether the group is answering normally.
