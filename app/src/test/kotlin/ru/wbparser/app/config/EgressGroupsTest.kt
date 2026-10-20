@@ -15,19 +15,13 @@ import io.kotest.matchers.shouldBe
 class EgressGroupsTest :
     FunSpec({
 
-        test("a deployment without groups has one group with all the profiles") {
-            val resolved =
-                EgressGroups.resolve(
-                    Spider(
-                        browserProfiles = listOf("p1", "p2"),
-                        browserMinRequestIntervalMs = 3_000L,
-                    ),
-                )
+        test("a deployment without groups is refused, and the message says what to write") {
+            val failure =
+                shouldThrow<IllegalStateException> {
+                    EgressGroups.resolve(Spider(browserMinRequestIntervalMs = 3_000L))
+                }
 
-            resolved.groups.map { it.id } shouldBe listOf("default")
-            resolved.groups.single().profileIds shouldContainExactly listOf("p1", "p2")
-            resolved.profiles.map { it.profileId } shouldContainExactly listOf("p1", "p2")
-            resolved.profiles.all { it.egressGroup == "default" } shouldBe true
+            failure.message!!.contains("egress-groups") shouldBe true
         }
 
         test("the groups own the profiles, and the profile list is their union") {
@@ -45,18 +39,6 @@ class EgressGroupsTest :
             resolved.groups.map { it.id } shouldBe listOf("ip-1", "ip-2")
             resolved.profiles.map { it.profileId } shouldContainExactly listOf("p1", "p2", "p3")
             resolved.profiles.first { it.profileId == "p3" }.egressGroup shouldBe "ip-2"
-        }
-
-        test("the groups win over the legacy profile list") {
-            val resolved =
-                EgressGroups.resolve(
-                    Spider(
-                        browserProfiles = listOf("legacy"),
-                        egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1"))),
-                    ),
-                )
-
-            resolved.profiles.map { it.profileId } shouldContainExactly listOf("p1")
         }
 
         test("the concurrency is the number of profiles") {
