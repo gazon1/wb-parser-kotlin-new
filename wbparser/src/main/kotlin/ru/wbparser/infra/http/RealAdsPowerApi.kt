@@ -82,4 +82,36 @@ internal class RealAdsPowerApi(
                 }
         return envelope.isSuccess
     }
+
+    /**
+     * The proxy of every profile AdsPower knows about.
+     *
+     * The v1 list endpoint is paged; the crawler cares about a handful of profiles, so
+     * one page of a hundred is more than enough, and a deployment with more profiles
+     * than that has other problems.
+     */
+    override fun listProfileProxies(): List<AdsPowerProfileProxy> {
+        val client = client()
+        val envelope = client?.get("/api/v1/browser-profile/list?page=1&page_size=100")
+        // The runtime is gone or moved: drop the cached base so the next call re-runs
+        // discovery against the new port.
+        if (client != null && envelope == null) invalidateBaseUrl()
+        val list = envelope?.takeIf { it.isSuccess }?.data?.get("list") as? List<*>
+        return list.orEmpty().mapNotNull { it.toProfileProxy() }
+    }
+
+    /**
+     * One entry of the profile list, as a proxy description.
+     */
+    private fun Any?.toProfileProxy(): AdsPowerProfileProxy? {
+        val profile = this as? Map<*, *> ?: return null
+        val profileId = profile["profile_id"] as? String ?: return null
+        val proxy = profile["user_proxy_config"] as? Map<*, *>
+        return AdsPowerProfileProxy(
+            profileId = profileId,
+            proxyHost = proxy?.get("proxy_host") as? String,
+            proxyPort = proxy?.get("proxy_port")?.toString(),
+            proxyType = proxy?.get("proxy_type") as? String,
+        )
+    }
 }

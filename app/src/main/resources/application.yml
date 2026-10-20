@@ -85,6 +85,16 @@ logging:
 crawler:
   spider:
     use-browser-fetch: true
+    # The egress groups: sets of AdsPower profiles that are expected to share one
+    # egress IP. A group owns the request budget of its address, which is what WB
+    # counts. One profile per group is the most throughput; several profiles in a
+    # group buy the group a working IP while one of its profiles rests after an
+    # anti-bot answer.
+    #
+    # The profiles below are all without a proxy, so they all leave from the same
+    # address — which is one group, not three. Give the profiles their own proxies
+    # in AdsPower and declare one group per proxy here.
+    egress-groups: []
     browser-profiles:
       # Only include profiles currently open in AdsPower.
       # k18a6v75 — Inactive
@@ -92,10 +102,23 @@ crawler:
       # k187fu14 — Inactive, Chrome 142 not ready
       - k17bnqsi
       - kxpu63n
+    # The services asked for the crawler's own address, in order. The first that
+    # answers wins. The probe never stops the crawler: an unreachable echo service
+    # is a warning, not a failure.
+    egress-probe-urls:
+      - https://api.ipify.org?format=json
+      - https://ifconfig.me/ip
+    egress-probe-timeout-ms: 5000
+    # Turn "the groups turned out not to be isolated by IP" from a warning into a
+    # refusal to start. Off by default: the crawl still works without the extra
+    # budget, it just does not get it.
+    require-isolated-egress-groups: false
     browser-retry-limit: 3
-    # How many crawl targets run at once. Matched to the profile count above: the pool
-    # serialises per profile, so more workers queue rather than parallelise.
-    target-concurrency: 5
+    # How many crawl targets run at once. Derived from the number of profiles when
+    # it is not set: the pool serialises per profile, so more workers queue rather
+    # than parallelise. It used to be a number in this file that had to be kept
+    # equal to the profile count by hand — and was not.
+    target-concurrency: 0
     # Anti-bot session warm-up is paid once per AdsPower profile, not per page:
     # ~2 s of challenge wait on the very first request of each profile, then every
     # later request reuses the warm page.

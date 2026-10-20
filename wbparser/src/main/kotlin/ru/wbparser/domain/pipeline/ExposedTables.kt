@@ -105,6 +105,24 @@ object CrawlTargetsTable : Table("crawl_targets") {
 }
 
 /**
+ * The egress groups of this deployment: which profiles are expected to share one IP,
+ * and which IP the probe actually saw.
+ *
+ * The table is a ledger, not a control table — the crawler reads the groups from its
+ * configuration, and writes here what it observed. The rows are what an operator
+ * looks at when the metrics say a group is not isolated.
+ */
+object CrawlEgressGroupsTable : Table("crawl_egress_groups") {
+    val groupId: Column<String> = varchar("group_id", 64)
+    val egressIp: Column<String?> = varchar("egress_ip", 45).nullable()
+    val isolated: Column<Boolean> = bool("isolated")
+    val probedAt: Column<OffsetDateTime> = timestampWithTimeZone("probed_at")
+    val ipChanges: Column<Int> = integer("ip_changes")
+
+    override val primaryKey = PrimaryKey(groupId)
+}
+
+/**
  * The category tree observed while crawling.
  *
  * One row per (target, category): the category a product was seen in, the name WB

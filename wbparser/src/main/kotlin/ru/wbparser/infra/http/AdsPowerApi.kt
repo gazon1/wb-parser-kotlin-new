@@ -1,6 +1,35 @@
 package ru.wbparser.infra.http
 
 /**
+ * The proxy of one AdsPower profile, as AdsPower reports it.
+ *
+ * @param proxyHost the proxy's host, or null when the profile has no proxy.
+ * @param proxyPort the proxy's port.
+ * @param proxyType the proxy's kind: `http`, `https`, `socks5`, `ssh`…
+ */
+data class AdsPowerProfileProxy(
+    val profileId: String,
+    val proxyHost: String?,
+    val proxyPort: String?,
+    val proxyType: String?,
+) {
+    /**
+     * Whether the profile goes out through a proxy at all.
+     */
+    val hasProxy: Boolean get() = !proxyHost.isNullOrBlank()
+
+    /**
+     * The proxy as one comparable value.
+     *
+     * Two profiles of one egress group have to end up behind the same proxy, and
+     * comparing this string is how the probe checks that without knowing anything
+     * about AdsPower's proxy vocabulary.
+     */
+    val identity: String
+        get() = if (hasProxy) "$proxyType://$proxyHost:$proxyPort" else "no_proxy"
+}
+
+/**
  * Contract for the AdsPower Local API.
  *
  * Encapsulates the HTTP calls to `checkActiveV2` and `startProfileV2` so they can be
@@ -36,6 +65,14 @@ interface AdsPowerApi {
      * a profile lock and its share of the machine's memory.
      */
     fun stopProfileV2(profileId: String): Boolean
+
+    /**
+     * The proxy of every profile AdsPower knows about.
+     *
+     * Empty when the Local API does not answer or does not know the endpoint — the
+     * caller then has to fall back to asking the profiles themselves.
+     */
+    fun listProfileProxies(): List<AdsPowerProfileProxy>
 
     /**
      * Whether the AdsPower Local API is reachable.

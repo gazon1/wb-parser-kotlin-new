@@ -2,9 +2,9 @@ package ru.wbparser.infra.http
 
 import com.microsoft.playwright.Page
 import org.slf4j.Logger
+import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.locks.ReentrantLock
 
 /**
  * What a profile needs to know about the pool it belongs to.
@@ -43,7 +43,19 @@ internal class BrowserProfileState(
     private val automation: BrowserAutomation,
     private val context: BrowserPoolContext,
 ) {
-    val lock = ReentrantLock()
+    /**
+     * The profile's single permit.
+     *
+     * A [Semaphore] and **not** a [java.util.concurrent.locks.ReentrantLock]: a
+     * reentrant lock lets the thread that already holds it take it again, and two
+     * crawl workers on the same thread would then be handed the same profile — one
+     * browser, one anti-bot session, two requests. A semaphore has no owner, so the
+     * second worker waits for the first to be done.
+     */
+    val lock = Semaphore(1)
+
+    /** The egress group this profile belongs to. Its IP is the group's IP. */
+    val egressGroup: String get() = profileConfig.egressGroup
 
     /**
      * When this profile was last borrowed, in epoch milliseconds.

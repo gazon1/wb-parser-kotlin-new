@@ -62,7 +62,7 @@ class CircuitBreakerDownloaderTest :
 
         test("initially circuit is CLOSED") {
             val delegate =
-                object : BrowserDownloader(BrowserPool(listOf(BrowserProfileConfig("fake")))) {
+                object : BrowserDownloader(EgressRouter(BrowserPool(listOf(BrowserProfileConfig("fake"))))) {
                     override suspend fun download(task: Crawling): Either<NetworkError, Fetched> = Either.Right(makeFetched())
                 }
             val cb = CircuitBreakerDownloader(delegate, makeConfig())
@@ -73,7 +73,7 @@ class CircuitBreakerDownloaderTest :
         test("successful downloads keep circuit CLOSED and return Either.Right") {
             var callCount = 0
             val delegate =
-                object : BrowserDownloader(BrowserPool(listOf(BrowserProfileConfig("fake")))) {
+                object : BrowserDownloader(EgressRouter(BrowserPool(listOf(BrowserProfileConfig("fake"))))) {
                     override suspend fun download(task: Crawling): Either<NetworkError, Fetched> {
                         callCount++
                         return Either.Right(makeFetched())
@@ -92,7 +92,7 @@ class CircuitBreakerDownloaderTest :
 
         test("network error from delegate does not crash — returns Either.Left") {
             val delegate =
-                object : BrowserDownloader(BrowserPool(listOf(BrowserProfileConfig("fake")))) {
+                object : BrowserDownloader(EgressRouter(BrowserPool(listOf(BrowserProfileConfig("fake"))))) {
                     override suspend fun download(task: Crawling): Either<NetworkError, Fetched> =
                         Either.Left(NetworkError("connect timeout", null, task.url.toString(), false))
                 }
@@ -106,7 +106,7 @@ class CircuitBreakerDownloaderTest :
 
         test("antibot error returns Left with isAntibot=true on every call") {
             val delegate =
-                object : BrowserDownloader(BrowserPool(listOf(BrowserProfileConfig("fake")))) {
+                object : BrowserDownloader(EgressRouter(BrowserPool(listOf(BrowserProfileConfig("fake"))))) {
                     override suspend fun download(task: Crawling): Either<NetworkError, Fetched> =
                         Either.Left(
                             NetworkError("WB antibot", null, task.url.toString(), isAntibot = true),
@@ -127,7 +127,7 @@ class CircuitBreakerDownloaderTest :
 
         test("download returns Either<NetworkError, Fetched>") {
             val delegate =
-                object : BrowserDownloader(BrowserPool(listOf(BrowserProfileConfig("fake")))) {
+                object : BrowserDownloader(EgressRouter(BrowserPool(listOf(BrowserProfileConfig("fake"))))) {
                     override suspend fun download(task: Crawling): Either<NetworkError, Fetched> = Either.Right(makeFetched())
                 }
             val cb = CircuitBreakerDownloader(delegate, makeConfig())

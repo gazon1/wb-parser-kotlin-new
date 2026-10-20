@@ -89,6 +89,11 @@ class FakeAdsPowerApi private constructor(
 
     override fun isAvailable(): Boolean = apiAvailable
 
+    /** The proxies the fake reports. Empty by default. */
+    var profileProxies: List<AdsPowerProfileProxy> = emptyList()
+
+    override fun listProfileProxies(): List<AdsPowerProfileProxy> = profileProxies
+
     fun reset() = _calls.clear()
 }
 

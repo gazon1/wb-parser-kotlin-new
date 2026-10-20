@@ -49,16 +49,50 @@ data class Spider(
     val concurrency: Int = 3,
     val useBrowserForAuth: Boolean = true,
     val useBrowserFetch: Boolean = false,
+    /**
+     * LEGACY: the profiles of a single-IP deployment.
+     *
+     * Ignored when [egressGroups] is set — the groups are then the only source of
+     * profiles, and two lists that have to agree are one list too many.
+     */
     val browserProfiles: List<String> = emptyList(),
     /**
-     * How many crawl targets run at once. Set it to the number of AdsPower profiles: the pool
-     * serialises per profile, so more workers queue rather than parallelise.
+     * The egress groups: sets of profiles that are expected to share one egress IP.
      *
-     * Defaults to [browserProfiles].size when that is non-empty, and to 1 otherwise — with no
-     * profiles there is nothing to parallelise across.
+     * A group owns the request budget of its IP. Empty means "one group with all the
+     * profiles", which is what a deployment without a per-profile proxy has.
      */
-    val targetConcurrency: Int = if (browserProfiles.isEmpty()) 1 else browserProfiles.size,
+    val egressGroups: List<EgressGroupConfig> = emptyList(),
+    /**
+     * Whether a group that turns out not to be isolated by IP must stop the crawler.
+     *
+     * A rotating proxy changes the IP behind a group, and a group whose IP turned out
+     * to be shared with another group is not the isolation the configuration promised.
+     * Neither is a reason to refuse to start by default — the crawl still works, it
+     * just does not get the extra budget it was configured for. An operator who wants
+     * the guarantee rather than the warning turns this on.
+     */
+    val requireIsolatedEgressGroups: Boolean = false,
+    /**
+     * The services asked for the crawler's own IP, in order. The first that answers wins.
+     */
+    val egressProbeUrls: List<String> = emptyList(),
+    /**
+     * How long one probe service may take before the next one is tried.
+     */
+    val egressProbeTimeoutMs: Long = 5_000L,
+    /**
+     * How long a profile that answered with an anti-bot status rests before it is used again.
+     */
     val browserRetryLimit: Int = 3,
+    /**
+     * How many crawl targets run at once.
+     *
+     * Defaults to the number of profiles: the pool serialises per profile, so more
+     * workers queue rather than parallelise. The number is **derived** from the
+     * profiles of the configured groups, so it cannot drift away from them.
+     */
+    val targetConcurrency: Int = 0,
     /**
      * How long the WB anti-bot challenge is given to finish after the one-off navigation
      * that establishes a profile's session. Paid **once per profile**, not per request.
@@ -71,11 +105,12 @@ data class Spider(
     val browserJitterMinMs: Long = 200,
     val browserJitterMaxMs: Long = 500,
     /**
-     * Minimum milliseconds between two requests to WB, across all profiles.
+     * Minimum milliseconds between two requests to WB, for a group that does not say otherwise.
      *
-     * All AdsPower profiles of a deployment share one egress IP, so WB's rate limiter
-     * sees their sum. At 3000 ms the crawler asks for ~20 requests per minute in total —
-     * the rate at which WB answers normally. Zero disables the limit.
+     * All the profiles of one group share one egress IP, so WB's rate limiter sees their
+     * sum. At 3000 ms the crawler asks for ~20 requests per minute in total — the rate at
+     * which WB answers normally. Zero disables the limit. Groups with different IPs get
+     * their own budget.
      */
     val browserMinRequestIntervalMs: Long = 3_000L,
     /**

@@ -68,7 +68,7 @@ class CrawlPropertiesTest :
             properties.lock.timeoutMinutes shouldBe 0L
         }
 
-        test("target concurrency follows the number of browser profiles") {
+        test("target concurrency is derived from the profiles, not read from the configuration") {
             val properties =
                 bind(
                     "crawler.spider.browser-profiles[0]" to "profile-1",
@@ -76,11 +76,9 @@ class CrawlPropertiesTest :
                 )
 
             properties.spider.browserProfiles shouldContainExactlyInAnyOrder listOf("profile-1", "profile-2")
-            properties.spider.targetConcurrency shouldBe 2
-        }
-
-        test("target concurrency is one when there are no browser profiles") {
-            bind().spider.targetConcurrency shouldBe 1
+            // Zero means "derive it where the groups are resolved" — a number kept in
+            // this file by hand is a number that can drift away from the profiles.
+            properties.spider.targetConcurrency shouldBe 0
         }
 
         test("an explicit target concurrency wins over the derived one") {

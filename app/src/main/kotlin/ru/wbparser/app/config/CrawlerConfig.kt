@@ -10,8 +10,8 @@ import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.BrowserDownloader
 import ru.wbparser.infra.http.BrowserFetchTiming
 import ru.wbparser.infra.http.BrowserPool
-import ru.wbparser.infra.http.BrowserProfileConfig
 import ru.wbparser.infra.http.CircuitBreakerDownloader
+import ru.wbparser.infra.http.EgressRouter
 import ru.wbparser.infra.http.KtorDownloader
 import ru.wbparser.infra.http.RequestPacing
 import ru.wbparser.infra.http.parseWbCatalog
@@ -24,6 +24,7 @@ import ru.wbparser.infra.runner.CrawlSource
  * - [DatabaseHandle] (from [DatabaseConfig])
  * - [KtorDownloader] or [BrowserDownloader] (based on [CrawlProperties.spider.useBrowserFetch])
  * - [BrowserPool] (created when browser fetch is enabled)
+ * - [EgressRouter] (decides which egress group serves the next request)
  * - [Clock] (system clock)
  * - Configuration from [CrawlProperties.spider]
  *
@@ -34,21 +35,26 @@ class CrawlerConfig {
     @Bean
     fun ktorDownloader(): KtorDownloader = KtorDownloader()
 
+    /**
+     * The configured groups, the profiles they own and the concurrency they imply.
+     *
+     * Resolved once, so the pool and the runner cannot disagree about how many
+     * profiles there are.
+     */
     @Bean
-    fun browserPool(properties: CrawlProperties): BrowserPool {
+    fun egressGroups(properties: CrawlProperties): EgressGroups.Resolved = EgressGroups.resolve(properties.spider)
+
+    @Bean
+    fun browserPool(
+        properties: CrawlProperties,
+        groups: EgressGroups.Resolved,
+    ): BrowserPool {
         // No hardcoded CDP WS URLs — BrowserPool.resolveCdpUrl() will call the
         // AdsPower V2 /active endpoint, and if no browser is running it will call
         // V2 /start to launch one with --remote-allow-origins=* so Playwright's
         // CDP-over-WebSocket connection is accepted.
-        val profiles =
-            properties.spider.browserProfiles.map { profileId ->
-                BrowserProfileConfig(
-                    profileId = profileId,
-                    cdpWsUrl = null,
-                )
-            }
         return BrowserPool(
-            profiles = profiles,
+            profiles = groups.profiles,
             // The jitter belongs to the pacing: it is the one place that decides when the
             // next request may go out. The browser used to add a second, hidden delay.
             pacing =
@@ -57,16 +63,27 @@ class CrawlerConfig {
                     jitterMinMs = properties.spider.browserJitterMinMs,
                     jitterMaxMs = properties.spider.browserJitterMaxMs,
                 ),
+            // A group that names its own pacing overrides the default above.
+            groupPacings = groups.groups.associate { it.id to it.pacing },
         )
     }
 
+    /**
+     * Decides which egress group serves the next request.
+     */
+    @Bean
+    fun egressRouter(
+        pool: BrowserPool,
+        meterRegistry: MeterRegistry,
+    ): EgressRouter = EgressRouter(pool = pool, meterRegistry = meterRegistry)
+
     @Bean
     fun browserDownloader(
-        pool: BrowserPool,
+        router: EgressRouter,
         properties: CrawlProperties,
     ): BrowserDownloader =
         BrowserDownloader(
-            pool = pool,
+            router = router,
             timing =
                 BrowserFetchTiming(
                     warmupMs = properties.spider.browserWarmupMs,
@@ -81,15 +98,18 @@ class CrawlerConfig {
     fun crawlDependencies(
         circuitBreakerDownloader: CircuitBreakerDownloader,
         meterRegistry: MeterRegistry,
-    ): CrawlDependencies = CrawlDependencies(circuitBreakerDownloader, meterRegistry)
+        groups: EgressGroups.Resolved,
+    ): CrawlDependencies = CrawlDependencies(circuitBreakerDownloader, meterRegistry, groups)
 
     /**
-     * Groups HTTP/monitoring dependencies that are conditionally used based on [CrawlProperties.spider].
+     * Groups the HTTP/monitoring dependencies that are conditionally used based on [CrawlProperties.spider].
      * Exists to keep [crawlRunner]'s parameter count below the LongParameterList threshold.
      */
     data class CrawlDependencies(
         val circuitBreakerDownloader: CircuitBreakerDownloader,
         val meterRegistry: MeterRegistry,
+        /** The groups the crawler runs on, and the number of profiles they own. */
+        val groups: EgressGroups.Resolved,
     )
 
     @Bean
@@ -121,7 +141,9 @@ class CrawlerConfig {
                     rules = properties.spider.rules.toBusinessRules(),
                     clock = clock,
                     concurrency = properties.spider.concurrency,
-                    targetConcurrency = properties.spider.targetConcurrency,
+                    // Derived from the profiles that exist, unless the operator says otherwise.
+                    targetConcurrency =
+                        properties.spider.targetConcurrency.takeIf { it > 0 } ?: deps.groups.targetConcurrency,
                     lockTimeoutMs = properties.lock.timeoutMinutes * 60_000,
                     // One parameter for the cadence; the cron expression is only the tick.
                     freshness =

@@ -3,7 +3,6 @@ package ru.wbparser.infra.http
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.locks.ReentrantLock
 
 /**
  * Manages a pool of Playwright [com.microsoft.playwright.Browser] connections to pre-opened
@@ -20,7 +19,7 @@ import java.util.concurrent.locks.ReentrantLock
  * ## Thread safety
  *
  * Each profile operates a single dedicated page. The pool serialises access to
- * each profile with a [ReentrantLock], so concurrent callers block safely.
+ * each profile with a permit, so concurrent callers block safely.
  *
  * ## CDP connection
  *
@@ -47,23 +46,62 @@ class BrowserPool(
      */
     private val browserAutomations: List<BrowserAutomation>? = null,
     /**
-     * How fast this pool may talk to WB.
+     * How fast this pool may talk to WB, for groups that do not say otherwise.
      *
-     * All profiles of a deployment share one egress IP, so the limit has to be global:
-     * per-profile pacing multiplies into a burst rate that WB's rate limiter sees exactly
-     * as a bot. See [RequestPacer].
+     * A group that shares one egress IP shares one budget, and the budget is set by the
+     * pacer — not by the number of profiles. Groups with different IPs get their own
+     * pacer and therefore their own budget, which is the point of splitting them. See
+     * [RequestPacer] and
+     * `docs/decisions/2026-10-21-egress-groups-are-the-unit-of-rate-limiting.md`.
      */
     private val pacing: RequestPacing = RequestPacing(),
+    /**
+     * Per-group pacing. A group that is not listed here uses [pacing].
+     */
+    private val groupPacings: Map<String, RequestPacing> = emptyMap(),
 ) {
-    /** Global request pacing — shared by every profile, because they share one IP. */
-    private val pacer = RequestPacer(pacing.minIntervalMs, pacing.jitterMinMs, pacing.jitterMaxMs)
+    /**
+     * One pacer per egress group.
+     *
+     * The pacer is the group's request budget: one request per interval for the whole
+     * group, because the group is one address as far as WB is concerned.
+     */
+    private val pacers: Map<String, RequestPacer> =
+        profiles
+            .map { it.egressGroup }
+            .distinct()
+            .associateWith { groupId ->
+                val groupPacing = groupPacings[groupId] ?: pacing
+                RequestPacer(
+                    groupPacing.minIntervalMs,
+                    groupPacing.jitterMinMs,
+                    groupPacing.jitterMaxMs,
+                )
+            }
+
+    /** The groups this pool serves. */
+    val egressGroupIds: Set<String> get() = pacers.keys
 
     /**
-     * Waits until the next request may be sent to WB.
+     * Waits until this group's next request may be sent to WB.
      *
-     * Called by the downloader before every fetch.
+     * Called by the downloader before every fetch, for the group that will serve it.
      */
-    suspend fun awaitRequestSlot() = pacer.awaitSlot()
+    suspend fun awaitRequestSlot(groupId: String) {
+        val pacer = requireNotNull(pacers[groupId]) { "Unknown egress group '$groupId'" }
+        pacer.awaitSlot()
+    }
+
+    /**
+     * How long until this group may send its next request, in milliseconds.
+     *
+     * A peek — it reserves nothing. It is what tells the router which group will be
+     * free soonest.
+     */
+    fun millisUntilSlot(groupId: String): Long {
+        val pacer = requireNotNull(pacers[groupId]) { "Unknown egress group '$groupId'" }
+        return pacer.millisUntilSlot()
+    }
 
     /** Discovered Chrome endpoints, resolved lazily and cached for the pool's lifetime. */
     @Volatile
@@ -135,10 +173,31 @@ class BrowserPool(
      * The timeout still exists so a genuinely wedged profile surfaces as an error rather than
      * hanging forever.
      *
+     * @param groupId the egress group to borrow from, or null for any profile. The group
+     *   is the address WB sees, so a request that must not leave through one IP must not
+     *   borrow a profile of another group.
      * @throws BrowserPoolExhaustedException if no profile frees up within [borrowTimeoutMs],
      *   or if none of them could be connected at all.
      */
-    fun borrowPage(): BorrowedPage {
+    fun borrowPage(groupId: String? = null): BorrowedPage = borrowFrom(groupId)
+
+    /**
+     * Borrows a page from one egress group **without waiting**.
+     *
+     * Returns null when the group has no free profile right now. The caller keeps its
+     * budget: no pacer slot is spent on a group that could not serve the request, and
+     * the caller is free to ask another group instead.
+     *
+     * @param includeFlagged whether a profile resting after an anti-bot answer may be
+     *   handed out. The first pass of a borrow prefers profiles that were not flagged;
+     *   the second pass takes a flagged one rather than stalling the crawl.
+     */
+    fun tryBorrowPage(
+        groupId: String,
+        includeFlagged: Boolean,
+    ): BorrowedPage? = tryBorrow(groupId, includeFlagged)
+
+    private fun borrowFrom(groupId: String?): BorrowedPage {
         // Two passes over the pool: the first takes anything free, the second waits on the
         // round-robin cursor. Sweeping all profiles before blocking means a caller that
         // arrives while another profile is mid-connect still finds the idle ones.
@@ -148,30 +207,15 @@ class BrowserPool(
         // profile if every profile is flagged: resting all of them would stall the crawl
         // until the cooldown expires, which is worse than trying a session that may have
         // recovered.
-        for (pass in 0..1) {
-            for (i in 0 until profileStates.size) {
-                val index = cursor.updateAndGet { (it + 1) % profileStates.size }
-                val state = profileStates[index]
-                // Pass 0 takes a profile that WB has not flagged, pass 1 a flagged one.
-                val flagged = state.isFlagged()
-                if (flagged != (pass == 1)) continue
-                if (state.lock.tryLock()) {
-                    try {
-                        return borrowLocked(state)
-                    } catch (e: Exception) {
-                        state.close()
-                        log.warn("Profile {} unusable, trying next: {}", state.profileConfig.profileId, e.message)
-                    }
-                }
-            }
-        }
+        tryBorrow(groupId, includeFlagged = true)?.let { return it }
 
         // Every profile is busy. Wait on the round-robin slot rather than failing: the
         // competitor is another crawl worker holding it for one request's duration.
-        repeat(profileStates.size) {
+        for (attempt in 0 until profileStates.size) {
             val index = cursor.updateAndGet { (it + 1) % profileStates.size }
             val state = profileStates[index]
-            val acquired = state.lock.tryLock(adsPower.borrowTimeoutMs, TimeUnit.MILLISECONDS)
+            if (groupId != null && state.egressGroup != groupId) continue
+            val acquired = state.lock.tryAcquire(adsPower.borrowTimeoutMs, TimeUnit.MILLISECONDS)
             if (acquired) {
                 try {
                     return borrowLocked(state)
@@ -182,8 +226,40 @@ class BrowserPool(
             }
         }
         throw BrowserPoolExhaustedException(
-            "No browser profile freed within ${adsPower.borrowTimeoutMs}ms (${profileStates.size} configured)",
+            "No browser profile freed within ${adsPower.borrowTimeoutMs}ms " +
+                "(${profileStates.size} configured, group=${groupId ?: "all"})",
         )
+    }
+
+    /**
+     * One non-blocking sweep over the pool.
+     *
+     * Pass 0 takes a profile that WB has not flagged, pass 1 a flagged one. The second
+     * pass only runs when the caller allows flagged profiles.
+     */
+    private fun tryBorrow(
+        groupId: String?,
+        includeFlagged: Boolean,
+    ): BorrowedPage? {
+        for (pass in 0..1) {
+            if (pass == 1 && !includeFlagged) break
+            for (attempt in 0 until profileStates.size) {
+                val index = cursor.updateAndGet { (it + 1) % profileStates.size }
+                val state = profileStates[index]
+                if (groupId != null && state.egressGroup != groupId) continue
+                val flagged = state.isFlagged()
+                if (flagged != (pass == 1)) continue
+                if (state.lock.tryAcquire()) {
+                    try {
+                        return borrowLocked(state)
+                    } catch (e: Exception) {
+                        state.close()
+                        log.warn("Profile {} unusable, trying next: {}", state.profileConfig.profileId, e.message)
+                    }
+                }
+            }
+        }
+        return null
     }
 
     private fun borrowLocked(state: BrowserProfileState): BorrowedPage {
@@ -196,6 +272,7 @@ class BrowserPool(
             // Snapshot under the profile lock: `warm` only flips while this lock
             // is held by this borrower, so a stale read is impossible here.
             isWarm = state.warm,
+            egressGroup = state.egressGroup,
             hooks =
                 BorrowedPageHooks(
                     onWarm = { state.warm = true },
@@ -206,7 +283,7 @@ class BrowserPool(
     }
 
     private fun release(state: BrowserProfileState) {
-        state.lock.unlock()
+        state.lock.release()
     }
 
     /**
@@ -265,14 +342,14 @@ class BrowserPool(
         for (state in profileStates) {
             // A profile in use is not idle. The lock is the same one the borrower
             // holds, so tryLock tells us without waiting.
-            if (!state.lock.tryLock()) continue
+            if (!state.lock.tryAcquire()) continue
             try {
                 if (!state.isIdleSince(now, idleTimeoutMs)) continue
                 if (!state.isBrowserOpen()) continue
                 state.closeAndStop(stopInAdsPower = true)
                 closed++
             } finally {
-                state.lock.unlock()
+                state.lock.release()
             }
         }
         if (closed > 0) {
@@ -298,13 +375,13 @@ class BrowserPool(
             // the process, and a browser that outlives the crawler is the thing we are
             // fixing. A page that was borrowed and never released is a leak of its own,
             // and it must not keep a browser alive.
-            val locked = state.lock.tryLock()
+            val locked = state.lock.tryAcquire()
             try {
                 if (!state.isBrowserOpen() && !state.wasStartedByPool()) continue
                 state.closeAndStop(stopInAdsPower = true)
                 closed++
             } finally {
-                if (locked) state.lock.unlock()
+                if (locked) state.lock.release()
             }
         }
         if (closed > 0) {
