@@ -68,4 +68,33 @@ object CatalogContract {
         @Suppress("UNCHECKED_CAST")
         (components["schemas"] as? Map<String, Map<String, Any?>>) ?: emptyMap()
     }
+
+    /**
+     * The largest offset the API serves, in rows.
+     *
+     * Read from `x-catalog-paging.maxOffset` in the document, so the number the code
+     * enforces and the number the contract publishes are the same number by construction:
+     * there is no second copy to forget.
+     *
+     * A document without the block, or with a nonsense value in it, is a broken contract
+     * rather than a contract with a default — and a broken contract is caught here rather
+     * than by a caller that received a page it had not asked for.
+     */
+    fun maxOffset(): Int {
+        val limits =
+            parsed["x-catalog-paging"] as? Map<*, *> ?: error(
+                "The contract document at '$RESOURCE' has no 'x-catalog-paging' block. The offset " +
+                    "bound is part of the contract: the storefront clamps to it as well, and a " +
+                    "bound that lives in one place only is a bound that will differ in two.",
+            )
+        val value =
+            limits["maxOffset"] as? Int ?: error(
+                "The contract document at '$RESOURCE' has no integer 'x-catalog-paging.maxOffset'.",
+            )
+        require(value > 0) {
+            "The contract document at '$RESOURCE' has a non-positive 'x-catalog-paging.maxOffset' " +
+                "($value). A bound of zero rows would refuse every page."
+        }
+        return value
+    }
 }
