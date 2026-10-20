@@ -4,7 +4,6 @@ import ru.wbparser.domain.util.WB_BASE_URL
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.ThreadLocalRandom
 
 /**
  * Pure request construction for the WB internal catalog API.
@@ -225,28 +224,6 @@ internal object WbCatalogRequest {
             "referer" to "$WB_BASE_URL/catalog/$catalogId/list.aspx",
             "accept" to "*/*",
         )
-    }
-
-    /**
-     * Random pacing delay in `[minMs, maxMs)`, never negative.
-     *
-     * Deliberately jittered rather than fixed: a constant delay makes every page arrive on a
-     * metronome, which is the same signature a bot produces. [ThreadLocalRandom] keeps the call
-     * allocation-free and thread-safe without a shared [java.util.Random].
-     *
-     * Both bounds are clamped at zero rather than trusted. A negative bound would otherwise
-     * flow into `nextLong` and hand a negative delay to `waitForTimeout`, which throws
-     * mid-request — a misconfigured `browser-jitter-min-ms` turning into a crawl failure.
-     */
-    fun jitterMs(
-        minMs: Long,
-        maxMs: Long,
-    ): Long {
-        if (maxMs <= minMs) return minMs.coerceAtLeast(0)
-        val lo = minMs.coerceAtLeast(0)
-        val hi = maxMs.coerceAtLeast(lo)
-        if (hi <= lo) return lo
-        return ThreadLocalRandom.current().nextLong(lo, hi)
     }
 
     private const val API_PATH = "__internal/u-search/exactmatch/ru/common/v18/search"

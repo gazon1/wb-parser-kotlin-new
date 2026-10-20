@@ -150,29 +150,6 @@ class WbCatalogRequestTest :
             WbCatalogRequest.buildWbHeaders("not-a-catalog-url")["referer"] shouldContain "/catalog/unknown/"
         }
 
-        test("jitterMs stays inside its bounds") {
-            repeat(500) {
-                val delay = WbCatalogRequest.jitterMs(200, 500)
-                (delay in 200..499) shouldBe true
-            }
-        }
-
-        test("jitterMs returns the minimum when the bounds collapse") {
-            WbCatalogRequest.jitterMs(300, 300) shouldBe 300
-            WbCatalogRequest.jitterMs(300, 100) shouldBe 300
-        }
-
-        test("jitterMs never returns a negative delay for degenerate bounds") {
-            WbCatalogRequest.jitterMs(-50, -10) shouldBe 0
-        }
-
-        test("jitterMs actually varies rather than returning a fixed delay") {
-            val samples = List(200) { WbCatalogRequest.jitterMs(0, 500) }.toSet()
-
-            // A constant delay would defeat the point: it keeps requests on a metronome.
-            (samples.size > 10) shouldBe true
-        }
-
         test("the fetch script reads headers from its argument instead of embedding them") {
             // Header values such as "Linux" contain double quotes; interpolating them into the
             // script source produces invalid JS. They must arrive as a parsed argument.

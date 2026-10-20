@@ -4,6 +4,24 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.random.Random
+
+/**
+ * The request rate of a crawler: how long to wait between two requests, and how much
+ * random extra delay to add to that wait.
+ *
+ * One object instead of three parameters, because these three numbers are one decision:
+ * the rate at which WB is asked for pages. The jitter is part of the pacing, not a
+ * decoration of the request — a constant delay leaves the requests on a metronome.
+ */
+data class RequestPacing(
+    /** Minimum milliseconds between two requests. Zero disables the pacing. */
+    val minIntervalMs: Long = 0L,
+    /** Lower bound of the random extra delay added to every interval. */
+    val jitterMinMs: Long = 0L,
+    /** Exclusive upper bound of the same random extra delay. */
+    val jitterMaxMs: Long = 0L,
+)
 
 /**
  * Limits how fast requests may leave the crawler, across all workers and profiles.
@@ -32,6 +50,24 @@ class RequestPacer(
      * Zero disables the pacer — every caller proceeds immediately. Useful in tests.
      */
     private val minIntervalMs: Long = 0L,
+    /**
+     * Lower bound of the random extra delay added to every interval.
+     *
+     * The jitter is part of the pacing, not of the fetch: a constant delay makes every
+     * request arrive on the same schedule, which is the shape a rate limiter looks
+     * for. It used to be applied inside the browser, next to the request — which
+     * meant two numbers decided the request rate, and neither of them said so.
+     */
+    private val jitterMinMs: Long = 0L,
+    /**
+     * Exclusive upper bound of the same random extra delay.
+     */
+    private val jitterMaxMs: Long = 0L,
+    /**
+     * The source of the random extra delay. Injectable, so the pacing can be
+     * asserted on a virtual timeline.
+     */
+    private val random: Random = Random.Default,
     /**
      * The clock the pacer schedules against.
      *
@@ -67,7 +103,7 @@ class RequestPacer(
                 lastGrant.set(now)
                 return@withLock
             }
-            val earliest = previous + minIntervalMs
+            val earliest = previous + minIntervalMs + jitterMs()
             if (earliest > now) {
                 delay(earliest - now)
             }
@@ -77,8 +113,37 @@ class RequestPacer(
         }
     }
 
+    /**
+     * The random extra delay of this request, in milliseconds.
+     */
+    private fun jitterMs(): Long = jitterMs(jitterMinMs, jitterMaxMs, random)
+
     companion object {
         /** Sentinel for "no request has been granted yet". */
         private const val NO_GRANT_YET = Long.MIN_VALUE
+
+        /**
+         * A random delay in `[minMs, maxMs)`, never negative.
+         *
+         * Deliberately jittered rather than fixed: a constant delay makes every request
+         * arrive on a metronome, which is the same signature a bot produces.
+         *
+         * Both bounds are clamped at zero rather than trusted. A negative bound would
+         * otherwise flow into the schedule and hand a negative delay to the caller —
+         * a misconfigured `browser-jitter-min-ms` turning into a crawl failure.
+         *
+         * Exposed as a pure function of its bounds so the pacing can be asserted on a
+         * virtual timeline instead of by sleeping.
+         */
+        internal fun jitterMs(
+            minMs: Long,
+            maxMs: Long,
+            random: Random = Random.Default,
+        ): Long {
+            val lo = minMs.coerceAtLeast(0L)
+            val hi = maxMs.coerceAtLeast(lo)
+            if (hi <= lo) return lo
+            return lo + random.nextLong(hi - lo)
+        }
     }
 }

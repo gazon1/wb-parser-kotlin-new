@@ -150,6 +150,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** считать cron выражением каденции: это тик. _(from `2026-10-20-schedule-cadence-single-parameter`)
 - **Always** держать в `wb_subjects` полный словарь; он обновляется при старте, а не при _(from `2026-10-20-subject-dictionary-loaded-at-startup`)
 - **Never** выдумывать имя предмета, если id нет в словаре: `catalog_name` остаётся _(from `2026-10-20-subject-dictionary-loaded-at-startup`)
+- **Always** задавать темп через `RequestPacer`. Второй источник задержки делает интервал _(from `2026-10-20-the-request-rate-has-one-owner`)
+- **Always** клампить границы jitter в ноль: отрицательная задержка — это падение, а не «быстрее». _(from `2026-10-20-the-request-rate-has-one-owner`)
+- **Never** ждать перед запросом в `BrowserDownloader`: pacer уже это сделал, а лишнее ожидание _(from `2026-10-20-the-request-rate-has-one-owner`)
+- **Never** убирать jitter, считая его бесплатным: он примерно треть времени между запросами и _(from `2026-10-20-the-request-rate-has-one-owner`)
 - **Always** держать `wb_catalog_targets.yaml` в репозитории и прогонять _(from `2026-10-20-versioned-catalog-and-latest-observation-view`)
 - **Never** полагаться на YAML как на единственный источник целей: в БД они всё равно _(from `2026-10-20-versioned-catalog-and-latest-observation-view`)
 - **Always** брать категорию из `crawl_targets.wb_search_query`; пустое значение — отказ, _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
@@ -184,6 +188,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
+- Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
 
 ### `api`
 
@@ -279,6 +284,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `BrowserPool` remains the pool manager (round-robin, locking); `BrowserAutomation` handles only the browser lifecycle. _(from `2026-10-17-browser-automation-interface`)_
 - `FakeAdsPowerApi` lives in `src/test/kotlin/` alongside the tests that use it. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
 - `FakeBrowserAutomation` lives in `src/test/kotlin/` alongside `BrowserPoolTest`. _(from `2026-10-17-browser-automation-interface`)_
+- Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
 
 ### `bug-fix`
 
@@ -373,6 +379,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - WB больше не отдаёт кэшбэк в этом ответе (`price.cashback = 0`), поэтому _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)_
 - В логах появляются «профиль отдывает» и «цепи ждёт окна» — это ожидаемое поведение, а _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Данные в базе, собранные старым эндпоинтом, — популярная ротация под чужими названиями. _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)_
+- Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
 - Полный обход 132 каталогов по 5 страниц при темпе 3 с занимает около 35 минут. Это _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Скачивание при старте добавляет сетевую зависимость: без интернета старт проходит с _(from `2026-10-20-subject-dictionary-loaded-at-startup`)_
 - Цель, у которой антибот не отпустил за 5 попыток, всё равно падает — но теперь это _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
@@ -516,6 +523,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
 - `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. _(from `2026-10-14-parallel-crawl-targets`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
+- Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
 
 ### `pipeline`
 
@@ -731,6 +739,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-pagination-does-not-increase-depth` — pipeline  domain
 - `2026-10-20-schedule-cadence-single-parameter` — scheduling  configuration
 - `2026-10-20-subject-dictionary-loaded-at-startup` — bootstrap  data-quality  crawler
+- `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
 
@@ -789,5 +798,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-pagination-does-not-increase-depth` — Пагинация не увеличивает глубину краула
 - `2026-10-20-schedule-cadence-single-parameter` — Каденция краула задаётся одним параметром — окном свежести
 - `2026-10-20-subject-dictionary-loaded-at-startup` — Справочник предметов WB загружается при старте приложения
+- `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню

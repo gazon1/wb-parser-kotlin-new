@@ -308,16 +308,16 @@ class BrowserPool(
      */
     private val browserAutomations: List<BrowserAutomation>? = null,
     /**
-     * Minimum milliseconds between two requests leaving this pool.
+     * How fast this pool may talk to WB.
      *
      * All profiles of a deployment share one egress IP, so the limit has to be global:
      * per-profile pacing multiplies into a burst rate that WB's rate limiter sees exactly
      * as a bot. See [RequestPacer].
      */
-    private val minRequestIntervalMs: Long = 0L,
+    private val pacing: RequestPacing = RequestPacing(),
 ) {
     /** Global request pacing — shared by every profile, because they share one IP. */
-    private val pacer = RequestPacer(minRequestIntervalMs)
+    private val pacer = RequestPacer(pacing.minIntervalMs, pacing.jitterMinMs, pacing.jitterMaxMs)
 
     /**
      * Waits until the next request may be sent to WB.

@@ -84,4 +84,51 @@ class RequestPacerTest :
                 currentTime shouldBe 0L
             }
         }
+
+        test("the jitter is added to the interval, so the schedule is not a metronome") {
+            runTest {
+                // The jitter is part of the pacing: the next slot is the interval plus a
+                // random extra delay, which is what keeps the requests from arriving on
+                // a fixed schedule.
+                val pacer =
+                    RequestPacer(
+                        minIntervalMs = 1_000L,
+                        jitterMinMs = 200L,
+                        jitterMaxMs = 500L,
+                        nowMs = { currentTime },
+                    )
+
+                pacer.awaitSlot()
+                currentTime shouldBe 0L
+
+                val second = currentTime
+                pacer.awaitSlot()
+
+                val slot = currentTime - second
+                (slot in 1_200L..1_499L) shouldBe true
+            }
+        }
+
+        test("jitterMs stays inside its bounds") {
+            repeat(500) {
+                val delay = RequestPacer.jitterMs(200, 500)
+                (delay in 200..499) shouldBe true
+            }
+        }
+
+        test("jitterMs returns the minimum when the bounds collapse") {
+            RequestPacer.jitterMs(300, 300) shouldBe 300
+            RequestPacer.jitterMs(300, 100) shouldBe 300
+        }
+
+        test("jitterMs never returns a negative delay for degenerate bounds") {
+            RequestPacer.jitterMs(-50, -10) shouldBe 0
+        }
+
+        test("jitterMs actually varies rather than returning a fixed delay") {
+            val samples = List(200) { RequestPacer.jitterMs(0, 500) }.toSet()
+
+            // A constant delay would defeat the point: it keeps requests on a metronome.
+            (samples.size > 10) shouldBe true
+        }
     })

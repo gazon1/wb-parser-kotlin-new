@@ -229,9 +229,9 @@ open class BrowserDownloader(
                 borrowed.markWarm()
             }
 
-            // Step 2: Pace requests. Without this a warm profile fires ~200 requests per
-            // minute from one IP, which is exactly the shape WB's rate limiting looks for.
-            page.waitForTimeout(WbCatalogRequest.jitterMs(timing.jitterMinMs, timing.jitterMaxMs).toDouble())
+            // Step 2: The request rate is not decided here. The pool's pacer has
+            // already waited — it is the one place that knows the global rate, because
+            // all the profiles share one egress IP.
 
             // Step 3: Extract cookies from the page context so they can be sent
             // with the API fetch call (credentials: 'include' alone is insufficient

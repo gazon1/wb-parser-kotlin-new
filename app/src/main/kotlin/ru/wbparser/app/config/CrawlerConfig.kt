@@ -13,6 +13,7 @@ import ru.wbparser.infra.http.BrowserPool
 import ru.wbparser.infra.http.BrowserProfileConfig
 import ru.wbparser.infra.http.CircuitBreakerDownloader
 import ru.wbparser.infra.http.KtorDownloader
+import ru.wbparser.infra.http.RequestPacing
 import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.runner.CrawlRunner
 
@@ -46,7 +47,14 @@ class CrawlerConfig {
             }
         return BrowserPool(
             profiles = profiles,
-            minRequestIntervalMs = properties.spider.browserMinRequestIntervalMs,
+            // The jitter belongs to the pacing: it is the one place that decides when the
+            // next request may go out. The browser used to add a second, hidden delay.
+            pacing =
+                RequestPacing(
+                    minIntervalMs = properties.spider.browserMinRequestIntervalMs,
+                    jitterMinMs = properties.spider.browserJitterMinMs,
+                    jitterMaxMs = properties.spider.browserJitterMaxMs,
+                ),
         )
     }
 
@@ -60,8 +68,6 @@ class CrawlerConfig {
             timing =
                 BrowserFetchTiming(
                     warmupMs = properties.spider.browserWarmupMs,
-                    jitterMinMs = properties.spider.browserJitterMinMs,
-                    jitterMaxMs = properties.spider.browserJitterMaxMs,
                 ),
         )
 
