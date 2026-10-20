@@ -65,6 +65,30 @@ sharper.
 mean two attempt counts, and every retry would look like the first attempt — the split is
 only safe because the coordinator stays shared.
 
+**`BrowserPool` → the pool plus six collaborators** (added 2026-10-20, PR #70):
+
+The file was 943 lines and held five decisions: the AdsPower Local API, the Playwright CDP
+lifecycle, the pool's leasing, the profile's own lifecycle, and the lease handle.
+
+- `BrowserPool` — the pool: which profile to hand out, and when.
+- `BrowserProfileState` — one profile's state: warm, resting after an anti-bot answer, last
+  used, browser open. It used to be a private inner class of the pool, so every one of its
+  answers was reachable only by going through the pool.
+- `AdsPowerApi` / `RealAdsPowerApi` — the Local API contract and its implementation.
+- `BrowserAutomation` / `CdpAutomation` — the Playwright contract and its implementation.
+- `BorrowedPage` (+ `BorrowedPageHooks`, `BrowserPoolExhaustedException`) — the lease handle.
+- `ChromeEndpointProbe` — the DevTools port probe.
+- `AdsPowerConfig`, `BrowserProfileConfig` — the configuration.
+
+`BrowserProfileState` needs four things it cannot know by itself — its index in the
+rotation, how many profiles there are, which browsers the machine has, where to log — so
+they travel in one `BrowserPoolContext` holder rather than as four more parameters.
+
+The split paid down two suppressed detekt findings rather than moving them: `resolveCdpUrl`
+now asks a helper for the AdsPower URL, and the baseline lost all three of its entries —
+the third, `SideInterpreterRegistry`, had been stale since the `Side.SaveBatch` and
+`Side.ScheduleRetry` interpreters were deleted.
+
 **`CrawlRunner` → a coordinator plus four collaborators:**
 
 - `CrawlRunner` — the run loop: lock → load due targets → crawl them → close the job row.

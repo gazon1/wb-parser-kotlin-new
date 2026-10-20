@@ -1,9 +1,5 @@
 <?xml version="1.0" ?>
 <SmellBaseline>
   <ManuallySuppressedIssues></ManuallySuppressedIssues>
-  <CurrentIssues>
-    <ID>LongParameterList:Interpreter.kt$SideInterpreterRegistry$( private val log: Interpreter&lt;Side.Log&gt;? = null, private val metric: Interpreter&lt;Side.Metric&gt;? = null, private val saveBatch: Interpreter&lt;Side.SaveBatch&gt;? = null, private val jobEvent: Interpreter&lt;Side.JobEvent&gt;? = null, private val scheduleRetry: Interpreter&lt;Side.ScheduleRetry&gt;? = null, private val acquireAdvisoryLock: Interpreter&lt;Side.AcquireAdvisoryLock&gt;? = null, private val drop: Interpreter&lt;Side.Drop&gt;? = null, )</ID>
-    <ID>ReturnCount:BrowserPool.kt$BrowserPool.ProfileState$private fun checkActiveV2(apiKey: String): String?</ID>
-    <ID>ReturnCount:BrowserPool.kt$BrowserPool.ProfileState$private fun resolveCdpUrl(): String</ID>
-  </CurrentIssues>
+  <CurrentIssues></CurrentIssues>
 </SmellBaseline>

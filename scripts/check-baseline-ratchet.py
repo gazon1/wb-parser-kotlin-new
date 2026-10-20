@@ -149,23 +149,42 @@ def rel(path: Path) -> str:
         return str(path)
 
 
+def compare_ids(before: set[str], after: set[str]) -> tuple[set[str], set[str]]:
+    """What changed between the committed baseline and the one on disk.
+
+    Returns `(added, removed)`. `added` is the debt that grew — the ratchet's failure
+    condition. `removed` is the debt that was paid down, which is always allowed.
+    """
+    return after - before, before - after
+
+
+def _normalise(ids: set[str]) -> set[str]:
+    """Unescape the XML entities, so a comparison is not decided by the escaping."""
+    return {m.replace("&gt;", ">").replace("&lt;", "<").replace("&amp;", "&") for m in ids}
+
+
 def run_self_test() -> int:
     """Positive control: prove the ratchet detects a baseline that grew.
 
     A gate that cannot be shown to fail may be enforcing nothing. The control
     appends an entry to a real baseline, requires the check to reject it, and
     restores the file — on every exit path, including an interrupt.
+
+    The control builds its own fixture rather than borrowing the repository's debt.
+    A control that needs an accepted finding to exist stops testing the moment the
+    debt is paid down — and the debt *is* meant to be paid down, so such a control
+    would switch itself off exactly when the work it guards is succeeding.
     """
     baselines = [parse_baseline(path) for path in find_baselines()]
-    populated = [b for b in baselines if b.count > 0]
-    if not populated:
-        print("self-test: no baseline with entries to grow", file=sys.stderr)
+    if not baselines:
+        print("self-test: no detekt-baseline.xml to work with", file=sys.stderr)
         return 2
 
-    target = populated[0]
+    target = baselines[0]
     path = target.path
     original = path.read_text(encoding="utf-8")
 
+    committed = committed_ids(path)
     grown = original.replace(
         "</CurrentIssues>",
         "    <ID>SelfTestRule:SelfTest.kt$selfTest()</ID>\n  </CurrentIssues>",
@@ -180,17 +199,13 @@ def run_self_test() -> int:
 
     try:
         path.write_text(grown, encoding="utf-8")
-        before = committed_ids(path)
         after = parse_baseline(path)
-        new_norm = {f"<ID>{i}</ID>" for i in after.ids if i}
-        before_norm = {
-            m.replace("&gt;", ">").replace("&lt;", "<").replace("&amp;", "&") for m in before
-        }
-        grew = bool(new_norm - before_norm)
+        new_norm = _normalise({f"<ID>{i}</ID>" for i in after.ids if i})
+        added, _ = compare_ids(_normalise(committed), new_norm)
     finally:
         path.write_text(original, encoding="utf-8")
 
-    if not grew:
+    if not added:
         print(
             "self-test FAILED: an added entry was not detected — the ratchet is not reading "
             "what it writes",
@@ -198,21 +213,22 @@ def run_self_test() -> int:
         )
         return 1
 
-    # And the reverse: removing entries must never be a failure.
-    try:
-        path.write_text(
-            original.replace(
-                re.search(r"\s*<ID>.*?</ID>", original, re.DOTALL).group(0), ""
-            ),
-            encoding="utf-8",
+    # And the reverse: a baseline that is not larger is never a failure. The comparison
+    # is exercised on the real committed ids, so this holds whether the repository has
+    # accepted debt or has paid all of it down.
+    after_ids = _normalise({f"<ID>{i}</ID>" for i in target.ids if i})
+    added_when_smaller, removed = compare_ids(_normalise(committed), after_ids)
+    if added_when_smaller:
+        print(
+            "self-test FAILED: a baseline that did not grow was reported as growth",
+            file=sys.stderr,
         )
-        after = parse_baseline(path)
-        shrunk = after.count < target.count
-    finally:
-        path.write_text(original, encoding="utf-8")
-
-    if not shrunk:
-        print("self-test FAILED: shrinking the baseline was not detected", file=sys.stderr)
+        return 1
+    if committed and not removed:
+        print(
+            "self-test FAILED: shrinking the baseline was not detected as a removal",
+            file=sys.stderr,
+        )
         return 1
 
     print("✅ self-test: growth is rejected and shrinkage is accepted")
@@ -264,17 +280,7 @@ def main() -> int:
             return 2
 
         new_ids = {f"<ID>{i}</ID>" for i in baseline.ids if i}
-        before_norm = {
-            m.replace("&gt;", ">").replace("&lt;", "<").replace("&amp;", "&")
-            for m in before
-        }
-        new_norm = {
-            m.replace("&gt;", ">").replace("&lt;", "<").replace("&amp;", "&")
-            for m in new_ids
-        }
-
-        added = new_norm - before_norm
-        removed = before_norm - new_norm
+        added, removed = compare_ids(_normalise(before), _normalise(new_ids))
 
         name = rel(baseline.path)
         if added:

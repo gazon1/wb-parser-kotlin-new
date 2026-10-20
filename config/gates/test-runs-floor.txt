@@ -4,4 +4,4 @@
 
 app 129
 tests 113
-wbparser 470
+wbparser 479
