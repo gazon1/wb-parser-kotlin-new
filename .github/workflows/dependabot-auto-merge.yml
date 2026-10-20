@@ -1,0 +1,71 @@
+# A patch or a minor merges itself; a major waits for a person.
+#
+# The gates decide whether a change is good — that is what they are for. A
+# dependency bump that keeps them green cannot change the meaning of the
+# code: a patch fixes a bug in a library, a minor adds to it. A major can move
+# packages and change APIs, and that is a change somebody has to read.
+#
+# So the bump is read from the pull request's own description, and the merge
+# is asked for only when the bump is a patch or a minor. The branch protection
+# has the last word: the auto-merge waits for the required checks.
+#
+# `pull_request_target` is the only trigger that can do this: a pull request
+# from Dependabot runs with a read-only token, and the workflow needs to write
+# a merge. That trigger runs the *base* branch's workflow with the repository's
+# permissions, so the one thing it must not do is run code from the pull
+# request. It does not: the checkout below is the base branch, and the only
+# thing read from the pull request is its description.
+name: Dependabot auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+# The workflow merges a pull request. It needs exactly that, and nothing else.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  merge:
+    # Only Dependabot's own pull requests. A pull request from anyone else
+    # must not be able to ask this workflow for a merge.
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The base branch, never the pull request's head: this workflow runs
+          # the base branch's code, and the base branch's code is what decides
+          # whether the bump is mergeable.
+          ref: ${{ github.event.pull_request.base.ref }}
+
+      - name: The pull request's own description
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq .body > "$RUNNER_TEMP/description.md"
+
+      - name: The bump is a patch or a minor
+        id: bump
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          bump="$(python3 scripts/dependabot_bump.py "$RUNNER_TEMP/description.md")" || {
+            echo "::notice::the update is not a patch and not a minor — a person decides"
+            exit 0
+          }
+          echo "the update is a $bump"
+          echo "bump=${bump}" >> "$GITHUB_OUTPUT"
+
+      - name: Merge it when the gates are green
+        if: steps.bump.outputs.bump != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" --auto --squash
+          echo "the merge is queued: it happens when the required checks are green"
