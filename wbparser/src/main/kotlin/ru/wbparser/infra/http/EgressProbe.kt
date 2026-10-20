@@ -263,7 +263,9 @@ class EgressProbe(
         problems: MutableList<String>,
     ): Map<String, Boolean> {
         val isolation = addresses.keys.associateWith { true }.toMutableMap()
-        val byAddress = addresses.values.groupBy { it }
+        // Grouped by the address, but the *group ids* are what is reported: two groups
+        // seen at one address are the problem, and the operator has to be told which.
+        val byAddress = addresses.entries.groupBy({ it.value }, { it.key })
         for ((address, groupIds) in byAddress) {
             if (groupIds.size < 2) continue
             problems +=
