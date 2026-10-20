@@ -13,8 +13,8 @@
 # Both files are written next to this compose file by the Caddy-vps Ansible role,
 # and they are deliberately not one file:
 #
-#   .env     TAG and IMAGE_OWNER only. Compose interpolates ${…} out of this one,
-#            so anything in it is subject to `$` expansion.
+#   .env     DIGEST and IMAGE_OWNER only. Compose interpolates ${…} out of this
+#            one, so anything in it is subject to `$` expansion.
 #   app.env  the credentials, passed to the container through env_file, which
 #            passes values literally. A password containing `$` must not be
 #            interpreted by the tooling that reads it.
@@ -22,13 +22,20 @@
 # Folding them together looked simpler and would have silently eaten the `$` in
 # any password that had one.
 #
-# The tag has no `latest` fallback: a deploy that forgot to set TAG would
+# The image is named by its DIGEST, not by a tag. A tag can be moved: the
+# `main` tag of this repository has pointed at a different image twice in one
+# afternoon, and a deploy that names a tag deploys whatever the registry
+# considers newest at that moment. A digest names one set of bytes, and the
+# storefront that reads the catalog API is verified against exactly those bytes.
+# The role resolves the tag the operator named to a digest and writes that.
+#
+# The digest has no `latest` fallback: a deploy that forgot to set DIGEST would
 # otherwise ship whatever the registry considers newest.
 # =============================================================================
 
 services:
   wb-parser:
-    image: ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser:${TAG:?TAG must be set to the commit SHA tag, e.g. TAG=$(git rev-parse --short HEAD)}
+    image: ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser@${DIGEST:?DIGEST must be set to the image digest, e.g. DIGEST=sha256:…}
     container_name: wb-parser
     restart: unless-stopped
     env_file:
