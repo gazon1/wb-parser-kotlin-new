@@ -132,6 +132,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** грузить в БД цель без `wb_search_query`. _(from `2026-10-20-a-popular-list-is-not-a-catalog`)
 - **Never** сохранять ответ с `catalog_type = "presets"`, даже если он выглядит как обычная _(from `2026-10-20-a-popular-list-is-not-a-catalog`)
 - **Never** считать такую страницу пройденной страницей каталога: счётчик страниц должен _(from `2026-10-20-a-popular-list-is-not-a-catalog`)
+- **Always** отображать `NetworkError.isAntibot` в `Retry.Antibot`. Серверная ошибка и отказ _(from `2026-10-20-anti-bot-refusals-are-measured`)
+- **Always** передавать `waiter` в `Pipeline` явно: значение по умолчанию у шага ожидания означал _(from `2026-10-20-anti-bot-refusals-are-measured`)
+- **Always** считать долю отказов как `crawl.antibot.responses / crawl.requests`. Без знаменателя _(from `2026-10-20-anti-bot-refusals-are-measured`)
+- **Never** вызывать `delay()` в домене. Ожидание — через `Waiter`. _(from `2026-10-20-anti-bot-refusals-are-measured`)
+- **Never** добавлять новые значения `reason` свободным текстом: набор закрытый. _(from `2026-10-20-anti-bot-refusals-are-measured`)
+- **Never** регистрировать интерпретатор лога вручную: отсутствие лога — это не повод упасть в _(from `2026-10-20-anti-bot-refusals-are-measured`)
 - **Always** держать темп ниже порога WB; «сначала попробуем быстро» — это ровно то, что _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
 - **Always** помечать профиль на паузу при антиботе, а не просто повторять тот же запрос. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
 - **Never** тратить весь бюджет попыток на запросы к открытой цепи: пауза и back-off _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
@@ -732,6 +738,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-schema-drift-gate` — database  schema  test  migrations
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — catalog  data  domain-model
 - `2026-10-20-a-popular-list-is-not-a-catalog` — crawler  data-quality  catalog  api
+- `2026-10-20-anti-bot-refusals-are-measured` — crawler  antibot  metrics  pipeline
 - `2026-10-20-antibot-profile-rotation-and-backoff` — crawler  resilience  adspower
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — catalog  api  cache  operations  deployment
 - `2026-10-20-coverage-is-measured-where-the-code-lives` — build  tests  gate  coverage
@@ -791,6 +798,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-schema-drift-gate` — The table definitions are compared with the schema the migrations create
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — Category names come from WB's subject dictionary, and known_pages_limit is a limit
 - `2026-10-20-a-popular-list-is-not-a-catalog` — Популярная ротация WB — не каталог: её не сохраняют
+- `2026-10-20-anti-bot-refusals-are-measured` — Отказы антибота измеряются и получают собственный back-off
 - `2026-10-20-antibot-profile-rotation-and-backoff` — Антибот: ротация профиля, свой back-off и ожидание вместо отказа
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — The catalog's aggregates are cached in the process, and that shapes the topology
 - `2026-10-20-coverage-is-measured-where-the-code-lives` — Покрытие измеряется в том модуле, которому принадлежит код
