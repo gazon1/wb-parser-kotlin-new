@@ -76,6 +76,14 @@ data class Spider(
      */
     val egressProbeTimeoutMs: Long = 5_000L,
     /**
+     * How often the crawler asks the network which address it leaves from.
+     *
+     * The address belongs to the world outside the process: a proxy may rotate it,
+     * lose it, or be replaced while the crawler runs. A probe that only ran at
+     * startup would keep pacing an address that no longer exists.
+     */
+    val egressProbeIntervalMs: Long = 900_000L,
+    /**
      * How long a profile that answered with an anti-bot status rests before it is used again.
      */
     val browserRetryLimit: Int = 3,
