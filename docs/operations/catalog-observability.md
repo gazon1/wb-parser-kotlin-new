@@ -54,11 +54,21 @@ session):
 
 | Requests at a time | Throughput | p50 | p95 | p99 |
 |---|---|---|---|---|
-| 1 | 6.8 req/s | 136 ms | 168 ms | 172 ms |
-| 4 | 20.5 req/s | 175 ms | 243 ms | 268 ms |
-| 8 | 21.6 req/s | 331 ms | 536 ms | 625 ms |
-| 16 | 20.4 req/s | 655 ms | 1 541 ms | 1 802 ms |
-| 32 | 23.9 req/s | 1 032 ms | 2 459 ms | 2 951 ms |
+| 1 | 1.7 req/s | 557 ms | 670 ms | 748 ms |
+| 4 | 6.6 req/s | 562 ms | 751 ms | 882 ms |
+| 8 | 6.5 req/s | 1 198 ms | 1 591 ms | 1 674 ms |
+| 16 | 8.3 req/s | 1 830 ms | 2 206 ms | 2 427 ms |
+| 32 | 9.0 req/s | 3 461 ms | 3 785 ms | 3 908 ms |
+
+These numbers are worse than the ones the list of *observations* produced (136 ms at one
+request, 21 req/s at eight) — and the difference is the read model. The list is now built
+from the current observation of each product, and knowing the current price of every
+product is a pass over the observations. The covering index of V7 makes that pass an
+index-only scan; it does not remove it. The decision the numbers belong to — a
+materialized read model, refreshed instead of computed per request — is recorded in
+`docs/decisions/2026-10-20-the-catalog-lists-products-not-observations.md`, together with
+what it would cost (staleness, and a refresh that has to happen in every profile that can
+serve the catalog).
 
 Two things fall out of it:
 
@@ -72,11 +82,11 @@ Two things fall out of it:
   needs a bigger pool — and connections taken from the writer's budget, which is the
   trade the plan's phase 0 has to make with the real database in front of it.
 
-Inside a request, the time is the database's: the count takes 27 ms and the page query
-takes about 99 ms at a deep offset, out of 125 ms in total. The count is therefore *not*
-cached — twenty percent of a request is not worth a user-visible number that can be
-wrong — and the deep offset is the thing that is expensive. Keyset pagination is the real
-answer to it, and it changes the contract; until the contract changes, the cost stays.
+Inside a request, the time is the database's, and it is now the read model that takes it:
+the model is built first, and the page and the count are read out of it. The count is
+*not* cached — a number that can be wrong is not worth a request — and the deep offset is
+still the thing that is expensive on top of it. Keyset pagination is the real answer to
+the offset, and it changes the contract; until the contract changes, the cost stays.
 
 ### The thresholds themselves
 
