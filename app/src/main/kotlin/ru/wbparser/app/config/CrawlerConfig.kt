@@ -10,9 +10,9 @@ import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.BrowserDownloader
 import ru.wbparser.infra.http.BrowserFetchTiming
 import ru.wbparser.infra.http.BrowserPool
+import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressRouter
 import ru.wbparser.infra.http.KtorDownloader
-import ru.wbparser.infra.http.RequestPacing
 import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.runner.CrawlRunner
 import ru.wbparser.infra.runner.CrawlRunnerConfig
@@ -54,18 +54,25 @@ class CrawlerConfig {
         // CDP-over-WebSocket connection is accepted.
         return BrowserPool(
             profiles = groups.profiles,
-            // The jitter belongs to the pacing: it is the one place that decides when the
-            // next request may go out. The browser used to add a second, hidden delay.
-            pacing =
-                RequestPacing(
-                    minIntervalMs = properties.spider.browserMinRequestIntervalMs,
-                    jitterMinMs = properties.spider.browserJitterMinMs,
-                    jitterMaxMs = properties.spider.browserJitterMaxMs,
-                ),
-            // A group that names its own pacing overrides the default above.
-            groupPacings = groups.groups.associate { it.id to it.pacing },
+            // The budget of a group is not the pool's business: it belongs to the
+            // pacer registry, and every group already carries its own resolved
+            // pacing — its own, or the deployment's default.
         )
     }
+
+    /**
+     * The request budget of each egress group.
+     *
+     * The budget belongs to the group, not to the pool: a group that shares one egress
+     * IP shares one rate, and the rate is what WB counts. See [EgressPacerRegistry] and
+     * `docs/decisions/2026-10-21-egress-groups-are-the-unit-of-rate-limiting.md`.
+     */
+    @Bean
+    fun egressPacerRegistry(groups: EgressGroups.Resolved): EgressPacerRegistry =
+        EgressPacerRegistry(
+            groups = groups.groups.map { it.id },
+            pacings = groups.groups.associate { it.id to it.pacing },
+        )
 
     /**
      * Decides which egress group serves the next request.
@@ -73,8 +80,9 @@ class CrawlerConfig {
     @Bean
     fun egressRouter(
         pool: BrowserPool,
+        pacers: EgressPacerRegistry,
         meterRegistry: MeterRegistry,
-    ): EgressRouter = EgressRouter(pool = pool, meterRegistry = meterRegistry)
+    ): EgressRouter = EgressRouter(pool = pool, pacers = pacers, meterRegistry = meterRegistry)
 
     @Bean
     fun browserDownloader(

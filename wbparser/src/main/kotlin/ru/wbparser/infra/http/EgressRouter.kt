@@ -2,17 +2,14 @@ package ru.wbparser.infra.http
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
-import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry
 import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicLong
 
 /**
  * How a request ended.
@@ -138,6 +135,7 @@ data class EgressRouterConfig(
  */
 class EgressRouter(
     private val pool: BrowserPool,
+    private val pacers: EgressPacerRegistry,
     private val meterRegistry: MeterRegistry? = null,
     private val config: EgressRouterConfig = EgressRouterConfig(),
     private val now: () -> Long = System::currentTimeMillis,
@@ -147,8 +145,8 @@ class EgressRouter(
     /** Round-robin tie-break between groups whose pacer frees up at the same moment. */
     private val cursor = AtomicInteger(0)
 
-    /** Per-group books and circuits. */
-    private val books = ConcurrentHashMap<String, GroupBook>()
+    /** Per-group health: what the group was asked for, and what it refused. */
+    private val healths = ConcurrentHashMap<String, GroupHealth>()
 
     /** Which group served which target last — the answer to "who was to blame". */
     private val lastGroupByTarget = ConcurrentHashMap<UUID, String>()
@@ -159,22 +157,8 @@ class EgressRouter(
      * The state lives in the process: a restart resets it, and a restart resets the
      * session with it.
      */
-    private val breakers: Map<String, CircuitBreaker> =
-        pool.egressGroupIds.associateWith { groupId ->
-            val circuit =
-                CircuitBreakerRegistry
-                    .of(config.circuitConfig)
-                    .circuitBreaker("egress-$groupId")
-            circuit.eventPublisher.onStateTransition { event ->
-                log.warn(
-                    "Egress group {} circuit {} → {}",
-                    groupId,
-                    event.stateTransition.fromState,
-                    event.stateTransition.toState,
-                )
-            }
-            circuit
-        }
+    private val circuits: Map<String, GroupCircuit> =
+        pool.egressGroupIds.associateWith { groupId -> GroupCircuit(groupId, config.circuitConfig) }
 
     /**
      * Reserves a profile from the group whose pacer frees up soonest, and holds that
@@ -191,7 +175,7 @@ class EgressRouter(
         while (true) {
             // A group whose circuit is open is not asked: the address it stands for is
             // refusing, and the addresses that still answer must not be silenced with it.
-            val servable = groups.filter { breaker(it).state != CircuitBreaker.State.OPEN }
+            val servable = groups.filter { !circuit(it).isOpen }
             if (servable.isNotEmpty()) {
                 val ordered = orderBySoonestSlot(servable)
                 for (groupId in ordered) {
@@ -217,7 +201,7 @@ class EgressRouter(
                 meterRegistry?.counter("crawl.egress.all_down")?.increment()
                 throw AllEgressGroupsUnavailable(
                     "No egress group could serve a request within ${config.maxOpenWaitMs}ms: " +
-                        groups.joinToString { "$it(${breaker(it).state})" },
+                        groups.joinToString { "$it(${circuit(it).state})" },
                 )
             }
             if (!warned) {
@@ -244,7 +228,7 @@ class EgressRouter(
         targetId: UUID? = null,
     ) {
         val groupId = page.egressGroup
-        books.computeIfAbsent(groupId) { GroupBook() }.record(now(), outcome)
+        health(groupId).record(now(), outcome)
         targetId?.let { lastGroupByTarget[it] = groupId }
         recordCircuit(groupId, outcome)
         recordMetrics(groupId, outcome)
@@ -260,8 +244,8 @@ class EgressRouter(
      * budget it was promised.
      */
     fun onAddressChanged(groupId: String) {
-        breakers[groupId]?.reset()
-        books.remove(groupId)
+        circuits[groupId]?.reset()
+        healths.remove(groupId)
         log.warn(
             "Egress group {} changed address — its circuit is closed and its books are cleared. " +
                 "The new address has its own budget.",
@@ -273,13 +257,13 @@ class EgressRouter(
      * The state of one group.
      */
     fun groupState(groupId: String): GroupState {
-        val book = books[groupId] ?: GroupBook()
+        val health = healths[groupId] ?: GroupHealth(config.healthWindowMs)
         return GroupState(
             groupId = groupId,
-            millisUntilSlot = pool.millisUntilSlot(groupId),
-            requests = book.requestCount,
-            refused = book.refusedCount,
-            circuitState = breaker(groupId).state,
+            millisUntilSlot = pacers.millisUntilSlot(groupId),
+            requests = health.requestCount,
+            refused = health.refusedCount,
+            circuitState = circuit(groupId).state,
         )
     }
 
@@ -298,7 +282,7 @@ class EgressRouter(
      * A group whose circuit is open is not asked — the address it stands for is
      * refusing, and the addresses that still answer must not be silenced with it.
      */
-    override fun isAnyGroupAvailable(): Boolean = breakers.values.any { it.state != CircuitBreaker.State.OPEN }
+    override fun isAnyGroupAvailable(): Boolean = circuits.values.any { !it.isOpen }
 
     /**
      * Whether the group is answering normally.
@@ -307,8 +291,8 @@ class EgressRouter(
      * blame it for, and the target is the only suspect left.
      */
     override fun isGroupHealthy(groupId: String): Boolean {
-        val book = books[groupId] ?: return true
-        val rate = book.refusalRate(now(), config.healthWindowMs)
+        val health = healths[groupId] ?: return true
+        val rate = health.refusalRate(now())
         return rate < config.healthRefusalThreshold
     }
 
@@ -326,7 +310,7 @@ class EgressRouter(
             .mapIndexed { index, groupId -> index to groupId }
             .sortedWith(
                 compareBy(
-                    { pool.millisUntilSlot(it.second) },
+                    { pacers.millisUntilSlot(it.second) },
                     { (it.first - start + size) % size },
                 ),
             ).map { it.second }
@@ -340,7 +324,7 @@ class EgressRouter(
         page: BorrowedPage,
     ): BorrowedPage {
         val startNs = System.nanoTime()
-        pool.awaitRequestSlot(groupId)
+        pacers.awaitRequestSlot(groupId)
         val waitMs = (System.nanoTime() - startNs) / 1_000_000
         meterRegistry
             ?.timer("crawl.egress.pacer.wait", "egress_group", groupId)
@@ -359,15 +343,19 @@ class EgressRouter(
         groupId: String,
         outcome: DownloadOutcome,
     ) {
-        val circuit = breaker(groupId)
+        val circuit = circuit(groupId)
         when (outcome) {
-            DownloadOutcome.Success -> circuit.onSuccess(0, TimeUnit.MILLISECONDS)
-            DownloadOutcome.Antibot, DownloadOutcome.Error ->
-                circuit.onError(0, TimeUnit.MILLISECONDS, EgressRequestFailed(groupId))
+            DownloadOutcome.Success -> circuit.onSuccess()
+            DownloadOutcome.Antibot, DownloadOutcome.Error -> circuit.onFailure()
         }
     }
 
-    private fun breaker(groupId: String): CircuitBreaker = requireNotNull(breakers[groupId]) { "Unknown egress group '$groupId'" }
+    private fun circuit(groupId: String): GroupCircuit = requireNotNull(circuits[groupId]) { "Unknown egress group '$groupId'" }
+
+    /**
+     * The health of one group, created on first use.
+     */
+    private fun health(groupId: String): GroupHealth = healths.computeIfAbsent(groupId) { GroupHealth(config.healthWindowMs) }
 
     private fun recordMetrics(
         groupId: String,
@@ -397,77 +385,12 @@ class EgressRouter(
      * The circuit's state as a number: closed 0, half-open 1, open 2.
      */
     private fun circuitStateValue(groupId: String): Double =
-        when (breaker(groupId).state) {
+        when (circuit(groupId).state) {
             CircuitBreaker.State.CLOSED -> 0.0
             CircuitBreaker.State.HALF_OPEN -> 1.0
             CircuitBreaker.State.OPEN -> 2.0
             else -> 0.0
         }
-
-    /**
-     * The books of one group.
-     */
-    private class GroupBook {
-        private val requests = AtomicLong(0)
-        private val refused = AtomicLong(0)
-        private val window = ConcurrentLinkedQueue<Sample>()
-
-        val requestCount: Long get() = requests.get()
-        val refusedCount: Long get() = refused.get()
-
-        fun record(
-            now: Long,
-            outcome: DownloadOutcome,
-        ) {
-            requests.incrementAndGet()
-            if (outcome == DownloadOutcome.Antibot) refused.incrementAndGet()
-            window.add(Sample(now, outcome == DownloadOutcome.Antibot))
-        }
-
-        /**
-         * The refusal rate over the last [windowMs] milliseconds.
-         *
-         * A window and not a total: a group that refused everything an hour ago and
-         * answers everything now is healthy, and a group that answered everything an
-         * hour ago and refuses everything now is not.
-         */
-        fun refusalRate(
-            now: Long,
-            windowMs: Long,
-        ): Double {
-            trim(now, windowMs)
-            val samples = window.toList()
-            if (samples.isEmpty()) return 0.0
-            return samples.count { it.refused }.toDouble() / samples.size
-        }
-
-        private fun trim(
-            now: Long,
-            windowMs: Long,
-        ) {
-            val oldest = now - windowMs
-            while (true) {
-                val head = window.peek() ?: return
-                if (head.at >= oldest) return
-                window.remove(head)
-            }
-        }
-    }
-
-    /**
-     * One request's outcome, with the time it happened.
-     */
-    private class Sample(
-        val at: Long,
-        val refused: Boolean,
-    )
-
-    /**
-     * The failure a group's circuit is told about.
-     */
-    private class EgressRequestFailed(
-        groupId: String,
-    ) : RuntimeException("A request through egress group $groupId failed")
 
     companion object {
         /**
