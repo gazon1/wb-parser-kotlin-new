@@ -160,6 +160,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 | `docs/decisions/2026-10-19-application-startup-gate.md` | Приложение обязано стартовать, и что-то обязано это доказывать (`@SpringBootTest` + Testcontainers) |
 | `docs/decisions/2026-10-19-explicit-module-boundary.md` | Граница `wbparser → app` объявлена (`java-library`, `api`/`runtimeOnly`), а не подразумевается |
 | `docs/decisions/2026-10-19-jdk-toolchain.md` | Версия JDK — одно число в одном месте; toolchain сам себя обеспечивает |
+| `docs/decisions/2026-10-20-the-big-classes-are-split-by-decision.md` | Крупные классы делятся по решению, которое они держат: `WbCatalogRequest`/`WbCatalogApi`/`WbCatalogFetchScript`, `Pipeline`/`PipelineBatch`/`PipelinePageProcessor`, `CrawlRunner`/`CrawlJobStore`/`TargetCrawl`/`CrawlMetrics` |
 
 ---
 

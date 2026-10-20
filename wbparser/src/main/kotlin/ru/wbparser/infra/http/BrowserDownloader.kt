@@ -70,7 +70,7 @@ open class BrowserDownloader(
             var result: Either<NetworkError, Fetched>
             try {
                 val catalogPage = WbCatalogRequest.parseCatalogUrl(task.url.toString())
-                val apiUrl = WbCatalogRequest.buildWbApiUrl(catalogPage.page, catalogPage.searchQuery)
+                val apiUrl = WbCatalogApi.buildWbApiUrl(catalogPage.page, catalogPage.searchQuery)
 
                 log.debug(
                     "BrowserDownloader fetching {} (catalog={}, page={}, token={})",
@@ -206,7 +206,7 @@ open class BrowserDownloader(
     ): FetchResult {
         val page = borrowed.page
         val catalogUrl = WbCatalogRequest.catalogUrlOf(catalogId)
-        val headers: Map<String, String> = WbCatalogRequest.buildWbHeaders(catalogUrl)
+        val headers: Map<String, String> = WbCatalogApi.buildWbHeaders(catalogUrl)
         val headersWithMeta =
             headers +
                 mapOf(
@@ -243,7 +243,7 @@ open class BrowserDownloader(
             val headersJson = objectMapper.writeValueAsString(headersWithCookies)
 
             // Step 4: Call the internal API — the page context + cookies are ready.
-            val fetchScript = WbCatalogRequest.FETCH_SCRIPT
+            val fetchScript = WbCatalogFetchScript.FETCH_SCRIPT
             val response: Map<*, *> = page.evaluate(fetchScript, headersJson) as Map<*, *>
 
             val status = (response["status"] as? Number)?.toInt() ?: 0

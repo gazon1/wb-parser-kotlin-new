@@ -74,6 +74,7 @@ class CrawlRunnerPostgresTest :
         fun insertTarget(
             dataSource: DataSource,
             active: Boolean = true,
+            searchQuery: String? = "menu_v3_9467 карты памяти",
         ): UUID {
             transaction {
                 CrawlTargetsTable.insert {
@@ -81,7 +82,7 @@ class CrawlRunnerPostgresTest :
                     it[CrawlTargetsTable.name] = "Карты памяти"
                     it[CrawlTargetsTable.startUrl] = "https://www.wildberries.ru/catalog/0/search.aspx?search=menu_v3_9467"
                     it[CrawlTargetsTable.wbCatalogId] = "9467"
-                    it[CrawlTargetsTable.wbSearchQuery] = "menu_v3_9467 карты памяти"
+                    it[CrawlTargetsTable.wbSearchQuery] = searchQuery
                     it[CrawlTargetsTable.isActive] = active
                     it[CrawlTargetsTable.createdAt] = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC)
                     it[CrawlTargetsTable.updatedAt] = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC)
@@ -122,21 +123,27 @@ class CrawlRunnerPostgresTest :
             val runner =
                 CrawlRunner(
                     db = connect(dataSource),
-                    downloader = { task: Crawling ->
-                        Either.Right(
-                            Fetched(
-                                task = task,
-                                statusCode = CrawlHttpStatusCode(200),
-                                body = "{}",
-                                headers = emptyMap(),
-                                durationMs = 5L,
-                            ),
-                        )
-                    },
-                    parser = { fetched: Fetched ->
-                        ParsedPage(fetched, listOf(parsedItem()), null, isEmptyPage = false)
-                    },
-                    maxPagesPerCatalog = 1,
+                    source =
+                        CrawlSource(
+                            downloader = { task: Crawling ->
+                                Either.Right(
+                                    Fetched(
+                                        task = task,
+                                        statusCode = CrawlHttpStatusCode(200),
+                                        body = "{}",
+                                        headers = emptyMap(),
+                                        durationMs = 5L,
+                                    ),
+                                )
+                            },
+                            parser = { fetched: Fetched ->
+                                ParsedPage(fetched, listOf(parsedItem()), null, isEmptyPage = false)
+                            },
+                        ),
+                    config =
+                        CrawlRunnerConfig(
+                            maxPagesPerCatalog = 1,
+                        ),
                 )
 
             val result = runner.run()
@@ -162,19 +169,25 @@ class CrawlRunnerPostgresTest :
             val runner =
                 CrawlRunner(
                     db = connect(dataSource),
-                    downloader = { task: Crawling ->
-                        Either.Right(
-                            Fetched(
-                                task = task,
-                                statusCode = CrawlHttpStatusCode(200),
-                                body = "{}",
-                                headers = emptyMap(),
-                                durationMs = 5L,
-                            ),
-                        )
-                    },
-                    parser = { fetched: Fetched -> ParsedPage(fetched, emptyList(), null, isEmptyPage = true) },
-                    maxPagesPerCatalog = 1,
+                    source =
+                        CrawlSource(
+                            downloader = { task: Crawling ->
+                                Either.Right(
+                                    Fetched(
+                                        task = task,
+                                        statusCode = CrawlHttpStatusCode(200),
+                                        body = "{}",
+                                        headers = emptyMap(),
+                                        durationMs = 5L,
+                                    ),
+                                )
+                            },
+                            parser = { fetched: Fetched -> ParsedPage(fetched, emptyList(), null, isEmptyPage = true) },
+                        ),
+                    config =
+                        CrawlRunnerConfig(
+                            maxPagesPerCatalog = 1,
+                        ),
                 )
 
             val result = runner.run()
@@ -198,31 +211,37 @@ class CrawlRunnerPostgresTest :
             val runner =
                 CrawlRunner(
                     db = connect(dataSource),
-                    downloader = { task: Crawling ->
-                        Either.Right(
-                            Fetched(
-                                task = task,
-                                statusCode = CrawlHttpStatusCode(200),
-                                body = "{}",
-                                headers = emptyMap(),
-                                durationMs = 5L,
-                            ),
-                        )
-                    },
-                    // The catalog keeps going: every page has a successor, so the crawl
-                    // stops because of the limit, not because the category ended.
-                    parser = { fetched: Fetched ->
-                        ParsedPage(
-                            fetched,
-                            listOf(parsedItem()),
-                            nextPageUrl =
-                                CrawlUrl
-                                    .of("https://www.wildberries.ru/catalog/0/search.aspx?search=menu_v3_9467&page=2")
-                                    .getOrElse { throw IllegalArgumentException(it.message) },
-                            isEmptyPage = false,
-                        )
-                    },
-                    maxPagesPerCatalog = 1,
+                    source =
+                        CrawlSource(
+                            downloader = { task: Crawling ->
+                                Either.Right(
+                                    Fetched(
+                                        task = task,
+                                        statusCode = CrawlHttpStatusCode(200),
+                                        body = "{}",
+                                        headers = emptyMap(),
+                                        durationMs = 5L,
+                                    ),
+                                )
+                            },
+                            // The catalog keeps going: every page has a successor, so the crawl
+                            // stops because of the limit, not because the category ended.
+                            parser = { fetched: Fetched ->
+                                ParsedPage(
+                                    fetched,
+                                    listOf(parsedItem()),
+                                    nextPageUrl =
+                                        CrawlUrl
+                                            .of("https://www.wildberries.ru/catalog/0/search.aspx?search=menu_v3_9467&page=2")
+                                            .getOrElse { throw IllegalArgumentException(it.message) },
+                                    isEmptyPage = false,
+                                )
+                            },
+                        ),
+                    config =
+                        CrawlRunnerConfig(
+                            maxPagesPerCatalog = 1,
+                        ),
                     meterRegistry = registry,
                 )
 
@@ -240,25 +259,73 @@ class CrawlRunnerPostgresTest :
             val runner =
                 CrawlRunner(
                     db = connect(dataSource),
-                    downloader = { task: Crawling ->
-                        Either.Right(
-                            Fetched(
-                                task = task,
-                                statusCode = CrawlHttpStatusCode(200),
-                                body = "{}",
-                                headers = emptyMap(),
-                                durationMs = 5L,
-                            ),
-                        )
-                    },
-                    // An empty page without a successor is the end of the catalog.
-                    parser = { fetched: Fetched -> ParsedPage(fetched, emptyList(), null, isEmptyPage = true) },
-                    maxPagesPerCatalog = 1,
+                    source =
+                        CrawlSource(
+                            downloader = { task: Crawling ->
+                                Either.Right(
+                                    Fetched(
+                                        task = task,
+                                        statusCode = CrawlHttpStatusCode(200),
+                                        body = "{}",
+                                        headers = emptyMap(),
+                                        durationMs = 5L,
+                                    ),
+                                )
+                            },
+                            // An empty page without a successor is the end of the catalog.
+                            parser = { fetched: Fetched -> ParsedPage(fetched, emptyList(), null, isEmptyPage = true) },
+                        ),
+                    config =
+                        CrawlRunnerConfig(
+                            maxPagesPerCatalog = 1,
+                        ),
                     meterRegistry = registry,
                 )
 
             runner.run() shouldBe RunResult.Success(pagesCrawled = 1, itemsSaved = 0)
 
             registry.find("crawl.targets.truncated").counter() shouldBe null
+        }
+
+        test("a target with a catalog id but no WB token is refused, not crawled") {
+            val dataSource = freshDatabase()
+            insertTarget(dataSource, searchQuery = null)
+
+            val runner =
+                CrawlRunner(
+                    db = connect(dataSource),
+                    source =
+                        CrawlSource(
+                            downloader = { task: Crawling ->
+                                Either.Right(
+                                    Fetched(
+                                        task = task,
+                                        statusCode = CrawlHttpStatusCode(200),
+                                        body = "{}",
+                                        headers = emptyMap(),
+                                        durationMs = 5L,
+                                    ),
+                                )
+                            },
+                            parser = { fetched: Fetched ->
+                                ParsedPage(fetched, listOf(parsedItem()), null, isEmptyPage = false)
+                            },
+                        ),
+                    config =
+                        CrawlRunnerConfig(
+                            maxPagesPerCatalog = 1,
+                        ),
+                )
+
+            // Without the token WB answers with its rotating popular list — a page of
+            // products unrelated to the category, stored under the category's name.
+            // Failing the target is the honest outcome, and it says why.
+            val result = runner.run()
+
+            result shouldBe
+                RunResult.Failure(
+                    "Карты памяти: Catalog 9467 has no WB search token (wb_search_query) - refusing to crawl",
+                )
+            transaction { ScrapedItemsTable.selectAll().count() } shouldBe 0
         }
     })

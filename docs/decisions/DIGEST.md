@@ -47,7 +47,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** treat a deploy as unproven until the container reports healthy. _(from `2026-10-14-deploy-crawler-as-registry-image`)
 - **Never** give an image tag a `latest` fallback. A deploy that forgot to name a _(from `2026-10-14-deploy-crawler-as-registry-image`)
 - **Never** put a credential in the `.env` that compose interpolates. Secrets go _(from `2026-10-14-deploy-crawler-as-registry-image`)
-- **Always** keep request construction in `WbCatalogRequest`, not back inside the adapter. A _(from `2026-10-14-extract-browser-request-logic-for-testability`)
+- **Always** keep request construction in the `infra/http` request objects, not back inside the _(from `2026-10-14-extract-browser-request-logic-for-testability`)
 - **Never** give a Kover-exercised DTO a required field that a single malformed API entry can _(from `2026-10-14-extract-browser-request-logic-for-testability`)
 - **Never** solve a coverage drop on untestable adapters by excluding them. Extract the logic _(from `2026-10-14-extract-browser-request-logic-for-testability`)
 - **Always** keep `target-concurrency` low enough to leave connections for the save path. Each _(from `2026-10-14-parallel-crawl-targets`)
@@ -162,6 +162,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** считать cron выражением каденции: это тик. _(from `2026-10-20-schedule-cadence-single-parameter`)
 - **Always** держать в `wb_subjects` полный словарь; он обновляется при старте, а не при _(from `2026-10-20-subject-dictionary-loaded-at-startup`)
 - **Never** выдумывать имя предмета, если id нет в словаре: `catalog_name` остаётся _(from `2026-10-20-subject-dictionary-loaded-at-startup`)
+- **Always** keep a data class for the knobs of a class with many parameters. Detekt does not _(from `2026-10-20-the-big-classes-are-split-by-decision`)
+- **Always** keep the request construction of the browser fetch in the `infra/http` request _(from `2026-10-20-the-big-classes-are-split-by-decision`)
+- **Always** split a class by the decision it holds, not by the layer it sits in. A new unit _(from `2026-10-20-the-big-classes-are-split-by-decision`)
+- **Never** give a split unit a second copy of state the original owned. The batch shares the _(from `2026-10-20-the-big-classes-are-split-by-decision`)
+- **Never** move a piece of behaviour into a collaborator without carrying the state it _(from `2026-10-20-the-big-classes-are-split-by-decision`)
 - **Always** держать `docs/RUNBOOK.md` в состоянии, в котором команды из него работают. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Always** пересобирать данные процедурой `rebuild_prod_data.sh`, а не ручными _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Always** показывать усечение каталога отдельным счётчиком: полнота данных не должна _(from `2026-10-20-the-crawl-reports-its-own-limits`)
@@ -768,6 +773,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-pagination-does-not-increase-depth` — pipeline  domain
 - `2026-10-20-schedule-cadence-single-parameter` — scheduling  configuration
 - `2026-10-20-subject-dictionary-loaded-at-startup` — bootstrap  data-quality  crawler
+- `2026-10-20-the-big-classes-are-split-by-decision` — architecture  refactoring  maintainability
 - `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
@@ -830,6 +836,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-pagination-does-not-increase-depth` — Пагинация не увеличивает глубину краула
 - `2026-10-20-schedule-cadence-single-parameter` — Каденция краула задаётся одним параметром — окном свежести
 - `2026-10-20-subject-dictionary-loaded-at-startup` — Справочник предметов WB загружается при старте приложения
+- `2026-10-20-the-big-classes-are-split-by-decision` — The three large classes are split by the decision they hold, not by the layer they live in
 - `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view
