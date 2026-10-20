@@ -137,19 +137,42 @@ data class Paged<T>(
 
 /**
  * The response of `/targets`.
+ *
+ * [asOf] is the moment the counts were computed. The aggregate is cached for ten minutes,
+ * so a number without a moment is a number of unknown age — and a storefront that shows
+ * "1 234 товара" has to say whether that is now or a quarter of an hour ago.
  */
 data class TargetsResponse(
     val items: List<TargetSummary>,
+    val asOf: Instant,
 )
 
 /**
  * Aggregate counters for the whole catalog.
+ *
+ * ## Why there are two counts of "items"
+ *
+ * The crawler stores one row per (target, product, price): a price change writes a new row
+ * and keeps the old one, because the price history is made of those rows. So the number of
+ * rows is the number of price observations, and the number of products is something else.
+ *
+ * [totalItems] counts the observations, and it is what the field has always meant.
+ * [totalProducts] counts the products — the current observation of each — and it is the
+ * number a visitor means by "how many products are there". A storefront that shows
+ * "N товаров" must show [totalProducts]; showing [totalItems] would tell a visitor that
+ * the catalog has three products because one of them changed price twice.
+ *
+ * [withCashback] counts observations and [productsWithCashback] counts products, for the
+ * same reason: both numbers exist, and they are not the same number.
  */
 data class SiteStats(
     val totalItems: Int,
+    val totalProducts: Int,
     val totalTargets: Int,
     val newestScrapedAt: Instant?,
     val withCashback: Int,
+    val productsWithCashback: Int,
+    val asOf: Instant,
 )
 
 /**

@@ -43,6 +43,17 @@ class CatalogFixture {
     lateinit var catalogDataSource: CatalogDataSource
     lateinit var queries: CatalogQueries
 
+    /**
+     * The product id handed to the next seeded item.
+     *
+     * Every seeded item is a *different* product unless the test says otherwise, and the
+     * catalog's read model is one row per product — so two items that share a product id
+     * are one product, and a test that seeds two products must be able to say so. A fixed
+     * default would have made every seeded item the same product, which is a lie the
+     * tests would have carried silently.
+     */
+    private var productIds = 0L
+
     /** The password the catalog role is given. */
     val catalogPassword: String = "catalog-test-password"
 
@@ -81,6 +92,36 @@ class CatalogFixture {
             container.stop()
         }
     }
+
+    /**
+     * A product id no other seeded item has.
+     */
+    private fun newProductId(): Long {
+        productIds += 1
+        return productIds
+    }
+
+    /**
+     * The ids the view `latest_product_observations` names, newest observation first.
+     *
+     * The view is the second statement of "the current observation of a product" — the
+     * first one is the read model the queries build. A test that reads both is a test
+     * that they still mean the same thing.
+     */
+    fun readModelIds(): List<java.util.UUID> =
+        writer.connection.use { connection ->
+            connection
+                .prepareStatement("SELECT id FROM latest_product_observations ORDER BY product_id")
+                .use { statement ->
+                    statement.executeQuery().use { resultSet ->
+                        buildList {
+                            while (resultSet.next()) {
+                                add(resultSet.getObject("id", java.util.UUID::class.java))
+                            }
+                        }
+                    }
+                }
+        }
 
     /**
      * A connection with the catalog role's own credentials and nothing else.
@@ -199,7 +240,7 @@ class CatalogFixture {
         inStock: Boolean? = true,
         imageUrl: String? = "https://images.example.invalid/p.jpg",
         matchId: Long? = 42,
-        productId: Long? = 1,
+        productId: Long? = newProductId(),
         scrapedAt: Instant = Instant.now(),
     ): UUID {
         val id = UUID.randomUUID()

@@ -36,11 +36,14 @@ class CatalogRoutes(
      * Every crawl target with its item count.
      *
      * Cached for ten minutes: the query behind it is a full pass over the scraped items.
+     * The response carries the moment the count was computed, because a count served from
+     * the cache is up to ten minutes old and a number without an age is a number nobody
+     * can vouch for.
      */
     @GetMapping("/targets", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun targets(): TargetsResponse {
-        val items = cache.get("targets") { queries.listTargets() }
-        return TargetsResponse(items = items)
+        val cached = cache.getWithTime("targets") { queries.listTargets() }
+        return TargetsResponse(items = cached.value, asOf = cached.computedAt)
     }
 
     /**
@@ -84,10 +87,14 @@ class CatalogRoutes(
     /**
      * Aggregate counters for the whole catalog.
      *
-     * Cached for ten minutes, for the same reason the target list is.
+     * Cached for ten minutes, for the same reason the target list is, and for the same
+     * reason it carries the moment the counters were computed.
      */
     @GetMapping("/stats", produces = [MediaType.APPLICATION_JSON_VALUE])
-    fun stats(): SiteStats = cache.get("stats") { queries.siteStats() }
+    fun stats(): SiteStats {
+        val cached = cache.getWithTime("stats") { queries.siteStats() }
+        return cached.value.copy(asOf = cached.computedAt)
+    }
 
     /**
      * The contract document, verbatim.
@@ -113,12 +120,24 @@ class CatalogRoutes(
 
     /**
      * Readiness: the catalog can be served.
+     *
+     * A catalog that is not ready answers `503` and says when to come back. The header is
+     * the point: a caller that has to guess how long to wait either gives up too early or
+     * hammers a service that is already in trouble. One second is the answer because the
+     * readiness check itself is a query — a database that is a moment away from answering
+     * will answer in a moment, and a database that is not will not be hurried by a longer
+     * wait.
      */
     @GetMapping("/ready", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun ready(): ResponseEntity<ReadyResponse> {
         val result = readiness.check()
-        val status = if (result.status == "UP") HttpStatus.OK else HttpStatus.SERVICE_UNAVAILABLE
-        return ResponseEntity.status(status).body(result)
+        if (result.status == "UP") {
+            return ResponseEntity.ok(result)
+        }
+        return ResponseEntity
+            .status(HttpStatus.SERVICE_UNAVAILABLE)
+            .header("Retry-After", READY_RETRY_AFTER_SECONDS.toString())
+            .body(result)
     }
 
     /**
@@ -139,4 +158,15 @@ class CatalogRoutes(
             .header("X-Total-Count", page.totalCount.toString())
             .header("X-Page-Count", page.totalPages.toString())
             .body(page)
+
+    companion object {
+        /**
+         * How long a caller should wait before asking again.
+         *
+         * The header is the same one the rate limit uses, and for the same reason: the
+         * server knows when it will be able to answer, and the caller should not have to
+         * guess.
+         */
+        const val READY_RETRY_AFTER_SECONDS: Int = 1
+    }
 }
