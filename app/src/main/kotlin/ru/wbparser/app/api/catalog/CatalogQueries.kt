@@ -516,13 +516,13 @@ private fun currentProductTargets(
     }
     val sql = if (conditions.isEmpty()) "" else "WHERE " + conditions.joinToString(" AND ")
     return """
-    SELECT DISTINCT ON (s.product_id, s.target_id)
-           $MODEL_COLUMNS
-      FROM scraped_items s
-      JOIN crawl_targets t ON t.id = s.target_id
-     $sql
-     ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC
-    """.trimIndent()
+        SELECT DISTINCT ON (s.product_id, s.target_id)
+               $MODEL_COLUMNS
+          FROM scraped_items s
+          JOIN crawl_targets t ON t.id = s.target_id
+         $sql
+         ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC
+        """.trimIndent()
 }
 
 /**
