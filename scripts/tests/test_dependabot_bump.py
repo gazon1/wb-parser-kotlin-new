@@ -76,6 +76,27 @@ class BumpTest(unittest.TestCase):
     def test_body_without_versions_is_unknown(self) -> None:
         self.assertEqual(BUMP.classify("There is nothing to bump here."), BUMP.UNKNOWN)
 
+    def test_prose_with_from_and_to_is_not_a_bump(self) -> None:
+        # Тело pull request'а — это не только список обновлений: там есть
+        # таблицы, и в их заголовке «from» и «to» стоят без всяких версий.
+        # Такая пара не является бампом и не должна решать его.
+        body = (
+            "| Dependency | from | to |\n"
+            "|---|---|---|\n"
+            "- [foo] updates from 1.0.0 to 1.0.1\n"
+        )
+        self.assertEqual(BUMP.classify(body), BUMP.PATCH)
+
+    def test_a_version_the_script_reads_only_partly_stops_the_merge(self) -> None:
+        # `22-jre → 24-jre` — версия, у которой скрипт возьмёт только число.
+        # 22 и 24 — это разные major, и такой бамп автослияние не запускает.
+        body = (
+            "Bumps the group with 2 updates.\n"
+            "- [foo] updates from 1.0.0 to 1.0.1\n"
+            "- [eclipse-temurin] updates from 22-jre to 24-jre\n"
+        )
+        self.assertEqual(BUMP.classify(body), BUMP.MAJOR)
+
 
 class ExitCodeTest(unittest.TestCase):
     """Что скрипт решает машине сливать."""

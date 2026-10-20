@@ -70,6 +70,20 @@ def _numbers(version: str) -> tuple[int, int, int] | None:
     return int(major), int(minor or 0), int(patch or 0)
 
 
+def _looks_like_a_version(text: str) -> bool:
+    """Есть ли в строке цифры — признак того, что это версия, а не слово.
+
+    Тело pull request'а — это не только список обновлений: там есть таблицы,
+    примечания к выпускам и проза, и в ней встречаются слова «from» и «to»
+    без всяких версий. Такие пары не являются бампом и не должны решать его.
+
+    А вот `22-jre → 24-jre` — версия, которую этот скрипт разобрать не может.
+    Она обязана остановить автослияние: решение «не знаю» и решение «не
+    опасно» — не одно и то же.
+    """
+    return any(char.isdigit() for char in text)
+
+
 def bump_of(old: str, new: str) -> str:
     """Бамп между двумя версиями: major, minor, patch или mixed."""
     before = _numbers(old)
@@ -99,7 +113,17 @@ def classify(text: str) -> str:
     found = pairs(text)
     if not found:
         return UNKNOWN
-    bumps = {bump_of(old, new) for old, new in found}
+
+    bumps: set[str] = set()
+    for old, new in found:
+        if not _looks_like_a_version(old) and not _looks_like_a_version(new):
+            # Проза, а не обновление: в теле pull request'а полно таблиц и
+            # примечаний, и в них «from» и «to» встречаются без версий.
+            continue
+        bumps.add(bump_of(old, new))
+
+    if not bumps:
+        return UNKNOWN
     if MAJOR in bumps:
         return MAJOR
     if MIXED in bumps or UNKNOWN in bumps:
