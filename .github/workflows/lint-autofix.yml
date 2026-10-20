@@ -1,0 +1,135 @@
+name: Lint auto-fix
+
+# The linters know how to fix most of what they complain about. This workflow
+# applies those fixes — detekt's `--auto-correct` and ktlint's `ktlintFormat`
+# — and proposes them, so a formatting finding does not cost a review round.
+#
+# The corrections are *proposed*, never pushed onto a branch somebody is
+# working on. They land on `lint-autofix/<run-id>`, and from there:
+#
+#   * on a push to main, they are opened as a pull request;
+#   * on a pull request, they are pushed as a branch and the pull request is
+#     told where they are.
+#
+# A bot that rewrites the tree under a human is a bot that can break a build
+# nobody can see. The lint job in ci.yml remains the gate: it still fails on
+# a violation that no rule can correct, and the auto-fix does not make that
+# failure disappear.
+#
+# See docs/decisions/2026-10-20-ci-security-gates-and-lint-autofix.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-autofix-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  autofix:
+    name: detekt + ktlint auto-fix
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # The corrections are committed to a branch.
+      contents: write
+      # And proposed: a pull request, or a comment on one.
+      pull-requests: write
+
+    steps:
+      # `persist-credentials: false`: the token is passed explicitly to the
+      # steps that need it, and is not left lying in the git configuration.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 22
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "22"
+
+      # The same script the local loop runs (`just lint::autofix`). One
+      # implementation, two callers: a fixer that exists only in CI is a
+      # fixer nobody can reproduce.
+      - name: Apply the corrections
+        id: fix
+        run: |
+          bash scripts/ci/lint-autofix.sh
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "The linters found nothing to correct." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Lint auto-fix"
+              echo
+              git --no-pager diff --stat
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Push the corrections to a branch
+        if: steps.fix.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: lint-autofix/${{ github.run_id }}
+          # The repository the pull request comes from, empty for a push.
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [[ -n "$HEAD_REPO" && "$HEAD_REPO" != "$REPO" ]]; then
+            # A pull request from a fork gets a read-only token, and a push
+            # with it is refused. Saying so is better than a red job that
+            # looks like a broken fixer.
+            echo "the pull request comes from a fork ($HEAD_REPO) — its token cannot push; skipping the branch"
+            exit 0
+          fi
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git checkout -b "$BRANCH"
+          git add -A
+          if git diff --cached --quiet; then
+            # The tree changed in a way the repository does not track. There is
+            # nothing to propose, and an empty commit is not a proposal.
+            echo "nothing to commit — the linters changed nothing the repository tracks"
+            exit 0
+          fi
+          git commit -m "chore: apply the detekt and ktlint auto-fixes"
+          # The token goes into an HTTP header rather than into the remote URL:
+          # a URL with a token in it ends up in .git/config and in every
+          # `git remote -v` anybody runs.
+          git config --local http.https://github.com/.extraheader \
+            "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git push origin "$BRANCH"
+
+      - name: Propose the corrections
+        if: steps.fix.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH: lint-autofix/${{ github.run_id }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ -n "$HEAD_REPO" && "$HEAD_REPO" != "$REPO" ]]; then
+            echo "the pull request comes from a fork ($HEAD_REPO) — its token cannot comment; skipping"
+            exit 0
+          fi
+          if [[ -n "$PR_NUMBER" ]]; then
+            gh pr comment "$PR_NUMBER" --body \
+              "The linters can fix most of what they reported. The corrections are on the branch \`$BRANCH\` — apply them with \`git fetch origin $BRANCH && git cherry-pick FETCH_HEAD\`, or run \`just lint::autofix\` locally."
+            exit 0
+          fi
+          gh pr create \
+            --base "$DEFAULT_BRANCH" \
+            --head "$BRANCH" \
+            --title "chore: the detekt and ktlint auto-fixes" \
+            --body "The linters reported findings that they can correct themselves. This branch carries the corrections. It was produced by \`scripts/ci/lint-autofix.sh\`; the lint gate still fails on everything the linters could not fix."

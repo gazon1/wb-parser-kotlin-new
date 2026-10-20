@@ -1,0 +1,95 @@
+name: CodeQL
+
+# Static analysis of the Kotlin sources, and of the workflows themselves.
+#
+# Two languages, one analysis:
+#
+#   java-kotlin — the crawler, the application and the tests. CodeQL reads the
+#                 *compiled* code for JVM languages: whatever the build
+#                 produced is what is analysed, so the build step below is
+#                 part of the analysis, not a preparation for it.
+#   actions     — the workflow files. A workflow that interpolates an
+#                 attacker-controlled string into a shell command is a remote
+#                 code execution, and no Kotlin query can see it.
+#
+# The results land in the repository's code-scanning tab as SARIF. They are
+# alerts, not a gate: this workflow fails when the analysis cannot run, not
+# when it finds something. The `security-events: write` permission below is
+# what makes the findings visible to anyone who opens the Security tab.
+#
+# See docs/decisions/2026-10-20-ci-security-gates-and-lint-autofix.md.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, Monday 03:17 UTC. Not on the hour: every workflow scheduled for
+    # :00 shares one queue, and GitHub delays scheduled runs that land in it.
+    # GitHub also disables scheduled workflows in a repository that has seen
+    # no activity for 60 days — a weekly run on an active repository is not
+    # affected, but a repository that goes quiet loses this one silently.
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: CodeQL (java-kotlin, actions)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      # The SARIF results are uploaded to code scanning.
+      security-events: write
+      # The Kotlin analysis resolves the dependencies of the build it analyses.
+      packages: read
+      # The `actions` analysis reads the workflow files of the repository.
+      actions: read
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK 22
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "22"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin, actions
+          # More than the default suite: this repository parses untrusted input
+          # (catalog JSON, HTTP responses, HTML), and the extra queries are the
+          # ones that talk about untrusted input.
+          queries: security-extended
+
+      # Everything that is analysed has to be built. `assemble` compiles the
+      # main sources of every module, `testClasses` the test sources — the
+      # tests hold the parsing code as much as the production code does.
+      #
+      # The linters are not part of this build: a formatting finding must not
+      # stop the analysis, and the analysis is not a lint.
+      - name: Compile the sources CodeQL analyses
+        run: ./gradlew --no-daemon --console=plain assemble testClasses
+
+      # One `analyze` step per language: the results of two languages in one
+      # step overwrite each other, and each language needs its own category
+      # to be counted separately in the code-scanning tab.
+      - name: Analyse the Kotlin sources
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:java-kotlin"
+
+      - name: Analyse the workflows
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:actions"

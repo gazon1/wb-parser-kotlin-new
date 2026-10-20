@@ -148,6 +148,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** ронять выключение из-за того, что AdsPower не ответил. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
 - **Always** treat a value that is older than ten minutes as "as of ten minutes _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
 - **Never** run two crawler instances behind one address while the aggregates are _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
+- **Always** discover the modules from `settings.gradle.kts` rather than _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
+- **Always** keep `security-events: write` on CodeQL and `id-token: write` _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
+- **Always** keep the CI workflows wired, and keep the gate that proves it. _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
+- **Always** run the corrector as one Gradle invocation per module and one _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
+- **Never** let the auto-fix decide whether the tree is acceptable. It _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
+- **Never** push the auto-fix onto a branch somebody is working on. The _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
+- **Never** put the corrector in the gate registry. It is not a gate: it _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
+- **Never** report a scheduled failure anywhere else than the issue. A red _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
 - **Always** объявлять merged report в root-проекте: без него отчёт модуля `tests` _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
 - **Always** писать интеграционный тест рядом с кодом, который он проверяет, а не в _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
 - **Always** поднимать floor покрытия тем же коммитом, который поднял покрытие _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
@@ -350,6 +358,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
 - The executed-test floors are raised in the same commit that adds tests, in both _(from `2026-10-08-gates-that-can-fail`)_
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
+- The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
 
 ### `cleanup`
 
@@ -506,6 +515,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `gate`
 
 - The coverage gate runs in `./check.sh` (step 7) and in ci.yml's `coverage` _(from `2026-10-19-coverage-floor-gate`)_
+- The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
 - The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
 
 ### `gates`
@@ -531,6 +541,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
 - `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. _(from `2026-10-14-parallel-crawl-targets`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
+
+### `lint`
+
+- The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
 
 ### `migrations`
 
@@ -662,6 +676,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `security`
 
+- The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
 
 ### `side-effects`
@@ -708,6 +723,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `tooling`
 
 - A YAML written by an older selector has no `root_category_name`; run _(from `2026-10-19-idempotent-target-load-and-root-categories`)_
+- The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
 - `GET /api/admin/targets` returns everything unless a `limit` is passed. _(from `2026-10-19-idempotent-target-load-and-root-categories`)_
 
 ### `workflow`
@@ -768,6 +784,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-antibot-profile-rotation-and-backoff` — crawler  resilience  adspower
 - `2026-10-20-browsers-are-closed-when-they-are-not-needed` — crawler  browser  adspower  operations
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — catalog  api  cache  operations  deployment
+- `2026-10-20-ci-security-gates-and-lint-autofix` — ci  security  tooling  gate  lint
 - `2026-10-20-coverage-is-measured-where-the-code-lives` — build  tests  gate  coverage
 - `2026-10-20-job-timestamps-carry-an-offset` — database  pipeline
 - `2026-10-20-pagination-does-not-increase-depth` — pipeline  domain
@@ -831,6 +848,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-antibot-profile-rotation-and-backoff` — Антибот: ротация профиля, свой back-off и ожидание вместо отказа
 - `2026-10-20-browsers-are-closed-when-they-are-not-needed` — Браузеры AdsPower закрываются, когда они не нужны, и при выходе
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — The catalog's aggregates are cached in the process, and that shapes the topology
+- `2026-10-20-ci-security-gates-and-lint-autofix` — The repository's CI surface is CodeQL, Scorecard, a nightly run that opens an issue, and a lint auto-fix
 - `2026-10-20-coverage-is-measured-where-the-code-lives` — Покрытие меряется там, где живёт код, и по всему репозиторию сразу
 - `2026-10-20-job-timestamps-carry-an-offset` — Job timestamps are written as offsets, not as naive local times
 - `2026-10-20-pagination-does-not-increase-depth` — Пагинация не увеличивает глубину краула

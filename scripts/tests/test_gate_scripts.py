@@ -326,6 +326,97 @@ class TestCoverageGateCanFail(unittest.TestCase):
         self.assertIn("not valid XML", result.stderr)
 
 
+CI_WORKFLOWS = load("ci_workflows", "ci/check-ci-workflows.py")
+
+
+class TestCiWorkflowsGateCanFail(unittest.TestCase):
+    """The CI-workflows gate must fail when a surface is unwired.
+
+    The gate's subject is the workflows themselves, so its control is a
+    fixture repository with a broken workflow — not a broken repository, which
+    is what the gate is pointed at in production and would be a rude thing to
+    break on purpose.
+    """
+
+    GOOD = {
+        "codeql.yml": (
+            "on:\n  schedule:\n    - cron: \"17 3 * * 1\"\n"
+            "jobs:\n  analyze:\n    permissions:\n      security-events: write\n"
+            "    steps:\n      - uses: github/codeql-action/init@v4\n"
+            "        with:\n          languages: java-kotlin\n"
+            "      - uses: github/codeql-action/analyze@v4\n"
+        ),
+        "scorecard.yml": (
+            "jobs:\n  analysis:\n    permissions:\n      id-token: write\n"
+            "    steps:\n      - uses: ossf/scorecard-action@v2\n"
+            "        with:\n          results_file: results.sarif\n"
+        ),
+        "lint-autofix.yml": (
+            "jobs:\n  autofix:\n    steps:\n      - run: bash scripts/ci/lint-autofix.sh\n"
+        ),
+        "ci.yml": (
+            "on:\n  schedule:\n    - cron: \"0 3 * * *\"\n"
+            "jobs:\n  nightly-alert:\n    steps:\n      - run: gh issue create --title x\n"
+        ),
+    }
+
+    def _fixture(self, workflows: dict[str, str] | None = None, with_script: bool = True) -> Path:
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        workflow_dir = tmp / ".github" / "workflows"
+        workflow_dir.mkdir(parents=True)
+        for name, content in (workflows if workflows is not None else self.GOOD).items():
+            (workflow_dir / name).write_text(content, encoding="utf-8")
+        script = tmp / "scripts" / "ci" / "lint-autofix.sh"
+        script.parent.mkdir(parents=True)
+        if with_script:
+            script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        return tmp
+
+    def _check(self, root: Path) -> list[str]:
+        return CI_WORKFLOWS.check(root)
+
+    def test_a_wired_repository_has_no_findings(self):
+        self.assertEqual(self._check(self._fixture()), [])
+
+    def test_a_missing_workflow_is_a_finding(self):
+        workflows = {k: v for k, v in self.GOOD.items() if k != "scorecard.yml"}
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("scorecard.yml does not exist" in f for f in findings), findings)
+
+    def test_codeql_without_the_upload_permission_is_a_finding(self):
+        workflows = dict(self.GOOD)
+        workflows["codeql.yml"] = workflows["codeql.yml"].replace(
+            "security-events: write", "contents: read"
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("security-events: write" in f for f in findings), findings)
+
+    def test_scorecard_without_the_oidc_permission_is_a_finding(self):
+        workflows = dict(self.GOOD)
+        workflows["scorecard.yml"] = workflows["scorecard.yml"].replace(
+            "id-token: write", "contents: read"
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("id-token: write" in f for f in findings), findings)
+
+    def test_a_missing_corrector_is_a_finding(self):
+        findings = self._check(self._fixture(with_script=False))
+        self.assertTrue(any("lint-autofix.sh does not exist" in f for f in findings), findings)
+
+    def test_a_nightly_run_without_a_schedule_is_a_finding(self):
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace("schedule:", "pull_request:")
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("schedule" in f for f in findings), findings)
+
+    def test_a_nightly_run_without_an_issue_is_a_finding(self):
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace("gh issue create", "echo")
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("issue" in f for f in findings), findings)
+
+
 def _kover_report(covered: int, missed: int) -> str:
     """A kover XML report with one LINE counter, as the plugin writes it."""
     return (

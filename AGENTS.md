@@ -49,6 +49,10 @@ just app::run-docker       # docker-compose up
 # Отладка / Debug (локально, VPS не трогаем)
 docker compose -f deploy/docker-compose.debug.yml up   # приложение + БД + JDWP :5005
 
+# Линт / Lint
+just lint::autofix      # применить правки detekt (--auto-correct) и ktlint (ktlintFormat)
+just lf                 # алиас
+
 # Деплой / Deploy → 91.188.212.39
 just deploy                # ./check.sh → Ansible (image already in GHCR from CI)
 just deploy <tag>          # задеплоить уже запушенный тег
@@ -56,8 +60,35 @@ just deploy::build         # one-shot: build + push image (минуя CI)
 just deploy::dry-run <tag> # ansible --check --diff
 
 # Just aliases: b=build, br=run, td=wbparser::test, ti=wbparser::test-verbose,
-#               ld=wbparser::lint, li=wbparser::lint, t=tests::check, d=deploy
+#               ld=wbparser::lint, li=wbparser::lint, lf=lint::autofix,
+#               t=tests::check, d=deploy
 ```
+
+## CI-поверхности / CI surfaces
+
+Четыре workflow'а — не украшение, а часть гарантий репозитория. Их связность
+проверяет гейт `scripts/ci/check-ci-workflows.py` (в реестре
+`scripts/ci/static-gates.sh`), поэтому удаление или «опустошение» любого из них —
+это finding, а не тихая потеря.
+
+| Workflow | Что делает | Когда |
+|---|---|---|
+| `.github/workflows/ci.yml` | основной пайплайн + **nightly** (`schedule: 0 3 * * *`) + джоб `nightly-alert`, который открывает GitHub issue при падении ночного прогона | push, PR, schedule, dispatch |
+| `.github/workflows/codeql.yml` | CodeQL: `java-kotlin` (по скомпилированному коду) + `actions` (сами workflow'и) → code scanning | push, PR, еженедельно, dispatch |
+| `.github/workflows/scorecard.yml` | OpenSSF Scorecard → SARIF в code scanning + публикация в Scorecard API | push на main, еженедельно, dispatch |
+| `.github/workflows/lint-autofix.yml` | применяет `scripts/ci/lint-autofix.sh` и **предлагает** правки (ветка `lint-autofix/<run-id>` + PR/комментарий) | push, PR, dispatch |
+
+Правила, которые из этого следуют:
+
+- **Never** пушить авто-фикс в ветку, над которой работает человек: правки
+  предлагаются, решение — за человеком.
+- **Never** считать авто-фикс гейтом: `ktlintCheck` и `detekt` остаются гейтом,
+  а находка, которую нельзя исправить автоматически, всё равно валит сборку.
+- **Always** запускать корректор одним Gradle-вызовом на модуль и одной задачей
+  на вызов: опция задачи (`--auto-correct`) достаётся только последней
+  подходящей задаче инвокации.
+- Авто-фикс **никогда** не трогает detekt-baseline: baseline — это долг, а не
+  форматирование (см. `scripts/check-baseline-ratchet.py`).
 
 ## 🤖 Decision log workflow
 

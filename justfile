@@ -11,6 +11,7 @@
 #   just tests::check
 #   just deps::health
 #   just scripts::refresh-decisions
+#   just lint::autofix
 # =============================================================================
 
 mod config   '.just/config'
@@ -21,6 +22,7 @@ mod scripts  '.just/scripts'
 mod deploy   '.just/deploy'
 mod catalog  '.just/catalog'
 mod deps     '.just/deps'
+mod lint     '.just/lint'
 
 set shell := ["bash", "-uc"]
 set unstable
@@ -57,6 +59,7 @@ alias ti    := wbparser::test-verbose
 # ----- Lint shortcuts -----
 alias ld    := wbparser::lint
 alias li    := wbparser::lint
+alias lf    := lint::autofix
 
 # ----- Scripts shortcuts -----
 alias rd    := scripts::refresh-decisions
