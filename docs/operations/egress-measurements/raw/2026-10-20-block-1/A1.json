@@ -1,0 +1,12 @@
+{
+  "label": "A1",
+  "requests": 40,
+  "refused": 1,
+  "errored": 0,
+  "succeeded": 39,
+  "refusal_ratio": 0.025,
+  "statuses": [
+    200,
+    498
+  ]
+}
