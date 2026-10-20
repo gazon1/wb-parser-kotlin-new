@@ -15,6 +15,7 @@ import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.runner.CrawlRunner
+import ru.wbparser.infra.runner.CrawlSource
 import ru.wbparser.testing.PostgresFixture
 
 /**
@@ -85,8 +86,11 @@ class CrawlJobStatusPostgresTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = downloader(failsOn = "Падающий"),
-                        parser = emptyParser,
+                        source =
+                            CrawlSource(
+                                downloader = downloader(failsOn = "Падающий"),
+                                parser = emptyParser,
+                            ),
                     )
 
                 val result = runner.run()
@@ -106,8 +110,11 @@ class CrawlJobStatusPostgresTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = downloader(failsOn = "Падающий"),
-                        parser = emptyParser,
+                        source =
+                            CrawlSource(
+                                downloader = downloader(failsOn = "Падающий"),
+                                parser = emptyParser,
+                            ),
                     )
                 runner.run()
 
@@ -123,8 +130,11 @@ class CrawlJobStatusPostgresTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = downloader(),
-                        parser = emptyParser,
+                        source =
+                            CrawlSource(
+                                downloader = downloader(),
+                                parser = emptyParser,
+                            ),
                     )
 
                 val result = runner.run()
@@ -142,8 +152,11 @@ class CrawlJobStatusPostgresTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = downloader(failsOn = "Падающий"),
-                        parser = emptyParser,
+                        source =
+                            CrawlSource(
+                                downloader = downloader(failsOn = "Падающий"),
+                                parser = emptyParser,
+                            ),
                     )
 
                 val result = runner.run()
@@ -163,8 +176,11 @@ class CrawlJobStatusPostgresTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = downloader(),
-                        parser = emptyParser,
+                        source =
+                            CrawlSource(
+                                downloader = downloader(),
+                                parser = emptyParser,
+                            ),
                     )
 
                 val result = runner.run()
@@ -183,8 +199,11 @@ class CrawlJobStatusPostgresTest :
                 suspend fun runOnce() =
                     CrawlRunner(
                         db = handle(),
-                        downloader = downloader(),
-                        parser = emptyParser,
+                        source =
+                            CrawlSource(
+                                downloader = downloader(),
+                                parser = emptyParser,
+                            ),
                     ).run()
 
                 val first = runOnce()
@@ -205,8 +224,11 @@ class CrawlJobStatusPostgresTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = downloader(failsOn = "Падающий"),
-                        parser = emptyParser,
+                        source =
+                            CrawlSource(
+                                downloader = downloader(failsOn = "Падающий"),
+                                parser = emptyParser,
+                            ),
                     )
                 runner.run()
 

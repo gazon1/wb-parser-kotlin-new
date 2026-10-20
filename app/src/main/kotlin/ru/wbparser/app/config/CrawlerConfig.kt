@@ -16,6 +16,8 @@ import ru.wbparser.infra.http.KtorDownloader
 import ru.wbparser.infra.http.RequestPacing
 import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.runner.CrawlRunner
+import ru.wbparser.infra.runner.CrawlRunnerConfig
+import ru.wbparser.infra.runner.CrawlSource
 
 /**
  * Provides [CrawlRunner] as a Spring bean, wiring together:
@@ -107,20 +109,26 @@ class CrawlerConfig {
 
         return CrawlRunner(
             db = db,
-            downloader = downloader,
-            parser = { fetched -> parseWbCatalog(fetched) },
-            maxPagesPerCatalog = properties.spider.maxPagesPerCatalog,
-            maxDepth = properties.spider.maxDepth,
-            rules = properties.spider.rules.toBusinessRules(),
-            clock = clock,
-            concurrency = properties.spider.concurrency,
-            targetConcurrency = properties.spider.targetConcurrency,
-            lockTimeoutMs = properties.lock.timeoutMinutes * 60_000,
+            source =
+                CrawlSource(
+                    downloader = downloader,
+                    parser = { fetched -> parseWbCatalog(fetched) },
+                ),
+            config =
+                CrawlRunnerConfig(
+                    maxPagesPerCatalog = properties.spider.maxPagesPerCatalog,
+                    maxDepth = properties.spider.maxDepth,
+                    rules = properties.spider.rules.toBusinessRules(),
+                    clock = clock,
+                    concurrency = properties.spider.concurrency,
+                    targetConcurrency = properties.spider.targetConcurrency,
+                    lockTimeoutMs = properties.lock.timeoutMinutes * 60_000,
+                    // One parameter for the cadence; the cron expression is only the tick.
+                    freshness =
+                        ru.wbparser.infra.scheduler
+                            .FreshnessPolicy(properties.schedule.freshnessMinutes),
+                ),
             meterRegistry = deps.meterRegistry,
-            // One parameter for the cadence; the cron expression is only the tick.
-            freshness =
-                ru.wbparser.infra.scheduler
-                    .FreshnessPolicy(properties.schedule.freshnessMinutes),
         )
     }
 

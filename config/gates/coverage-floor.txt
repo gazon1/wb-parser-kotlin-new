@@ -24,4 +24,4 @@
 
 app 31
 merged 81
-wbparser 76
+wbparser 77

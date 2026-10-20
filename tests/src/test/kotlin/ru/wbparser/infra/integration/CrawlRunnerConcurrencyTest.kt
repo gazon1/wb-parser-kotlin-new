@@ -16,6 +16,8 @@ import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.runner.CrawlRunner
+import ru.wbparser.infra.runner.CrawlRunnerConfig
+import ru.wbparser.infra.runner.CrawlSource
 import ru.wbparser.testing.PostgresFixture
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -109,9 +111,15 @@ class CrawlRunnerConcurrencyTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = probe.downloader,
-                        parser = emptyParser,
-                        targetConcurrency = 4,
+                        source =
+                            CrawlSource(
+                                downloader = probe.downloader,
+                                parser = emptyParser,
+                            ),
+                        config =
+                            CrawlRunnerConfig(
+                                targetConcurrency = 4,
+                            ),
                     )
 
                 val result = runner.run()
@@ -131,9 +139,15 @@ class CrawlRunnerConcurrencyTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = probe.downloader,
-                        parser = emptyParser,
-                        targetConcurrency = 4,
+                        source =
+                            CrawlSource(
+                                downloader = probe.downloader,
+                                parser = emptyParser,
+                            ),
+                        config =
+                            CrawlRunnerConfig(
+                                targetConcurrency = 4,
+                            ),
                     )
 
                 runner.run()
@@ -150,9 +164,15 @@ class CrawlRunnerConcurrencyTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = probe.downloader,
-                        parser = emptyParser,
-                        targetConcurrency = 3,
+                        source =
+                            CrawlSource(
+                                downloader = probe.downloader,
+                                parser = emptyParser,
+                            ),
+                        config =
+                            CrawlRunnerConfig(
+                                targetConcurrency = 3,
+                            ),
                     )
 
                 runner.run()
@@ -170,9 +190,15 @@ class CrawlRunnerConcurrencyTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = probe.downloader,
-                        parser = emptyParser,
-                        targetConcurrency = 1,
+                        source =
+                            CrawlSource(
+                                downloader = probe.downloader,
+                                parser = emptyParser,
+                            ),
+                        config =
+                            CrawlRunnerConfig(
+                                targetConcurrency = 1,
+                            ),
                     )
 
                 runner.run()
@@ -189,11 +215,17 @@ class CrawlRunnerConcurrencyTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = probe.downloader,
-                        parser = emptyParser,
-                        // Far more workers than targets: the semaphore has to clamp, not wait
-                        // for permits that can never be granted.
-                        targetConcurrency = 50,
+                        source =
+                            CrawlSource(
+                                downloader = probe.downloader,
+                                parser = emptyParser,
+                            ),
+                        config =
+                            CrawlRunnerConfig(
+                                // Far more workers than targets: the semaphore has to clamp, not wait
+                                // for permits that can never be granted.
+                                targetConcurrency = 50,
+                            ),
                     )
 
                 val result = runner.run()
@@ -211,9 +243,15 @@ class CrawlRunnerConcurrencyTest :
                 val runner =
                     CrawlRunner(
                         db = handle(),
-                        downloader = probe.downloader,
-                        parser = emptyParser,
-                        targetConcurrency = 4,
+                        source =
+                            CrawlSource(
+                                downloader = probe.downloader,
+                                parser = emptyParser,
+                            ),
+                        config =
+                            CrawlRunnerConfig(
+                                targetConcurrency = 4,
+                            ),
                     )
 
                 runner.run()

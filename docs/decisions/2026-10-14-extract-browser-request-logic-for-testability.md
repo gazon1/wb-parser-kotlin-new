@@ -71,9 +71,11 @@ that fails quietly instead of loudly:
 
 ## Consequences
 
-- **Always** keep request construction in `WbCatalogRequest`, not back inside the adapter. A
-  wrong `dest` or page number answers HTTP 200 with an empty `products` array, so the only
-  defence is a test on the value that gets built.
+- **Always** keep request construction in the `infra/http` request objects, not back inside the
+  adapter. A wrong `dest` or page number answers HTTP 200 with an empty `products` array, so the
+  only defence is a test on the value that gets built. (Since 2026-10-20 those objects are
+  `WbCatalogRequest` — the crawl URL, `WbCatalogApi` — the internal API call, and
+  `WbCatalogFetchScript` — the script; see the ADR on splitting by decision.)
 - **Never** solve a coverage drop on untestable adapters by excluding them. Extract the logic
   that deserves testing and leave the rest measured.
 - **Never** give a Kover-exercised DTO a required field that a single malformed API entry can
