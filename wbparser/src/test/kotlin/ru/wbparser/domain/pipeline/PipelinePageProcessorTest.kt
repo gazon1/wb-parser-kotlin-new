@@ -68,6 +68,8 @@ class PipelinePageProcessorTest :
             enrich: Stage<ParsedItem, SavedItem> = Stage { Step.Done(SavedItem.from(it, targetId)) },
             save: Stage<List<SavedItem>, Unit> = Stage { Step.Done(Unit) },
             stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
+            waiter: Waiter = Waiter { },
+            retryPolicy: RetryPolicy = RetryPolicy(),
         ): Pipeline =
             Pipeline(
                 download = Stage { Step.Done(fetched(it)) },
@@ -75,8 +77,9 @@ class PipelinePageProcessorTest :
                 filter = filter,
                 enrich = enrich,
                 save = save,
+                retryPolicy = retryPolicy,
                 clock = fixedClock,
-                waiter = Waiter { },
+                waiter = waiter,
                 stopAt = stopAt,
             )
 
@@ -183,6 +186,94 @@ class PipelinePageProcessorTest :
                 result.itemsSaved shouldBe 2
                 savedBatches shouldBe 1
                 savedCount shouldBe 2
+            }
+        }
+
+        test("a save that fails retryably is retried, and the items are saved when it succeeds") {
+            runTest {
+                var attempts = 0
+                var waits = 0
+                val p =
+                    pipeline(
+                        save =
+                            Stage {
+                                attempts++
+                                if (attempts < 3) Step.Retry(Retry.Database()) else Step.Done(Unit)
+                            },
+                        // The back-off is real, so the waiter is observed: a retry that does
+                        // not wait is a retry that hammers the database that just failed.
+                        waiter = Waiter { waits++ },
+                        retryPolicy = RetryPolicy(maxAttempts = 5, baseDelayMs = 10, jitterPercent = 0.0),
+                    )
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 1
+                attempts shouldBe 3
+                waits shouldBe 2
+            }
+        }
+
+        test("a save that keeps failing gives up, saves nothing, and says so") {
+            runTest {
+                val p =
+                    pipeline(
+                        save = Stage { Step.Retry(Retry.Database()) },
+                        waiter = Waiter { },
+                        retryPolicy = RetryPolicy(maxAttempts = 2, baseDelayMs = 10, jitterPercent = 0.0),
+                    )
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 0
+                // The failure is logged, not swallowed: a page whose items were lost must
+                // say so, or the crawl reports success over a hole in the data.
+                sides.any { it is Side.Log && it.level == LogLevel.ERROR } shouldBe true
+            }
+        }
+
+        test("a save that fails in a way that cannot be retried is not retried") {
+            runTest {
+                var attempts = 0
+                val p =
+                    pipeline(
+                        save =
+                            Stage {
+                                attempts++
+                                Step.Fail(StageFailure.ParseFailure("cannot be saved", null))
+                            },
+                        waiter = Waiter { },
+                        retryPolicy = RetryPolicy(maxAttempts = 5, baseDelayMs = 10, jitterPercent = 0.0),
+                    )
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 0
+                attempts shouldBe 1
             }
         }
 

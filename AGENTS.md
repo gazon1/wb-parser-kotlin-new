@@ -160,17 +160,22 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 | `docs/decisions/2026-10-19-application-startup-gate.md` | Приложение обязано стартовать, и что-то обязано это доказывать (`@SpringBootTest` + Testcontainers) |
 | `docs/decisions/2026-10-19-explicit-module-boundary.md` | Граница `wbparser → app` объявлена (`java-library`, `api`/`runtimeOnly`), а не подразумевается |
 | `docs/decisions/2026-10-19-jdk-toolchain.md` | Версия JDK — одно число в одном месте; toolchain сам себя обеспечивает |
+| `docs/decisions/2026-10-20-the-coverage-floor-measures-the-code-not-the-module.md` | Floors меряются по merged-отчёту с фильтром по пакетам: отчёт модуля не видит покрытие чужих сьютов |
 | `docs/decisions/2026-10-20-the-big-classes-are-split-by-decision.md` | Крупные классы делятся по решению, которое они держат: `WbCatalogRequest`/`WbCatalogApi`/`WbCatalogFetchScript`, `Pipeline`/`PipelineBatch`/`PipelinePageProcessor`, `CrawlRunner`/`CrawlJobStore`/`TargetCrawl`/`CrawlMetrics` |
 
 ---
 
 ## Tech-debt plan (актуальный)
 
-Кластеры из `.zcode/plans/plan-sess_*.md`:
+Кластеры A–G прежнего плана (runtime-баги, purity, мёртвый код, дублирование,
+инфраструктура, покрытие, tooling) **разобраны** — состояние по каждому пункту в файле
+плана. Осталось:
 
-- **A** — runtime bugs: `SideInterpreterRegistry` пустой в `crawl.kt`, `SaveBatchInterpreter` dead code, `delayMs = -1L` spin-loop
-- **B** — purity: `UUID.randomUUID()` и `delay()` внутри `Pipeline.run()`
-- **C** — мёртвый код: `StopReason.kt`, `StageFailure.Stopped`
-- **F** — (?) см. план
+- **BrowserPool** (943 строки) — следующий кандидат на дробление по решению; заодно
+  худшее покрытие в модуле (`RealAdsPowerApi` 6 %, `BrowserDownloader` 14 %)
+- **Браузерный путь fetch** — не покрыт: ошибка там выглядит как «каталог пуст», а не
+  как ошибка
+- **Эксплуатационное**: пересборка прод-БД, честный `known_pages_limit`, доля HTTP 498
+  (все профили на одном egress IP), права токена для `site-compatibility`
 
 Полный план: `.zcode/plans/plan-sess_871f29cf-f859-4a72-9002-5bbafd737630.md`

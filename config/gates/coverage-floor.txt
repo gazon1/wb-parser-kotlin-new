@@ -22,6 +22,6 @@
 #   integration suites were invisible to the gate: a module's own report holds
 #   only that module's classes.
 
-app 31
-merged 81
-wbparser 77
+app 84
+merged 82
+wbparser 81

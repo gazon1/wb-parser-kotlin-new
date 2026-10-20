@@ -89,9 +89,12 @@ class BusinessRulesFilterTest :
                         Step.Done(Unit)
                     },
                     targetId = targetId,
-                    rules = rules,
-                    retryPolicy = RetryPolicy(maxAttempts = 1, baseDelayMs = 1, maxDelayMs = 2),
-                    clock = clock,
+                    config =
+                        ParserPipelineConfig(
+                            rules = rules,
+                            retryPolicy = RetryPolicy(maxAttempts = 1, baseDelayMs = 1, maxDelayMs = 2),
+                            clock = clock,
+                        ),
                 )
             val (_, sides) =
                 pipeline.run(listOf(task())).getOrElse { throw AssertionError("Expected Right") }
@@ -242,9 +245,12 @@ class BusinessRulesFilterTest :
                         },
                         save = { Step.Done(Unit) },
                         targetId = targetId,
-                        rules = BusinessRules(minPriceKopecks = 50_000L),
-                        retryPolicy = RetryPolicy(maxAttempts = 1, baseDelayMs = 1, maxDelayMs = 2),
-                        clock = clock,
+                        config =
+                            ParserPipelineConfig(
+                                rules = BusinessRules(minPriceKopecks = 50_000L),
+                                retryPolicy = RetryPolicy(maxAttempts = 1, baseDelayMs = 1, maxDelayMs = 2),
+                                clock = clock,
+                            ),
                     )
 
                 val (crawled, sides) =

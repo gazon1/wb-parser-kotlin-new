@@ -17,6 +17,7 @@ import ru.wbparser.infra.http.WbCatalogRequest
 import ru.wbparser.infra.pipeline.LogDropInterpreter
 import ru.wbparser.infra.pipeline.LogInterpreter
 import ru.wbparser.infra.pipeline.NoOpAdvisoryLockInterpreter
+import ru.wbparser.infra.pipeline.ParserPipelineConfig
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
@@ -112,21 +113,24 @@ internal class TargetCrawl(
                     }
                 },
                 targetId = targetId,
-                rules = config.rules,
-                retryPolicy = config.retryPolicy,
-                stopAt = { pages, depth ->
-                    when {
-                        // The target's own limit wins when it has one: `known_pages_limit`
-                        // says how many pages of this category are worth crawling, and the
-                        // runner-wide cap is only the fallback for a target that does not
-                        // say.
-                        pages >= pageLimit -> Stop.MaxPagesReached
-                        depth >= config.maxDepth -> Stop.MaxDepthReached(config.maxDepth, depth)
-                        else -> null
-                    }
-                },
-                clock = config.clock,
-                idGen = startTaskIdGen,
+                config =
+                    ParserPipelineConfig(
+                        rules = config.rules,
+                        retryPolicy = config.retryPolicy,
+                        stopAt = { pages, depth ->
+                            when {
+                                // The target's own limit wins when it has one: `known_pages_limit`
+                                // says how many pages of this category are worth crawling, and the
+                                // runner-wide cap is only the fallback for a target that does not
+                                // say.
+                                pages >= pageLimit -> Stop.MaxPagesReached
+                                depth >= config.maxDepth -> Stop.MaxDepthReached(config.maxDepth, depth)
+                                else -> null
+                            }
+                        },
+                        clock = config.clock,
+                        idGen = startTaskIdGen,
+                    ),
             )
 
         val registry =
