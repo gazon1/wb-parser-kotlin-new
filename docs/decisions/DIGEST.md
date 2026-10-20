@@ -141,6 +141,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** держать темп ниже порога WB; «сначала попробуем быстро» — это ровно то, что _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
 - **Always** помечать профиль на паузу при антиботе, а не просто повторять тот же запрос. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
 - **Never** тратить весь бюджет попыток на запросы к открытой цепи: пауза и back-off _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
+- **Always** держать настройки `browser-idle-timeout-ms`, `browser-janitor-interval-ms` и _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
+- **Always** закрывать простаивающие профили: браузер, которым никто не пользуется, не _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
+- **Always** останавливать браузер в AdsPower, а не только закрывать CDP-соединение: _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
+- **Never** оставлять браузер открытым только потому, что краул его не открывал, а _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
+- **Never** ронять выключение из-за того, что AdsPower не ответил. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
 - **Always** treat a value that is older than ten minutes as "as of ten minutes _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
 - **Never** run two crawler instances behind one address while the aggregates are _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
 - **Always** объявлять merged report в root-проекте: без него отчёт модуля `tests` _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
@@ -191,6 +196,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `adspower`
 
 - В логах появляются «профиль отдывает» и «цепи ждёт окна» — это ожидаемое поведение, а _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
+- Ноль в `browser-idle-timeout-ms` отключает закрытие простаивающих браузеров: они живут _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)_
 - Полный обход 132 каталогов по 5 страниц при темпе 3 с занимает около 35 минут. Это _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Цель, у которой антибот не отпустил за 5 попыток, всё равно падает — но теперь это _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 
@@ -300,6 +306,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `FakeAdsPowerApi` lives in `src/test/kotlin/` alongside the tests that use it. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
 - `FakeBrowserAutomation` lives in `src/test/kotlin/` alongside `BrowserPoolTest`. _(from `2026-10-17-browser-automation-interface`)_
 - Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
+- Ноль в `browser-idle-timeout-ms` отключает закрытие простаивающих браузеров: они живут _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)_
 - Первый запрос pacer'а не ждёт: интервал отсчитывается от предыдущего разрешения, а не от _(from `2026-10-20-the-request-rate-has-one-owner`)_
 
 ### `bug-fix`
@@ -396,6 +403,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - В логах появляются «профиль отдывает» и «цепи ждёт окна» — это ожидаемое поведение, а _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Данные в базе, собранные старым эндпоинтом, — популярная ротация под чужими названиями. _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)_
 - Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
+- Ноль в `browser-idle-timeout-ms` отключает закрытие простаивающих браузеров: они живут _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)_
 - Первый запрос pacer'а не ждёт: интервал отсчитывается от предыдущего разрешения, а не от _(from `2026-10-20-the-request-rate-has-one-owner`)_
 - Полный обход 132 каталогов по 5 страниц при темпе 3 с занимает около 35 минут. Это _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Скачивание при старте добавляет сетевую зависимость: без интернета старт проходит с _(from `2026-10-20-subject-dictionary-loaded-at-startup`)_
@@ -529,6 +537,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The API answers a request that arrives right after a restart with a value computed _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 - The `totalCount` of a page of `/items` is **not** cached, and the reason is _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 - When the topology grows to more than one instance, the aggregates move to a shared _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
+- Ноль в `browser-idle-timeout-ms` отключает закрытие простаивающих браузеров: они живут _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)_
 
 ### `packaging`
 
@@ -752,6 +761,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-a-popular-list-is-not-a-catalog` — crawler  data-quality  catalog  api
 - `2026-10-20-anti-bot-refusals-are-measured` — crawler  antibot  metrics  pipeline
 - `2026-10-20-antibot-profile-rotation-and-backoff` — crawler  resilience  adspower
+- `2026-10-20-browsers-are-closed-when-they-are-not-needed` — crawler  browser  adspower  operations
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — catalog  api  cache  operations  deployment
 - `2026-10-20-coverage-is-measured-where-the-code-lives` — build  tests  gate  coverage
 - `2026-10-20-job-timestamps-carry-an-offset` — database  pipeline
@@ -813,6 +823,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-a-popular-list-is-not-a-catalog` — Популярная ротация WB — не каталог: её не сохраняют
 - `2026-10-20-anti-bot-refusals-are-measured` — Отказы антибота измеряются и получают собственный back-off
 - `2026-10-20-antibot-profile-rotation-and-backoff` — Антибот: ротация профиля, свой back-off и ожидание вместо отказа
+- `2026-10-20-browsers-are-closed-when-they-are-not-needed` — Браузеры AdsPower закрываются, когда они не нужны, и при выходе
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — The catalog's aggregates are cached in the process, and that shapes the topology
 - `2026-10-20-coverage-is-measured-where-the-code-lives` — Покрытие меряется там, где живёт код, и по всему репозиторию сразу
 - `2026-10-20-job-timestamps-carry-an-offset` — Job timestamps are written as offsets, not as naive local times

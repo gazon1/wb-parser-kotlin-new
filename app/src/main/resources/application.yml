@@ -104,6 +104,19 @@ crawler:
     # metronome so WB's rate limiting has nothing mechanical to key on.
     browser-jitter-min-ms: 200
     browser-jitter-max-ms: 500
+    # An AdsPower browser nobody asked for still holds a window, a profile lock and
+    # its share of the machine's memory — and it keeps its anti-bot session alive, so
+    # the next run would attach to a session older than the one it could have
+    # created. After this long without a request the browser is closed; the next
+    # borrower reopens it, and a fresh browser means a fresh session.
+    # 0 disables the closing: the browsers then live as long as the process.
+    browser-idle-timeout-ms: 300000
+    # How often the idle browsers are looked for. A tick, not a policy — the timeout
+    # above decides what "idle" means.
+    browser-janitor-interval-ms: 60000
+    # Whether the browsers are stopped in AdsPower when the application exits. A
+    # browser left running after the crawler is gone keeps its profile locked.
+    close-browsers-on-exit: true
 
 # ==============================================================================
 # Catalog read API

@@ -78,6 +78,31 @@ data class Spider(
      * the rate at which WB answers normally. Zero disables the limit.
      */
     val browserMinRequestIntervalMs: Long = 3_000L,
+    /**
+     * How long an AdsPower browser may sit unused before it is closed.
+     *
+     * A browser nobody asked for still holds a window, a profile lock and its share of
+     * the machine's memory. Between two crawls every profile is idle, and the honest
+     * answer to "is this browser needed?" is no. The next borrower reopens it, and a
+     * fresh browser means a fresh session — which is not a bad trade against WB's
+     * rate limiter.
+     *
+     * Zero disables the closing: the browsers then live as long as the process.
+     */
+    val browserIdleTimeoutMs: Long = 300_000L,
+    /**
+     * How often the idle browsers are looked for. A tick, not a policy: the policy is
+     * [browserIdleTimeoutMs].
+     */
+    val browserJanitorIntervalMs: Long = 60_000L,
+    /**
+     * Whether the AdsPower browsers are stopped when the application exits.
+     *
+     * A browser left running after the crawler is gone keeps its window open and its
+     * profile locked, and the next run attaches to a session that is older than the one
+     * it would have created for itself.
+     */
+    val closeBrowsersOnExit: Boolean = true,
     val rules: Rules = Rules(),
 )
 

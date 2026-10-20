@@ -21,8 +21,7 @@
 #   suite actually exercised, including the integration module's. Without it the
 #   integration suites were invisible to the gate: a module's own report holds
 #   only that module's classes.
-# Lowered on purpose: the app module grew with the catalog read API (#61): its code is covered by the integration module, which the merged report counts there
 
-app 29
+app 31
 merged 81
-wbparser 75
+wbparser 76

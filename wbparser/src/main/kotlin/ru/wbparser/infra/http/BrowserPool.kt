@@ -6,6 +6,7 @@ import com.microsoft.playwright.Page
 import com.microsoft.playwright.Playwright
 import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
@@ -46,6 +47,18 @@ interface AdsPowerApi {
      * Returns the CDP WebSocket URL on success, null on failure.
      */
     fun startProfileV2(profileId: String): String?
+
+    /**
+     * Calls `POST /api/v2/browser-profile/stop`.
+     *
+     * Returns true when AdsPower confirmed the profile was closed. False means the
+     * profile was not closed — the browser may still be running.
+     *
+     * This is the only way to make a browser go away: closing the CDP connection
+     * detaches the crawler from Chrome, but Chrome keeps running, holding a window,
+     * a profile lock and its share of the machine's memory.
+     */
+    fun stopProfileV2(profileId: String): Boolean
 
     /**
      * Whether the AdsPower Local API is reachable.
@@ -129,6 +142,18 @@ internal class RealAdsPowerApi(
     override fun isAvailable(): Boolean {
         val client = client() ?: return false
         return client.probe()
+    }
+
+    override fun stopProfileV2(profileId: String): Boolean {
+        val client = client() ?: return false
+        val body = """{"profile_id": "$profileId"}"""
+        val envelope =
+            client.post("/api/v2/browser-profile/stop", body)
+                ?: run {
+                    invalidateBaseUrl()
+                    return false
+                }
+        return envelope.isSuccess
     }
 }
 
@@ -443,6 +468,8 @@ class BrowserPool(
 
     private fun borrowLocked(state: ProfileState): BorrowedPage {
         val page = state.getOrCreatePage()
+        // The profile is in use from now on: the idle closer must leave it alone.
+        state.markUsed(System.currentTimeMillis())
         return BorrowedPage(
             page = page,
             profileId = state.profileConfig.profileId,
@@ -469,6 +496,46 @@ class BrowserPool(
         private val automation: BrowserAutomation,
     ) {
         val lock = ReentrantLock()
+
+        /**
+         * When this profile was last borrowed, in epoch milliseconds.
+         *
+         * The idle closer uses it to decide that a browser is not needed any more: a
+         * profile nobody has used for the idle timeout is closed, and reopened by the
+         * next borrower.
+         */
+        private val lastUsedAtMs = AtomicLong(0L)
+
+        /**
+         * Whether this pool started the browser.
+         *
+         * The crawler stops the browsers it *used*, whether it opened them or attached
+         * to a browser that was already running: a browser that survived the previous
+         * run must not survive this one, or the leak is permanent — every run attaches
+         * to the browsers the run before it left behind, and nobody ever closes them.
+         *
+         * The flag is kept for the case where the CDP connection is already gone but
+         * the browser is still running: then "is a browser open" answers no while a
+         * browser is very much alive.
+         */
+        private val startedByPool = AtomicBoolean(false)
+
+        /** Records that this profile has just been used. */
+        fun markUsed(now: Long) {
+            lastUsedAtMs.set(now)
+        }
+
+        /** Whether this profile has been idle for at least [idleMs]. */
+        fun isIdleSince(
+            now: Long,
+            idleMs: Long,
+        ): Boolean = now - lastUsedAtMs.get() >= idleMs
+
+        /** Whether the pool opened this browser, and may therefore close it in AdsPower. */
+        fun wasStartedByPool(): Boolean = startedByPool.get()
+
+        /** Whether a browser is currently open for this profile. */
+        fun isBrowserOpen(): Boolean = automation.isConnected
 
         /**
          * Whether this profile's page has already loaded a WB page and solved the anti-bot
@@ -566,7 +633,12 @@ class BrowserPool(
             val profileId = profileConfig.profileId
             val fromApi =
                 try {
-                    api.checkActiveV2(profileId) ?: api.startProfileV2(profileId)
+                    api.checkActiveV2(profileId) ?: api.startProfileV2(profileId)?.also {
+                        // We started this browser, so we are the ones who may close it
+                        // again. A profile that was already running when we arrived
+                        // belongs to whoever started it.
+                        startedByPool.set(true)
+                    }
                 } catch (e: Exception) {
                     logForProfile(profileId, "AdsPower Local API call failed: {}", e.message)
                     null
@@ -647,11 +719,118 @@ class BrowserPool(
             automation.close()
             warm = false
         }
+
+        /**
+         * Closes the browser, and asks AdsPower to stop it.
+         *
+         * The CDP connection and the browser are two different things: closing the
+         * connection detaches the crawler from Chrome, but Chrome keeps running. Only
+         * the AdsPower stop call makes the window go away.
+         *
+         * @param stopInAdsPower whether the browser may be stopped in AdsPower. The
+         *   crawler stops the browsers it used — see [startedByPool] for why "only the
+         *   ones we started" is not the rule.
+         */
+        fun closeAndStop(stopInAdsPower: Boolean) {
+            close()
+            if (!stopInAdsPower) return
+            val profileId = profileConfig.profileId
+            val stopped =
+                try {
+                    api.stopProfileV2(profileId)
+                } catch (e: Exception) {
+                    // AdsPower may already be gone (the runtime is a container that
+                    // stops with the app). A browser we cannot stop is a nuisance, not
+                    // a reason to fail the shutdown.
+                    logForProfile(profileId, "Could not stop the browser in AdsPower: {}", e.message)
+                    false
+                }
+            if (stopped) {
+                startedByPool.set(false)
+                logForProfile(profileId, "Browser stopped in AdsPower")
+            } else {
+                logForProfile(profileId, "Browser was not stopped in AdsPower")
+            }
+        }
     }
 
     /** Cleanly shuts down all profiles. */
     fun close() {
         profileStates.forEach { it.close() }
+    }
+
+    /**
+     * Closes the browsers that have not been used for [idleTimeoutMs].
+     *
+     * A browser nobody asked for is a browser holding a window, a profile lock and
+     * its share of the machine's memory. Between two crawls — or between two targets
+     * of the same crawl — the profiles sit idle, and an idle browser is a browser
+     * that serves nothing.
+     *
+     * The next borrower reopens it: the pool connects lazily, and AdsPower starts
+     * the profile again. Closing an idle browser costs a start-up, and buys back a
+     * fresh session — which is not a bad trade against WB's rate limiter.
+     *
+     * @param now the current time in epoch milliseconds
+     * @param idleTimeoutMs how long a profile may rest before it is closed; zero or
+     *   less disables the closing
+     * @return how many browsers were closed
+     */
+    fun closeIdleBrowsers(
+        now: Long,
+        idleTimeoutMs: Long,
+    ): Int {
+        if (idleTimeoutMs <= 0) return 0
+        var closed = 0
+        for (state in profileStates) {
+            // A profile in use is not idle. The lock is the same one the borrower
+            // holds, so tryLock tells us without waiting.
+            if (!state.lock.tryLock()) continue
+            try {
+                if (!state.isIdleSince(now, idleTimeoutMs)) continue
+                if (!state.isBrowserOpen()) continue
+                state.closeAndStop(stopInAdsPower = true)
+                closed++
+            } finally {
+                state.lock.unlock()
+            }
+        }
+        if (closed > 0) {
+            log.info("Closed {} idle browser(s) — they were not used for {} ms", closed, idleTimeoutMs)
+        }
+        return closed
+    }
+
+    /**
+     * Closes every browser this pool has used, and stops it in AdsPower.
+     *
+     * Called when the application exits. A browser left running after the crawler
+     * is gone keeps its window open on the machine and its profile locked — and the
+     * next run attaches to a session that is older than the one it would have
+     * created for itself.
+     *
+     * @return how many browsers were closed
+     */
+    fun closeAllBrowsers(): Int {
+        var closed = 0
+        for (state in profileStates) {
+            // A profile that is still in use is closed anyway: this is the way out of
+            // the process, and a browser that outlives the crawler is the thing we are
+            // fixing. A page that was borrowed and never released is a leak of its own,
+            // and it must not keep a browser alive.
+            val locked = state.lock.tryLock()
+            try {
+                if (!state.isBrowserOpen() && !state.wasStartedByPool()) continue
+                state.closeAndStop(stopInAdsPower = true)
+                closed++
+            } finally {
+                if (locked) state.lock.unlock()
+            }
+        }
+        if (closed > 0) {
+            log.info("Closed {} browser(s) on shutdown", closed)
+        }
+        return closed
     }
 
     companion object {
