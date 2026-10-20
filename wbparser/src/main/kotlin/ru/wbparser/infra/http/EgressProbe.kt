@@ -175,7 +175,7 @@ class EgressProbe(
             // check that passed.
             problems +=
                 "AdsPower described no profile — the proxy of the groups could not be checked. " +
-                    "They are not verified against the proxies the browser actually uses."
+                "They are not verified against the proxies the browser actually uses."
             return false
         }
         var misconfigured = false
@@ -197,8 +197,8 @@ class EgressProbe(
             if (known.size != group.profileIds.size) {
                 problems +=
                     "Egress group '${group.id}': AdsPower did not describe " +
-                        "${group.profileIds.size - known.size} of its profiles, so its proxy " +
-                        "could not be checked."
+                    "${group.profileIds.size - known.size} of its profiles, so its proxy " +
+                    "could not be checked."
             }
             if (known.size == group.profileIds.size && identities.size == 1) {
                 groupIdentity[group.id] = identities.first()
@@ -218,7 +218,7 @@ class EgressProbe(
                 }
             problems +=
                 "Egress groups ${groupIds.sorted()} are behind $what. They are one source, " +
-                    "not several: the extra IP budget is not there."
+                "not several: the extra IP budget is not there."
         }
         return misconfigured
     }

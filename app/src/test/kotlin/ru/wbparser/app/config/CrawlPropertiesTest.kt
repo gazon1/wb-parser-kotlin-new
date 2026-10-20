@@ -75,7 +75,9 @@ class CrawlPropertiesTest :
                     "crawler.spider.egress-groups[0].profiles[1]" to "profile-2",
                 )
 
-            properties.spider.egressGroups.single().profiles shouldContainExactlyInAnyOrder listOf("profile-1", "profile-2")
+            properties.spider.egressGroups
+                .single()
+                .profiles shouldContainExactlyInAnyOrder listOf("profile-1", "profile-2")
             // Zero means "derive it where the groups are resolved" — a number kept in
             // this file by hand is a number that can drift away from the profiles.
             properties.spider.targetConcurrency shouldBe 0
