@@ -66,7 +66,13 @@ DECLARE
         -- business reading it — it says nothing about products — but it is a table this
         -- script has decided about, so it belongs here rather than in the "nobody has
         -- decided" bucket that stops the script.
-        'crawl_egress_groups'
+        'crawl_egress_groups',
+        -- The runs of the targets: which egress group served which target, from which
+        -- address, and how it went. The catalog has no business reading it — it says
+        -- nothing about products — but it is a table this script has decided about, so
+        -- it belongs here rather than in the "nobody has decided" bucket that stops
+        -- the script.
+        'crawl_target_runs'
     ];
     missing text[];
     unknown text[];

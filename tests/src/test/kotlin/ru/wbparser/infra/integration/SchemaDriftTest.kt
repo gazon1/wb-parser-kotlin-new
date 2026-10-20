@@ -9,6 +9,7 @@ import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.testcontainers.containers.PostgreSQLContainer
 import ru.wbparser.domain.pipeline.CrawlEgressGroupsTable
+import ru.wbparser.domain.pipeline.CrawlTargetRunsTable
 import ru.wbparser.domain.pipeline.CrawlTargetsTable
 import ru.wbparser.domain.pipeline.ScrapedItemsTable
 import ru.wbparser.testing.PostgresFixture
@@ -43,7 +44,8 @@ class SchemaDriftTest :
         /** The schema Exposed creates from the table definitions. */
         val modelSchema = "code_model"
 
-        val modelled: List<Table> = listOf(ScrapedItemsTable, CrawlTargetsTable, CrawlEgressGroupsTable)
+        val modelled: List<Table> =
+            listOf(ScrapedItemsTable, CrawlTargetsTable, CrawlEgressGroupsTable, CrawlTargetRunsTable)
 
         beforeSpec {
             container.start()
