@@ -132,6 +132,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** тратить весь бюджет попыток на запросы к открытой цепи: пауза и back-off _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
 - **Always** treat a value that is older than ten minutes as "as of ten minutes _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
 - **Never** run two crawler instances behind one address while the aggregates are _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
+- **Always** писать интеграционный тест рядом с кодом, который он проверяет, а не в отдельном _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
+- **Always** поднимать floor покрытия тем же коммитом, который поднял покрытие _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
+- **Never** дублировать DDL в тестах: схема строится из модели, соответствие миграциям _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
+- **Never** считать, что kover агрегирует покрытие зависимых модулей: он этого не делает, и _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
 - **Always** bind a transaction to the DataSource it belongs to — _(from `2026-10-20-job-timestamps-carry-an-offset`)
 - **Always** write `crawl_jobs` timestamps through Exposed with an `OffsetDateTime`. _(from `2026-10-20-job-timestamps-carry-an-offset`)
 - **Never** use `java.sql.Timestamp` for a `TIMESTAMPTZ` column: it is a naive _(from `2026-10-20-job-timestamps-carry-an-offset`)
@@ -716,6 +720,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — catalog  data  domain-model
 - `2026-10-20-antibot-profile-rotation-and-backoff` — crawler  resilience  adspower
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — catalog  api  cache  operations  deployment
+- `2026-10-20-coverage-is-measured-where-the-code-lives` — build  tests  gate  coverage
 - `2026-10-20-job-timestamps-carry-an-offset` — database  pipeline
 - `2026-10-20-pagination-does-not-increase-depth` — pipeline  domain
 - `2026-10-20-schedule-cadence-single-parameter` — scheduling  configuration
@@ -772,6 +777,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — Category names come from WB's subject dictionary, and known_pages_limit is a limit
 - `2026-10-20-antibot-profile-rotation-and-backoff` — Антибот: ротация профиля, свой back-off и ожидание вместо отказа
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — The catalog's aggregates are cached in the process, and that shapes the topology
+- `2026-10-20-coverage-is-measured-where-the-code-lives` — Покрытие измеряется в том модуле, которому принадлежит код
 - `2026-10-20-job-timestamps-carry-an-offset` — Job timestamps are written as offsets, not as naive local times
 - `2026-10-20-pagination-does-not-increase-depth` — Пагинация не увеличивает глубину краула
 - `2026-10-20-schedule-cadence-single-parameter` — Каденция краула задаётся одним параметром — окном свежести
