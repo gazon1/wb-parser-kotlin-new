@@ -46,6 +46,13 @@ postgresql = "42.7.4"
 hikaricp = "5.1.0"
 playwright = "1.49.0"
 sqlite = "3.46.0.0"
+# SnakeYAML parses the OpenAPI contract document the API serves.
+snakeyaml = "2.3"
+# The servlet API the Spring MVC test doubles extend.
+jakarta-servlet = "6.0.0"
+# Hamcrest matchers: the way MockMvc asserts on a response body without the test
+# reaching for the servlet API.
+hamcrest = "2.2"
 
 [libraries]
 # Kotlin
@@ -68,7 +75,9 @@ spring-boot-starter-test = { group = "org.springframework.boot", name = "spring-
 spring-boot = { group = "org.springframework.boot", name = "spring-boot", version.ref = "spring-boot" }
 spring-boot-autoconfigure = { group = "org.springframework.boot", name = "spring-boot-autoconfigure", version.ref = "spring-boot" }
 spring-boot-test = { group = "org.springframework.boot", name = "spring-boot-test", version.ref = "spring-boot" }
+spring-boot-test-autoconfigure = { group = "org.springframework.boot", name = "spring-boot-test-autoconfigure", version.ref = "spring-boot" }
 spring-web = { group = "org.springframework", name = "spring-web", version.ref = "spring" }
+spring-webmvc = { group = "org.springframework", name = "spring-webmvc", version.ref = "spring" }
 spring-core = { group = "org.springframework", name = "spring-core", version.ref = "spring" }
 spring-context = { group = "org.springframework", name = "spring-context", version.ref = "spring" }
 spring-beans = { group = "org.springframework", name = "spring-beans", version.ref = "spring" }
@@ -100,6 +109,9 @@ hikaricp = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikaricp" }
 flyway-core = { group = "org.flywaydb", name = "flyway-core", version.ref = "flyway" }
 flyway-database-postgresql = { group = "org.flywaydb", name = "flyway-database-postgresql", version.ref = "flyway" }
 sqlite-jdbc = { group = "org.xerial", name = "sqlite-jdbc", version.ref = "sqlite" }
+snakeyaml = { group = "org.yaml", name = "snakeyaml", version.ref = "snakeyaml" }
+jakarta-servlet = { group = "jakarta.servlet", name = "jakarta.servlet-api", version.ref = "jakarta-servlet" }
+hamcrest = { group = "org.hamcrest", name = "hamcrest", version.ref = "hamcrest" }
 
 # Resilience
 resilience4j-kotlin = { group = "io.github.resilience4j", name = "resilience4j-kotlin", version.ref = "resilience4j" }
@@ -120,6 +132,8 @@ slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
 
 # JSON
 jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version.ref = "jackson" }
+jackson-annotations = { group = "com.fasterxml.jackson.core", name = "jackson-annotations", version.ref = "jackson" }
+jackson-datatype-jsr310 = { group = "com.fasterxml.jackson.datatype", name = "jackson-datatype-jsr310", version.ref = "jackson" }
 
 # Metrics
 micrometer-core = { group = "io.micrometer", name = "micrometer-core", version.ref = "micrometer" }
@@ -133,5 +147,6 @@ mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 # declared directly", which is true: the module names these types in its own sources.
 junit-bom = { group = "org.junit", name = "junit-bom", version.ref = "junit" }
 junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version.ref = "junit" }
+testcontainers = { group = "org.testcontainers", name = "testcontainers", version.ref = "testcontainers" }
 testcontainers-postgresql = { group = "org.testcontainers", name = "postgresql", version.ref = "testcontainers" }
 testcontainers-junit-jupiter = { group = "org.testcontainers", name = "junit-jupiter", version.ref = "testcontainers" }

@@ -70,6 +70,13 @@ gate blocking "gates are wired and declared honestly" python3 scripts/check-gate
 # are intentional and safe; all other org.jetbrains.exposed imports in domain/ are forbidden.
 gate blocking "domain purity: no infra imports in domain" bash scripts/ci/check-domain-purity.sh
 
+# --- the demo seed ------------------------------------------------------------
+# The demo seed writes synthetic rows into the table the crawler writes into. Its
+# five run-time barriers are the last line of defence; this gate is the first one,
+# and it is the one that can be read: nothing that shapes a deployed instance may
+# switch it on.
+gate blocking "the demo seed is not enabled in production" python3 scripts/ci/check-demo-seed-not-in-production.py
+
 # --- report ------------------------------------------------------------------
 echo
 echo "static gates: ${#PASSED[@]} passed, ${#FAILED[@]} failed, ${#WARNED[@]} advisory-failed"

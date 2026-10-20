@@ -67,6 +67,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** add a dependency that is needed only at runtime to `implementation` when the _(from `2026-10-19-application-startup-gate`)
 - **Never** make the startup gate depend on a browser, the network or AdsPower. The `public` _(from `2026-10-19-application-startup-gate`)
 - **Never** weaken the migration assertion to a fixed list of versions. The expected set is _(from `2026-10-19-application-startup-gate`)
+- **Always** check the effective rights of the catalog role, not the grants _(from `2026-10-19-catalog-read-api-contract`)
+- **Always** keep the catalog's pool separate from the crawler's. The crawl is _(from `2026-10-19-catalog-read-api-contract`)
+- **Always** read the catalog through the API, and let the API own the SQL. The _(from `2026-10-19-catalog-read-api-contract`)
+- **Always** rotate the catalog key on a schedule, and rotate it immediately if _(from `2026-10-19-catalog-read-api-contract`)
+- **Never** change the contract from the storefront's side. The direction is _(from `2026-10-19-catalog-read-api-contract`)
+- **Never** deploy the API publicly. The route stays closed at the proxy, and _(from `2026-10-19-catalog-read-api-contract`)
+- **Never** give the storefront database credentials again. A fallback that reads _(from `2026-10-19-catalog-read-api-contract`)
+- **Never** weaken `wb_catalog_ro` to make something work. If the catalog needs _(from `2026-10-19-catalog-read-api-contract`)
 - **Always** give every module with tests a floor in `config/gates/coverage-floor.txt` _(from `2026-10-19-coverage-floor-gate`)
 - **Always** keep the coverage floor in `config/gates/coverage-floor.txt` and _(from `2026-10-19-coverage-floor-gate`)
 - **Always** keep the floor at least a percentage point below the measurement. _(from `2026-10-19-coverage-floor-gate`)
@@ -123,6 +131,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
+
+### `api`
+
+- The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
 
 ### `architecture`
 
@@ -204,6 +216,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
 - The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
 
+### `catalog`
+
+- The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
+
 ### `ci`
 
 - Crawler: `tests` floor 31 → 44. Storefront: per-file floors in _(from `2026-10-08-gates-that-can-fail`)_
@@ -247,6 +263,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Rules read `priceKopecks`, `salePriceKopecks`, `inStock` and `category` from `ParsedItem`, _(from `2026-10-09-wire-business-rules-into-filter`)_
 - `Spider.concurrency` from `application.yml` now actually controls download concurrency _(from `2026-09-09-concurrency-wiring-pr17`)_
 
+### `contract`
+
+- The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
+
 ### `conventions`
 
 - Cluster prefixes (`A1`, `A2`, …) from the tech-debt plan may appear in subject after the `PR N` marker. _(from `2026-09-08-conventional-commits-and-cleanup-prs`)_
@@ -262,6 +282,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same _(from `2026-10-08-discover-test-migrations`)_
 - The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
+- The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path _(from `2026-10-08-discover-test-migrations`)_
 - `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share _(from `2026-10-08-discover-test-migrations`)_
 
@@ -409,6 +430,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
 
+### `security`
+
+- The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
+
 ### `side-effects`
 
 - `Pipeline.run` return type is a breaking change; all call sites that pattern-match on _(from `2026-10-09-pipelinefailure-carries-sides`)_
@@ -488,6 +513,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-stage-data-class-dsl` — pipeline  architecture  pr-13
 - `2026-10-19-advisory-lock-timeout` — concurrency  runtime  correctness
 - `2026-10-19-application-startup-gate` — testing  gates  spring  database  flyway
+- `2026-10-19-catalog-read-api-contract` — catalog  api  database  security  contract
 - `2026-10-19-coverage-floor-gate` — build  tests  gate  coverage
 - `2026-10-19-dependency-analysis-plugin` — build  dependencies  gates  ci
 - `2026-10-19-explicit-module-boundary` — build  architecture  dependencies  spring
@@ -527,6 +553,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-17-stage-data-class-dsl` — Stage data class + StageDSL for readable stage construction
 - `2026-10-19-advisory-lock-timeout` — The lock timeout bounds the wait, not the work
 - `2026-10-19-application-startup-gate` — The application must be startable, and something must prove it
+- `2026-10-19-catalog-read-api-contract` — The storefront reads the catalog through the crawler's HTTP API
 - `2026-10-19-coverage-floor-gate` — The coverage floor lives in one file, and the gate reads the report
 - `2026-10-19-dependency-analysis-plugin` — Dependency drift is a gate, not a reviewer's job
 - `2026-10-19-explicit-module-boundary` — The boundary between the crawler and the application is declared, not implied

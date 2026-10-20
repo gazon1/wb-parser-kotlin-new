@@ -227,10 +227,15 @@ jobs:
   publish-image:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Only after the gates, and only for main: a PR image is useful, an image
-    # from a failing branch is not.
+    # Only after the gates: an image from a failing branch is not worth pushing.
+    #
+    # PRs are included on purpose. The plan's cross-repository check answers the
+    # question "does the storefront still understand this crawler?", and the
+    # crawler of a pull request is the one whose contract may have just changed.
+    # The PR image is tagged `pr-<n>` and is immutable: the image built after the
+    # merge is a *different* digest, and only the digest that was checked may be
+    # promoted.
     needs: [build, lint, coverage, gate-honesty]
-    if: github.event_name == 'push'
     permissions:
       packages: write
       contents: read
@@ -255,6 +260,7 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/wb-parser
           tags: |
             type=ref,event=branch
+            type=ref,event=pr
             type=sha,prefix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 

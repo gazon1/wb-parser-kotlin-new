@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    The logging pattern of the application.
+
+    ## What is added to Spring Boot's default
+
+    The request identifier, in brackets after the timestamp: `%X{requestId}`.
+
+    The identifier is put into the logging context by the catalog's request-identifier
+    filter, so every log line a request produces — the ones from the filter, the ones from
+    the query layer, the ones from the driver — carries the same value. A report of "the
+    storefront showed an error at 12:04" can be turned into the exact line that says what
+    the crawler did with that request.
+
+    The default is empty (`:-`), so a line written outside a request — a startup message, a
+    scheduled task — shows `[]` rather than a leftover identifier from the thread it ran
+    on.
+-->
+<configuration>
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <property name="CONSOLE_LOG_PATTERN"
+              value="%clr(%d{${LOG_DATEFORMAT_PATTERN:-yyyy-MM-dd HH:mm:ss.SSS}}){faint} %clr(${LOG_LEVEL_PATTERN:-%5p}) %clr(${PID:- }){magenta} %clr([%X{requestId:-}]){faint} %clr(---){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n${LOG_EXCEPTION_CONVERSION:-%wEx}"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

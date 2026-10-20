@@ -127,6 +127,27 @@ dependencies {
     implementation(libs.micrometer.core)
     implementation(libs.jackson.databind)
 
+    // The DTOs name their properties with @JsonProperty, so the annotations artifact
+    // is used by name and has to be declared by the module that names it.
+    implementation(libs.jackson.annotations)
+
+    // The catalog's routes are Spring MVC controllers: @RestController, @GetMapping
+    // and the rest of the annotations live in spring-webmvc, not in spring-web.
+    implementation(libs.spring.webmvc)
+
+    // HikariCP is named directly by the catalog's own pool (CatalogDataSource). It arrives
+    // through spring-boot-starter-jdbc as well, but a class that a module's own source
+    // names has to be declared by that module — otherwise the dependency-analysis gate
+    // cannot see who uses it, and a starter upgrade could take the pool away.
+    implementation(libs.hikaricp)
+
+    // SnakeYAML parses the OpenAPI contract document: the API serves it at
+    // /api/catalog/v1/contract, and the crawler's tests compare the document's schemas
+    // with the Kotlin DTOs. The dependency is declared rather than picked up from whatever
+    // happens to be on the classpath — the classpath version of the Gradle plugin is not
+    // the classpath version of the application.
+    implementation(libs.snakeyaml)
+
     // Flyway belongs to this module: the migrations live in
     // src/main/resources/db/migration and the configuration in application.yml.
     // It used to be an `implementation` dependency of the crawler module, which
@@ -144,6 +165,15 @@ dependencies {
     // the code wanted milliseconds.
     testImplementation(libs.kotest.runner.junit5)
     testImplementation(libs.kotest.assertions.core)
+
+    // The contract test serialises the DTOs with the same JavaTime module the
+    // application uses, so that a timestamp in the JSON is a date-time string and
+    // not a number.
+    testImplementation(libs.jackson.datatype.jsr310)
+
+    // The contract test reads the DTOs' property names and nullability with Kotlin
+    // reflection — that is how the document and the classes are compared.
+    testImplementation(libs.kotlin.reflect)
     // MockHttpServletRequest / MockHttpServletResponse — the servlet API itself
     // arrives with the embedded Tomcat, which is an `implementation` dependency.
     testImplementation(libs.spring.test)
@@ -151,6 +181,25 @@ dependencies {
     // container, so the readiness check is tested against a working DataSource
     // rather than against a stand-in for one.
     testImplementation(libs.sqlite.jdbc)
+}
+
+// The contract document lives at the root of the repository, next to the ADR that explains
+// it, and is copied onto the classpath here.
+//
+// One copy, not two: a second file under src/main/resources would be a second thing to
+// forget to update, and the document is the contract — two copies of a contract are two
+// contracts.
+tasks.named<ProcessResources>("processResources") {
+    from(rootProject.layout.projectDirectory.dir("contract")) {
+        into("contract")
+    }
+    // The role scripts are carried into the image as well, so that the operator of a
+    // running container can apply them without a checkout of the repository next to it.
+    // The tests read them from the classpath and run them against a real database, which
+    // is the only way to know that the script in the repository is the script that works.
+    from(rootProject.layout.projectDirectory.dir("db")) {
+        into("db")
+    }
 }
 
 tasks.test {
