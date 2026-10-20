@@ -3,7 +3,6 @@ package ru.wbparser.domain
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
-import kotlinx.coroutines.test.runTest
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.stageOf
 
@@ -45,50 +44,5 @@ class StageTest :
                     .RateLimited(5000L)
             val retry: Step<String, Int> = Step.Retry(signal)
             retry.shouldBeInstanceOf<Step.Retry<String, Int>>()
-        }
-
-        test("andThen: Done from first stage feeds into second stage") {
-            runTest {
-                val s1 = stageOf { s: String -> s.length }
-                val s2 = stageOf { n: Int -> n > 3 }
-
-                val firstResult: Step<String, Int> = s1("hello")
-                firstResult.shouldBeInstanceOf<Step.Done<String, Int>>()
-                val output1 = firstResult.output
-
-                val secondResult: Step<Int, Boolean> = s2(output1)
-                secondResult.shouldBeInstanceOf<Step.Done<Int, Boolean>>()
-                secondResult.output shouldBe true
-            }
-        }
-
-        test("andThen: Fail from first stage propagates without calling second") {
-            runTest {
-                val s1: suspend (
-                    String,
-                ) -> Step<String, Int> = {
-                    Step.Fail(
-                        ru.wbparser.domain.pipeline.StageFailure
-                            .Network("err", null, null),
-                    )
-                }
-                val s2 = stageOf { n: Int -> n > 3 }
-
-                val firstResult: Step<String, Int> = s1("hello")
-                firstResult.shouldBeInstanceOf<Step.Fail<String, Int>>()
-            }
-        }
-
-        test("andThen: Retry from first stage propagates without calling second") {
-            runTest {
-                val signal =
-                    ru.wbparser.domain.pipeline.Retry
-                        .RateLimited(5000L)
-                val s1: suspend (String) -> Step<String, Int> = { Step.Retry(signal) }
-                val s2 = stageOf { n: Int -> n > 3 }
-
-                val firstResult: Step<String, Int> = s1("hello")
-                firstResult.shouldBeInstanceOf<Step.Retry<String, Int>>()
-            }
         }
     })

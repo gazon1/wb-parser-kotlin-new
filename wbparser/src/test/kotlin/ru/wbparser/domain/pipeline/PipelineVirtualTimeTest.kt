@@ -13,6 +13,7 @@ import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
+import ru.wbparser.infra.pipeline.ParserPipelineConfig
 import ru.wbparser.infra.pipeline.buildParserPipeline
 import java.time.Instant
 import java.util.UUID
@@ -53,10 +54,13 @@ class PipelineVirtualTimeTest :
                 parser = parse,
                 save = saveStage,
                 targetId = targetId,
-                rules = BusinessRules(),
-                retryPolicy = RetryPolicy(maxAttempts = 3, baseDelayMs = 100),
-                clock = clock,
-                idGen = { "test-id" },
+                config =
+                    ParserPipelineConfig(
+                        rules = BusinessRules(),
+                        retryPolicy = RetryPolicy(maxAttempts = 3, baseDelayMs = 100),
+                        clock = clock,
+                        idGen = { "test-id" },
+                    ),
             )
         }
 

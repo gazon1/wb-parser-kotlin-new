@@ -52,10 +52,13 @@ class PipelineFactoryAntibotTest :
                 },
                 save = { _: List<SavedItem> -> Step.Done(Unit) },
                 targetId = targetId,
-                retryPolicy = RetryPolicy(maxAttempts = 2),
-                stopAt = { _, _ -> Stop.MaxPagesReached },
-                clock = clock,
-                waiter = NoopWaiter,
+                config =
+                    ParserPipelineConfig(
+                        retryPolicy = RetryPolicy(maxAttempts = 2),
+                        stopAt = { _, _ -> Stop.MaxPagesReached },
+                        clock = clock,
+                        waiter = NoopWaiter,
+                    ),
             )
 
         test("a refusal is retried as a refusal, not as a server error") {

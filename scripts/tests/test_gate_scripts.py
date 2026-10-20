@@ -279,6 +279,51 @@ class TestCoverageReportParsing(unittest.TestCase):
                 COVERAGE.line_coverage(path)
 
 
+class TestPackageFilteredCoverage(unittest.TestCase):
+    """A module's row is measured over that module's packages in the merged report.
+
+    The whole point of the change is that the app's row must not be measured on the
+    app module's own report — that report cannot see the integration module's suites,
+    and it reported thirty-five covered classes as untested. So the filter has to
+    work, and it has to exclude the other module's packages.
+    """
+
+    def test_measures_only_the_asked_for_package(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "report.xml", _two_package_report())
+            coverage = COVERAGE.line_coverage(path, packages=("ru/wbparser/app",))
+            self.assertAlmostEqual(coverage, 80.0)
+
+    def test_the_other_package_is_not_counted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "report.xml", _two_package_report())
+            coverage = COVERAGE.line_coverage(path, packages=("ru/wbparser",))
+            # Both packages are under `ru/wbparser`; the crawler's row excludes the app's.
+            self.assertAlmostEqual(coverage, 60.0)
+            coverage = COVERAGE.line_coverage(
+                path,
+                packages=("ru/wbparser",),
+                excluded=("ru/wbparser/app",),
+            )
+            self.assertAlmostEqual(coverage, 20.0)
+
+    def test_a_package_with_no_lines_is_refused_rather_than_reported_as_full(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write(tmp, "report.xml", _two_package_report())
+            with self.assertRaises(ValueError):
+                COVERAGE.line_coverage(path, packages=("ru/wbparser/nowhere",))
+
+    def test_every_known_module_is_measured_on_the_merged_report(self):
+        for module in COVERAGE.MODULE_PACKAGES:
+            self.assertEqual(COVERAGE.module_report(module), COVERAGE.MERGED_REPORT)
+
+    def test_an_unknown_module_falls_back_to_its_own_report(self):
+        self.assertEqual(
+            COVERAGE.module_report("fixture", {"fixture": "somewhere.xml"}),
+            "somewhere.xml",
+        )
+
+
 class TestCoverageGateCanFail(unittest.TestCase):
     """The end-to-end control: the gate must fail on a floor it does not meet.
 
@@ -332,6 +377,29 @@ def _kover_report(covered: int, missed: int) -> str:
         '<?xml version="1.0" ?>\n'
         "<report name=\"fixture\">\n"
         f'  <counter type="LINE" missed="{missed}" covered="{covered}"/>\n'
+        "</report>\n"
+    )
+
+
+def _two_package_report() -> str:
+    """A kover XML report with two packages, as the merged report has.
+
+    `ru/wbparser/app` is 80% covered (8 of 10 lines), `ru/wbparser/domain` is 20%
+    (1 of 5). Both together are 60% (9 of 15).
+    """
+    return (
+        '<?xml version="1.0" ?>\n'
+        "<report name=\"fixture\">\n"
+        '  <package name="ru/wbparser/app">\n'
+        '    <class name="ru/wbparser/app/A">\n'
+        '      <counter type="LINE" missed="2" covered="8"/>\n'
+        "    </class>\n"
+        "  </package>\n"
+        '  <package name="ru/wbparser/domain">\n'
+        '    <class name="ru/wbparser/domain/B">\n'
+        '      <counter type="LINE" missed="4" covered="1"/>\n'
+        "    </class>\n"
+        "  </package>\n"
         "</report>\n"
     )
 

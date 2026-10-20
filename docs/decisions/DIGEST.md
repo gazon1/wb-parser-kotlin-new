@@ -167,6 +167,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** split a class by the decision it holds, not by the layer it sits in. A new unit _(from `2026-10-20-the-big-classes-are-split-by-decision`)
 - **Never** give a split unit a second copy of state the original owned. The batch shares the _(from `2026-10-20-the-big-classes-are-split-by-decision`)
 - **Never** move a piece of behaviour into a collaborator without carrying the state it _(from `2026-10-20-the-big-classes-are-split-by-decision`)
+- **Always** держать гейт покрытия и ратчет полов на одном измерении: ратчет, который _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
+- **Always** мерить строку floors по merged-отчёту с фильтром по пакетам модуля. _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
+- **Never** выводить «покрытие модуля» из отчёта, который этот модуль не видел. _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
+- **Never** читать из отчёта модуля вывод о покрытии приложения: в этом репозитории _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
 - **Always** держать `docs/RUNBOOK.md` в состоянии, в котором команды из него работают. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Always** пересобирать данные процедурой `rebuild_prod_data.sh`, а не ручными _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Always** показывать усечение каталога отдельным счётчиком: полнота данных не должна _(from `2026-10-20-the-crawl-reports-its-own-limits`)
@@ -774,6 +778,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-schedule-cadence-single-parameter` — scheduling  configuration
 - `2026-10-20-subject-dictionary-loaded-at-startup` — bootstrap  data-quality  crawler
 - `2026-10-20-the-big-classes-are-split-by-decision` — architecture  refactoring  maintainability
+- `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — build  tests  gate  coverage
 - `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
@@ -837,6 +842,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-schedule-cadence-single-parameter` — Каденция краула задаётся одним параметром — окном свежести
 - `2026-10-20-subject-dictionary-loaded-at-startup` — Справочник предметов WB загружается при старте приложения
 - `2026-10-20-the-big-classes-are-split-by-decision` — The three large classes are split by the decision they hold, not by the layer they live in
+- `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — Покрытие меряется по коду, а не по модулю, которому он принадлежит
 - `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view

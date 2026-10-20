@@ -5,6 +5,7 @@ import ru.wbparser.domain.error.NetworkError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedItem
+import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.model.SavedItem
 import ru.wbparser.domain.pipeline.BusinessRules
 import ru.wbparser.domain.pipeline.Pipeline
@@ -19,6 +20,40 @@ import ru.wbparser.domain.pipeline.dropIfInvalid
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
 import java.util.UUID
+
+/**
+ * How a parser pipeline behaves — its rules, its back-off, its limits, its clock.
+ *
+ * These were six parameters of [buildParserPipeline] before this type existed. Eleven
+ * parameters in one function is not a signature, it is a list of decisions, and the
+ * interesting ones — the rules and the stop condition — were buried between the downloader
+ * and the ID generator.
+ *
+ * The stop condition lives here rather than in the runner's configuration because it is
+ * per target: the runner knows the page limit and the depth limit, and the pipeline is the
+ * only place that can say what happens when one of them is reached.
+ */
+data class ParserPipelineConfig(
+    /**
+     * The business filter applied before enrich; defaults to [BusinessRules], whose
+     * defaults still reject items with no price at all. See the ADR on enabling business
+     * rules.
+     */
+    val rules: BusinessRules = BusinessRules(),
+    /** The retry configuration; defaults to 5 attempts with exponential back-off. */
+    val retryPolicy: RetryPolicy = RetryPolicy(),
+    /** Called after each page; return a [Stop] reason to halt, or null to continue. */
+    val stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
+    /** The time source; defaults to [SystemClock]. */
+    val clock: Clock = SystemClock,
+    /**
+     * How the pipeline waits between retries; defaults to [RealWaiter], which sleeps.
+     * Tests pass a waiter that returns immediately.
+     */
+    val waiter: Waiter = RealWaiter,
+    /** The ID generator for pagination tasks; defaults to [UUID.randomUUID]. */
+    val idGen: () -> String = { UUID.randomUUID().toString() },
+)
 
 /**
  * Builds a [Pipeline] for parsing a WB catalog.
@@ -37,28 +72,14 @@ import java.util.UUID
  *                  For tests, pass a custom implementation targeting an in-memory DB.
  * @param targetId  the real `crawl_targets.id` UUID used in [SavedItem.from] and written as
  *                  `scraped_items.target_id`.
- * @param rules    business filter applied before enrich; defaults to [BusinessRules], whose
- *                 defaults still reject items with no price at all. See ADR on enabling
- *                 business rules.
- * @param retryPolicy retry configuration; defaults to 5 attempts with exponential backoff.
- * @param stopAt    called after each page; return a [Stop] reason to halt, or null to continue.
- * @param clock     time source; defaults to [SystemClock].
- * @param waiter    how the pipeline waits between retries; defaults to [RealWaiter],
- *                  which sleeps. Tests pass a waiter that returns immediately.
- * @param idGen     ID generator for pagination tasks; defaults to [UUID.randomUUID].
+ * @param config    how the pipeline behaves; see [ParserPipelineConfig].
  */
-@Suppress("LongParameterList")
 fun buildParserPipeline(
     downloader: suspend (Crawling) -> Either<NetworkError, Fetched>,
-    parser: (Fetched) -> ru.wbparser.domain.model.ParsedPage,
+    parser: (Fetched) -> ParsedPage,
     save: suspend (List<SavedItem>) -> Step<List<SavedItem>, Unit>,
     targetId: UUID,
-    rules: BusinessRules = BusinessRules(),
-    retryPolicy: RetryPolicy = RetryPolicy(),
-    stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
-    clock: Clock = SystemClock,
-    waiter: Waiter = RealWaiter,
-    idGen: () -> String = { UUID.randomUUID().toString() },
+    config: ParserPipelineConfig = ParserPipelineConfig(),
 ): Pipeline =
     Pipeline(
         download =
@@ -88,12 +109,12 @@ fun buildParserPipeline(
                 )
             },
         parse =
-            Stage<Fetched, ru.wbparser.domain.model.ParsedPage> { fetched: Fetched ->
+            Stage<Fetched, ParsedPage> { fetched: Fetched ->
                 Step.Done(parser(fetched))
             },
         filter =
             Stage<ParsedItem, ParsedItem?> { item: ParsedItem ->
-                val reason = item.dropIfInvalid(rules)
+                val reason = item.dropIfInvalid(config.rules)
                 if (reason == null) {
                     Step.Done<ParsedItem, ParsedItem?>(item)
                 } else {
@@ -110,9 +131,9 @@ fun buildParserPipeline(
                 Step.Done(SavedItem.from(item, targetId))
             },
         save = Stage(save),
-        retryPolicy = retryPolicy,
-        stopAt = stopAt,
-        clock = clock,
-        waiter = waiter,
-        idGen = idGen,
+        retryPolicy = config.retryPolicy,
+        stopAt = config.stopAt,
+        clock = config.clock,
+        waiter = config.waiter,
+        idGen = config.idGen,
     )

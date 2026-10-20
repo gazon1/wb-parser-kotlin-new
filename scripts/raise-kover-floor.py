@@ -73,6 +73,7 @@ FLOOR_FILE = _GATE.FLOOR_FILE
 REPORT_FILES = _GATE.REPORT_FILES
 line_coverage = _GATE.line_coverage
 parse_floor_file = _GATE.parse_floor_file
+module_coverage = _GATE.module_coverage
 
 HEADER = [
     "# Minimum line coverage percentage, one per module: `<module> <percent>`.",
@@ -119,12 +120,15 @@ def main() -> int:
 
     measured: dict[str, float] = {}
     for module in floors:
-        report = ROOT / REPORT_FILES[module]
-        if not report.is_file():
+        report = ROOT / _GATE.module_report(module)
+        if report is None or not Path(report).is_file():
             print(f"❌ {module}: {report} does not exist — run the coverage task first", file=sys.stderr)
             return 2
         try:
-            measured[module] = line_coverage(report)
+            # The same measurement the gate uses: every row is measured on the merged
+            # report over the packages that row is about. A ratchet that measured
+            # something else would move the floor away from what the gate checks.
+            measured[module] = module_coverage(module)
         except ValueError as exc:
             print(f"❌ {exc}", file=sys.stderr)
             return 2
