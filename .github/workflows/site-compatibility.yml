@@ -62,7 +62,28 @@ permissions:
   packages: read
 
 jobs:
+  # The image is published by another workflow, so it may not be in the registry
+  # when this workflow starts. The wait is a job of its own because "the image
+  # never appeared" and "the storefront answered badly" are different failures,
+  # and a red `main` that says the second when the truth is the first sends the
+  # reader to the wrong place.
+  #
+  # When the image does not appear, this job fails and the compatibility job is
+  # skipped — and a skipped job does not block a merge. The gate that matters —
+  # "the storefront understands this image" — is the one that has to be green.
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      # The outputs of *this* job come from its own step. A job cannot read
+      # its own outputs through `needs` — `needs` is what the *next* job reads.
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
   site-compatibility:
+    needs: image
     runs-on: ubuntu-latest
     # The dispatch, the storefront's own CI (image build plus suite), and the
     # wait for its conclusion.
@@ -152,7 +173,7 @@ jobs:
       - name: Compose the dispatch
         id: dispatch
         env:
-          IMAGE: ${{ steps.image.outputs.image }}
+          IMAGE: ${{ needs.image.outputs.image }}
           SITE_REF: ${{ inputs.site_ref || 'main' }}
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
@@ -170,8 +191,8 @@ jobs:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
           SITE_REF: ${{ inputs.site_ref || 'main' }}
-          IMAGE: ${{ steps.image.outputs.image }}
-          DIGEST: ${{ steps.image.outputs.digest }}
+          IMAGE: ${{ needs.image.outputs.image }}
+          DIGEST: ${{ needs.image.outputs.digest }}
           TAG: ${{ steps.tag.outputs.tag }}
           DISPATCH_ID: ${{ steps.dispatch.outputs.dispatch_id }}
         run: |
