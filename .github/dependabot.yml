@@ -21,19 +21,37 @@ updates:
     labels:
       - dependencies
     groups:
+      # Patch and minor updates travel together, separately from the majors.
+      #
+      # A patch or a minor cannot change the meaning of the code — the gates
+      # decide whether the build still works, and that is the whole decision.
+      # A major can: ktor 3 moves packages, junit 6 changes the test API. So
+      # the majors are grouped by dependency (each one needs its own reading)
+      # and everything else travels in one pull request that a machine may
+      # merge once the gates are green.
+      patch-and-minor:
+        update-types:
+          - "patch"
+          - "minor"
       # Kotlin moves the compiler and the standard library together; splitting
       # them across pull requests produces a build that cannot be tested.
       kotlin:
         patterns:
           - "org.jetbrains.kotlin*"
+        update-types:
+          - "major"
       spring:
         patterns:
           - "org.springframework*"
+        update-types:
+          - "major"
       test:
         patterns:
           - "io.kotest*"
           - "io.mockk*"
           - "org.testcontainers*"
+        update-types:
+          - "major"
 
   - package-ecosystem: github-actions
     directory: "/"
@@ -43,6 +61,13 @@ updates:
     open-pull-requests-limit: 3
     labels:
       - dependencies
+    groups:
+      # The actions are independent of each other, so a patch to one of them
+      # cannot break another — and one pull request is one thing to read.
+      patch-and-minor:
+        update-types:
+          - "patch"
+          - "minor"
 
   # The base images of Dockerfile.app and Dockerfile.debug. The JDK inside them is
   # pinned to the version the build asks for, so a bump of the base image is a
@@ -55,3 +80,8 @@ updates:
     open-pull-requests-limit: 3
     labels:
       - dependencies
+    groups:
+      patch-and-minor:
+        update-types:
+          - "patch"
+          - "minor"
