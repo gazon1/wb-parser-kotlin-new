@@ -26,10 +26,16 @@ build/
 .env
 .env.*
 !.env.example
-db/
 docs/
 
 # Not needed to build the jar
+#
+# `db/` is deliberately NOT in this list. The application reads the catalog role's
+# rights from `db/roles/catalog-readonly-role.sql` on the classpath: the demo
+# bootstrap runs the same file an operator runs by hand, so there is one copy of
+# the rights rather than two. Excluding it would build an image whose demo
+# bootstrap cannot work, and the failure would only show up when somebody starts
+# the image in the demo profile.
 README.md
 AGENTS.md
 Caddyfile
