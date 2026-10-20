@@ -50,12 +50,13 @@ class TargetRunQueriesTest :
          * A target, a job row and a group in the ledger.
          */
         fun world(): Triple<UUID, UUID, String> {
-            val targetId = db.ds.insertTarget(
-                ru.wbparser.infra.db.repositories.TargetDraft(
-                    name = "catalog",
-                    startUrl = "https://www.wildberries.ru/catalog/1/list.aspx",
-                ),
-            )
+            val targetId =
+                db.ds.insertTarget(
+                    ru.wbparser.infra.db.repositories.TargetDraft(
+                        name = "catalog",
+                        startUrl = "https://www.wildberries.ru/catalog/1/list.aspx",
+                    ),
+                )
             val jobId = UUID.randomUUID()
             db.ds.connection.use { conn ->
                 conn.createStatement().use { st ->
@@ -115,12 +116,13 @@ class TargetRunQueriesTest :
 
         test("the targets a group served last are the ones it delayed") {
             val (targetId, jobId, group) = world()
-            val other = db.ds.insertTarget(
-                ru.wbparser.infra.db.repositories.TargetDraft(
-                    name = "other",
-                    startUrl = "https://www.wildberries.ru/catalog/2/list.aspx",
-                ),
-            )
+            val other =
+                db.ds.insertTarget(
+                    ru.wbparser.infra.db.repositories.TargetDraft(
+                        name = "other",
+                        startUrl = "https://www.wildberries.ru/catalog/2/list.aspx",
+                    ),
+                )
 
             db.ds.recordTargetRun(
                 jobId = jobId,
