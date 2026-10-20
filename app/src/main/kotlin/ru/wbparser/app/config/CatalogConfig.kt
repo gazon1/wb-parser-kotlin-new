@@ -1,5 +1,6 @@
 package ru.wbparser.app.config
 
+import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry
@@ -28,7 +29,7 @@ class CatalogConfig {
      * The cache of the two expensive aggregates.
      */
     @Bean
-    fun catalogCache(): CatalogCache = CatalogCache()
+    fun catalogCache(meterRegistry: MeterRegistry): CatalogCache = CatalogCache(meterRegistry)
 
     /**
      * The readiness check.
@@ -37,7 +38,8 @@ class CatalogConfig {
     fun catalogReadiness(
         catalogDataSource: CatalogDataSource,
         catalogQueries: CatalogQueries,
-    ): CatalogReadiness = CatalogReadiness(catalogDataSource, catalogQueries)
+        meterRegistry: MeterRegistry,
+    ): CatalogReadiness = CatalogReadiness(catalogDataSource, catalogQueries, meterRegistry)
 }
 
 /**

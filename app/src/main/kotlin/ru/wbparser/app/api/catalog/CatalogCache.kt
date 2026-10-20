@@ -1,5 +1,6 @@
 package ru.wbparser.app.api.catalog
 
+import io.micrometer.core.instrument.MeterRegistry
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
@@ -47,10 +48,23 @@ import java.util.concurrent.locks.ReentrantLock
  * as the traffic, and a cache that grows with the traffic is a memory leak with a
  * time-to-live. The cache holds at most [maxEntries] keys and drops the least recently
  * used one when it has to make room.
+ *
+ * ## Why the hits and misses are counted
+ *
+ * The cache is in the process, and the decision to move it out of the process is a
+ * decision about numbers: it is worth another thing to run only if the hit rate says the
+ * queries are expensive enough to be worth avoiding. The hit rate is therefore a metric
+ * and not a feeling.
+ *
+ * The key is *not* a label on the metric. The key space is as large as the traffic — a
+ * signature per filter a visitor types — and a metric with a label per key is a metric
+ * that takes the process down. The label is the cache's name, and there are two of them.
  */
 class CatalogCache(
+    private val meterRegistry: MeterRegistry,
     private val ttl: Duration = Duration.ofMinutes(10),
     private val maxEntries: Int = DEFAULT_MAX_ENTRIES,
+    private val name: String = "catalog",
 ) {
     private val entries = ConcurrentHashMap<String, Entry>()
 
@@ -96,8 +110,10 @@ class CatalogCache(
             val existing = entries[key]
             if (existing != null && existing.expiresAt.isAfter(now)) {
                 existing.touchedAt = now
+                meterRegistry.counter("catalog.cache.hits", "cache", name).increment()
                 return CachedValue(existing.value as T, existing.computedAt)
             }
+            meterRegistry.counter("catalog.cache.misses", "cache", name).increment()
             val value = loader()
             entries[key] = Entry(value, now.plus(ttl), now, now)
             evictIfNeeded()

@@ -1,7 +1,9 @@
 package ru.wbparser.app.api.catalog
 
+import io.micrometer.core.instrument.MeterRegistry
 import ru.wbparser.app.config.CatalogDataSource
 import java.time.Duration
+import java.util.UUID
 
 /**
  * The catalog's readiness check.
@@ -39,7 +41,8 @@ import java.time.Duration
 class CatalogReadiness(
     private val dataSource: CatalogDataSource,
     private val queries: CatalogQueries,
-    private val schemaCache: CatalogCache = CatalogCache(Duration.ofSeconds(60)),
+    meterRegistry: MeterRegistry,
+    private val schemaCache: CatalogCache = CatalogCache(meterRegistry, Duration.ofSeconds(60), name = "schema"),
 ) {
     /**
      * The readiness of the catalog.
@@ -59,6 +62,12 @@ class CatalogReadiness(
             checks["database"] = "DOWN: $connectionError"
             healthy = false
         }
+
+        // Which instance answered. The catalog's cache and its rate limit live in the
+        // process, so a second instance would answer with different numbers and a
+        // doubled limit — and nothing else would say so. The id does not prevent a
+        // second instance; it makes one visible.
+        checks["instance"] = INSTANCE_ID
 
         if (connectionError == null) {
             val missing = schemaCache.get("schema") { queries.missingColumns() }
@@ -83,6 +92,17 @@ class CatalogReadiness(
      * timeout is eight seconds, which is right for a catalog query and far too long for a
      * probe that a deploy gate is waiting on.
      */
+    companion object {
+        /**
+         * The id of this process.
+         *
+         * A random UUID, generated once when the class is loaded: it says "this answer
+         * came from that process" and nothing else. It is not a hostname and not a
+         * version — the image's digest says which build this is.
+         */
+        val INSTANCE_ID: String = UUID.randomUUID().toString()
+    }
+
     @Suppress("TooGenericExceptionCaught")
     private fun probeConnection(): String? =
         try {

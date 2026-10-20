@@ -49,6 +49,15 @@ class CatalogApiKeyFilter(
 ) : OncePerRequestFilter() {
     private val digests: List<ByteArray>
 
+    /**
+     * The id of each accepted key, in the same order as [digests].
+     *
+     * Eight hexadecimal characters of the key's own digest. It says which key was used
+     * without saying the key: an operator who needs to revoke one of several keys needs
+     * to tell them apart in the log, and the log is not the place for the secret itself.
+     */
+    private val keyIds: List<String>
+
     init {
         if (acceptedKeys.isEmpty()) {
             throw IllegalStateException(
@@ -56,6 +65,7 @@ class CatalogApiKeyFilter(
             )
         }
         digests = acceptedKeys.map { digestOf(it) }
+        keyIds = acceptedKeys.map { keyIdOf(it) }
     }
 
     override fun doFilterInternal(
@@ -67,8 +77,10 @@ class CatalogApiKeyFilter(
         if (providedKey == null || !matches(providedKey)) {
             // The key itself is never logged: a rejected key is a credential the caller
             // already holds, and echoing it would put it in every log that records the
-            // request.
-            log.warn("catalog request rejected: the API key is missing or does not match")
+            // request. Its *id* is logged, because "which key was presented" is the
+            // question an operator asks when one of several keys has to be revoked.
+            val presented = providedKey?.let { keyIdOf(it) } ?: "none"
+            log.warn("catalog request rejected: the API key is missing or does not match (presented key $presented)")
             response.status = HttpServletResponse.SC_UNAUTHORIZED
             response.contentType = "application/json;charset=UTF-8"
             response.writer.write(UNAUTHORIZED_BODY)
@@ -82,6 +94,7 @@ class CatalogApiKeyFilter(
                 listOf(SimpleGrantedAuthority(ROLE_CATALOG)),
             )
         SecurityContextHolder.getContext().authentication = authentication
+        log.debug("catalog request accepted (key {})", matchingKeyId(providedKey))
         filterChain.doFilter(request, response)
     }
 
@@ -98,6 +111,17 @@ class CatalogApiKeyFilter(
             matched = MessageDigest.isEqual(digest, presented) or matched
         }
         return matched
+    }
+
+    /**
+     * The id of the key that was presented, or `unknown` when it is not one of ours.
+     *
+     * The comparison is by id rather than by digest: the id is short, and comparing it
+     * does not tell an attacker how much of the key was right.
+     */
+    private fun matchingKeyId(providedKey: String): String {
+        val id = keyIdOf(providedKey)
+        return if (id in keyIds) id else "unknown"
     }
 
     companion object {
@@ -148,5 +172,19 @@ class CatalogApiKeyFilter(
          * shared between requests would be a race on its internal buffer.
          */
         private fun digestOf(key: String): ByteArray = MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
+
+        /**
+         * A short, stable id of a key.
+         *
+         * Eight hexadecimal characters of the key's digest: enough to tell two keys apart
+         * in a log, and not enough to be a credential. The key itself is high-entropy by
+         * construction — it is a shared secret between two services — so a short prefix
+         * of its hash is not something that can be searched for.
+         *
+         * Public because it is a property of the key and not of the filter: the operator
+         * needs to be able to compute the id of a key they are about to revoke, and the
+         * only honest way to do that is with the same function the log used.
+         */
+        fun keyIdOf(key: String): String = digestOf(key).joinToString("") { "%02x".format(it) }.take(8)
     }
 }
