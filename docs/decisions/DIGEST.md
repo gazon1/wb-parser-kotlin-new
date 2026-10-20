@@ -127,6 +127,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** write a table with hand-written SQL while the model describes the _(from `2026-10-19-schema-drift-gate`)
 - **Always** load the dictionary before a crawl that is expected to produce _(from `2026-10-19-subject-dictionary-and-known-pages-limit`)
 - **Never** write a name that did not come from the dictionary. A null name is _(from `2026-10-19-subject-dictionary-and-known-pages-limit`)
+- **Always** compare the score the API holds with the commit this run _(from `2026-10-20-a-missing-score-is-not-a-failed-posture`)
+- **Always** keep the results upload unconditional. The score is delivered to _(from `2026-10-20-a-missing-score-is-not-a-failed-posture`)
+- **Never** report a publication that was not rejected as rejected. Say what _(from `2026-10-20-a-missing-score-is-not-a-failed-posture`)
+- **Never** treat a red gate that nobody can act on as a gate. If a check _(from `2026-10-20-a-missing-score-is-not-a-failed-posture`)
 - **Always** check that a publication reached the API. A green run that _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)
 - **Always** declare a top-level `permissions:` in every workflow. _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)
 - **Always** pin an action to a commit, and verify that the pin is a commit _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)
@@ -415,6 +419,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - Crawler: `tests` floor 31 → 44. Storefront: per-file floors in _(from `2026-10-08-gates-that-can-fail`)_
 - Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
+- The badge stays empty while the repository is not indexed by the API. When _(from `2026-10-20-a-missing-score-is-not-a-failed-posture`)_
 - The executed-test floors are raised in the same commit that adds tests, in both _(from `2026-10-08-gates-that-can-fail`)_
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
 - The nightly now costs two workflows a week instead of one: the run _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)_
@@ -619,6 +624,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `observability`
 
+- The badge stays empty while the repository is not indexed by the API. When _(from `2026-10-20-a-missing-score-is-not-a-failed-posture`)_
 - The nightly now costs two workflows a week instead of one: the run _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)_
 
 ### `operations`
@@ -757,6 +763,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `security`
 
+- The badge stays empty while the repository is not indexed by the API. When _(from `2026-10-20-a-missing-score-is-not-a-failed-posture`)_
 - The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
 - The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
 - The pin checker needs `GITHUB_TOKEN`: the API's unauthenticated rate limit _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)_
@@ -870,6 +877,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-runtime-classpath-gate` — build  runtime  gate  packaging
 - `2026-10-19-schema-drift-gate` — database  schema  test  migrations
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — catalog  data  domain-model
+- `2026-10-20-a-missing-score-is-not-a-failed-posture` — ci  security  observability
 - `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked` — pipeline  security  ci  gates
 - `2026-10-20-a-popular-list-is-not-a-catalog` — crawler  data-quality  catalog  api
 - `2026-10-20-a-schedule-that-does-not-run-is-a-failure` — ci  reliability  schedule  observability  gate
@@ -944,6 +952,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-runtime-classpath-gate` — The image is compared with the classpath the build resolved
 - `2026-10-19-schema-drift-gate` — The table definitions are compared with the schema the migrations create
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — Category names come from WB's subject dictionary, and known_pages_limit is a limit
+- `2026-10-20-a-missing-score-is-not-a-failed-posture` — A missing score is not a failed posture
 - `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked` — A pin is a commit, and a publication is checked, not assumed
 - `2026-10-20-a-popular-list-is-not-a-catalog` — Популярная ротация WB — не каталог: её не сохраняют
 - `2026-10-20-a-schedule-that-does-not-run-is-a-failure` — A schedule that does not run is a failure, and a CI failure should be about the code
