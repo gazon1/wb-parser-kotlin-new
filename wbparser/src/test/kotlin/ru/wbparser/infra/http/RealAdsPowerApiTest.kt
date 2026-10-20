@@ -244,6 +244,12 @@ class RealAdsPowerApiTest :
             // The client cannot tell "no profiles" from "the endpoint is gone", and
             // it says so by returning nothing. The probe is the place that turns
             // that into a statement: the check could not run, and it says it.
+            //
+            // The route is set to 404 on purpose: the fake answers an unrouted path
+            // with 404 as well, but the earlier test in this spec routed the list,
+            // and a route stays until the server stops.
+            server.route("/api/v1/user/list", status = 404, body = "Not Found")
+
             api.listProfileProxies() shouldBe emptyList()
         }
     })
