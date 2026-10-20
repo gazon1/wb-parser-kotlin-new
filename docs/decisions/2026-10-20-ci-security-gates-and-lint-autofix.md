@@ -130,12 +130,20 @@ And the wiring is a gate: `scripts/ci/check-ci-workflows.py` is registered in
 `scripts/ci/static-gates.sh` and fails when a workflow is missing, when
 CodeQL cannot write its results, when Scorecard cannot publish them, when
 the auto-fix calls a script that is not there, when the scheduled run stops
-opening its issue, when the schedule stops calling the pipeline, or when the
-alert job's wait list has gone stale. It has a `--self-test` that breaks
-each of those in turn, because a gate that cannot be shown to fail may be
-enforcing nothing. The gate reads the workflows with the comments stripped:
-a commented-out line is not a permission, and a check satisfied by its own
-documentation is a check that stopped checking.
+opening its issue, when the schedule stops calling the pipeline, when no
+workflow watches the nightly, or when the alert job's wait list has gone
+stale. It has a `--self-test` that breaks each of those in turn, because a
+gate that cannot be shown to fail may be enforcing nothing. The gate reads
+the workflows with the comments stripped: a commented-out line is not a
+permission, and a check satisfied by its own documentation is a check that
+stopped checking.
+
+The detekt baseline ends up empty. Its three entries named smells — a
+registry with eight parameters, two branches with more than one return — that
+the refactoring which split `BrowserPool` and shrank the interpreter registry
+had already removed. Detekt reports zero code smells in the module without
+them. The baseline is debt, and this debt was paid; a baseline entry that
+suppresses nothing is a line that says a debt is still owed.
 
 ## Rationale
 

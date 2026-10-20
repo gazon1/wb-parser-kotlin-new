@@ -75,6 +75,7 @@ just deploy::dry-run <tag> # ansible --check --diff
 |---|---|---|
 | `.github/workflows/ci.yml` | пайплайн: gates, сборка, тесты, покрытие, линт, публикация образа. Вызывается как `workflow_call` | push, PR, dispatch, вызов из nightly |
 | `.github/workflows/nightly.yml` | **точка входа** ночного прогона: `schedule: 0 3 * * *` + `workflow_dispatch`, вызывает `ci.yml` с `alert_on_failure: true` | schedule, dispatch |
+| `.github/workflows/watchdog.yml` | **сторож**: раз в неделю проверяет, когда ночной прогон последний раз успешно отработал; если больше 48 часов — issue | schedule, dispatch |
 | `.github/workflows/codeql.yml` | CodeQL: `java-kotlin` (по скомпилированному коду) + `actions` (сами workflow'и) → code scanning | push, PR, еженедельно, dispatch |
 | `.github/workflows/scorecard.yml` | OpenSSF Scorecard → SARIF в code scanning + публикация в Scorecard API | push на main, еженедельно, dispatch |
 | `.github/workflows/lint-autofix.yml` | применяет `scripts/ci/lint-autofix.sh` и **предлагает** правки (ветка `lint-autofix/<run-id>` + PR/комментарий) | push, PR, dispatch |
@@ -88,6 +89,11 @@ just deploy::dry-run <tag> # ansible --check --diff
   вызывающего — это потолок, и он проверяется **статически**, включая джобы,
   которые не запустятся. Ночной прогон не пушит образ — право на реестр
   доходит только до джоба, который его пушил бы.
+- **Always** кэшировать Gradle в CI (`cache: gradle`). Без кэша шесть джобов
+  параллельно тянут весь граф зависимостей с Maven Central: это медленно и
+  падает случайно. Падение CI должно быть о коде, а не о сети.
+- **Never** считать «прогон не запустился» успехом: расписание, которое
+  молча встало, — это отказ, и его ловит сторож.
 - **Never** пушить авто-фикс в ветку, над которой работает человек: правки
   предлагаются, решение — за человеком.
 - **Never** считать авто-фикс гейтом: `ktlintCheck` и `detekt` остаются гейтом,
@@ -97,6 +103,14 @@ just deploy::dry-run <tag> # ansible --check --diff
   подходящей задаче инвокации.
 - Авто-фикс **никогда** не трогает detekt-baseline: baseline — это долг, а не
   форматирование (см. `scripts/check-baseline-ratchet.py`).
+- **Always** пинить экшены на коммит, версию оставлять в комментарии. Гейт
+  `scripts/ci/check-ci-workflows.py` падает на тег — Scorecard проверяет
+  это раз в неделю, гейт — на каждом изменении.
+- `main` защищён: обязательные проверки — гейты пайплайна
+  (`static`, `build`, `coverage`, `lint`, `dependency-health`,
+  `gate-honesty`) и CodeQL. Аппрувы не требуются: репозиторий ведёт один
+  человек (и агенты от его имени) — правило, которое всегда обходят, учит
+  обходить правила.
 
 ## 🤖 Decision log workflow
 
@@ -201,6 +215,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 | `docs/decisions/2026-10-19-jdk-toolchain.md` | Версия JDK — одно число в одном месте; toolchain сам себя обеспечивает |
 | `docs/decisions/2026-10-20-the-coverage-floor-measures-the-code-not-the-module.md` | Floors меряются по merged-отчёту с фильтром по пакетам: отчёт модуля не видит покрытие чужих сьютов |
 | `docs/decisions/2026-10-20-the-big-classes-are-split-by-decision.md` | Крупные классы делятся по решению, которое они держат: `WbCatalogRequest`/`WbCatalogApi`/`WbCatalogFetchScript`, `Pipeline`/`PipelineBatch`/`PipelinePageProcessor`, `CrawlRunner`/`CrawlJobStore`/`TargetCrawl`/`CrawlMetrics`, `BrowserPool`/`BrowserProfileState`/`AdsPowerApi`/`CdpAutomation` |
+| `docs/decisions/2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary.md` | Длина каталога измеряется на границе пагинации; лимит следует за границей и никогда не выше предела API (60 страниц); замер пишет отчёт, YAML меняет отдельный шаг |
 
 ---
 
@@ -214,7 +229,9 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
   AdsPower (`RealAdsPowerApi` 6 %) и CDP-автоматизацию (`CdpAutomation` 21 %)
 - **Браузерный путь fetch** — не покрыт: ошибка там выглядит как «каталог пуст», а не
   как ошибка
-- **Эксплуатационное**: пересборка прод-БД, честный `known_pages_limit`, доля HTTP 498
-  (все профили на одном egress IP), права токена для `site-compatibility`
+- **Эксплуатационное**: пересборка прод-БД (нужен доступ к VPS), доля HTTP 498
+  (все профили на одном egress IP). Честный `known_pages_limit` сделан: длина
+  каталога измеряется на границе пагинации, отчёт → YAML, 132 цели получили
+  измеренные 60 страниц вместо придуманных 5
 
 Полный план: `.zcode/plans/plan-sess_871f29cf-f859-4a72-9002-5bbafd737630.md`

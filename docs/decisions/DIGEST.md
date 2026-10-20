@@ -132,6 +132,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** грузить в БД цель без `wb_search_query`. _(from `2026-10-20-a-popular-list-is-not-a-catalog`)
 - **Never** сохранять ответ с `catalog_type = "presets"`, даже если он выглядит как обычная _(from `2026-10-20-a-popular-list-is-not-a-catalog`)
 - **Never** считать такую страницу пройденной страницей каталога: счётчик страниц должен _(from `2026-10-20-a-popular-list-is-not-a-catalog`)
+- **Always** cache Gradle in the CI. Six jobs pulling the same graph from _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)
+- **Always** treat "the schedule did not run" as a failure. The watchdog _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)
+- **Never** count a manual run as proof that the schedule works. The _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)
+- **Never** let a watchdog open a second issue about the same thing. One _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)
 - **Always** отображать `NetworkError.isAntibot` в `Retry.Antibot`. Серверная ошибка и отказ _(from `2026-10-20-anti-bot-refusals-are-measured`)
 - **Always** передавать `waiter` в `Pipeline` явно: значение по умолчанию у шага ожидания означал _(from `2026-10-20-anti-bot-refusals-are-measured`)
 - **Always** считать долю отказов как `crawl.antibot.responses / crawl.requests`. Без знаменателя _(from `2026-10-20-anti-bot-refusals-are-measured`)
@@ -184,6 +188,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** split a class by the decision it holds, not by the layer it sits in. A new unit _(from `2026-10-20-the-big-classes-are-split-by-decision`)
 - **Never** give a split unit a second copy of state the original owned. The batch shares the _(from `2026-10-20-the-big-classes-are-split-by-decision`)
 - **Never** move a piece of behaviour into a collaborator without carrying the state it _(from `2026-10-20-the-big-classes-are-split-by-decision`)
+- **Always** измерять `known_pages_limit` до того, как его выставлять. _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
+- **Always** перезамерять каталог, а не достраивать лимит вручную: пагинация WB _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
+- **Always** указывать в отчёте, чем закончилась пагинация (`catalog_end` или `api_cap`). _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
+- **Never** выставлять `known_pages_limit` выше предела API: страница выше приходит _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
+- **Never** записывать в YAML число, которого нет в отчёте измерения. _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
+- **Never** принимать `total` за длину каталога: это размер выдачи поиска. _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
 - **Always** держать модель и представление `latest_product_observations` в согласии — _(from `2026-10-20-the-catalog-lists-products-not-observations`)
 - **Always** отдавать `asOf` вместе с кэшированным агрегатом. _(from `2026-10-20-the-catalog-lists-products-not-observations`)
 - **Always** считать, что список каталога — это товары, а `scraped_items` — их история. _(from `2026-10-20-the-catalog-lists-products-not-observations`)
@@ -200,6 +210,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** выставлять `known_pages_limit` по круглому числу: сначала измерить длину _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** грузить в БД цель без `wb_search_query`. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** оставлять в каталоге поле, которое никто не читает. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Always** keep the security policy's scope narrow and honest. A policy _(from `2026-10-20-the-repository-measures-its-own-posture`)
+- **Always** pin an action to a commit and keep the version in a comment. _(from `2026-10-20-the-repository-measures-its-own-posture`)
+- **Always** protect `main` with the pipeline's own gates as the required _(from `2026-10-20-the-repository-measures-its-own-posture`)
+- **Never** let a score be the thing that is maintained. The scorecard _(from `2026-10-20-the-repository-measures-its-own-posture`)
+- **Never** require approving reviews in a repository with one maintainer. _(from `2026-10-20-the-repository-measures-its-own-posture`)
 - **Always** задавать темп через `RequestPacer`. Второй источник задержки делает интервал _(from `2026-10-20-the-request-rate-has-one-owner`)
 - **Always** клампить границы jitter в ноль: отрицательная задержка — это падение, а не «быстрее». _(from `2026-10-20-the-request-rate-has-one-owner`)
 - **Never** ждать перед запросом в `BrowserDownloader`: pacer уже это сделал, а лишнее ожидание _(from `2026-10-20-the-request-rate-has-one-owner`)
@@ -376,7 +391,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
 - The executed-test floors are raised in the same commit that adds tests, in both _(from `2026-10-08-gates-that-can-fail`)_
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
+- The nightly now costs two workflows a week instead of one: the run _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)_
 - The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
+- The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
 
 ### `cleanup`
 
@@ -533,7 +550,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `gate`
 
 - The coverage gate runs in `./check.sh` (step 7) and in ci.yml's `coverage` _(from `2026-10-19-coverage-floor-gate`)_
+- The nightly now costs two workflows a week instead of one: the run _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)_
 - The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
+- The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
 - The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
 
 ### `gates`
@@ -568,6 +587,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
 - `latest_product_observations` отдаёт по строке на товар; историю цен по-прежнему видно _(from `2026-10-20-versioned-catalog-and-latest-observation-view`)_
+
+### `observability`
+
+- The nightly now costs two workflows a week instead of one: the run _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)_
 
 ### `operations`
 
@@ -655,6 +678,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - A profile directory that was never materialised and a profile whose _(from `2026-10-19-adspower-api-first-browser-resolution`)_
 - Jobs left `Running` by a crash are now reported as `Crashed` with an _(from `2026-10-19-crawl-job-heartbeat-and-crash-reconciliation`)_
 - The item path writes one statement per item, and the category path one per _(from `2026-10-19-exposed-single-row-writes-and-unmasked-db-errors`)_
+- The nightly now costs two workflows a week instead of one: the run _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)_
 - The pre-flight check reads `~/.adspowerCli` by default; `ADSPOWER_HOME` _(from `2026-10-19-adspower-api-first-browser-resolution`)_
 - The profile directory is found by prefix (`<profileId>_<hash>`); the hash is _(from `2026-10-19-adspower-api-first-browser-resolution`)_
 - The reconciliation runs on every boot. It touches only rows that have been _(from `2026-10-19-crawl-job-heartbeat-and-crash-reconciliation`)_
@@ -672,6 +696,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `runtime`
 
 - The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
+
+### `schedule`
+
+- The nightly now costs two workflows a week instead of one: the run _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)_
 
 ### `scheduler`
 
@@ -692,9 +720,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
 
+### `scorecard`
+
+- The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
+
 ### `security`
 
 - The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
+- The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
 
 ### `side-effects`
@@ -710,6 +743,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Positive**: `Spider.concurrency` now reaches `CrawlRunner` via `CrawlerConfig` _(from `2026-09-09-scheduler-wireup-pr18`)_
 - **Positive**: `crawler.schedule.cron` from YAML controls the schedule _(from `2026-09-09-scheduler-wireup-pr18`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
+
+### `supply-chain`
+
+- The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
 
 ### `test`
 
@@ -798,6 +835,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-schema-drift-gate` — database  schema  test  migrations
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — catalog  data  domain-model
 - `2026-10-20-a-popular-list-is-not-a-catalog` — crawler  data-quality  catalog  api
+- `2026-10-20-a-schedule-that-does-not-run-is-a-failure` — ci  reliability  schedule  observability  gate
 - `2026-10-20-anti-bot-refusals-are-measured` — crawler  antibot  metrics  pipeline
 - `2026-10-20-antibot-profile-rotation-and-backoff` — crawler  resilience  adspower
 - `2026-10-20-browsers-are-closed-when-they-are-not-needed` — crawler  browser  adspower  operations
@@ -810,9 +848,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-schedule-cadence-single-parameter` — scheduling  configuration
 - `2026-10-20-subject-dictionary-loaded-at-startup` — bootstrap  data-quality  crawler
 - `2026-10-20-the-big-classes-are-split-by-decision` — architecture  refactoring  maintainability
+- `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary` — crawler  catalog  data-quality  operations
 - `2026-10-20-the-catalog-lists-products-not-observations` — catalog  database  contract
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — build  tests  gate  coverage
 - `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
+- `2026-10-20-the-repository-measures-its-own-posture` — ci  security  supply-chain  scorecard  gate
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
@@ -865,6 +905,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-schema-drift-gate` — The table definitions are compared with the schema the migrations create
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — Category names come from WB's subject dictionary, and known_pages_limit is a limit
 - `2026-10-20-a-popular-list-is-not-a-catalog` — Популярная ротация WB — не каталог: её не сохраняют
+- `2026-10-20-a-schedule-that-does-not-run-is-a-failure` — A schedule that does not run is a failure, and a CI failure should be about the code
 - `2026-10-20-anti-bot-refusals-are-measured` — Отказы антибота измеряются и получают собственный back-off
 - `2026-10-20-antibot-profile-rotation-and-backoff` — Антибот: ротация профиля, свой back-off и ожидание вместо отказа
 - `2026-10-20-browsers-are-closed-when-they-are-not-needed` — Браузеры AdsPower закрываются, когда они не нужны, и при выходе
@@ -877,9 +918,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-schedule-cadence-single-parameter` — Каденция краула задаётся одним параметром — окном свежести
 - `2026-10-20-subject-dictionary-loaded-at-startup` — Справочник предметов WB загружается при старте приложения
 - `2026-10-20-the-big-classes-are-split-by-decision` — The three large classes are split by the decision they hold, not by the layer they live in
+- `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary` — the catalog length is measured at the pagination boundary, and the limit follows it
 - `2026-10-20-the-catalog-lists-products-not-observations` — Каталог показывает товары, а не наблюдения
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — Покрытие меряется по коду, а не по модулю, которому он принадлежит
 - `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
+- `2026-10-20-the-repository-measures-its-own-posture` — The repository measures its own posture, and the actions it runs are pinned
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню

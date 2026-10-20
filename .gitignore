@@ -77,3 +77,7 @@ agent/
 .claude/
 .zcode/skills/
 skills-lock.json
+
+# Measurement reports of the catalog length — a snapshot of one run, not a source.
+# The numbers that belong in the repository live in wb_catalog_targets.yaml.
+catalog_lengths.json

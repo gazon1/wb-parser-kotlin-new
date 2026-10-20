@@ -46,15 +46,21 @@ jobs:
     steps:
       # `persist-credentials: false`: the token is passed explicitly to the
       # steps that need it, and is not left lying in the git configuration.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
       - name: Set up JDK 22
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "22"
+          # The Gradle cache: without it every job starts with a cold
+          # cache, and six jobs in parallel pull the whole dependency
+          # graph from Maven Central at the same moment. That is slow,
+          # and it fails at random when the registry answers with a
+          # 404 — a CI failure that is about the network, not about the code.
+          cache: gradle
 
       # The same script the local loop runs (`just lint::autofix`). One
       # implementation, two callers: a fixer that exists only in CI is a

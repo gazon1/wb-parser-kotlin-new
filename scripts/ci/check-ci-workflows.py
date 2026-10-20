@@ -328,6 +328,73 @@ def check_wait_list(root: Path) -> list[str]:
     return []
 
 
+def check_actions_are_pinned(root: Path) -> list[str]:
+    """Every action is pinned to a commit, not to a tag.
+
+    A tag is a name that can be moved: `actions/checkout@v4` resolves to
+    whatever the owner points it at today, and the person who pushes the tag
+    decides what runs inside the repository's permissions. A commit is a
+    name that cannot move.
+
+    The version stays in a comment, so dependabot still knows what to update
+    and a reader still knows what is running.
+
+    A local reference — `uses: ./.github/workflows/ci.yml` — is a workflow
+    of this repository, and there is nothing to pin.
+    """
+    findings: list[str] = []
+    pattern = re.compile(r"uses:\s+([A-Za-z0-9._-]+/[A-Za-z0-9._/-]+)@([^\s#]+)")
+    for path in workflow_paths(root):
+        text = strip_yaml_comments(path.read_text(encoding="utf-8"))
+        for match in pattern.finditer(text):
+            action, ref = match.group(1), match.group(2)
+            if re.fullmatch(r"[0-9a-f]{40}", ref):
+                continue
+            findings.append(
+                f"{path.name} uses `{action}@{ref}` — a tag, not a commit. A tag can be "
+                "moved by whoever owns it, and what runs inside this repository's "
+                "permissions should not be decided by a name. Pin it to the commit "
+                "and keep the version in a comment."
+            )
+    return findings
+
+
+def check_watchdog(root: Path) -> list[str]:
+    """Something watches the nightly, and it watches something that exists.
+
+    The nightly reports its own failures. Nobody reports its *absence*: a
+    scheduled workflow that never runs is not a failing workflow, the badge
+    stays green, and the repository quietly stops being checked. A watchdog
+    closes that hole, and it is the only thing that can.
+
+    Two rules: some workflow must watch the nightly, and every workflow that
+    is watched must exist — a watchdog that watches a name nobody publishes
+    is a watchdog that reports nothing, in exactly the way it was written to
+    prevent.
+    """
+    findings: list[str] = []
+    texts = read_workflows(root)
+    watched = {
+        name: set(re.findall(r"actions/workflows/([A-Za-z0-9._-]+\.yml)", text))
+        for name, text in texts.items()
+    }
+    if not any("nightly.yml" in names for names in watched.values()):
+        findings.append(
+            "no workflow watches the nightly run. A scheduled workflow that never "
+            "runs reports nothing — there is no failure to report, there is no run — "
+            "and the badge stays green while the repository stops being checked."
+        )
+    for name, names in watched.items():
+        for target in sorted(names):
+            if not (root / ".github" / "workflows" / target).exists():
+                findings.append(
+                    f"{name} watches `{target}`, which does not exist. A watchdog that "
+                    "watches a name nobody publishes reports nothing — in exactly the "
+                    "way it was written to prevent."
+                )
+    return findings
+
+
 def check(root: Path) -> list[str]:
     """Run every check against `root`. Used by the self-test on a fixture."""
     return (
@@ -336,6 +403,8 @@ def check(root: Path) -> list[str]:
         + check_scheduled_run(root)
         + check_failure_becomes_an_issue(root)
         + check_wait_list(root)
+        + check_actions_are_pinned(root)
+        + check_watchdog(root)
     )
 
 
@@ -354,10 +423,10 @@ GOOD_WORKFLOWS = {
         "    permissions:\n"
         "      security-events: write\n"
         "    steps:\n"
-        "      - uses: github/codeql-action/init@v4\n"
+        "      - uses: github/codeql-action/init@0123456789abcdef0123456789abcdef01234567\n"
         "        with:\n"
         "          languages: java-kotlin\n"
-        "      - uses: github/codeql-action/analyze@v4\n"
+        "      - uses: github/codeql-action/analyze@0123456789abcdef0123456789abcdef01234567\n"
     ),
     "scorecard.yml": (
         "name: Scorecard\n"
@@ -366,7 +435,7 @@ GOOD_WORKFLOWS = {
         "    permissions:\n"
         "      id-token: write\n"
         "    steps:\n"
-        "      - uses: ossf/scorecard-action@v2\n"
+        "      - uses: ossf/scorecard-action@89abcdef0123456789abcdef0123456789abcdef\n"
         "        with:\n"
         "          results_file: results.sarif\n"
     ),
@@ -399,6 +468,16 @@ GOOD_WORKFLOWS = {
         "jobs:\n"
         "  nightly:\n"
         "    uses: ./.github/workflows/ci.yml\n"
+    ),
+    "watchdog.yml": (
+        "name: Nightly watchdog\n"
+        "on:\n"
+        "  schedule:\n"
+        "    - cron: \"0 9 * * 1\"\n"
+        "jobs:\n"
+        "  watchdog:\n"
+        "    steps:\n"
+        "      - run: gh api repos/x/actions/workflows/nightly.yml/runs\n"
     ),
 }
 
@@ -478,6 +557,33 @@ def run_self_test() -> int:
                     ),
                 },
                 "expect": "id-token: write",
+            },
+            "an action is pinned to a tag": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "codeql.yml": GOOD_WORKFLOWS["codeql.yml"].replace(
+                        "github/codeql-action/init@0123456789abcdef0123456789abcdef01234567",
+                        "github/codeql-action/init@v4",
+                    ),
+                },
+                "expect": "a tag, not a commit",
+            },
+            "the watchdog watches a workflow that does not exist": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "watchdog.yml": GOOD_WORKFLOWS["watchdog.yml"].replace(
+                        "workflows/nightly.yml/runs", "workflows/nightly-v2.yml/runs"
+                    ),
+                },
+                "expect": "which does not exist",
+            },
+            "nothing watches the nightly": {
+                "workflows": {
+                    name: text
+                    for name, text in GOOD_WORKFLOWS.items()
+                    if name != "watchdog.yml"
+                },
+                "expect": "no workflow watches the nightly",
             },
             "the auto-fix script is gone": {
                 "workflows": GOOD_WORKFLOWS,

@@ -1,0 +1,28 @@
+# Who reviews what.
+#
+# The Scorecard's Code-Review check asks for this file to exist, and the file
+# earns its place: every change to the crawler, to the security
+# configuration, and to the CI surfaces is reviewed by the owner before it
+# reaches `main`.
+#
+# The order matters — the last matching pattern wins — so the specific
+# patterns come first and `*` catches the rest.
+
+# The security-sensitive parts: how a request is authenticated and what it
+# is allowed to do.
+/app/security/          @gazon1
+/app/scheduling/        @gazon1
+/app/src/main/resources/ @gazon1
+
+# The CI surfaces: a workflow is code that runs with the repository's
+# permissions, and it is reviewed like code.
+/.github/workflows/      @gazon1
+/.github/dependabot.yml  @gazon1
+/scripts/ci/            @gazon1
+/scripts/check-*.py     @gazon1
+
+# The crawler itself.
+/wbparser/              @gazon1
+
+# Everything else.
+/*                      @gazon1
