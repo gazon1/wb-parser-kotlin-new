@@ -38,8 +38,13 @@ data class Target(
     /**
      * Cap on known pages for this target, null for "no limit".
      *
-     * Stored in the schema and read by the storefront, but the crawler does not act on it
-     * yet — it is surfaced here so the value is observable instead of silently invisible.
+     * The crawler reads this as the number of pages of this category worth reading:
+     * [ru.wbparser.infra.runner.CrawlRunner] uses it in place of the runner-wide cap.
+     *
+     * The limit cuts the catalog short, so a target that reaches it is a slice of the
+     * category rather than the category — the crawl counts that as
+     * `crawl.targets.truncated`, because "pages read, items stored" looks exactly like
+     * a complete crawl otherwise.
      */
     val knownPagesLimit: Int? = null,
     /**

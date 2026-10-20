@@ -156,6 +156,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** считать cron выражением каденции: это тик. _(from `2026-10-20-schedule-cadence-single-parameter`)
 - **Always** держать в `wb_subjects` полный словарь; он обновляется при старте, а не при _(from `2026-10-20-subject-dictionary-loaded-at-startup`)
 - **Never** выдумывать имя предмета, если id нет в словаре: `catalog_name` остаётся _(from `2026-10-20-subject-dictionary-loaded-at-startup`)
+- **Always** держать `docs/RUNBOOK.md` в состоянии, в котором команды из него работают. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Always** пересобирать данные процедурой `rebuild_prod_data.sh`, а не ручными _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Always** показывать усечение каталога отдельным счётчиком: полнота данных не должна _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Always** прогонять `refresh_catalog_tokens.py` перед загрузкой каталога в БД. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Never** выставлять `known_pages_limit` по круглому числу: сначала измерить длину _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Never** грузить в БД цель без `wb_search_query`. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Never** оставлять в каталоге поле, которое никто не читает. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Always** задавать темп через `RequestPacer`. Второй источник задержки делает интервал _(from `2026-10-20-the-request-rate-has-one-owner`)
 - **Always** клампить границы jitter в ноль: отрицательная задержка — это падение, а не «быстрее». _(from `2026-10-20-the-request-rate-has-one-owner`)
 - **Never** ждать перед запросом в `BrowserDownloader`: pacer уже это сделал, а лишнее ожидание _(from `2026-10-20-the-request-rate-has-one-owner`)
@@ -750,6 +757,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-pagination-does-not-increase-depth` — pipeline  domain
 - `2026-10-20-schedule-cadence-single-parameter` — scheduling  configuration
 - `2026-10-20-subject-dictionary-loaded-at-startup` — bootstrap  data-quality  crawler
+- `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
@@ -810,6 +818,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-pagination-does-not-increase-depth` — Пагинация не увеличивает глубину краула
 - `2026-10-20-schedule-cadence-single-parameter` — Каденция краула задаётся одним параметром — окном свежести
 - `2026-10-20-subject-dictionary-loaded-at-startup` — Справочник предметов WB загружается при старте приложения
+- `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню

@@ -196,6 +196,10 @@ data class Pipeline(
                 // coordinator loop exits immediately, and record the final page count.
                 pending.clear()
                 pagesCrawled = pageResult.pagesCrawled
+                // The items of the last processed page were saved before the stop was
+                // decided. Dropping them from the count made the report say "0 items"
+                // about a page that was written to the database.
+                itemsSaved += pageResult.itemsSaved
                 stopped = pageResult.stopped
                 break
             }

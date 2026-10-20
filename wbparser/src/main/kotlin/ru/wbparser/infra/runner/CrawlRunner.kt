@@ -458,7 +458,7 @@ class CrawlRunner(
             }
             is Either.Right -> {
                 val crawled: ru.wbparser.domain.pipeline.Crawled = result.value
-                recordTargetMetrics(target, crawled.pagesCrawled, crawled.itemsSaved)
+                recordTargetMetrics(target, crawled.pagesCrawled, crawled.itemsSaved, crawled.stopReason)
                 TargetResult(crawled.pagesCrawled, crawled.itemsSaved)
             }
         }
@@ -477,6 +477,7 @@ class CrawlRunner(
         target: Target,
         pages: Int,
         items: Int,
+        stopReason: Stop,
     ) {
         val registry = meterRegistry ?: return
         val tag = target.wbCatalogId ?: target.name
@@ -485,6 +486,38 @@ class CrawlRunner(
         if (pages > 0 && items == 0) {
             registry.counter("crawl.targets.without_items", "target", tag).increment()
         }
+        recordTruncation(target, pages, stopReason)
+    }
+
+    /**
+     * Records that the crawl stopped at a limit while the catalog still had more to read.
+     *
+     * A target's `known_pages_limit` says how many pages of that category are worth
+     * reading. When the crawl stops at that limit, WB still had a next page — otherwise
+     * the pipeline would have ended with [Stop.EmptyPage] — so what is stored is a slice
+     * of the catalog, not the catalog. Without this counter such a target looks exactly
+     * like a complete one: pages read, items stored, nothing wrong.
+     */
+    private fun recordTruncation(
+        target: Target,
+        pages: Int,
+        stopReason: Stop,
+    ) {
+        val reason =
+            when (stopReason) {
+                Stop.MaxPagesReached -> "pages"
+                is Stop.MaxDepthReached -> "depth"
+                else -> return
+            }
+        val registry = meterRegistry ?: return
+        val tag = target.wbCatalogId ?: target.name
+        registry.counter("crawl.targets.truncated", "target", tag, "reason", reason).increment()
+        log.warn(
+            "Target {} stopped at the {} limit after {} page(s): the catalog was not read to the end",
+            tag,
+            reason,
+            pages,
+        )
     }
 
     private fun openJob(targetId: UUID): UUID {

@@ -4,8 +4,7 @@ import arrow.core.Either
 import arrow.core.getOrElse
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import org.jetbrains.exposed.sql.SchemaUtils
-import org.jetbrains.exposed.sql.deleteAll
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -23,9 +22,9 @@ import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.ProductId
 import ru.wbparser.infra.db.connect
-import ru.wbparser.infra.db.exposedOnce
 import ru.wbparser.infra.db.repositories.fetchSubjectNames
 import ru.wbparser.infra.runner.CrawlRunner.RunResult
+import ru.wbparser.testing.ModelDatabase
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -48,48 +47,28 @@ class CrawlRunnerPostgresTest :
 
         val container = PostgreSQLContainer("postgres:16-alpine")
         val targetId = UUID.randomUUID()
+        lateinit var database: ModelDatabase
 
-        beforeSpec { container.start() }
-        afterSpec { container.stop() }
-
-        fun dataSource(): DataSource {
-            val source = org.postgresql.ds.PGSimpleDataSource()
-            source.setUrl(container.jdbcUrl)
-            source.user = container.username
-            source.password = container.password
-            return source
+        beforeSpec {
+            container.start()
+            database =
+                ModelDatabase(
+                    container,
+                    listOf(
+                        CrawlTargetsTable,
+                        ScrapedItemsTable,
+                        CrawlJobsTable,
+                        WbSubjectsTable,
+                        CategoryMappingsTable,
+                    ),
+                )
         }
+        afterSpec { container.stop() }
 
         /** A clean database with the tables the crawler writes to. */
         fun freshDatabase(): DataSource {
-            val source = dataSource()
-            // Exposed needs the DataSource registered before any transaction runs.
-            source.exposedOnce()
-            transaction {
-                SchemaUtils.createMissingTablesAndColumns(
-                    CrawlTargetsTable,
-                    ScrapedItemsTable,
-                    CrawlJobsTable,
-                    WbSubjectsTable,
-                    CategoryMappingsTable,
-                )
-                // The counters of a job row have their defaults in the migration, not
-                // in the Exposed model: the model says "not null", the migration says
-                // "not null, default 0". The runner writes the job row without them,
-                // so the defaults have to be here for the test to behave like
-                // production.
-                exec(
-                    "ALTER TABLE crawl_jobs ALTER COLUMN requests_total SET DEFAULT 0, " +
-                        "ALTER COLUMN requests_succeeded SET DEFAULT 0, " +
-                        "ALTER COLUMN requests_failed SET DEFAULT 0, " +
-                        "ALTER COLUMN pages_crawled SET DEFAULT 0, " +
-                        "ALTER COLUMN items_saved SET DEFAULT 0",
-                )
-                ScrapedItemsTable.deleteAll()
-                CrawlJobsTable.deleteAll()
-                CrawlTargetsTable.deleteAll()
-            }
-            return source
+            database.clear()
+            return database.dataSource
         }
 
         fun insertTarget(
@@ -209,5 +188,77 @@ class CrawlRunnerPostgresTest :
 
             // The dictionary is empty here: the runner must not fail over it.
             dataSource.fetchSubjectNames() shouldBe emptyMap()
+        }
+
+        test("a target that reaches its page limit is counted as truncated") {
+            val dataSource = freshDatabase()
+            insertTarget(dataSource)
+            val registry = SimpleMeterRegistry()
+
+            val runner =
+                CrawlRunner(
+                    db = connect(dataSource),
+                    downloader = { task: Crawling ->
+                        Either.Right(
+                            Fetched(
+                                task = task,
+                                statusCode = CrawlHttpStatusCode(200),
+                                body = "{}",
+                                headers = emptyMap(),
+                                durationMs = 5L,
+                            ),
+                        )
+                    },
+                    // The catalog keeps going: every page has a successor, so the crawl
+                    // stops because of the limit, not because the category ended.
+                    parser = { fetched: Fetched ->
+                        ParsedPage(
+                            fetched,
+                            listOf(parsedItem()),
+                            nextPageUrl =
+                                CrawlUrl
+                                    .of("https://www.wildberries.ru/catalog/0/search.aspx?search=menu_v3_9467&page=2")
+                                    .getOrElse { throw IllegalArgumentException(it.message) },
+                            isEmptyPage = false,
+                        )
+                    },
+                    maxPagesPerCatalog = 1,
+                    meterRegistry = registry,
+                )
+
+            runner.run() shouldBe RunResult.Success(pagesCrawled = 1, itemsSaved = 1)
+
+            // The stored data is a slice of the catalog, and nothing else says so.
+            registry.counter("crawl.targets.truncated", "target", "9467", "reason", "pages").count() shouldBe 1.0
+        }
+
+        test("a target whose catalog ended is not counted as truncated") {
+            val dataSource = freshDatabase()
+            insertTarget(dataSource)
+            val registry = SimpleMeterRegistry()
+
+            val runner =
+                CrawlRunner(
+                    db = connect(dataSource),
+                    downloader = { task: Crawling ->
+                        Either.Right(
+                            Fetched(
+                                task = task,
+                                statusCode = CrawlHttpStatusCode(200),
+                                body = "{}",
+                                headers = emptyMap(),
+                                durationMs = 5L,
+                            ),
+                        )
+                    },
+                    // An empty page without a successor is the end of the catalog.
+                    parser = { fetched: Fetched -> ParsedPage(fetched, emptyList(), null, isEmptyPage = true) },
+                    maxPagesPerCatalog = 1,
+                    meterRegistry = registry,
+                )
+
+            runner.run() shouldBe RunResult.Success(pagesCrawled = 1, itemsSaved = 0)
+
+            registry.find("crawl.targets.truncated").counter() shouldBe null
         }
     })
