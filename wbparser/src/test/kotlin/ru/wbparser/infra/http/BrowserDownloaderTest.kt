@@ -210,24 +210,23 @@ class BrowserDownloaderTest :
             pool.close()
         }
 
-        test("an empty body is reported as an empty page — a hole, not a decision") {
-            // The fetch answered, but with nothing in the body, and the downloader
-            // cannot tell that apart from an empty catalog: an empty body parses into
-            // an empty node, the "products" lookup answers null, and the empty
-            // catalog branch takes it. The failure is therefore invisible — a page
-            // with no products in it.
+        test("an empty body is a failed fetch, not an empty page") {
+            // The fetch answered, but with nothing in the body. That is not an
+            // empty catalog: WB answers an exhausted catalog with a JSON envelope
+            // whose `products` array is empty, so there is a body and it says so.
             //
-            // This test pins what the class does today, so that the gap is visible
-            // and measurable. The fix — an empty body is a failed fetch — changes
-            // production behaviour and does not belong in a test commit.
+            // An empty body is a response that was cut off, and reporting it as a
+            // page with no products is how a failed fetch becomes a successful
+            // crawl of nothing — the failure is invisible, the counters stay at
+            // zero, and the report is green.
             val page = FakePlaywrightPage(evaluateAnswer = answer(status = 200, body = ""))
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
 
-            val result = runBlocking { downloader.download(task()) }
+            val error = runBlocking { downloader.download(task()) }.swap().getOrNull()
 
-            result.isRight() shouldBe true
-            result.getOrNull()?.body shouldBe ""
+            (error != null) shouldBe true
+            error?.message shouldContain "Empty body"
             pool.close()
         }
 
@@ -262,10 +261,12 @@ class BrowserDownloaderTest :
             pool.close()
         }
 
-        test("a request the browser aborted is a failure, but not an anti-bot answer") {
-            // Chrome reports an aborted request as "ERR_ABORTED", and the mapping in
-            // BrowserDownloader looks for a lower-case "aborted" — so an aborted
-            // request is a plain failure, not an anti-bot answer.
+        test("a request the browser aborted is an anti-bot answer") {
+            // Chrome reports an aborted request as "ERR_ABORTED" — in upper case.
+            // The mapping has to see that: an aborted request is WB refusing the
+            // request, and it is answered with the anti-bot signal, so the back-off
+            // and the profile cooldown that belong to it happen. A case-sensitive
+            // comparison turned every one of them into a plain script error.
             val page =
                 FakePlaywrightPage(
                     evaluateFailure = PlaywrightException("net::ERR_ABORTED"),
@@ -276,8 +277,7 @@ class BrowserDownloaderTest :
             val error = runBlocking { downloader.download(task()) }.swap().getOrNull()
 
             (error != null) shouldBe true
-            error?.message shouldContain "JS error"
-            error?.isAntibot shouldBe false
+            error?.isAntibot shouldBe true
             pool.close()
         }
 
