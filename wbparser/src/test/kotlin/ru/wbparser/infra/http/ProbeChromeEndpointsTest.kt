@@ -98,7 +98,7 @@ class ProbeChromeEndpointsTest :
             // anyone noticing; the error has to say what to do.
             message.message shouldBe
                 "No AdsPower Chrome with a DevTools port is reachable. Open a profile in " +
-                "AdsPower, or set crawler.spider.browser-profiles / ADSPOWER_API_KEY."
+                "AdsPower, or set crawler.spider.egress-groups / ADSPOWER_API_KEY."
         }
 
         test("the same endpoint reported twice is returned once") {

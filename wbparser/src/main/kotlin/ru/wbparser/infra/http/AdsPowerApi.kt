@@ -3,20 +3,44 @@ package ru.wbparser.infra.http
 /**
  * The proxy of one AdsPower profile, as AdsPower reports it.
  *
- * @param proxyHost the proxy's host, or null when the profile has no proxy.
+ * @param proxyHost the proxy's host, or null when AdsPower does not show one.
  * @param proxyPort the proxy's port.
  * @param proxyType the proxy's kind: `http`, `https`, `socks5`, `ssh`…
+ * @param proxySoft which proxy AdsPower uses for this profile: `no_proxy` for a
+ *   direct connection, `other` for a proxy it does not describe in the list, and the
+ *   name of a proxy software otherwise.
  */
 data class AdsPowerProfileProxy(
     val profileId: String,
     val proxyHost: String?,
     val proxyPort: String?,
     val proxyType: String?,
+    val proxySoft: String? = null,
 ) {
     /**
-     * Whether the profile goes out through a proxy at all.
+     * Whether the profile goes out through a proxy whose address is visible.
      */
     val hasProxy: Boolean get() = !proxyHost.isNullOrBlank()
+
+    /**
+     * Whether the profile goes out directly — no proxy at all.
+     *
+     * "Direct" is the address of the machine the crawler runs on, which is why only
+     * one group may be direct: two direct groups are one address.
+     */
+    val isDirect: Boolean
+        get() = !hasProxy && (proxySoft.isNullOrBlank() || proxySoft.equals("no_proxy", ignoreCase = true))
+
+    /**
+     * Whether the profile has a proxy whose address AdsPower does not show.
+     *
+     * A proxy is a proxy even when the list does not describe it: `proxy_soft` says
+     * `other` while the host is empty. Such a profile is **not** a direct one, and
+     * calling it one would put a proxied profile into the same group as the host's own
+     * address — two addresses under one budget.
+     */
+    val hasOpaqueProxy: Boolean
+        get() = !hasProxy && !isDirect
 
     /**
      * The proxy as one comparable value.
@@ -26,7 +50,12 @@ data class AdsPowerProfileProxy(
      * about AdsPower's proxy vocabulary.
      */
     val identity: String
-        get() = if (hasProxy) "$proxyType://$proxyHost:$proxyPort" else "no_proxy"
+        get() =
+            when {
+                hasProxy -> "$proxyType://$proxyHost:$proxyPort"
+                hasOpaqueProxy -> "opaque:$proxySoft"
+                else -> "no_proxy"
+            }
 }
 
 /**

@@ -35,7 +35,7 @@
 | JDK | 22; задаётся один раз — `subprojects { } → jvmToolchain(22)` в root build. Toolchain сам скачивает JDK (foojay-резолвер в `settings.gradle.kts`) | `docs/decisions/2026-10-19-jdk-toolchain.md` |
 | Docker + docker compose | debug-стек, Testcontainers-тесты, реестр образов | `deploy/docker-compose.debug.yml` |
 | AdsPower Local API | обязателен: краул водит **свой Chrome AdsPower** через CDP, Chromium из Playwright не скачивает | `app/src/main/kotlin/ru/wbparser/app/config/CrawlerConfig.kt` |
-| AdsPower-профили | список в `application.yml → crawler.spider.browser-profiles`; в комментариях помечены неактивные | `app/src/main/resources/application.yml` |
+| AdsPower-профили | список в `application.yml → crawler.spider.egress-groups` (по профилю на группу); в комментариях помечены неактивные | `app/src/main/resources/application.yml` |
 | Меню WB | `https://static-basket-01.wbbasket.ru/vol0/data/main-menu-by-ru-v3.json` — источник токенов `searchQuery` | `scripts/wb-catalog/enrich_catalog_queries.py` |
 | Справочник предметов | `https://static-basket-01.wbbasket.ru/vol0/data/subjects.json` | `scripts/wb-catalog/load_subjects.py` |
 | Python | ≥ 3.11, зависимости через `uv` (`pyproject.toml`, `uv.lock`) | `pyproject.toml` |

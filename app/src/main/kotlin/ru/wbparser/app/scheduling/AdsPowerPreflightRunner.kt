@@ -141,16 +141,36 @@ class AdsPowerPreflightRunner(
             }.onFailure { log.warn("Could not record the egress group {}: {}", group.groupId, it.message) }
         }
 
+        val strict = spider.requireIsolatedEgressGroups
+
         if (report.misconfigured) {
-            val strict = spider.requireIsolatedEgressGroups
             log.error(
-                "The egress groups are misconfigured: the profiles of a group are not behind " +
-                    "one proxy. Fix the proxy of every profile of a group, or the crawler " +
-                    "will treat one address as several budgets.",
+                "The egress groups are misconfigured: a group is not behind one proxy, or two " +
+                    "groups are behind one proxy. Fix the proxy of every profile of a group, " +
+                    "or the crawler will treat one address as several budgets.",
             )
             if (strict) {
                 throw IllegalStateException(
                     "Egress groups are misconfigured and crawler.spider.require-isolated-egress-groups is on",
+                )
+            }
+        }
+
+        // The groups were declared apart and turned out to share an address. The address
+        // is known — the echo answered — so this is not the "could not check" case: the
+        // isolation the crawl was promised is not there.
+        val shared =
+            report.groups.filter { group -> group.egressIp != null && !group.isolated }
+        if (shared.isNotEmpty()) {
+            log.error(
+                "Egress groups {} are seen at one address. The extra IP budget is not there, " +
+                    "and the per-group metrics describe a split that does not exist.",
+                shared.map { it.groupId },
+            )
+            if (strict) {
+                throw IllegalStateException(
+                    "Egress groups ${shared.map { it.groupId }} are not isolated by address and " +
+                        "crawler.spider.require-isolated-egress-groups is on",
                 )
             }
         }

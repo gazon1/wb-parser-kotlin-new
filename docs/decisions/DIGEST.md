@@ -243,6 +243,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** отдавать профиль в две группы. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Never** ронять старт из-за недоступности эхо-сервиса: probe предупреждает, _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Never** считать, что несколько профилей на группе дают скорость: бюджет _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
+- **Always** объявлять egress-группы единственным списком профилей. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Always** проверять изоляцию статически, до первого запроса к WB. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **MUST** различать «проверка прошла» и «проверка не смогла выполниться»: второй _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Never** включать `require-isolated-egress-groups` там, где изоляция обеспечивается _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Never** держать два способа описать профили: они разойдутся, и разойдутся тихо. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Never** считать профиль без прокси прямой, если AdsPower говорит, что прокси есть, _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Never** считать статическую проверку достаточной: два разных прокси могут _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 
 ## Per-tag
 
@@ -888,6 +895,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
+- `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 
 ## Active entries
 
@@ -961,3 +969,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
+- `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются

@@ -1,6 +1,5 @@
 package ru.wbparser.app.config
 
-import org.slf4j.LoggerFactory
 import ru.wbparser.infra.http.BrowserProfileConfig
 import ru.wbparser.infra.http.EgressGroup
 import ru.wbparser.infra.http.RequestPacing
@@ -34,13 +33,12 @@ data class PacingConfig(
 /**
  * Turns the configured groups into what the crawler actually runs on.
  *
- * ## Why this is a resolution and not a binding
+ * ## Why the groups are the only list
  *
- * Two lists describe the same profiles: `egress-groups` and the legacy
- * `browser-profiles`. They have to agree, and a pair of lists that have to agree is
+ * Two lists described the same profiles: `egress-groups` and the legacy
+ * `browser-profiles`. They had to agree, and a pair of lists that have to agree is
  * one list too many — the day they disagree, one of them is silently ignored. So the
- * groups win when both are set, the legacy list is the fallback for a deployment that
- * has no groups, and the profiles of the groups are the only source of profiles.
+ * groups are the only source of profiles, and the legacy list is gone.
  *
  * ## Why the concurrency is derived
  *
@@ -50,8 +48,6 @@ data class PacingConfig(
  * wait. The number is now computed from the profiles that exist.
  */
 object EgressGroups {
-    private val log = LoggerFactory.getLogger(EgressGroups::class.java)
-
     /**
      * The groups, the profiles and the concurrency the crawler runs with.
      */
@@ -66,34 +62,16 @@ object EgressGroups {
      */
     fun resolve(spider: Spider): Resolved {
         val configured = spider.egressGroups
-        val legacy = spider.browserProfiles
-
-        if (configured.isNotEmpty() && legacy.isNotEmpty()) {
-            log.warn(
-                "Both crawler.spider.egress-groups and crawler.spider.browser-profiles are set — " +
-                    "the groups win and the profile list is ignored. Remove browser-profiles.",
+        if (configured.isEmpty()) {
+            error(
+                "crawler.spider.egress-groups is empty: the crawler has to know which profiles " +
+                    "it may use and which address each of them leaves from. Declare one group " +
+                    "per egress IP — the profiles of one group share one address, and a group " +
+                    "with one profile gives that address the whole request budget.",
             )
         }
 
-        // A deployment without profiles has nothing to crawl. The pool says so with its
-        // own message; the resolution here must not get there first with a different one.
-        if (configured.isEmpty() && legacy.isEmpty()) {
-            return Resolved(groups = emptyList(), profiles = emptyList(), targetConcurrency = 1)
-        }
-
-        val groups =
-            if (configured.isNotEmpty()) {
-                configured.map { it.toGroup(spider) }
-            } else {
-                listOf(
-                    EgressGroup(
-                        id = EgressGroup.DEFAULT_ID,
-                        profileIds = legacy,
-                        pacing = spider.defaultPacing(),
-                    ),
-                )
-            }
-
+        val groups = configured.map { it.toGroup(spider) }
         validate(groups)
         val profiles = groups.flatMap { group -> group.profileIds.map { it to group.id } }
         return Resolved(
@@ -113,16 +91,6 @@ object EgressGroups {
                     jitterMinMs = pacing.jitterMinMs ?: spider.browserJitterMinMs,
                     jitterMaxMs = pacing.jitterMaxMs ?: spider.browserJitterMaxMs,
                 ),
-        )
-
-    /**
-     * The pacing a group uses when it does not say otherwise.
-     */
-    private fun Spider.defaultPacing(): RequestPacing =
-        RequestPacing(
-            minIntervalMs = browserMinRequestIntervalMs,
-            jitterMinMs = browserJitterMinMs,
-            jitterMaxMs = browserJitterMaxMs,
         )
 
     private fun validate(groups: List<EgressGroup>) {
