@@ -168,12 +168,28 @@ circuit группы не спрашивается, пока другие отв
 **Где правда:** `wbparser/src/main/kotlin/ru/wbparser/domain/scheduling/FailureClass.kt` — `TargetBackoff`, `TargetBackoff.targetDelay`, `TargetBackoff.egressDelay`,
 `TargetBackoff.TARGET_BASE_MINUTES`, `TargetBackoff.EGRESS_BASE_MINUTES`.
 
-## Свежесть (FreshnessPolicy, targetsDue)
+## Аренда цели (lease)
+
+**Что это:** `crawl_targets.lease_owner` и `crawl_targets.lease_until` — кто сейчас
+читает цель и до какого момента. Хост забирает цели одним утверждением
+(`FOR UPDATE SKIP LOCKED`), поэтому два хоста никогда не берут одну цель. Аренда
+истекает сама: хост, который умер, не держит цели вечно.
+
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/db/repositories/TargetQueries.kt` —
+`claimDueTargets`, `releaseTargetLeases`; миграция
+`app/src/main/resources/db/migration/V11__crawl_target_leases.sql`.
+
+**Связано с:** область блокировки (`crawler.lock.scope`).
+
+## Свежесть (FreshnessPolicy, claimDueTargets)
 
 Политика свежести: сколько минут должно пройти с последнего чтения цели, чтобы её снова читали (по умолчанию 240 минут). Цель не due по двум причинам: её недавно
 прочитали (окно свежести не прошло) либо она ждёт после отказа (не прошла пауза).
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/scheduler/Freshness.kt` — `FreshnessPolicy`, `targetsDue`.
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/scheduler/FreshnessPolicy.kt` —
+`FreshnessPolicy`; правило «что due» — в SQL забора цели
+(`claimDueTargets` в `wbparser/src/main/kotlin/ru/wbparser/infra/db/repositories/TargetQueries.kt`).
+Правило одно: его утверждение — в базе.
 
 ## Состояние цели живёт в базе
 

@@ -20,12 +20,13 @@ import ru.wbparser.infra.advisory.PostgresAdvisoryLock
 import ru.wbparser.infra.advisory.withLock
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.db.repositories.TargetRun
-import ru.wbparser.infra.db.repositories.fetchActiveTargets
+import ru.wbparser.infra.db.repositories.claimDueTargets
+import ru.wbparser.infra.db.repositories.fetchTargetsByIds
 import ru.wbparser.infra.db.repositories.markTargetCrawled
 import ru.wbparser.infra.db.repositories.markTargetFailed
 import ru.wbparser.infra.db.repositories.markTargetRequeued
 import ru.wbparser.infra.db.repositories.recordTargetRun
-import ru.wbparser.infra.scheduler.targetsDue
+import ru.wbparser.infra.db.repositories.releaseTargetLeases
 import java.time.Instant
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
@@ -82,7 +83,7 @@ class CrawlRunner(
             failureHandler = config.failureHandler,
         )
 
-    private val advisoryLock = PostgresAdvisoryLock(db.ds, config.lockTimeoutMs)
+    private val advisoryLock = PostgresAdvisoryLock(db.ds, config.lockTimeoutMs, config.lockKey)
 
     /**
      * Runs the crawler: acquires advisory lock, crawls all due targets, closes lock.
@@ -101,13 +102,24 @@ class CrawlRunner(
 
     private suspend fun runUnsafe(): RunResult {
         val startedAt = java.time.Instant.now()
-        val targets = db.ds.fetchActiveTargets()
-        val due = targetsDue(targets, config.freshness)
+
+        // The targets are claimed, not read: the claim leases them, so another host
+        // working on the same database takes other targets and never the same one.
+        val claimed =
+            db.ds.claimDueTargets(
+                owner = config.instanceId,
+                now = startedAt,
+                freshness = config.freshness,
+                limit = config.claimLimit,
+                leaseFor = config.leaseDuration,
+            )
 
         // The two reasons not to start are decided before a job row exists, and both
         // are answers about the world rather than about the crawl.
-        val refusal = reasonNotToStart(due)
+        val refusal = reasonNotToStart(claimed)
         if (refusal != null) return refusal
+
+        val due = db.ds.fetchTargetsByIds(claimed)
 
         var jobId: UUID? = null
         try {
@@ -185,6 +197,12 @@ class CrawlRunner(
                 runCatching { jobStore.closeJob(id, JobStatus.Failed, errorMessage = t.message) }
             }
             return RunResult.Failure(t.message ?: "Unknown error")
+        } finally {
+            // The leases are given back as soon as the run is over, so the next host can
+            // take the targets right away. A lease that is not released expires on its
+            // own — this is about not making the other host wait for the expiry.
+            runCatching { db.ds.releaseTargetLeases(config.instanceId) }
+                .onFailure { log.warn("Could not release the target leases: {}", it.message) }
         }
     }
 
@@ -200,11 +218,11 @@ class CrawlRunner(
      *   the addresses, not to the targets and not to the crawler. So the run does not
      *   start, and no job row is opened for a run that served nothing.
      *
-     * @param due the targets that are due to be crawled.
+     * @param claimed the ids of the targets this run has leased.
      * @return the outcome that stops the run, or `null` when the run may start.
      */
-    private fun reasonNotToStart(due: List<Target>): RunResult? {
-        if (due.isEmpty()) return RunResult.NothingDue
+    private fun reasonNotToStart(claimed: List<UUID>): RunResult? {
+        if (claimed.isEmpty()) return RunResult.NothingDue
 
         val egress = source.egress
         if (egress != null && !egress.isAnyGroupAvailable()) {

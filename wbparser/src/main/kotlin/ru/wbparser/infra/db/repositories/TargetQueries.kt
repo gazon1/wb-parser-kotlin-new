@@ -20,6 +20,7 @@ import org.jetbrains.exposed.sql.Query
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
@@ -29,11 +30,123 @@ import ru.wbparser.domain.pipeline.CrawlTargetsTable
 import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.domain.scheduling.TargetBackoff
 import ru.wbparser.infra.db.exposedOnce
+import ru.wbparser.infra.scheduler.FreshnessPolicy
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
+
+/**
+ * Returns the targets with the given ids.
+ *
+ * The ids come from a claim, so the targets are leased by this host and nobody else
+ * is reading them. The lease is what makes this safe: between the claim and this
+ * read, no other host can take the same target.
+ */
+fun DataSource.fetchTargetsByIds(ids: List<UUID>): List<Target> {
+    if (ids.isEmpty()) return emptyList()
+    exposedOnce()
+    return transaction {
+        val query = Query(CrawlTargetsTable, CrawlTargetsTable.id inList ids)
+        query.map { row -> row.toTarget() }
+    }
+}
+
+/**
+ * Claims the targets this host is going to crawl, and leases them.
+ *
+ * ## Why one statement
+ *
+ * The claim and the lease are the same statement on purpose. If they were two, a
+ * second host could read the rows between them and take the same targets. With one
+ * statement the rows are taken atomically, and `FOR UPDATE SKIP LOCKED` is what makes
+ * it safe without any coordination: a host that meets a row another host is leasing
+ * skips it instead of waiting for it.
+ *
+ * ## Why the rules live here
+ *
+ * "Due" is a statement about the database — when the target was read, when it may be
+ * tried again, who holds it — and the lease is a statement about the database too. So
+ * the rules live in the query, and the runner asks the database which targets are
+ * due instead of fetching everything and deciding in memory.
+ *
+ * @param owner who holds the lease. A host identifies itself; the lease is released
+ *   under the same name.
+ * @param now the current time; the caller's clock, so a test can say what "now" is.
+ * @param freshness how long a target stays fresh.
+ * @param limit how many targets to claim at most.
+ * @param leaseFor how long the lease holds. It must outlive the crawl of the target,
+ *   and it must expire on its own: a host that dies must not hold its targets.
+ */
+fun DataSource.claimDueTargets(
+    owner: String,
+    now: Instant,
+    freshness: FreshnessPolicy,
+    limit: Int,
+    leaseFor: Duration,
+): List<UUID> {
+    val freshBefore = now.minus(Duration.ofMinutes(freshness.defaultFreshnessMinutes))
+    val leaseUntil = now.plus(leaseFor)
+    return connection.use { conn ->
+        conn
+            .prepareStatement(
+                """
+                WITH claimed AS (
+                    SELECT id
+                      FROM crawl_targets
+                     WHERE is_active
+                       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+                       AND (last_crawled_at IS NULL OR last_crawled_at <= ?)
+                       AND (lease_until IS NULL OR lease_until <= ?)
+                     ORDER BY last_crawled_at ASC NULLS FIRST, id
+                     FOR UPDATE SKIP LOCKED
+                     LIMIT ?
+                )
+                UPDATE crawl_targets t
+                   SET lease_owner = ?, lease_until = ?
+                  FROM claimed c
+                 WHERE t.id = c.id
+                RETURNING t.id
+                """.trimIndent(),
+            ).use { ps ->
+                ps.setObject(1, now.atOffset(ZoneOffset.UTC))
+                ps.setObject(2, freshBefore.atOffset(ZoneOffset.UTC))
+                ps.setObject(3, now.atOffset(ZoneOffset.UTC))
+                ps.setInt(4, limit)
+                ps.setString(5, owner)
+                ps.setObject(6, leaseUntil.atOffset(ZoneOffset.UTC))
+                ps.executeQuery().use { rs ->
+                    val ids = mutableListOf<UUID>()
+                    while (rs.next()) {
+                        ids += UUID.fromString(rs.getString("id"))
+                    }
+                    ids
+                }
+            }
+    }
+}
+
+/**
+ * Releases the leases this host holds.
+ *
+ * Called when the run is over. A lease that is not released expires on its own, so
+ * this is about not waiting for the expiry — and about the next host being able to
+ * take the target right away.
+ *
+ * @return how many leases were released.
+ */
+fun DataSource.releaseTargetLeases(owner: String): Int {
+    connection.use { conn ->
+        conn
+            .prepareStatement(
+                "UPDATE crawl_targets SET lease_owner = NULL, lease_until = NULL WHERE lease_owner = ?",
+            ).use { ps ->
+                ps.setString(1, owner)
+                return ps.executeUpdate()
+            }
+    }
+}
 
 /**
  * Returns every target where `is_active = true`.

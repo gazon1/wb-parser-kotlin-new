@@ -11,8 +11,10 @@ import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
+import ru.wbparser.infra.advisory.DEPLOYMENT_LOCK_KEY
 import ru.wbparser.infra.http.EgressAttribution
 import ru.wbparser.infra.scheduler.FreshnessPolicy
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -77,6 +79,39 @@ data class CrawlRunnerConfig(
     val lockTimeoutMs: Long = 600_000,
     val retryPolicy: RetryPolicy = RetryPolicy(),
     val freshness: FreshnessPolicy = FreshnessPolicy(),
+    /**
+     * Who this host is, in the leases it takes.
+     *
+     * A host identifies itself so that a target it was reading can be told apart from
+     * a target another host is reading. The default is per process: a restart is a new
+     * holder, and the lease of the process that died expires on its own.
+     */
+    val instanceId: String = UUID.randomUUID().toString(),
+    /**
+     * How many targets one run may claim.
+     *
+     * The catalogue is small, so the number is a safety net rather than a budget: it
+     * stops a runaway loop from claiming everything the database holds.
+     */
+    val claimLimit: Int = 1_000,
+    /**
+     * How long a claim holds a target.
+     *
+     * It has to outlive the crawl of the target — an hour is plenty for a target, and
+     * two hours for a run of many — and it has to expire on its own: a host that dies
+     * must not hold its targets until somebody notices.
+     */
+    val leaseDuration: Duration = Duration.ofHours(2),
+    /**
+     * The key the crawl's advisory lock is taken under.
+     *
+     * The key is the scope of the lock: the deployment-wide key means one crawl at a
+     * time in the whole database, a host's own key means one crawl at a time on that
+     * host. With several hosts sharing the work, the work is divided by the leases on
+     * the targets, and the lock only has to keep one host from doing the same work
+     * twice.
+     */
+    val lockKey: Long = DEPLOYMENT_LOCK_KEY,
     val failureHandler: CoroutineExceptionHandler = loggingBackgroundFailureHandler(),
 )
 

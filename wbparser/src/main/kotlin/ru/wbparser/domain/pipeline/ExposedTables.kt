@@ -136,6 +136,17 @@ object CrawlTargetsTable : Table("crawl_targets") {
      */
     val anomalyGroup: Column<String?> = varchar("anomaly_group", 64).nullable()
 
+    /**
+     * Who holds the lease of this target, and until when.
+     *
+     * The lease is not the freshness: [lastCrawledAt] says when the target was read,
+     * [nextAttemptAt] says when it may be tried again, and the lease says who is
+     * reading it right now. An expired lease is a free lease, so a host that dies
+     * does not hold its targets.
+     */
+    val leaseOwner: Column<String?> = varchar("lease_owner", 128).nullable()
+    val leaseUntil: Column<OffsetDateTime?> = timestampWithTimeZone("lease_until").nullable()
+
     // TIMESTAMPTZ, and the database fills both with now().
     val createdAt: Column<OffsetDateTime> = timestampWithTimeZone("created_at")
     val updatedAt: Column<OffsetDateTime> = timestampWithTimeZone("updated_at")

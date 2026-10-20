@@ -283,6 +283,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** класть адрес в тег метрики: он меняется, а серия остаётся. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
 - **Never** открывать прогон, когда ни один адрес не может обслужить запрос. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
 - **Never** открывать строку прогона для прогона, который ничего не обслужил. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Always** брать цели арендой, а не блокировкой базы. _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Always** включать общий бюджет, когда за одним адресом работает больше одного _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **MUST** истекать аренду сама: хост может умереть, и цель не должна ждать его _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Never** выдавать истёкшую аренду за занятую: истёкшая аренда — это «свободно». _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Never** дублировать правило свежести в SQL и в коде: правило одно, и его _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Never** отдавать аренду раньше, чем цель обработана: чужая машина возьмёт её _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Never** считать, что один хост за адресом — это весь трафик на адрес. _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
 - **Always** отделять антибот (498) от транспортного сброса (статус 0) в любом _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 - **Always** писать измеренные числа в репозиторий рядом с решением, которое на них _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 - **Always** считать параллельную работу на одном адресе отдельным фактором: адрес _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
@@ -948,6 +955,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
+- `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — architecture  database  concurrency  antibot
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — antibot  operations  infrastructure  measurement
 
 ## Active entries
@@ -1029,4 +1037,5 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна
+- `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — Работа и бюджет живут там, где про них известно
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — Измерение не даёт оснований покупать второй адрес

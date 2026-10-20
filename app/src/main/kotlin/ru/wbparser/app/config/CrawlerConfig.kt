@@ -61,6 +61,32 @@ class CrawlerConfig {
     }
 
     /**
+     * The key the crawl's advisory lock is taken under.
+     *
+     * The deployment-wide key makes the lock cover the whole database: one crawl at a
+     * time. A host that shares its work with other hosts takes a key of its own, so
+     * that the hosts work together instead of taking turns — the targets are divided
+     * by the lease, and the lock only keeps one host from doing the same work twice.
+     *
+     * The host's identity is its name: a machine that is renamed is a machine that
+     * takes a different lock, and the lease is what protects the targets meanwhile.
+     */
+    private fun lockKeyOf(scope: String): Long {
+        if (!scope.equals("host", ignoreCase = true)) {
+            return ru.wbparser.infra.advisory.DEPLOYMENT_LOCK_KEY
+        }
+        val hostName =
+            runCatching {
+                java.net.InetAddress
+                    .getLocalHost()
+                    .hostName
+            }.getOrDefault("unknown-host")
+        // A different key per host, from the same key: the two never collide, and the
+        // key stays recognisable in pg_locks.
+        return ru.wbparser.infra.advisory.DEPLOYMENT_LOCK_KEY xor (hostName.hashCode().toLong() and 0xFFFFL)
+    }
+
+    /**
      * The request budget of each egress group.
      *
      * The budget belongs to the group, not to the pool: a group that shares one egress
@@ -160,6 +186,11 @@ class CrawlerConfig {
                     rules = properties.spider.rules.toBusinessRules(),
                     clock = clock,
                     concurrency = properties.spider.concurrency,
+                    // The lock's scope: the whole database, or this host. Several hosts
+                    // that share the work take a key of their own, and the targets are
+                    // divided by the lease instead.
+                    lockKey = lockKeyOf(properties.lock.scope),
+                    leaseDuration = java.time.Duration.ofMinutes(properties.lock.leaseMinutes),
                     // Derived from the profiles that exist, unless the operator says otherwise.
                     targetConcurrency =
                         properties.spider.targetConcurrency.takeIf { it > 0 } ?: deps.groups.targetConcurrency,
