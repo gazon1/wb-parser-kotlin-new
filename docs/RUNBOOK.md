@@ -164,44 +164,77 @@ just deploy::dry-run <tag> # ansible --check --diff
 `ansible-playbook ~/Caddy-vps/playbooks/wbparser.yml -e "wbparser_tag=<tag>" -e
 "wbparser_compose_src=<repo>/deploy/docker-compose.vps.yml"`.
 
-Образ **должен уже быть в GHCR** — `just deploy` его не строит. Строит либо CI (джоб
-`publish-image` в `.github/workflows/ci.yml`: после `build`, `lint`, `coverage`, `gate-honesty`,
-только на push — собирает `Dockerfile.app` и пушит в `ghcr.io/<owner>/wb-parser` с тегами
-`branch`, короткий `sha` и `latest` для default-ветки), либо человек вручную: `docker login
-ghcr.io -u <user> --password-stdin`, затем `just deploy::build` (docker build) и
-`just deploy::push` (docker push). Тег — короткий SHA коммита; фолбэка на `latest` в
-compose-файле нет намеренно: забытый `TAG` иначе утащил бы «что registry считает самым новым».
+**Два образа, один тег.** Краул не может прочитать ни одной страницы Wildberries без
+настоящего браузера, и браузер — это AdsPower: виртуальный дисплей, CLI AdsPower и Chrome,
+который он запускает. Поэтому репозиторий собирает и публикует **два** образа:
 
-**Что происходит на VPS.** `deploy/docker-compose.vps.yml`: сервис `wb-parser` (контейнер
-`wb-parser`), `restart: unless-stopped`, образ
-`ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser:${TAG:?TAG must be set...}`, `env_file: app.env`,
-порт **не публикуется** — только `expose: 8080` во внешней сети `caddy_net`, которую создаёт
-и владеет роль из `Caddy-vps`. Healthcheck: `wget -q -O /dev/null
-http://127.0.0.1:8080/api/health/live || exit 1` — `wget`, а не `curl` (в
-`eclipse-temurin:22-jre` нет curl), и `/live`, а не `/ready` (краткий блёп БД не должен
-перезапускать краул посреди обхода).
+| образ | что это |
+|---|---|
+| `ghcr.io/<owner>/wb-parser` | краул (`Dockerfile.app`) |
+| `ghcr.io/<owner>/wb-parser-adspower` | рантайм браузера (`docker.adspower/Dockerfile`) |
+
+Оба помечаются **одним тегом** — коротким SHA коммита: `just deploy` называет коммит один
+раз, и оба образа едут из него. CI (джоб `publish-image` в `.github/workflows/ci.yml`: после
+`build`, `lint`, `coverage`, `gate-honesty`, только на push) собирает оба и пушит их с тегами
+`branch`, короткий `sha` и `latest` для default-ветки. Вручную: `docker login ghcr.io -u
+<user> --password-stdin`, затем `just deploy::build` и `just deploy::push` — обе команды
+собирают и пушат оба образа.
+
+Фолбэка на `latest` нет намеренно: забытый digest утащил бы «что registry считает самым
+новым», а тег можно переставить. Роль `Caddy-vps` разрешает тег в digest и поднимает именно
+digest, поэтому тег — это имя, а не то, что работает.
+
+**Что происходит на VPS.** `deploy/docker-compose.vps.yml` — два сервиса:
+
+- `wb-parser` — краул. Образ по digest (`ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser@${DIGEST:?}`),
+  `env_file: app.env`, порт **не публикуется** — только `expose: 8080` во внешней сети
+  `caddy_net`, которую создаёт и владеет роль из `Caddy-vps`. Healthcheck: `wget -q -O
+  /dev/null http://127.0.0.1:8080/api/health/live || exit 1` — `wget`, а не `curl` (в
+  `eclipse-temurin:22-jre` нет curl), и `/live`, а не `/ready` (краткий блёп БД не должен
+  перезапускать краул посреди обхода).
+- `wb-parser-browser` — рантайм браузера. Образ по digest (`...wb-parser-adspower@${BROWSER_DIGEST:?}`),
+  `env_file: browser.env` (только ключ AdsPower — ни пароля БД, ни админского ключа у него
+  быть не должно), и `network_mode: "service:wb-parser"`: он делит сетевую namespace краула,
+  поэтому Local API AdsPower и CDP-порт Chrome доступны краулу по `127.0.0.1` и **нигде
+  больше**. Состояние AdsPower (ядро Chrome на 520 МБ и каталоги профилей) — именованный том
+  `wbparser-adspower-state`, общий для обоих контейнеров: pre-flight краула видит профили,
+  которые материализовал рантайм.
+
+Наружу не выставлен ни один порт обоих контейнеров: namespace — это мост `caddy_net`, а не
+публичный интерфейс. Caddy и витрина достают краул по имени контейнера, как и раньше.
+
+**Первый старт браузера долгий.** Рантайм скачивает ядро Chrome (520 МБ) с CDN AdsPower —
+однократно, дальше оно лежит в томе. Поэтому гейт здоровья в роли `Caddy-vps` — 600 с, а не
+180: таймаут короче первой закачки уронил бы деплой, который вот-вот прошёл бы. Профили
+AdsPower приезжают из аккаунта (тот же API-ключ), а не копируются с машины оператора: в
+`wb_catalog_targets.yaml` и в `application.yml` перечислены **id** профилей.
 
 **Как убедиться, что деплой прошёл.** Деплой не считается удачным, пока контейнер не отмечен
 здоровым (`docs/decisions/2026-10-14-deploy-crawler-as-registry-image.md`):
 
 ```bash
 docker ps --filter name=wb-parser          # STATUS: Up ... (healthy)
+docker ps --filter name=wb-parser-browser  # STATUS: Up ... (healthy)
 docker logs --tail 200 wb-parser
+docker logs --tail 100 wb-parser-browser   # первый старт: скачивание ядра Chrome
 docker exec wb-parser wget -q -O - http://127.0.0.1:8080/api/health/live
 ```
 
 Снаружи к 8080 не обратиться: приложение не опубликовано, маршрут публикует Caddy
 (конфигурация маршрута — в `Caddy-vps`, здесь её нет).
 
-**Первый деплой: Flyway baseline.** В базе на 91.188.212.209 лежит старая схема .NET, а
-Flyway в контейнере настроен с `baseline-on-migrate: false` — на непустой схеме он откажется
-что-то применять, пока не проставлен baseline. Процедура **один раз, до первого деплая**:
-`ssh user@91.188.212.39 "bash -s" < scripts/vps-flyway-baseline.sh`. Скрипт (по умолчанию
-`VPS_HOST=91.188.212.39`, `SSH_USER=user`, `SSH_KEY=$HOME/.ssh/ci_caddy_vps`) подключается по
-SSH и выполняет внутри контейнера `wb-parser`: `java -cp app.jar
-org.flywaydb.commandline.Main baseline -baselineVersion=1 -baselineDescription="NET schema
-baseline"` и затем `... Main migrate`. Контейнер к этому моменту должен быть запущен
-(`docker exec` требует живой процесс). После baseline обычный деплой применяет миграции сам.
+**Flyway: состояние базы.** База на 91.188.212.209 переведена на схему этого приложения
+(Flyway v6), и её история миграций совпадает с миграциями репозитория — поэтому Flyway в
+контейнере **включён** (`SPRING_FLYWAY_ENABLED=true`), и новая миграция применяется деплоем
+сама. `baseline-on-migrate: false` остался: на непустой схеме без baseline Flyway откажется
+что-то применять, и это правильно — молчаливый baseline оставил бы старую схему на месте.
+
+Если история миграций базы перестанет совпадать со сборкой (например, база откатилась на
+старую версию), Flyway упадёт на проверке контрольной суммы — и это падение каждого деплая.
+Лечится **вручную, один раз**: `ssh user@91.188.212.39 "bash -s" <
+scripts/vps-flyway-baseline.sh` (скрипт выполняет внутри контейнера `wb-parser`:
+`java -cp app.jar org.flywaydb.commandline.Main baseline …`, затем `… Main migrate`). После
+этого обычный деплой применяет миграции сам.
 
 ---
 

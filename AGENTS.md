@@ -230,6 +230,8 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 | `docs/decisions/2026-10-20-the-coverage-floor-measures-the-code-not-the-module.md` | Floors меряются по merged-отчёту с фильтром по пакетам: отчёт модуля не видит покрытие чужих сьютов |
 | `docs/decisions/2026-10-20-the-big-classes-are-split-by-decision.md` | Крупные классы делятся по решению, которое они держат: `WbCatalogRequest`/`WbCatalogApi`/`WbCatalogFetchScript`, `Pipeline`/`PipelineBatch`/`PipelinePageProcessor`, `CrawlRunner`/`CrawlJobStore`/`TargetCrawl`/`CrawlMetrics`, `BrowserPool`/`BrowserProfileState`/`AdsPowerApi`/`CdpAutomation` |
 | `docs/decisions/2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary.md` | Длина каталога измеряется на границе пагинации; лимит следует за границей и никогда не выше предела API (60 страниц); замер пишет отчёт, YAML меняет отдельный шаг |
+| `docs/decisions/2026-10-20-the-crawler-and-its-browser-share-one-network-namespace.md` | Деплой: репозиторий публикует два образа (краул + рантайм AdsPower), Caddy-vps тянет их по digest; браузер делит сетевую namespace краула — Local API и CDP доступны по 127.0.0.1, наружу не выставлен ни один порт |
+| `docs/decisions/2026-10-20-the-crawl-cadence-follows-the-measured-catalog.md` | Расписание выводится из измеренной длины каталога: тик короче круга, окно свежести длиннее круга, запасной лимит не ниже измеренного минимума |
 
 ---
 
@@ -243,9 +245,9 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
   AdsPower (`RealAdsPowerApi` 6 %) и CDP-автоматизацию (`CdpAutomation` 21 %)
 - **Браузерный путь fetch** — не покрыт: ошибка там выглядит как «каталог пуст», а не
   как ошибка
-- **Эксплуатационное**: пересборка прод-БД (нужен доступ к VPS), доля HTTP 498
-  (все профили на одном egress IP). Честный `known_pages_limit` сделан: длина
-  каталога измеряется на границе пагинации, отчёт → YAML, 132 цели получили
-  измеренные 60 страниц вместо придуманных 5
+- **Эксплуатационное**: доля HTTP 498 (все профили на одном egress IP — не код).
+  Пересборка прод-БД сделана (схема v6, 132 цели, 8174 предметов), деплой
+  переведён на два образа по digest, расписание пересчитано под 60 страниц.
+  Осталось: развернуть контур на VPS и указать витрине `DATABASE_URL`
 
 Полный план: `.zcode/plans/plan-sess_871f29cf-f859-4a72-9002-5bbafd737630.md`
