@@ -39,7 +39,16 @@ class CatalogConfig {
         catalogDataSource: CatalogDataSource,
         catalogQueries: CatalogQueries,
         meterRegistry: MeterRegistry,
-    ): CatalogReadiness = CatalogReadiness(catalogDataSource, catalogQueries, meterRegistry)
+        @org.springframework.beans.factory.annotation.Value("\${spring.datasource.url:}") writerUrl: String,
+    ): CatalogReadiness =
+        CatalogReadiness(
+            catalogDataSource,
+            catalogQueries,
+            meterRegistry,
+            // The address the writer writes to, so the readiness can say whether the
+            // catalog reads from the same database or from a replica.
+            writerUrl = writerUrl,
+        )
 }
 
 /**

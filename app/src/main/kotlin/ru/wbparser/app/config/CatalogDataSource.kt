@@ -30,6 +30,13 @@ import java.sql.Connection
  */
 class CatalogDataSource(
     private val pool: HikariDataSource,
+    /**
+     * The database this pool talks to.
+     *
+     * It is the address the catalog reads from, and it is not necessarily the one the
+     * crawler writes to: a catalog may read a replica. The readiness answer says so.
+     */
+    val url: String = pool.jdbcUrl,
 ) : AutoCloseable {
     /**
      * Run [block] against one connection from the pool, and close it afterwards.
@@ -95,7 +102,7 @@ class CatalogDataSource(
                             "-c timezone=UTC",
                     )
                 }
-            return CatalogDataSource(HikariDataSource(config))
+            return CatalogDataSource(HikariDataSource(config), config.jdbcUrl)
         }
 
         /** The statement timeout of a catalog session, in milliseconds. */
