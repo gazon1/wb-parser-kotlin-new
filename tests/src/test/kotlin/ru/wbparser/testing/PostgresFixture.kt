@@ -238,7 +238,10 @@ class PostgresFixture {
     fun clear() {
         ds.connection.use { conn ->
             conn.createStatement().use { st ->
-                st.execute("TRUNCATE crawl_targets, scraped_items, category_mappings CASCADE")
+                st.execute(
+                    "TRUNCATE crawl_target_runs, crawl_egress_groups, crawl_jobs, " +
+                        "crawl_targets, scraped_items, category_mappings CASCADE",
+                )
             }
         }
     }
