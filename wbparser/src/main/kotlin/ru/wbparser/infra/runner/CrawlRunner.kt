@@ -19,11 +19,11 @@ import ru.wbparser.infra.advisory.LockUnavailable
 import ru.wbparser.infra.advisory.PostgresAdvisoryLock
 import ru.wbparser.infra.advisory.withLock
 import ru.wbparser.infra.db.DatabaseHandle
+import ru.wbparser.infra.db.repositories.TargetRun
 import ru.wbparser.infra.db.repositories.fetchActiveTargets
 import ru.wbparser.infra.db.repositories.markTargetCrawled
 import ru.wbparser.infra.db.repositories.markTargetFailed
 import ru.wbparser.infra.db.repositories.markTargetRequeued
-import ru.wbparser.infra.db.repositories.TargetRun
 import ru.wbparser.infra.db.repositories.recordTargetRun
 import ru.wbparser.infra.scheduler.targetsDue
 import java.time.Instant
