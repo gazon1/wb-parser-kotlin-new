@@ -99,6 +99,52 @@ crawler:
     browser-jitter-min-ms: 200
     browser-jitter-max-ms: 500
 
+# ==============================================================================
+# Catalog read API
+# ==============================================================================
+# The catalog is a second, read-only consumer of the same database. It has its own pool
+# and its own role — `wb_catalog_ro`, whose rights are CONNECT, USAGE and SELECT. The
+# claim "the catalog cannot write" is enforced by PostgreSQL's privileges, not by a
+# session setting that code running with the same credentials could undo.
+#
+# CATALOG_API_KEY is required: the application does not start without it. It may hold
+# several keys, separated by commas, so that a key can be rotated without a gap in
+# service. It is not the admin key — the two are different consumers, and one key for
+# both would turn a compromise of one into a compromise of the other.
+#
+# The catalog's URL points at the same database as the writer, but the credentials are
+# the catalog role's own. The two are configured separately on purpose: a single
+# connection string for both would put the writer's privileges within reach of the API.
+catalog:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:wbparser}
+    username: ${CATALOG_DB_USER:wb_catalog_ro}
+    password: ${CATALOG_DB_PASSWORD:}
+  pool:
+    # Five is the starting point, not a measured number: the budget of the database as a
+    # whole (writer + catalog + everything else <= 0.7 x max_connections) is worked out
+    # against the real production database, and the load test confirms or corrects it.
+    max-size: 5
+    min-idle: 1
+    connection-timeout-ms: 3000
+  api-key: ${CATALOG_API_KEY:}
+  rate-limit:
+    # A second line of defence behind the key: the key says who may read, this says how
+    # much. Six hundred a minute is ten a second — far above what a storefront needs, far
+    # below what a runaway needs to hurt. It is counted per key, so one consumer cannot
+    # spend another's budget.
+    enabled: ${CATALOG_RATE_LIMIT_ENABLED:true}
+    requests-per-minute: ${CATALOG_RATE_LIMIT_REQUESTS_PER_MINUTE:600}
+  demo-seed:
+    # Off by default. The demo seed fills scraped_items with synthetic data, and the only
+    # thing between that and a working database is that five independent barriers all
+    # line up at once — see DemoSeedRunner.
+    enabled: false
+    db-user: ${CATALOG_DEMO_DB_USER:}
+    db-password: ${CATALOG_DEMO_DB_PASSWORD:}
+    expected-role: ${CATALOG_DEMO_EXPECTED_ROLE:}
+    db-id: ${CATALOG_DEMO_DB_ID:}
+
 ---
 spring:
   config:
@@ -154,3 +200,27 @@ spring:
 crawler:
   worker:
     enabled: false
+
+---
+# ==============================================================================
+# Demo profile — synthetic data for the storefront, in a scratch database
+# ==============================================================================
+# The seed is guarded by five independent barriers: the flag below, the profile, the exact
+# role the seeding connection resolves to, the identity marker the database carries, and
+# the emptiness of the tables it is about to fill.
+#
+# The flag is off even here. Turning it on is a deliberate act; it is not implied by
+# running under the profile. A blocking gate checks that no production template renders
+# this profile or this flag.
+spring:
+  config:
+    activate:
+      on-profile: demo
+
+crawler:
+  worker:
+    enabled: false
+
+catalog:
+  demo-seed:
+    enabled: ${CATALOG_DEMO_SEED_ENABLED:false}
