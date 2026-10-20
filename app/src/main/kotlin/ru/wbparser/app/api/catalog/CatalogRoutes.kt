@@ -129,6 +129,7 @@ class CatalogRoutes(
      * and a caller that sends it twice gets one answer rather than an error.
      */
     private fun HttpServletRequest.parameters(): Map<String, String?> = parameterMap.mapValues { (_, values) -> values.firstOrNull() }
+
     /**
      * The page, with the totals the storefront's pagination needs.
      */
