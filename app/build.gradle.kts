@@ -73,7 +73,6 @@ dependencies {
     implementation(libs.kotlin.reflect)
     implementation(libs.kotlin.coroutines.core)
     implementation(libs.arrow.core)
-    implementation(libs.resilience4j.circuitbreaker)
     // WB's subject dictionary is JSON, and the startup bootstrap parses it here.
     // The library arrived on the classpath through the crawler's dependencies until
     // the dependency-analysis gate pointed at the use without the declaration.
@@ -190,6 +189,8 @@ dependencies {
     // speaks in Playwright's page type. The dependency arrives with the crawler
     // module, but the test uses it directly — so it is declared here.
     testImplementation(libs.playwright)
+    testImplementation(libs.mockk)
+    testImplementation(libs.exposed.core)
 }
 
 // The contract document lives at the root of the repository, next to the ADR that explains

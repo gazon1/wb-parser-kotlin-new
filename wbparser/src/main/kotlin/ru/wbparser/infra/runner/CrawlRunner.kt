@@ -11,6 +11,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.pipeline.Stop
+import ru.wbparser.domain.scheduling.FailureClass
 import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.infra.advisory.LockUnavailable
@@ -18,8 +19,9 @@ import ru.wbparser.infra.advisory.PostgresAdvisoryLock
 import ru.wbparser.infra.advisory.withLock
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.db.repositories.fetchActiveTargets
-import ru.wbparser.infra.scheduler.Freshness
-import ru.wbparser.infra.scheduler.markCrawled
+import ru.wbparser.infra.db.repositories.markTargetCrawled
+import ru.wbparser.infra.db.repositories.markTargetFailed
+import ru.wbparser.infra.db.repositories.markTargetRequeued
 import ru.wbparser.infra.scheduler.targetsDue
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
@@ -79,17 +81,6 @@ class CrawlRunner(
     private val advisoryLock = PostgresAdvisoryLock(db.ds, config.lockTimeoutMs)
 
     /**
-     * How long a target rests after it was crawled.
-     *
-     * This is the one parameter that decides the crawl cadence. The scheduler's cron
-     * expression is only a tick — it decides how often the crawler *looks* for work, not
-     * how often a catalog is re-crawled. Two knobs for one intent is how the schedule
-     * ended up contradictory: a 30-second tick next to a 4-hour freshness window, where
-     * the tick fired 480 times to start one crawl.
-     */
-    private var freshnessState = Freshness()
-
-    /**
      * Runs the crawler: acquires advisory lock, crawls all due targets, closes lock.
      */
     suspend fun run(): RunResult =
@@ -107,7 +98,7 @@ class CrawlRunner(
     private suspend fun runUnsafe(): RunResult {
         val startedAt = java.time.Instant.now()
         val targets = db.ds.fetchActiveTargets()
-        val due = freshnessState.targetsDue(targets, config.freshness)
+        val due = targetsDue(targets, config.freshness)
 
         // Nothing to crawl — no job row is opened, which also keeps crawl_jobs.target_id
         // (NOT NULL, foreign key) satisfiable.
@@ -141,7 +132,7 @@ class CrawlRunner(
                     failures += "${target.name}: ${result.error}"
                     log.error("Target {} failed: {}", target.name, result.error)
                 }
-                freshnessState = freshnessState.markCrawled(target.id)
+                recordOutcome(target, result)
             }
 
             // crawl_jobs.status has no Partial value (CHECK constraint), so a run that lost
@@ -189,6 +180,65 @@ class CrawlRunner(
                 runCatching { jobStore.closeJob(id, JobStatus.Failed, errorMessage = t.message) }
             }
             return RunResult.Failure(t.message ?: "Unknown error")
+        }
+    }
+
+    /**
+     * Records what happened to a target.
+     *
+     * The freshness window moves only for a target that was actually read. A target
+     * that failed is put aside — either for its own reasons, with a back-off that grows
+     * to a day, or for the address's, with a back-off of minutes: the target is innocent
+     * there, and the only thing to do is let the addresses cool down.
+     *
+     * The difficult case is a failure that looks like the catalog's: WB answered with
+     * something that is not the catalog. A burnt address answers like that too, so the
+     * anomaly is only the target's fault when the address is healthy, or when another
+     * address has seen the same thing.
+     */
+    private fun recordOutcome(
+        target: Target,
+        result: TargetResult,
+    ) {
+        val failureClass = result.failureClass
+        if (failureClass == null) {
+            db.ds.markTargetCrawled(target.id)
+            return
+        }
+
+        val egress = source.egress
+        val group = egress?.lastGroupFor(target.id)
+        if (failureClass == FailureClass.Egress) {
+            val delay = db.ds.markTargetRequeued(target.id)
+            log.warn(
+                "Target {} could not be read because the address failed — trying again in {}",
+                target.name,
+                delay,
+            )
+            return
+        }
+
+        // No address involved, or an address that is answering normally: the anomaly
+        // is the catalog's. The same anomaly seen from another address says the same
+        // thing, and a sick address says nothing at all.
+        val healthy = egress == null || group == null || egress.isGroupHealthy(group)
+        val seenElsewhere = target.anomalyGroup != null && target.anomalyGroup != group
+        if (healthy || seenElsewhere) {
+            val delay = db.ds.markTargetFailed(target.id)
+            log.error(
+                "Target {} answered with something that was not the catalog — put aside for {}",
+                target.name,
+                delay,
+            )
+        } else {
+            val delay = db.ds.markTargetRequeued(target.id, anomalyGroup = group)
+            log.warn(
+                "Target {} answered with something that was not the catalog, but group {} is " +
+                    "refusing as well — treating it as the address's problem, trying again in {}",
+                target.name,
+                group,
+                delay,
+            )
         }
     }
 

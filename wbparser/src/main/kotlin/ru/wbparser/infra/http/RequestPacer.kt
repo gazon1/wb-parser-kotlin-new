@@ -24,16 +24,22 @@ data class RequestPacing(
 )
 
 /**
- * Limits how fast requests may leave the crawler, across all workers and profiles.
+ * Limits how fast requests may leave the crawler, across all workers and profiles
+ * that share one egress IP.
  *
- * ## Why a global limit and not per-profile
+ * ## Why the limit belongs to a group and not to a profile
  *
- * WB's anti-bot counts the *source*, and every AdsPower profile of this deployment runs on
- * the same host with the same egress IP. Per-profile pacing therefore produces a burst
- * rate of `profiles × 1/interval` — exactly the pattern a rate limiter keys on. A crawl
- * with three profiles and 200–500 ms of jitter asked WB for ~40 requests per minute and
- * was answered with HTTP 498 after a few hundred requests, while a single request from
- * the same machine moments later was answered with HTTP 200.
+ * WB's anti-bot counts the *source*, and the source is the IP. Per-profile pacing
+ * therefore produces a burst rate of `profiles × 1/interval` — exactly the pattern a
+ * rate limiter keys on. A crawl with three profiles and 200–500 ms of jitter asked WB
+ * for ~40 requests per minute and was answered with HTTP 498 after a few hundred
+ * requests, while a single request from the same machine moments later was answered
+ * with HTTP 200.
+ *
+ * The same argument holds one level up: the profiles of an **egress group** share one
+ * IP, so the group's budget is one request per interval *for the whole group*, not
+ * one per profile. Groups with different IPs do not share a budget, which is the whole
+ * point of splitting them — see `docs/decisions/2026-10-21-egress-groups-are-the-unit-of-rate-limiting.md`.
  *
  * ## How it works
  *
@@ -111,6 +117,25 @@ class RequestPacer(
             // must not push the whole schedule back with it.
             lastGrant.set(maxOf(earliest, nowMs()))
         }
+    }
+
+    /**
+     * How long until the next request may go out, in milliseconds.
+     *
+     * A **peek**, not a reservation: it reads the timestamp of the last grant and
+     * changes nothing, so it is safe to call while requests are in flight. Zero means
+     * the next request may go out right now.
+     *
+     * The jitter is not part of the estimate — it is randomised per request, and the
+     * estimate exists to answer "which group will be free soonest", not to promise a
+     * slot. A side effect worth knowing: because the last grant moves forward as slots
+     * are handed out, this number grows with the depth of the queue in front of it.
+     */
+    fun millisUntilSlot(now: Long = nowMs()): Long {
+        if (minIntervalMs <= 0L) return 0L
+        val previous = lastGrant.get()
+        if (previous == NO_GRANT_YET) return 0L
+        return maxOf(0L, previous + minIntervalMs - now)
     }
 
     /**

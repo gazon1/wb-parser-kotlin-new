@@ -10,12 +10,17 @@ import com.microsoft.playwright.Page
  * [markWarm] after performing the navigation that establishes the session, so subsequent
  * borrowers of the same profile skip it.
  *
+ * [egressGroup] is the group the profile came from. It is the address WB sees: two
+ * profiles of one group share an IP and therefore share a request budget, while two
+ * profiles of different groups do not.
+ *
  * Dispose by calling [close].
  */
 class BorrowedPage(
     val page: Page,
     val profileId: String,
     val isWarm: Boolean,
+    val egressGroup: String = EgressGroup.DEFAULT_ID,
     private val hooks: BorrowedPageHooks,
 ) {
     fun markWarm() = hooks.onWarm()

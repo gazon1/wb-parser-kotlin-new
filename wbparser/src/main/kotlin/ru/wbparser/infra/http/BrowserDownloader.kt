@@ -39,9 +39,16 @@ import java.time.Instant
  * - HTTP 403 → same retryable treatment (also indicates bot detection).
  * - JavaScript errors / page crashes → [NetworkError].
  * - BrowserPool exhaustion → [NetworkError].
+ *
+ * ## Which egress group serves the request
+ *
+ * The downloader does not decide that — the [EgressRouter] does, because the group is
+ * the address WB sees. What the downloader does is report the outcome back, so the
+ * router can keep the per-group books and so that a failure can later be attributed
+ * to the group that served it.
  */
 open class BrowserDownloader(
-    private val pool: BrowserPool,
+    private val router: EgressRouter,
     private val objectMapper: ObjectMapper = DEFAULT_JSON_MAPPER,
     /** Navigation timeout, challenge wait and per-request pacing. See [BrowserFetchTiming]. */
     private val timing: BrowserFetchTiming = BrowserFetchTiming(),
@@ -80,19 +87,17 @@ open class BrowserDownloader(
                     catalogPage.searchQuery,
                 )
 
-                // Global pacing: all profiles share one egress IP, so the rate limit is
-                // global too. Waiting before the request — not after — keeps the burst
-                // away from WB instead of merely delaying the reaction to it.
-                pool.awaitRequestSlot()
-
-                val borrowedPage = pool.borrowPage()
+                // The egress group decides which profile serves the request and holds
+                // that group's rate limit. The downloader only reports the outcome back.
+                val borrowedPage = router.borrow()
                 try {
                     val fetchResult = fetchViaEvaluate(borrowedPage, apiUrl, catalogPage.catalogId)
                     val durationMs = (System.nanoTime() - startNs) / 1_000_000
 
                     result =
                         when (fetchResult) {
-                            is FetchResult.Success ->
+                            is FetchResult.Success -> {
+                                router.onOutcome(borrowedPage, DownloadOutcome.Success, task.targetId)
                                 Either.Right(
                                     Fetched(
                                         task = task,
@@ -102,11 +107,13 @@ open class BrowserDownloader(
                                             mapOf(
                                                 "content-type" to listOf("application/json"),
                                                 "x-browser-profile" to listOf(borrowedPage.profileId),
+                                                "x-egress-group" to listOf(borrowedPage.egressGroup),
                                             ),
                                         durationMs = durationMs,
                                         fetchedAt = Instant.now(),
                                     ),
                                 )
+                            }
 
                             is FetchResult.HttpError -> {
                                 val isAntibot = fetchResult.statusCode in listOf(498, 403, 401)
@@ -123,6 +130,11 @@ open class BrowserDownloader(
                                     // next borrower gets another one.
                                     borrowedPage.markAntibot(antibotCooldownMs)
                                 }
+                                router.onOutcome(
+                                    borrowedPage,
+                                    if (isAntibot) DownloadOutcome.Antibot else DownloadOutcome.Error,
+                                    task.targetId,
+                                )
                                 Either.Left(
                                     NetworkError(
                                         message = "HTTP ${fetchResult.statusCode}",
@@ -135,6 +147,7 @@ open class BrowserDownloader(
 
                             is FetchResult.JsError -> {
                                 log.error("BrowserDownloader JS error for {}: {}", apiUrl, fetchResult.message)
+                                router.onOutcome(borrowedPage, DownloadOutcome.Error, task.targetId)
                                 Either.Left(
                                     NetworkError(
                                         message = "JS error: ${fetchResult.message}",
@@ -147,6 +160,21 @@ open class BrowserDownloader(
                 } finally {
                     borrowedPage.close()
                 }
+            } catch (e: AllEgressGroupsUnavailable) {
+                // Nobody refused us: there was no group able to send the request. That
+                // is our own capacity, not WB's answer — the same reasoning the pool
+                // exhaustion below follows. It is not an anti-bot ban, so the target is
+                // not blamed for it.
+                log.warn("No egress group could serve {}: {}", task.url, e.message)
+                result =
+                    Either.Left(
+                        NetworkError(
+                            message = "No egress group could serve the request: ${e.message}",
+                            cause = e,
+                            url = task.url.toString(),
+                            isAntibot = false,
+                        ),
+                    )
             } catch (e: BrowserPoolExhaustedException) {
                 log.error("BrowserPool exhausted for {}: {}", task.url, e.message)
                 result =
@@ -229,9 +257,9 @@ open class BrowserDownloader(
                 borrowed.markWarm()
             }
 
-            // Step 2: The request rate is not decided here. The pool's pacer has
-            // already waited — it is the one place that knows the global rate, because
-            // all the profiles share one egress IP.
+            // Step 2: The request rate is not decided here. The egress router has
+            // already waited — it is the one place that knows the rate of the group
+            // that serves the request, because the group is the address WB sees.
 
             // Step 3: Extract cookies from the page context so they can be sent
             // with the API fetch call (credentials: 'include' alone is insufficient

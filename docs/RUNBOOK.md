@@ -289,17 +289,21 @@ HTTP-сервера, не проверяет. Именно его использ
 
 | Параметр | Значение | Где |
 |---|---|---|
-| `browser-min-request-interval-ms` | 3000 мс, глобально на все профили | `CrawlProperties` |
+| `browser-min-request-interval-ms` | 3000 мс — на группу, а не на деплой | `CrawlProperties` |
 | `browser-jitter-min-ms` / `-max-ms` | 200 / 500 мс — jitter **pacer'а**, а не браузера | `docs/decisions/2026-10-20-the-request-rate-has-one-owner.md` |
 | back-off антибота | 10 / 20 / 40 / 80 / 160 с (база 10 с против общей базы 1 с) | `RetryPolicy.antibotBaseDelayMs` |
 | пауза профиля после 498 | 2 минуты | `BrowserPool.ProfileState.flagFor` |
-| открытая цепь | запрос ждёт до 75 с, пока цепь не станет half-open | `CircuitBreakerDownloader` |
+| открытая цепь | запрос ждёт до 75 с, пока цепь не станет half-open | `EgressRouter` (цепь на группу) |
 | закрытие простаивающего браузера | 5 минут без запроса → браузер останавливается в AdsPower | `crawler.spider.browser-idle-timeout-ms` |
 | как часто ищутся простаивающие | раз в минуту | `crawler.spider.browser-janitor-interval-ms` |
 | остановка браузеров на выходе | включено | `crawler.spider.close-browsers-on-exit` |
 
-Темп задаёт **один** `RequestPacer`: если в конфиге «3 секунды между запросами» — это
-3,0–3,5 с, а не 3 с.
+Темп задаёт **один `RequestPacer` на egress-группу**: если в конфиге «3 секунды между
+запросами» — это 3,0–3,5 с, а не 3 с. Групп с разными IP — столько же независимых
+паузеров, сколько адресов: ограничение WB считает источник по IP, и один паузер на
+деплой означал бы один бюджет на все адреса сразу. Разбор — в
+`docs/operations/egress-groups-runbook.md`, решение — в
+`docs/decisions/2026-10-21-egress-groups-are-the-unit-of-rate-limiting.md`.
 
 **Браузеры закрываются.** Профиль, которым не пользовались дольше
 `browser-idle-timeout-ms`, останавливается в AdsPower — следующий заёмщик откроет его

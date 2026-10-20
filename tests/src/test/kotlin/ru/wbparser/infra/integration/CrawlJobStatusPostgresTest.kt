@@ -207,6 +207,11 @@ class CrawlJobStatusPostgresTest :
                     ).run()
 
                 val first = runOnce()
+                // A second target. The first one is fresh now — the state of a target
+                // lives in the database, so a fresh runner does not read it again — and
+                // a fresh target is what gives the second run something to do. The point
+                // of the test is the lock, not the re-reading.
+                db.seedTarget("Второй")
                 val second = runOnce()
 
                 // The lock release used to run `executeUpdate()` against pg_advisory_unlock,

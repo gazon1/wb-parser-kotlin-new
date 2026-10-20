@@ -7,6 +7,7 @@ import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.Spider
 import ru.wbparser.infra.http.AdsPowerApi
 import ru.wbparser.infra.http.AdsPowerConfig
+import ru.wbparser.infra.http.AdsPowerProfileProxy
 import ru.wbparser.infra.http.BrowserAutomation
 import ru.wbparser.infra.http.BrowserPool
 import ru.wbparser.infra.http.BrowserProfileConfig
@@ -53,6 +54,8 @@ class BrowserPoolJanitorTest :
                 stopped += profileId
                 return true
             }
+
+            override fun listProfileProxies(): List<AdsPowerProfileProxy> = emptyList()
 
             override fun isAvailable(): Boolean = true
         }

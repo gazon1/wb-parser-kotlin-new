@@ -228,5 +228,55 @@ class TestWarmupUrl(unittest.TestCase):
         self.assertNotIn(" ", url)
 
 
+class TestMeasurement(unittest.TestCase):
+    """Сводка замера: объём, отказы, доля отказов.
+
+    Доля отказов обязана иметь знаменатель — иначе числитель ничего не значит
+    (docs/decisions/2026-10-20-anti-bot-refusals-are-measured.md).
+    """
+
+    def test_counts_refusals_and_successes(self):
+        outcomes = [
+            {"n": 1, "status": 200, "refused": False, "error": None},
+            {"n": 2, "status": 498, "refused": True, "error": None},
+            {"n": 3, "status": 200, "refused": False, "error": None},
+        ]
+        m = FETCH.measurement_of(outcomes, "A1")
+        self.assertEqual(m["requests"], 3)
+        self.assertEqual(m["refused"], 1)
+        self.assertEqual(m["succeeded"], 2)
+        self.assertEqual(m["errored"], 0)
+
+    def test_refusal_ratio_is_refused_over_requests(self):
+        outcomes = [{"status": 498, "refused": True, "error": None}] * 3
+        outcomes += [{"status": 200, "refused": False, "error": None}] * 7
+        m = FETCH.measurement_of(outcomes, None)
+        self.assertEqual(m["requests"], 10)
+        self.assertAlmostEqual(m["refusal_ratio"], 0.3)
+
+    def test_errors_are_not_refusals(self):
+        """Ошибка сети — это не отказ WB: смешивать их нельзя."""
+        outcomes = [
+            {"status": 0, "refused": False, "error": "timeout"},
+            {"status": 498, "refused": True, "error": None},
+        ]
+        m = FETCH.measurement_of(outcomes, None)
+        self.assertEqual(m["refused"], 1)
+        self.assertEqual(m["errored"], 1)
+        self.assertEqual(m["succeeded"], 0)
+
+    def test_no_requests_is_not_a_crash(self):
+        m = FETCH.measurement_of([], None)
+        self.assertEqual(m["requests"], 0)
+        self.assertIsNone(m["refusal_ratio"])
+
+    def test_label_is_kept(self):
+        m = FETCH.measurement_of([{"status": 200, "refused": False, "error": None}], "A5")
+        self.assertEqual(m["label"], "A5")
+
+    def test_refusal_statuses_are_the_antibot_ones(self):
+        self.assertEqual(FETCH.REFUSAL_STATUSES, {498, 403, 401})
+
+
 if __name__ == "__main__":
     unittest.main()

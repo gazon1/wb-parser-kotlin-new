@@ -11,6 +11,7 @@ import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
+import ru.wbparser.infra.http.EgressAttribution
 import ru.wbparser.infra.scheduler.FreshnessPolicy
 import java.time.Instant
 import java.util.UUID
@@ -25,6 +26,14 @@ import java.util.UUID
 data class CrawlSource(
     val downloader: suspend (Crawling) -> Either<ru.wbparser.domain.error.NetworkError, Fetched>,
     val parser: (Fetched) -> ParsedPage,
+    /**
+     * The egress side of the crawl, when there is one.
+     *
+     * The runner asks it whose fault a failure is: a burnt address answers with a
+     * degraded body as well, and a target must not be punished for that. Null when
+     * the crawl does not go through the browser — then the target is the only suspect.
+     */
+    val egress: EgressAttribution? = null,
 )
 
 /**
