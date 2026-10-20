@@ -37,8 +37,19 @@ def load(name: str, path: Path):
     return module
 
 
+# The gate that runs these tests (`python3 -m unittest discover -s scripts/tests`)
+# runs on a bare Python: no `click`, no `PyYAML`. So the tested modules are the ones
+# that import nothing outside the standard library, and the YAML round-trip is
+# skipped where PyYAML is absent rather than failing the gate.
 LENGTH = load("catalog_length", CATALOG_SCRIPTS / "catalog_length.py")
-APPLY = load("apply_measured_limits", CATALOG_SCRIPTS / "apply_measured_limits.py")
+REPORT = load("catalog_report", CATALOG_SCRIPTS / "catalog_report.py")
+
+try:
+    import yaml  # noqa: F401
+
+    HAS_YAML = True
+except ImportError:  # pragma: no cover — depends on the environment
+    HAS_YAML = False
 
 
 class TestReadTotal(unittest.TestCase):
@@ -154,15 +165,15 @@ class TestMeasuredLimits(unittest.TestCase):
     }
 
     def test_only_measured_catalogs_with_a_number(self):
-        limits = APPLY.measured_limits(self.REPORT)
+        limits = REPORT.measured_limits(self.REPORT)
         self.assertEqual(list(limits.keys()), ["9467"])
 
     def test_a_blocked_measurement_has_no_limit(self):
-        limits = APPLY.measured_limits(self.REPORT)
+        limits = REPORT.measured_limits(self.REPORT)
         self.assertNotIn("9463", limits)
 
     def test_a_zero_limit_is_not_a_limit(self):
-        limits = APPLY.measured_limits(self.REPORT)
+        limits = REPORT.measured_limits(self.REPORT)
         self.assertNotIn("9477", limits)
 
 
@@ -183,7 +194,7 @@ class TestPlanChanges(unittest.TestCase):
     }
 
     def test_only_the_measured_target_changes(self):
-        changes, missing = APPLY.plan_changes(self.PAGES, self.LIMITS)
+        changes, missing = REPORT.plan_changes(self.PAGES, self.LIMITS)
         self.assertEqual([c.catalog_id for c in changes], ["9467"])
         self.assertEqual(changes[0].old, 5)
         self.assertEqual(changes[0].new, 60)
@@ -198,21 +209,21 @@ class TestPlanChanges(unittest.TestCase):
             "boundary": "api_cap",
             "pages_available": 10,
         }
-        changes, missing = APPLY.plan_changes(self.PAGES, limits)
+        changes, missing = REPORT.plan_changes(self.PAGES, limits)
         self.assertEqual(missing, ["9999"])
 
     def test_an_unchanged_limit_is_not_a_change(self):
         pages = [{"id": "9467", "name": "Карты памяти", "known_pages_limit": 60}]
-        changes, _ = APPLY.plan_changes(pages, self.LIMITS)
+        changes, _ = REPORT.plan_changes(pages, self.LIMITS)
         self.assertEqual(changes, [])
 
 
+@unittest.skipUnless(HAS_YAML, "PyYAML is not installed in this environment")
 class TestApplyToYaml(unittest.TestCase):
     def test_writes_the_measured_limit_and_keeps_the_rest(self):
-        pages = [
-            {"id": "9467", "name": "Карты памяти", "known_pages_limit": 5},
-            {"id": "9463", "name": "Смартфоны", "known_pages_limit": 5},
-        ]
+        """Круг замыкается на файле: план применяется, YAML переписывается, остальное цело."""
+        import yaml
+
         limits = {
             "9467": {
                 "id": "9467",
@@ -234,16 +245,19 @@ class TestApplyToYaml(unittest.TestCase):
                 "  known_pages_limit: 5\n",
                 encoding="utf-8",
             )
-            loaded = APPLY.load_pages(path)
-            changes, _ = APPLY.plan_changes(loaded, limits)
+            with open(path, "r", encoding="utf-8") as f:
+                loaded = yaml.safe_load(f)["pages"]
+            changes, _ = REPORT.plan_changes(loaded, limits)
             by_id = {c.catalog_id: c for c in changes}
             for page in loaded:
                 change = by_id.get(str(page.get("id")))
                 if change:
                     page["known_pages_limit"] = change.new
-            APPLY.write_pages(path, loaded)
+            with open(path, "w", encoding="utf-8") as f:
+                yaml.dump({"pages": loaded}, f, allow_unicode=True, sort_keys=False)
 
-            result = APPLY.load_pages(path)
+            with open(path, "r", encoding="utf-8") as f:
+                result = yaml.safe_load(f)["pages"]
 
         self.assertEqual(result[0]["known_pages_limit"], 60)
         self.assertEqual(result[1]["known_pages_limit"], 5)
@@ -252,8 +266,6 @@ class TestApplyToYaml(unittest.TestCase):
 
 class TestMergeReport(unittest.TestCase):
     """Повторный замер дополняет отчёт, а не затирает его."""
-
-    MEASURE = load("measure_catalog_length", CATALOG_SCRIPTS / "measure_catalog_length.py")
 
     def test_a_replaced_catalog_keeps_its_place(self):
         existing = {
@@ -270,7 +282,7 @@ class TestMergeReport(unittest.TestCase):
                 {"id": "9463", "status": "measured", "known_pages_limit": 60},
             ],
         }
-        merged = self.MEASURE.merge_report(existing, fresh)
+        merged = REPORT.merge_report(existing, fresh)
 
         self.assertEqual([c["id"] for c in merged["catalogs"]], ["9467", "9463"])
         self.assertEqual(merged["catalogs"][1]["status"], "measured")
@@ -279,7 +291,7 @@ class TestMergeReport(unittest.TestCase):
     def test_a_new_catalog_is_appended(self):
         existing = {"version": 1, "catalogs": [{"id": "9467", "status": "measured"}]}
         fresh = {"version": 1, "catalogs": [{"id": "9477", "status": "measured"}]}
-        merged = self.MEASURE.merge_report(existing, fresh)
+        merged = REPORT.merge_report(existing, fresh)
         self.assertEqual([c["id"] for c in merged["catalogs"]], ["9467", "9477"])
 
 
@@ -303,9 +315,10 @@ class TestReportShape(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "report.json"
             path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
-            loaded = APPLY.load_report(path)
+            with open(path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
 
-        limits = APPLY.measured_limits(loaded)
+        limits = REPORT.measured_limits(loaded)
         self.assertEqual(limits["9467"]["known_pages_limit"], 60)
         self.assertEqual(limits["9467"]["wb_total"], 49394)
 

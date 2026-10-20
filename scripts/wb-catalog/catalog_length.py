@@ -41,10 +41,8 @@ BOUNDARY_CATALOG_END = "catalog_end"  # WB answered with an empty `products` arr
 BOUNDARY_API_CAP = "api_cap"  # WB refused the page number
 BOUNDARY_UNKNOWN = "unknown"
 
-# How the measurement ended.
-STATUS_MEASURED = "measured"  # the length is known
-STATUS_BLOCKED = "blocked"  # WB refused to answer (anti-bot challenge)
-STATUS_ERROR = "error"  # the browser or the network failed
+# How the measurement ended is a property of the report, and it lives with the
+# report: `catalog_report.py`.
 
 
 def read_total(data: object) -> Optional[int]:

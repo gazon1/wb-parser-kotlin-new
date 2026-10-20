@@ -79,12 +79,15 @@ from wb_browser_fetch import (  # noqa: E402
 from catalog_length import (  # noqa: E402
     BOUNDARY_API_CAP,
     BOUNDARY_CATALOG_END,
-    STATUS_BLOCKED,
-    STATUS_ERROR,
-    STATUS_MEASURED,
     is_page_refusal,
     plan_limit,
     read_total,
+)
+from catalog_report import (  # noqa: E402
+    STATUS_BLOCKED,
+    STATUS_ERROR,
+    STATUS_MEASURED,
+    merge_report,
 )
 
 DEFAULT_CATALOG_YAML = Path(__file__).resolve().parent.parent.parent / "wb_catalog_targets.yaml"
@@ -346,28 +349,6 @@ def report_for(
     if plan:
         record.update(plan)
     return record
-
-
-def merge_report(existing: dict, fresh: dict) -> dict:
-    """Fold a new run into the report of the previous one.
-
-    A run that was blocked by the anti-bot has to be repeated, and a repeat must not
-    throw away what the first run measured: the catalog that was blocked keeps its
-    place in the report and is replaced only when a new run says something about it.
-    """
-    records = {str(record.get("id")): record for record in existing.get("catalogs") or []}
-    order = [str(record.get("id")) for record in existing.get("catalogs") or []]
-
-    for record in fresh.get("catalogs") or []:
-        catalog_id = str(record.get("id"))
-        if catalog_id not in records:
-            order.append(catalog_id)
-        records[catalog_id] = record
-
-    merged = dict(fresh)
-    merged["catalogs"] = [records[catalog_id] for catalog_id in order]
-    merged["runs"] = int(fresh.get("runs") or 1)
-    return merged
 
 
 def write_report(path: Path, report: dict) -> dict:

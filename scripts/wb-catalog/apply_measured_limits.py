@@ -32,34 +32,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import List
 
 import click
 import yaml
 
-from catalog_length import STATUS_MEASURED
+from catalog_report import (  # noqa: E402
+    STATUS_MEASURED,
+    Change,
+    measured_limits,
+    plan_changes,
+)
 
 DEFAULT_CATALOG_YAML = Path(__file__).resolve().parent.parent.parent / "wb_catalog_targets.yaml"
-
-
-class Change:
-    """One target whose `known_pages_limit` changes."""
-
-    def __init__(self, catalog_id: str, name: str, old: Optional[int], new: int,
-                 boundary: str, pages_available: int) -> None:
-        self.catalog_id = catalog_id
-        self.name = name
-        self.old = old
-        self.new = new
-        self.boundary = boundary
-        self.pages_available = pages_available
-
-    def __str__(self) -> str:
-        return (
-            f"  {self.catalog_id:>8} {self.name[:40]:<40} "
-            f"{str(self.old):>6} → {self.new:<6} ({self.boundary}, "
-            f"{self.pages_available} pages)"
-        )
 
 
 def load_report(path: Path) -> dict:
@@ -69,55 +54,6 @@ def load_report(path: Path) -> dict:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         raise click.ClickException(f"Cannot read the report {path}: {e}") from e
-
-
-def measured_limits(report: dict) -> Dict[str, dict]:
-    """The catalogs the report actually measured, `id -> record`.
-
-    A record that was not measured is not here: the report of a failed or blocked
-    measurement carries no number, and a number that was not measured must not reach
-    the YAML.
-    """
-    limits: Dict[str, dict] = {}
-    for record in report.get("catalogs") or []:
-        if record.get("status") != STATUS_MEASURED:
-            continue
-        limit = record.get("known_pages_limit")
-        if not isinstance(limit, int) or limit < 1:
-            continue
-        limits[str(record.get("id"))] = record
-    return limits
-
-
-def plan_changes(pages: List[dict], limits: Dict[str, dict]) -> Tuple[List[Change], List[str]]:
-    """What would change in the YAML, and which measured catalogs are not in it."""
-    changes: List[Change] = []
-    seen = set()
-
-    for page in pages:
-        catalog_id = str(page.get("id"))
-        record = limits.get(catalog_id)
-        if record is None:
-            continue
-        seen.add(catalog_id)
-        new = int(record["known_pages_limit"])
-        old = page.get("known_pages_limit")
-        old = old if isinstance(old, int) else None
-        if old == new:
-            continue
-        changes.append(
-            Change(
-                catalog_id=catalog_id,
-                name=str(page.get("name") or ""),
-                old=old,
-                new=new,
-                boundary=str(record.get("boundary")),
-                pages_available=int(record.get("pages_available") or 0),
-            )
-        )
-
-    missing = [cid for cid in limits if cid not in seen]
-    return changes, missing
 
 
 def load_pages(yaml_path: Path) -> List[dict]:
