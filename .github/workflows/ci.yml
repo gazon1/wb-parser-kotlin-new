@@ -140,7 +140,7 @@ jobs:
         run: python3 scripts/check-coverage.py
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kover-report
           path: |
@@ -208,7 +208,7 @@ jobs:
 
       - name: Upload dependency report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dependency-health-report
           path: build/reports/dependency-analysis/
@@ -325,39 +325,54 @@ jobs:
   nightly-alert:
     name: Nightly failure becomes an issue
     if: ${{ failure() && github.event_name == 'schedule' }}
+    # The wait list: which jobs must be finished before the report is made.
+    # It is checked against the real job list by
+    # scripts/ci/check-ci-workflows.py, because a wait list that has gone
+    # stale reports a run that is not over as one that is.
     needs: [static, build, coverage, lint, dependency-health, gate-honesty, publish-image]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       issues: write
+      # Reading the run's own jobs: the report is the API's answer, not a
+      # list written by hand.
+      actions: read
 
     steps:
       - name: Open an issue
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
-          # The whole `needs` context as JSON: it carries the result of every
-          # job, and a failure report that names the job is worth ten times
-          # one that says "something broke".
-          NEEDS_JSON: ${{ toJSON(needs) }}
+          GH_RUN_ID: ${{ github.run_id }}
         run: |
-          # The Python is indented with the block and not inside it: a block
-          # scalar ends at the first line that is not indented, and a Python
-          # program that starts with an indent is an IndentationError. Both
-          # sides are satisfied by the same indentation — the block's is
-          # stripped, so Python sees a flush-left program.
-          failed="$(python3 -c '
-          import json, sys
-          needs = json.loads(sys.argv[1])
-          broken = [name for name, job in sorted(needs.items()) if job.get("result") == "failure"]
-          print(", ".join(broken) if broken else "none")
-          ' "$NEEDS_JSON")"
+          # The report comes from the run's own API, not from the `needs` list
+          # above. That list says which jobs to *wait* for; it is a mirror of
+          # the pipeline, and a mirror goes stale the moment a job is added —
+          # at which point the issue says "nothing failed" while something
+          # did. The API is the run itself, and it cannot be stale.
+          #
+          # Every job is listed with its conclusion, not only the failed ones:
+          # if the wait list above is stale, a job that is still running shows
+          # up as such, and the issue is honest about what it does not know.
+          jobs="$(
+            gh api "repos/$GH_REPO/actions/runs/$GH_RUN_ID/jobs" --paginate \
+              --jq '.jobs[] | "\(.name)=\(.conclusion // "in progress")"'
+          )"
+          failed="$(echo "$jobs" | grep '=failure' | cut -d= -f1 | paste -sd, -)"
+          if [[ -z "$failed" ]]; then
+            failed="none reported"
+          fi
           echo "failed jobs: $failed"
           {
             echo "The nightly CI run failed."
             echo
             echo "- run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "- failed jobs: $failed"
+            echo
+            echo "Every job of the run:"
+            echo '```'
+            echo "$jobs"
+            echo '```'
             echo
             echo "<!-- opened by .github/workflows/ci.yml (nightly-alert) -->"
           } > "$RUNNER_TEMP/nightly-failure.md"
