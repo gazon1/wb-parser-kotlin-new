@@ -97,7 +97,16 @@ checked against the real job list by the gate below, so a stale wait list is
 a finding rather than a quiet omission.
 
 A scheduled run is a health check, not a release: it does not push an image
-to the registry, and it is not given the registry's write permission.
+to the registry. The permission model of a called workflow is what makes that
+true, and it is not the model one would guess. The caller's grant is a
+*ceiling*, and GitHub checks it **statically**: a nested job that asks for
+more than the caller grants is rejected when the call is made, whether that
+job would have run or not. The first version of the wrapper granted only
+what the nightly needed, and the pipeline was refused at startup because the
+image job asks for `packages: write`. The grant is therefore the pipeline's
+whole ceiling, and the narrowing happens inside the pipeline: every job
+declares the permissions it needs, so the registry write reaches the image
+job — which does not run on a schedule — and nothing else.
 
 **The lint auto-fix** (`.github/workflows/lint-autofix.yml`) runs
 `scripts/ci/lint-autofix.sh`, which applies detekt's `--auto-correct` and
@@ -183,9 +192,13 @@ issue is in the list of things to do, and it says which job broke.
 - **Always** define the pipeline once and call it. The schedule is an entry
   point, not a property of the pipeline: a schedule inside the pipeline is a
   copy of the entry point, and the copy is what goes stale.
-- **Never** give a health check the permissions of a release. The nightly
-  runs the pipeline to find out whether the repository is healthy; it does
-  not push an image, and it is not given the registry's write permission.
+- **Always** give every job of a callable pipeline its own `permissions`.
+  The caller's grant is a ceiling, not a gift: a job without a declaration
+  inherits all of it, and the ceiling is validated statically, against jobs
+  that never run.
+- **Never** give a health check the permissions of a release *by accident*.
+  The nightly does not push an image, and the registry write reaches only the
+  job that would have pushed it.
 - **Never** put the corrector in the gate registry. It is not a gate: it
   cannot fail a build, it rewrites the tree instead of judging it, and the
   verification loop (`check.sh`) must stay a loop that does not modify the
