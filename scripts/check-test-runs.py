@@ -216,7 +216,8 @@ def main() -> int:
         if age is not None and age > args.max_age:
             print(
                 f"❌ {module}: results are {int(age // 3600)}h old (limit {args.max_age // 3600}h). "
-                "A stale directory means the test task did not run — re-run the tests.",
+                "A stale directory means the test task did not run — re-run the tests: "
+                "./gradlew test --rerun-tasks",
                 file=sys.stderr,
             )
             problems.append(f"{module}: results are stale")

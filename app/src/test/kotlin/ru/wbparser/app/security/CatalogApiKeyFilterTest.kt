@@ -5,6 +5,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import jakarta.servlet.FilterChain
 import jakarta.servlet.ServletRequest
 import jakarta.servlet.ServletResponse
@@ -26,6 +27,18 @@ class CatalogApiKeyFilterTest :
             // SecurityContextHolder is a thread-local: a leaked authentication would
             // authenticate whatever runs next on this thread.
             SecurityContextHolder.clearContext()
+        }
+
+        test("a key's id tells two keys apart and never shows the key") {
+            val first = CatalogApiKeyFilter.keyIdOf("the-first-key")
+            val second = CatalogApiKeyFilter.keyIdOf("the-second-key")
+
+            // The id is what the log carries, so an operator can tell which of several
+            // keys to revoke — and the log is not the place for the secret itself.
+            first shouldBe CatalogApiKeyFilter.keyIdOf("the-first-key")
+            first shouldNotBe second
+            first.length shouldBe 8
+            first.contains("the-first-key") shouldBe false
         }
 
         test("a request without a key is refused and the chain is not reached") {

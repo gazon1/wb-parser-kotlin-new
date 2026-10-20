@@ -82,30 +82,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-  site-compatibility:
-    needs: image
-    runs-on: ubuntu-latest
-    # The dispatch, the storefront's own CI (image build plus suite), and the
-    # wait for its conclusion.
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: The storefront repository and the token are configured
-        env:
-          SITE_REPO: ${{ vars.SITE_REPO }}
-          SITE_REPO_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
-        run: |
-          set -euo pipefail
-          if [ -z "${SITE_REPO:-}" ]; then
-            echo "::error::vars.SITE_REPO is not set — the crawler does not know which repository to ask."
-            exit 1
-          fi
-          if [ -z "${SITE_REPO_TOKEN:-}" ]; then
-            echo "::error::secrets.SITE_REPO_TOKEN is not set — the crawler cannot ask the storefront to check itself."
-            exit 1
-          fi
-
       # The image is named by its digest, because a tag can be moved and a
       # digest cannot: the storefront has to check *this* image, not whatever
       # the tag points at when it pulls it.
@@ -139,6 +115,31 @@ jobs:
           echo "image=${image}@${digest}" >> "$GITHUB_OUTPUT"
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
           echo "digest: ${image}@${digest}"
+
+
+  site-compatibility:
+    needs: image
+    runs-on: ubuntu-latest
+    # The dispatch, the storefront's own CI (image build plus suite), and the
+    # wait for its conclusion.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: The storefront repository and the token are configured
+        env:
+          SITE_REPO: ${{ vars.SITE_REPO }}
+          SITE_REPO_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SITE_REPO:-}" ]; then
+            echo "::error::vars.SITE_REPO is not set — the crawler does not know which repository to ask."
+            exit 1
+          fi
+          if [ -z "${SITE_REPO_TOKEN:-}" ]; then
+            echo "::error::secrets.SITE_REPO_TOKEN is not set — the crawler cannot ask the storefront to check itself."
+            exit 1
+          fi
 
       # The tag is what tells the storefront whether this image is a release.
       #
