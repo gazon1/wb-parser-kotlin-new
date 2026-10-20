@@ -10,7 +10,6 @@ import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.BrowserDownloader
 import ru.wbparser.infra.http.BrowserFetchTiming
 import ru.wbparser.infra.http.BrowserPool
-import ru.wbparser.infra.http.CircuitBreakerDownloader
 import ru.wbparser.infra.http.EgressRouter
 import ru.wbparser.infra.http.KtorDownloader
 import ru.wbparser.infra.http.RequestPacing
@@ -91,22 +90,23 @@ class CrawlerConfig {
         )
 
     @Bean
-    fun circuitBreakerDownloader(browserDownloader: BrowserDownloader): CircuitBreakerDownloader =
-        CircuitBreakerDownloader(delegate = browserDownloader)
-
-    @Bean
     fun crawlDependencies(
-        circuitBreakerDownloader: CircuitBreakerDownloader,
+        browserDownloader: BrowserDownloader,
         meterRegistry: MeterRegistry,
         groups: EgressGroups.Resolved,
-    ): CrawlDependencies = CrawlDependencies(circuitBreakerDownloader, meterRegistry, groups)
+    ): CrawlDependencies = CrawlDependencies(browserDownloader, meterRegistry, groups)
 
     /**
      * Groups the HTTP/monitoring dependencies that are conditionally used based on [CrawlProperties.spider].
      * Exists to keep [crawlRunner]'s parameter count below the LongParameterList threshold.
      */
     data class CrawlDependencies(
-        val circuitBreakerDownloader: CircuitBreakerDownloader,
+        /**
+         * The downloader. The circuit breaker lives inside the egress router, one per
+         * group: a circuit for the whole deployment would switch every address off
+         * when one of them is refused.
+         */
+        val browserDownloader: BrowserDownloader,
         val meterRegistry: MeterRegistry,
         /** The groups the crawler runs on, and the number of profiles they own. */
         val groups: EgressGroups.Resolved,
@@ -122,7 +122,7 @@ class CrawlerConfig {
     ): CrawlRunner {
         val downloader: suspend (Crawling) -> arrow.core.Either<ru.wbparser.domain.error.NetworkError, ru.wbparser.domain.model.Fetched> =
             if (properties.spider.useBrowserFetch) {
-                { task: Crawling -> deps.circuitBreakerDownloader.download(task) }
+                { task: Crawling -> deps.browserDownloader.download(task) }
             } else {
                 { task: Crawling -> ktorDownloader.download(task) }
             }

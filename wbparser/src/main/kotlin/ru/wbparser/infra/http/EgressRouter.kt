@@ -1,7 +1,12 @@
 package ru.wbparser.infra.http
 
+import io.github.resilience4j.circuitbreaker.CircuitBreaker
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
+import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry
 import io.micrometer.core.instrument.MeterRegistry
+import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
+import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -32,12 +37,14 @@ enum class DownloadOutcome {
  * @param millisUntilSlot how long until this group may send its next request.
  * @param requests how many requests this group has sent since the process started.
  * @param refused how many of them WB refused.
+ * @param circuitState the group's circuit: closed, open or half-open.
  */
 data class GroupState(
     val groupId: String,
     val millisUntilSlot: Long,
     val requests: Long,
     val refused: Long,
+    val circuitState: CircuitBreaker.State,
 )
 
 /**
@@ -64,6 +71,16 @@ data class GroupState(
  * spends a pacer slot on a group that then turns out to have no free profile — the
  * slot is burnt on nothing, and the group's real budget is smaller than it looks.
  *
+ * ## Why the circuit is per group
+ *
+ * One circuit for the whole deployment would switch everything off when one address
+ * is refused: the addresses that are still answering would be silenced by the address
+ * that is not. The circuit belongs to the address, exactly like the budget does.
+ *
+ * The thresholds are the ones the single global circuit used, unchanged: a group is
+ * paced at the same rate the deployment used to be paced at, so it sees the same
+ * stream of requests and the same calibration applies.
+ *
  * ## The interface
  *
  * Four methods, and the rest is inside. The caller asks for a page, reports how the
@@ -73,17 +90,42 @@ data class GroupState(
 class EgressRouter(
     private val pool: BrowserPool,
     private val meterRegistry: MeterRegistry? = null,
+    private val circuitConfig: CircuitBreakerConfig = defaultCircuitConfig(),
+    private val maxOpenWaitMs: Long = DEFAULT_MAX_OPEN_WAIT_MS,
 ) {
     private val log = LoggerFactory.getLogger(EgressRouter::class.java)
 
     /** Round-robin tie-break between groups whose pacer frees up at the same moment. */
     private val cursor = AtomicInteger(0)
 
-    /** Per-group books. */
+    /** Per-group books and circuits. */
     private val books = ConcurrentHashMap<String, GroupBook>()
 
     /** Which group served which target last — the answer to "who was to blame". */
     private val lastGroupByTarget = ConcurrentHashMap<UUID, String>()
+
+    /**
+     * One circuit per group.
+     *
+     * The state lives in the process: a restart resets it, and a restart resets the
+     * session with it.
+     */
+    private val breakers: Map<String, CircuitBreaker> =
+        pool.egressGroupIds.associateWith { groupId ->
+            val circuit =
+                CircuitBreakerRegistry
+                    .of(circuitConfig)
+                    .circuitBreaker("egress-$groupId")
+            circuit.eventPublisher.onStateTransition { event ->
+                log.warn(
+                    "Egress group {} circuit {} → {}",
+                    groupId,
+                    event.stateTransition.fromState,
+                    event.stateTransition.toState,
+                )
+            }
+            circuit
+        }
 
     /**
      * Reserves a profile from the group whose pacer frees up soonest, and holds that
@@ -94,36 +136,50 @@ class EgressRouter(
     suspend fun borrow(): BorrowedPage {
         val groups = pool.egressGroupIds.toList()
         require(groups.isNotEmpty()) { "The pool has no egress groups" }
-        val ordered = orderBySoonestSlot(groups)
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(maxOpenWaitMs)
+        var warned = false
 
-        for (groupId in ordered) {
-            // First pass: a profile that WB has not flagged.
-            val page = pool.tryBorrowPage(groupId, includeFlagged = false)
-            if (page != null) return holdSlot(groupId, page)
-        }
-        for (groupId in ordered) {
-            // Second pass: a profile resting after an anti-bot answer. Using it is better
-            // than stalling the crawl — but it is a last resort, not the first choice.
-            val page = pool.tryBorrowPage(groupId, includeFlagged = true)
-            if (page != null) return holdSlot(groupId, page)
-        }
-
-        // Every profile of every group is busy. Wait for one to be released.
-        for (groupId in ordered) {
-            val page =
-                try {
-                    pool.borrowPage(groupId)
-                } catch (e: BrowserPoolExhaustedException) {
-                    log.debug("Egress group {} has no free profile: {}", groupId, e.message)
-                    continue
+        while (true) {
+            // A group whose circuit is open is not asked: the address it stands for is
+            // refusing, and the addresses that still answer must not be silenced with it.
+            val servable = groups.filter { breaker(it).state != CircuitBreaker.State.OPEN }
+            if (servable.isNotEmpty()) {
+                val ordered = orderBySoonestSlot(servable)
+                for (groupId in ordered) {
+                    val page =
+                        pool.tryBorrowPage(groupId, includeFlagged = false)
+                            ?: pool.tryBorrowPage(groupId, includeFlagged = true)
+                    if (page != null) return holdSlot(groupId, page)
                 }
-            return holdSlot(groupId, page)
-        }
+                // Every profile of every servable group is busy. Wait for one of them.
+                for (groupId in ordered) {
+                    val page =
+                        try {
+                            pool.borrowPage(groupId)
+                        } catch (e: BrowserPoolExhaustedException) {
+                            log.debug("Egress group {} has no free profile: {}", groupId, e.message)
+                            null
+                        }
+                    if (page != null) return holdSlot(groupId, page)
+                }
+            }
 
-        throw AllEgressGroupsUnavailable(
-            "No egress group could serve a request: " +
-                groups.joinToString { "$it(${pool.millisUntilSlot(it)}ms)" },
-        )
+            if (System.nanoTime() >= deadline) {
+                meterRegistry?.counter("crawl.egress.all_down")?.increment()
+                throw AllEgressGroupsUnavailable(
+                    "No egress group could serve a request within ${maxOpenWaitMs}ms: " +
+                        groups.joinToString { "$it(${breaker(it).state})" },
+                )
+            }
+            if (!warned) {
+                warned = true
+                log.warn(
+                    "Every egress group is unavailable — waiting up to {}ms for one to answer again",
+                    maxOpenWaitMs,
+                )
+            }
+            delay(OPEN_WAIT_POLL_MS)
+        }
     }
 
     /**
@@ -141,6 +197,7 @@ class EgressRouter(
         val groupId = page.egressGroup
         books.computeIfAbsent(groupId) { GroupBook() }.record(outcome)
         targetId?.let { lastGroupByTarget[it] = groupId }
+        recordCircuit(groupId, outcome)
         recordMetrics(groupId, outcome)
     }
 
@@ -154,6 +211,7 @@ class EgressRouter(
             millisUntilSlot = pool.millisUntilSlot(groupId),
             requests = book.requestCount,
             refused = book.refusedCount,
+            circuitState = breaker(groupId).state,
         )
     }
 
@@ -202,6 +260,27 @@ class EgressRouter(
         return page
     }
 
+    /**
+     * The group's circuit, and what it has to say about the last request.
+     *
+     * A refusal and any other failure both count: the old single circuit counted them
+     * both, and the point of the circuit is to cool an address down, not to classify
+     * why it was busy.
+     */
+    private fun recordCircuit(
+        groupId: String,
+        outcome: DownloadOutcome,
+    ) {
+        val circuit = breaker(groupId)
+        when (outcome) {
+            DownloadOutcome.Success -> circuit.onSuccess(0, TimeUnit.MILLISECONDS)
+            DownloadOutcome.Antibot, DownloadOutcome.Error ->
+                circuit.onError(0, TimeUnit.MILLISECONDS, EgressRequestFailed(groupId))
+        }
+    }
+
+    private fun breaker(groupId: String): CircuitBreaker = requireNotNull(breakers[groupId]) { "Unknown egress group '$groupId'" }
+
     private fun recordMetrics(
         groupId: String,
         outcome: DownloadOutcome,
@@ -217,7 +296,25 @@ class EgressRouter(
 
             DownloadOutcome.Error -> Unit
         }
+        registry.gauge(
+            "crawl.egress.circuit.state",
+            listOf(
+                io.micrometer.core.instrument.Tag
+                    .of("egress_group", groupId),
+            ),
+        ) { circuitStateValue(groupId) }
     }
+
+    /**
+     * The circuit's state as a number: closed 0, half-open 1, open 2.
+     */
+    private fun circuitStateValue(groupId: String): Double =
+        when (breaker(groupId).state) {
+            CircuitBreaker.State.CLOSED -> 0.0
+            CircuitBreaker.State.HALF_OPEN -> 1.0
+            CircuitBreaker.State.OPEN -> 2.0
+            else -> 0.0
+        }
 
     /**
      * The books of one group.
@@ -233,6 +330,38 @@ class EgressRouter(
 
         val requestCount: Long get() = requests.get()
         val refusedCount: Long get() = refused.get()
+    }
+
+    /**
+     * The failure a group's circuit is told about.
+     */
+    private class EgressRequestFailed(
+        groupId: String,
+    ) : RuntimeException("A request through egress group $groupId failed")
+
+    companion object {
+        /**
+         * The circuit's thresholds — the ones the single global circuit used.
+         *
+         * A group is paced at the rate the deployment used to be paced at, so it sees
+         * the same stream of requests and the same calibration applies.
+         */
+        fun defaultCircuitConfig(): CircuitBreakerConfig =
+            CircuitBreakerConfig
+                .Builder()
+                .failureRateThreshold(50f)
+                .minimumNumberOfCalls(5)
+                .waitDurationInOpenState(Duration.ofSeconds(30))
+                .permittedNumberOfCallsInHalfOpenState(3)
+                .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
+                .slidingWindowSize(10)
+                .build()
+
+        /** 75 s — comfortably longer than the 30 s open window of the default config. */
+        const val DEFAULT_MAX_OPEN_WAIT_MS: Long = 75_000L
+
+        /** How often the wait re-checks the circuit state. */
+        const val OPEN_WAIT_POLL_MS: Long = 1_000L
     }
 }
 

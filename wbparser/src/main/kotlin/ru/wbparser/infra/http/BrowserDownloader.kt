@@ -161,10 +161,20 @@ open class BrowserDownloader(
                     borrowedPage.close()
                 }
             } catch (e: AllEgressGroupsUnavailable) {
-                // Nobody refused us: there was no group able to send the request. The
-                // target is not at fault, and the runner requeues it without a penalty.
+                // Nobody refused us: there was no group able to send the request. That
+                // is our own capacity, not WB's answer — the same reasoning the pool
+                // exhaustion below follows. It is not an anti-bot ban, so the target is
+                // not blamed for it.
                 log.warn("No egress group could serve {}: {}", task.url, e.message)
-                throw e
+                result =
+                    Either.Left(
+                        NetworkError(
+                            message = "No egress group could serve the request: ${e.message}",
+                            cause = e,
+                            url = task.url.toString(),
+                            isAntibot = false,
+                        ),
+                    )
             } catch (e: BrowserPoolExhaustedException) {
                 log.error("BrowserPool exhausted for {}: {}", task.url, e.message)
                 result =
