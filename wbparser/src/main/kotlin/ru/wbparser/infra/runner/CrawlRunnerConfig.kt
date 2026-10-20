@@ -70,7 +70,7 @@ data class CrawlSource(
  *   JVM's default uncaught-exception handler, which kills the process.
  */
 data class CrawlRunnerConfig(
-    val maxPagesPerCatalog: Int = 10,
+    val maxPagesPerCatalog: Int = 60,
     val maxDepth: Int = 2,
     val rules: BusinessRules = BusinessRules(),
     val clock: Clock = SystemClock,

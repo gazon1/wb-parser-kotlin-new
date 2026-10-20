@@ -85,6 +85,13 @@ logging:
 crawler:
   spider:
     use-browser-fetch: true
+    # The runner-wide fallback for a target that does not say how many pages of it
+    # are worth reading. A target that HAS a limit uses its own — the measured one.
+    #
+    # It is 60, not 10, because that is the measured length of a catalog: a target
+    # without a limit must not be crawled more shallowly than a target with one,
+    # or the fallback would silently truncate the ones nobody measured.
+    max-pages-per-catalog: 60
     # The egress groups: sets of AdsPower profiles that are expected to share one
     # egress IP. A group owns the request budget of its address, which is what WB
     # counts. One profile per group is the most throughput; several profiles in a
@@ -207,10 +214,23 @@ spring:
 crawler:
   schedule:
     # The tick: how often the scheduler looks for work.
-    cron: "0 0 */4 * * *"
+    #
+    # It is a tick, not a cadence: the tick looks, the freshness window below decides
+    # what is due. Two hours is deliberately shorter than a round — a tick that finds
+    # work starts a round and holds the advisory lock for as long as that round runs,
+    # and the ticks in between are no-ops. The scheduler is cheap; the crawl is not.
+    cron: "0 0 */2 * * *"
     # The cadence: how long a target rests after it was crawled. This is the single
     # parameter that decides how often a catalog is re-crawled.
-    freshness-minutes: 240
+    #
+    # It follows the measured length of a catalog. A target is 60 pages long (the
+    # measured value — see docs/decisions/2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary.md),
+    # a page costs about a second plus the anti-bot back-off, and the 132 targets are
+    # crawled three at a time (one per AdsPower profile). A round is therefore about
+    # four and a half hours, and a freshness window shorter than that would ask for a
+    # second visit before the first one finished — the window has to be longer than a
+    # round, or it stops meaning anything.
+    freshness-minutes: 360
   lock:
     timeout-minutes: 10
     # What the lock's scope is: `database` or `host`.
