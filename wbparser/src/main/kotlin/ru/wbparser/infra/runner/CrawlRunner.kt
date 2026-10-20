@@ -403,15 +403,9 @@ class CrawlRunner(
                     }
                         ?: ru.wbparser.infra.pipeline
                             .NoOpMetricInterpreter(),
-                saveBatch =
-                    ru.wbparser.infra.pipeline
-                        .NoOpSaveBatchInterpreter(),
                 jobEvent =
                     ru.wbparser.infra.pipeline
                         .JobEventInterpreter(),
-                scheduleRetry =
-                    ru.wbparser.infra.pipeline
-                        .NoOpScheduleRetryInterpreter(),
                 acquireAdvisoryLock =
                     ru.wbparser.infra.pipeline
                         .NoOpAdvisoryLockInterpreter(),

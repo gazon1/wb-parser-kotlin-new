@@ -18,8 +18,6 @@ import ru.wbparser.infra.pipeline.buildParserPipeline
 import ru.wbparser.testing.DropTestInterpreter
 import ru.wbparser.testing.LogTestInterpreter
 import ru.wbparser.testing.NoRetryKtorDownloader
-import ru.wbparser.testing.SaveBatchTestInterpreter
-import ru.wbparser.testing.ScheduleRetryTestInterpreter
 import ru.wbparser.testing.SqliteTestHandle
 import ru.wbparser.testing.TestSideCollector
 import ru.wbparser.testing.WbFixtureServer
@@ -87,8 +85,6 @@ class WbParserRetryTest :
             val registry =
                 SideInterpreterRegistry(
                     log = LogTestInterpreter(collector),
-                    saveBatch = SaveBatchTestInterpreter(collector),
-                    scheduleRetry = ScheduleRetryTestInterpreter(collector),
                     drop = DropTestInterpreter(collector),
                 )
             val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
@@ -107,7 +103,7 @@ class WbParserRetryTest :
 
             // HTTP: two requests were made (500 then 200)
             // Note: stageWithRetry handles retry via internal delay() — it does not emit
-            // Side.ScheduleRetry, so collector.scheduleRetries stays empty. The retry is
+            // a metric instead. The retry is
             // verified by the two HTTP requests and successful save.
             server.requestCount("/catalog") shouldBe 2
 

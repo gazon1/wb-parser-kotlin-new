@@ -20,8 +20,6 @@ import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
 import ru.wbparser.testing.DropTestInterpreter
 import ru.wbparser.testing.LogTestInterpreter
-import ru.wbparser.testing.SaveBatchTestInterpreter
-import ru.wbparser.testing.ScheduleRetryTestInterpreter
 import ru.wbparser.testing.SqliteTestHandle
 import ru.wbparser.testing.TestSideCollector
 import ru.wbparser.testing.WbFixtureServer
@@ -82,8 +80,6 @@ class WbParserHappyPathTest :
                 val registry =
                     SideInterpreterRegistry(
                         log = LogTestInterpreter(collector),
-                        saveBatch = SaveBatchTestInterpreter(collector),
-                        scheduleRetry = ScheduleRetryTestInterpreter(collector),
                         drop = DropTestInterpreter(collector),
                     )
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())

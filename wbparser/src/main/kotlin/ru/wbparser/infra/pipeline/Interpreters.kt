@@ -52,21 +52,6 @@ class MicrometerMetricInterpreter(
     }
 }
 
-/**
- * No-op [Side.SaveBatch] interpreter.
- *
- * The actual save path in production goes through [CrawlRunner.runTarget]'s save lambda,
- * which calls `db.ds.upsertSavedItems()` directly — bypassing the pipeline's side effect
- * system entirely. This interpreter exists only to satisfy the registry API.
- *
- * @see SaveBatchTestInterpreter — test variant that actually collects batches
- */
-class NoOpSaveBatchInterpreter : Interpreter<Side.SaveBatch> {
-    override suspend fun handle(side: Side.SaveBatch) {
-        // intentionally empty — production save is handled by CrawlRunner directly
-    }
-}
-
 /** Logs [Side.JobEvent]. Job rows are written by CrawlRunner via openJob/closeJob. */
 class JobEventInterpreter : Interpreter<Side.JobEvent> {
     override suspend fun handle(side: Side.JobEvent) {
@@ -82,34 +67,15 @@ class JobEventInterpreter : Interpreter<Side.JobEvent> {
 }
 
 /**
- * No-op [Side.ScheduleRetry] interpreter.
+ * A log interpreter that says nothing.
  *
- * Retry is implemented inline inside [Pipeline.run][ru.wbparser.domain.pipeline.Pipeline.run]:
- * [stageWithRetry][ru.wbparser.domain.pipeline.stageWithRetry] suspends with back-off delay
- * and re-invokes the download stage on the next loop iteration. The resulting
- * [Side.ScheduleRetry] side effect is emitted for observability only — it is NOT
- * re-injected into the pending queue by [PipelineRunner].
- *
- * ## Save stage asymmetry
- *
- * The save stage's retry loop ([saveBatch][ru.wbparser.domain.pipeline.Pipeline.saveBatch])
- * also runs inline with [delay] but does **not** emit [Side.ScheduleRetry]. This is
- * intentional: download and parse are I/O stages where retry events are useful for
- * metrics and alerting, whereas save failures are infrastructure-level and are
- * already surfaced via [Side.Log] at ERROR level. Adding [Side.ScheduleRetry] for
- * save would create an asymmetry where the same [Side.ScheduleRetry] semantics
- * means "retrying download/parse" in one context and "retrying save" in another.
- *
- * This interpreter exists only to satisfy the registry API (without it, the
- * pipeline would throw `IllegalStateException: No interpreter for Side.ScheduleRetry`).
- *
- * @see ScheduleRetryTestInterpreter — test variant that records retry attempts
+ * The registry has one by default: the domain emits [Side.Log] on its own (a save
+ * failure, for one), so a registry without a log interpreter would fail the moment
+ * something went wrong — the worst moment to fail.
  */
-class NoOpScheduleRetryInterpreter : Interpreter<Side.ScheduleRetry> {
-    override suspend fun handle(side: Side.ScheduleRetry) {
-        // Retry delay is handled inline by stageWithRetry inside Pipeline.run.
-        // This side effect is emitted for observability/logging only.
-        logger.trace("ScheduleRetry: url=${side.url} afterMs=${side.afterMs}")
+class NoOpLogInterpreter : Interpreter<Side.Log> {
+    override suspend fun handle(side: Side.Log) {
+        // intentionally empty — the default keeps the registry usable without a logger
     }
 }
 

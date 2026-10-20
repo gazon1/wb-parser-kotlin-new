@@ -19,11 +19,16 @@ fun interface Interpreter<S : Side> {
  * Thread-safety is the caller's responsibility — run inside a coroutine dispatcher.
  */
 class SideInterpreterRegistry(
-    private val log: Interpreter<Side.Log>? = null,
-    private val metric: Interpreter<Side.Metric>? = null,
-    private val saveBatch: Interpreter<Side.SaveBatch>? = null,
+    /**
+     * The domain emits [Side.Log] and [Side.Metric] on its own — a failed save is
+     * logged by the pipeline, and the counters are emitted where the decisions are
+     * made. Both therefore have a default, and the default says nothing: a registry
+     * that forgot to register them would otherwise fail the moment something went
+     * wrong, which is the worst moment to fail.
+     */
+    private val log: Interpreter<Side.Log> = NoOpLogInterpreter(),
+    private val metric: Interpreter<Side.Metric> = NoOpMetricInterpreter(),
     private val jobEvent: Interpreter<Side.JobEvent>? = null,
-    private val scheduleRetry: Interpreter<Side.ScheduleRetry>? = null,
     private val acquireAdvisoryLock: Interpreter<Side.AcquireAdvisoryLock>? = null,
     private val drop: Interpreter<Side.Drop>? = null,
 ) {
@@ -39,21 +44,11 @@ class SideInterpreterRegistry(
 
     private suspend fun dispatch(side: Side) {
         when (side) {
-            is Side.Log ->
-                log?.handle(side)
-                    ?: throw IllegalStateException("No interpreter for Side.Log: $side")
-            is Side.Metric ->
-                metric?.handle(side)
-                    ?: throw IllegalStateException("No interpreter for Side.Metric: $side")
-            is Side.SaveBatch ->
-                saveBatch?.handle(side)
-                    ?: throw IllegalStateException("No interpreter for Side.SaveBatch: $side")
+            is Side.Log -> log.handle(side)
+            is Side.Metric -> metric.handle(side)
             is Side.JobEvent ->
                 jobEvent?.handle(side)
                     ?: throw IllegalStateException("No interpreter for Side.JobEvent: $side")
-            is Side.ScheduleRetry ->
-                scheduleRetry?.handle(side)
-                    ?: throw IllegalStateException("No interpreter for Side.ScheduleRetry: $side")
             is Side.AcquireAdvisoryLock ->
                 acquireAdvisoryLock?.handle(side)
                     ?: throw IllegalStateException("No interpreter for Side.AcquireAdvisoryLock: $side")

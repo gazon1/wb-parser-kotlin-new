@@ -109,9 +109,7 @@ class PipelineFailureEffectsTest :
                             }
                         },
                     metric = NoOpMetricInterpreter(),
-                    saveBatch = NoOpSaveBatchInterpreter(),
                     jobEvent = JobEventInterpreter(),
-                    scheduleRetry = NoOpScheduleRetryInterpreter(),
                     acquireAdvisoryLock = NoOpAdvisoryLockInterpreter(),
                     drop = LogDropInterpreter(),
                 )

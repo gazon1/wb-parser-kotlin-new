@@ -19,7 +19,6 @@ import ru.wbparser.domain.pipeline.Waiter
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.ProductId
-import ru.wbparser.testing.SaveBatchTestInterpreter
 import ru.wbparser.testing.TestSideCollector
 import java.util.UUID
 
@@ -72,17 +71,7 @@ class PipelineRunnerTest :
                 Stage { item ->
                     Step.Done(SavedItem.from(item, UUID.randomUUID()))
                 },
-            save: Stage<List<SavedItem>, Unit> =
-                Stage { items ->
-                    Step.Done(
-                        Unit,
-                        sides =
-                            listOf(
-                                ru.wbparser.domain.pipeline.Side
-                                    .SaveBatch(items),
-                            ),
-                    )
-                },
+            save: Stage<List<SavedItem>, Unit> = Stage { Step.Done(Unit) },
             stopAt: (Int, Int) -> Stop? = { _, _ -> null },
         ): Pipeline =
             Pipeline(
@@ -99,11 +88,7 @@ class PipelineRunnerTest :
         test("PipelineRunner returns Right with Crawled on success") {
             runTest {
                 val pipeline = makePipeline()
-                val collector = TestSideCollector()
-                val registry =
-                    SideInterpreterRegistry(
-                        saveBatch = SaveBatchTestInterpreter(collector),
-                    )
+                val registry = SideInterpreterRegistry()
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
                 val result = runner.run(listOf(testCrawling()))
@@ -132,30 +117,6 @@ class PipelineRunnerTest :
                 val result = runner.run(listOf(testCrawling()))
 
                 result.isLeft() shouldBe true
-            }
-        }
-
-        test("PipelineRunner interprets SaveBatch side effect") {
-            runTest {
-                val item = testParsedItem()
-                val pipeline =
-                    makePipeline(
-                        parse =
-                            Stage { fetched ->
-                                Step.Done(ParsedPage(fetched, listOf(item), null, false))
-                            },
-                    )
-                val collector = TestSideCollector()
-                val registry =
-                    SideInterpreterRegistry(
-                        saveBatch = SaveBatchTestInterpreter(collector),
-                    )
-                val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
-
-                val result = runner.run(listOf(testCrawling()))
-
-                result.isRight() shouldBe true
-                collector.totalItemsSaved shouldBe 1
             }
         }
 
@@ -207,7 +168,6 @@ class PipelineRunnerTest :
                 val registry =
                     SideInterpreterRegistry(
                         log = ru.wbparser.testing.LogTestInterpreter(collector),
-                        saveBatch = SaveBatchTestInterpreter(collector),
                     )
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
