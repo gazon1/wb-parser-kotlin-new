@@ -105,7 +105,7 @@ class CatalogQueries(
                            MAX(i.scraped_at)   AS newest_scraped_at
                       FROM crawl_targets t
                       LEFT JOIN (
-                      ${currentProducts(Where.EMPTY)}
+                      ${currentProductTargets(Where.EMPTY, onlyMatched = false)}
                       ) i ON i.target_id = t.id
                      GROUP BY t.id, t.name, t.root_category_name, t.is_active
                      ORDER BY t.name ASC
@@ -506,16 +506,24 @@ private fun currentProducts(identity: Where): String =
  * be bought with the most cashback back". Collapsing the catalogs would leave one price
  * per product and the comparison the list exists for would be gone.
  */
-private fun currentProductTargets(where: Where): String =
-    """
+private fun currentProductTargets(
+    where: Where,
+    onlyMatched: Boolean = true,
+): String {
+    val conditions = where.clauses.toMutableList()
+    if (onlyMatched) {
+        conditions += "s.match_id IS NOT NULL"
+    }
+    val sql = if (conditions.isEmpty()) "" else "WHERE " + conditions.joinToString(" AND ")
+    return """
     SELECT DISTINCT ON (s.product_id, s.target_id)
            $MODEL_COLUMNS
       FROM scraped_items s
       JOIN crawl_targets t ON t.id = s.target_id
-     WHERE s.match_id IS NOT NULL
-       ${where.clauses.joinToString(" AND ")}
+     $sql
      ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC
     """.trimIndent()
+}
 
 /**
  * The filters of a request, split into the ones that narrow the read model and the ones
