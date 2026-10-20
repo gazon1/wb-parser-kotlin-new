@@ -1,8 +1,8 @@
 package ru.wbparser.app.scheduling
 
 import com.microsoft.playwright.Page
-import io.kotest.core.spec.style.FunSpec
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
