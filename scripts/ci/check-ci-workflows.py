@@ -359,6 +359,42 @@ def check_actions_are_pinned(root: Path) -> list[str]:
     return findings
 
 
+def check_watchdog(root: Path) -> list[str]:
+    """Something watches the nightly, and it watches something that exists.
+
+    The nightly reports its own failures. Nobody reports its *absence*: a
+    scheduled workflow that never runs is not a failing workflow, the badge
+    stays green, and the repository quietly stops being checked. A watchdog
+    closes that hole, and it is the only thing that can.
+
+    Two rules: some workflow must watch the nightly, and every workflow that
+    is watched must exist — a watchdog that watches a name nobody publishes
+    is a watchdog that reports nothing, in exactly the way it was written to
+    prevent.
+    """
+    findings: list[str] = []
+    texts = read_workflows(root)
+    watched = {
+        name: set(re.findall(r"actions/workflows/([A-Za-z0-9._-]+\.yml)", text))
+        for name, text in texts.items()
+    }
+    if not any("nightly.yml" in names for names in watched.values()):
+        findings.append(
+            "no workflow watches the nightly run. A scheduled workflow that never "
+            "runs reports nothing — there is no failure to report, there is no run — "
+            "and the badge stays green while the repository stops being checked."
+        )
+    for name, names in watched.items():
+        for target in sorted(names):
+            if not (root / ".github" / "workflows" / target).exists():
+                findings.append(
+                    f"{name} watches `{target}`, which does not exist. A watchdog that "
+                    "watches a name nobody publishes reports nothing — in exactly the "
+                    "way it was written to prevent."
+                )
+    return findings
+
+
 def check(root: Path) -> list[str]:
     """Run every check against `root`. Used by the self-test on a fixture."""
     return (
@@ -368,6 +404,7 @@ def check(root: Path) -> list[str]:
         + check_failure_becomes_an_issue(root)
         + check_wait_list(root)
         + check_actions_are_pinned(root)
+        + check_watchdog(root)
     )
 
 
@@ -431,6 +468,16 @@ GOOD_WORKFLOWS = {
         "jobs:\n"
         "  nightly:\n"
         "    uses: ./.github/workflows/ci.yml\n"
+    ),
+    "watchdog.yml": (
+        "name: Nightly watchdog\n"
+        "on:\n"
+        "  schedule:\n"
+        "    - cron: \"0 9 * * 1\"\n"
+        "jobs:\n"
+        "  watchdog:\n"
+        "    steps:\n"
+        "      - run: gh api repos/x/actions/workflows/nightly.yml/runs\n"
     ),
 }
 
@@ -520,6 +567,23 @@ def run_self_test() -> int:
                     ),
                 },
                 "expect": "a tag, not a commit",
+            },
+            "the watchdog watches a workflow that does not exist": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "watchdog.yml": GOOD_WORKFLOWS["watchdog.yml"].replace(
+                        "workflows/nightly.yml/runs", "workflows/nightly-v2.yml/runs"
+                    ),
+                },
+                "expect": "which does not exist",
+            },
+            "nothing watches the nightly": {
+                "workflows": {
+                    name: text
+                    for name, text in GOOD_WORKFLOWS.items()
+                    if name != "watchdog.yml"
+                },
+                "expect": "no workflow watches the nightly",
             },
             "the auto-fix script is gone": {
                 "workflows": GOOD_WORKFLOWS,

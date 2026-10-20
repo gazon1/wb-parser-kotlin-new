@@ -75,6 +75,7 @@ just deploy::dry-run <tag> # ansible --check --diff
 |---|---|---|
 | `.github/workflows/ci.yml` | пайплайн: gates, сборка, тесты, покрытие, линт, публикация образа. Вызывается как `workflow_call` | push, PR, dispatch, вызов из nightly |
 | `.github/workflows/nightly.yml` | **точка входа** ночного прогона: `schedule: 0 3 * * *` + `workflow_dispatch`, вызывает `ci.yml` с `alert_on_failure: true` | schedule, dispatch |
+| `.github/workflows/watchdog.yml` | **сторож**: раз в неделю проверяет, когда ночной прогон последний раз успешно отработал; если больше 48 часов — issue | schedule, dispatch |
 | `.github/workflows/codeql.yml` | CodeQL: `java-kotlin` (по скомпилированному коду) + `actions` (сами workflow'и) → code scanning | push, PR, еженедельно, dispatch |
 | `.github/workflows/scorecard.yml` | OpenSSF Scorecard → SARIF в code scanning + публикация в Scorecard API | push на main, еженедельно, dispatch |
 | `.github/workflows/lint-autofix.yml` | применяет `scripts/ci/lint-autofix.sh` и **предлагает** правки (ветка `lint-autofix/<run-id>` + PR/комментарий) | push, PR, dispatch |
@@ -88,6 +89,11 @@ just deploy::dry-run <tag> # ansible --check --diff
   вызывающего — это потолок, и он проверяется **статически**, включая джобы,
   которые не запустятся. Ночной прогон не пушит образ — право на реестр
   доходит только до джоба, который его пушил бы.
+- **Always** кэшировать Gradle в CI (`cache: gradle`). Без кэша шесть джобов
+  параллельно тянут весь граф зависимостей с Maven Central: это медленно и
+  падает случайно. Падение CI должно быть о коде, а не о сети.
+- **Never** считать «прогон не запустился» успехом: расписание, которое
+  молча встало, — это отказ, и его ловит сторож.
 - **Never** пушить авто-фикс в ветку, над которой работает человек: правки
   предлагаются, решение — за человеком.
 - **Never** считать авто-фикс гейтом: `ktlintCheck` и `detekt` остаются гейтом,

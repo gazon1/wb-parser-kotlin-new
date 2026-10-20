@@ -413,6 +413,13 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
             "jobs:\n"
             "  nightly:\n    uses: ./.github/workflows/ci.yml\n"
         ),
+        "watchdog.yml": (
+            "name: Nightly watchdog\n"
+            "on:\n  schedule:\n    - cron: \"0 9 * * 1\"\n"
+            "jobs:\n"
+            "  watchdog:\n    steps:\n"
+            "      - run: gh api repos/x/actions/workflows/nightly.yml/runs\n"
+        ),
     }
 
     def _fixture(self, workflows: dict[str, str] | None = None, with_script: bool = True) -> Path:
@@ -571,6 +578,28 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         )
         findings = self._check(self._fixture(workflows))
         self.assertFalse(any("a tag, not a commit" in f for f in findings), findings)
+
+    def test_nothing_watching_the_nightly_is_a_finding(self):
+        """A schedule that never runs reports nothing.
+
+        The nightly reports its own failures; nothing reports its absence, and
+        the badge stays green while the repository stops being checked.
+        """
+        workflows = {name: text for name, text in self.GOOD.items() if name != "watchdog.yml"}
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("no workflow watches the nightly" in f for f in findings), findings)
+
+    def test_a_watchdog_watching_a_workflow_that_does_not_exist_is_a_finding(self):
+        workflows = dict(self.GOOD)
+        workflows["watchdog.yml"] = workflows["watchdog.yml"].replace(
+            "workflows/nightly.yml/runs", "workflows/nightly-v2.yml/runs"
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("which does not exist" in f for f in findings), findings)
+
+    def test_a_watchdog_that_watches_the_nightly_is_quiet(self):
+        findings = self._check(self._fixture())
+        self.assertFalse(any("watches the nightly" in f for f in findings), findings)
 
 
 def _kover_report(covered: int, missed: int) -> str:

@@ -62,6 +62,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "22"
+          # The Gradle cache: without it every job starts with a cold
+          # cache, and six jobs in parallel pull the whole dependency
+          # graph from Maven Central at the same moment. That is slow,
+          # and it fails at random when the registry answers with a
+          # 404 — a CI failure that is about the network, not about the code.
+          cache: gradle
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
