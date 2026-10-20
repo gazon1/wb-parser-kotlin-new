@@ -64,9 +64,19 @@ SSH_KEY="${SSH_KEY:-$HOME/.ssh/ci_caddy_vps}"
 
 REMOTE_BASE="/opt/wbparser"
 REMOTE_COMPOSE="$REMOTE_BASE/docker-compose.vps.yml"
-REMOTE_ENV_FILE="$REMOTE_BASE/app.env"
 REMOTE_SERVICE="wb-parser"
 REMOTE_CONTAINER="wb-parser"
+REMOTE_UNIT="wbparser"
+
+# The credentials the crawler uses live in an env file on the host, and where that
+# file is depends on how the crawler is deployed: the container contract keeps it
+# next to the compose file, the JAR contract keeps it in the deployment directory.
+# The first file that carries a password wins.
+REMOTE_ENV_FILES=(
+    "$REMOTE_BASE/app.env"
+    "/home/user/wbparser/.env"
+    "/home/user/wbparser/wbparser-new/.env"
+)
 
 DB_HOST="${DB_HOST:-91.188.212.209}"
 DB_PORT="${DB_PORT:-5432}"
@@ -123,6 +133,29 @@ remote() {
         -o StrictHostKeyChecking=no \
         -o ConnectTimeout=15 \
         "$SSH_USER@$VPS_HOST" "$1"
+}
+
+# A read-only probe: it always runs, even in a dry run, because what is running on
+# the host is a fact and the dry run has to show the real commands.
+probe() {
+    ssh -i "$SSH_KEY" \
+        -o StrictHostKeyChecking=no \
+        -o ConnectTimeout=15 \
+        "$SSH_USER@$VPS_HOST" "$1" >/dev/null 2>&1
+}
+
+# What is the crawler on this host? The repository has two deployment contracts —
+# the image with a compose file, and the JAR with a systemd unit — and the host
+# may have neither: a host where the crawler was never deployed is a real state,
+# and the rebuild must not fail on it.
+detect_crawler() {
+    if probe "docker ps -a --filter 'name=^/${REMOTE_CONTAINER}\$' --format '{{.Names}}' | grep -q ."; then
+        echo "container"
+    elif probe "systemctl list-unit-files '$REMOTE_UNIT' --no-legend 2>/dev/null | grep -q ."; then
+        echo "systemd"
+    else
+        echo "none"
+    fi
 }
 
 confirm() {
@@ -208,10 +241,20 @@ if [[ -z "$DB_PASSWORD" ]]; then
     DB_PASSWORD="${WBPARSER_DB_PASSWORD:-}"
 fi
 if [[ -z "$DB_PASSWORD" && "$DRY_RUN" -eq 0 ]]; then
-    info "reading the database password from $REMOTE_ENV_FILE on $VPS_HOST"
+    info "reading the database password from the crawler env file on $VPS_HOST"
+    # The host may be unreachable — it is not where the database is, and the data
+    # steps below do not need it. An unreachable host means the password has to come
+    # from --db-password or WBPARSER_DB_PASSWORD, not that the rebuild cannot run.
     DB_PASSWORD="$(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
         "$SSH_USER@$VPS_HOST" \
-        "grep -m1 '^DB_PASSWORD=' '$REMOTE_ENV_FILE' | cut -d= -f2-")"
+        "for f in ${REMOTE_ENV_FILES[*]}; do
+             [ -f \"\$f\" ] || continue
+             v=\$(grep -m1 '^DB_PASSWORD=' \"\$f\" | cut -d= -f2-)
+             [ -n \"\$v\" ] && { printf '%s' \"\$v\"; exit 0; }
+         done" 2>/dev/null || true)"
+    if [[ -z "$DB_PASSWORD" ]]; then
+        info "the host did not answer — the password must come from --db-password or WBPARSER_DB_PASSWORD"
+    fi
 fi
 if [[ "$DRY_RUN" -eq 0 ]]; then
     [[ -n "$DB_PASSWORD" ]] || fail "no database password: pass --db-password or set WBPARSER_DB_PASSWORD"
@@ -357,29 +400,89 @@ take_backup() {
         return 0
     fi
 
-    # No local pg_dump: the VPS reaches the database, so the dump is taken there.
-    # Its credentials are already on the host — the container's own app.env — so
-    # nothing has to travel over the wire for this.
-    info "no local pg_dump — taking the backup on $VPS_HOST instead"
-    local remote_file="$REMOTE_BASE/backups/wbparser-$stamp.sql"
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        echo "  \$ ssh $SSH_USER@$VPS_HOST: pg_dump -h <DB_HOST> ... -f $remote_file"
+    # No local pg_dump. The host may have one — it is where the crawler runs, and
+    # a database host usually has the client — so the dump is taken there.
+    if probe "command -v pg_dump"; then
+        info "no local pg_dump — taking the backup on $VPS_HOST instead"
+        local remote_file="$REMOTE_BASE/backups/wbparser-$stamp.sql"
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            echo "  \$ ssh $SSH_USER@$VPS_HOST: pg_dump -h <DB_HOST> ... -f $remote_file"
+            return 0
+        fi
+        remote "for f in ${REMOTE_ENV_FILES[*]}; do
+                 [ -f \"\$f\" ] || continue
+                 pw=\$(grep -m1 '^DB_PASSWORD=' \"\$f\" | cut -d= -f2-)
+                 [ -n \"\$pw\" ] || continue
+                 h=\$(grep -m1 '^DB_HOST=' \"\$f\" | cut -d= -f2-)
+                 p=\$(grep -m1 '^DB_PORT=' \"\$f\" | cut -d= -f2-)
+                 u=\$(grep -m1 '^DB_USER=' \"\$f\" | cut -d= -f2-)
+                 d=\$(grep -m1 '^DB_NAME=' \"\$f\" | cut -d= -f2-)
+                 mkdir -p '$REMOTE_BASE/backups'
+                 PGPASSWORD=\"\$pw\" pg_dump -h \"\$h\" -p \"\$p\" -U \"\$u\" -d \"\$d\" --file='$remote_file'
+                 exit 0
+             done
+             exit 1"
+        info "backup written on the host: $remote_file"
         return 0
     fi
-    remote "value() { grep -m1 \"^\$1=\" '$REMOTE_ENV_FILE' | cut -d= -f2-; }; mkdir -p '$REMOTE_BASE/backups'; PGPASSWORD=\"\$(value DB_PASSWORD)\" pg_dump -h \"\$(value DB_HOST)\" -p \"\$(value DB_PORT)\" -U \"\$(value DB_USER)\" -d \"\$(value DB_NAME)\" --file='$remote_file'"
-    info "backup written on the host: $remote_file"
+
+    # Neither side has pg_dump. The data is still copied out — through the client
+    # the repository already depends on — so that the rows this script deletes can
+    # be read back. It is a data dump, not a schema dump: the schema is Flyway's
+    # business and Flyway can recreate it.
+    info "no pg_dump on either side — copying the data out with the postgres client"
+    mkdir -p "$BACKUP_DIR"
+    local local_dump="$BACKUP_DIR/wbparser-$stamp.sql"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        echo "  \$ python3 (COPY <table> TO STDOUT) → $local_dump"
+        return 0
+    fi
+    WB_DUMP_FILE="$local_dump" python3 - <<'PY'
+import os
+import psycopg2
+
+tables = [
+    "crawl_targets",
+    "scraped_items",
+    "crawl_jobs",
+    "crawl_errors",
+    "category_mappings",
+    "wb_subjects",
+    "target_api_contexts",
+]
+
+conn = psycopg2.connect(
+    host=os.environ["WB_DB_HOST"],
+    port=int(os.environ["WB_DB_PORT"]),
+    dbname=os.environ["WB_DB_NAME"],
+    user=os.environ["WB_DB_USER"],
+    password=os.environ["WB_DB_PASSWORD"],
+    connect_timeout=10,
+)
+cur = conn.cursor()
+with open(os.environ["WB_DUMP_FILE"], "w", encoding="utf-8") as out:
+    out.write("-- data dump of %s\n" % os.environ["WB_DB_NAME"])
+    for table in tables:
+        cur.execute("select to_regclass(%s)", ("public.%s" % table,))
+        if cur.fetchone()[0] is None:
+            continue
+        out.write("\n-- %s\nCOPY %s (public) TO STDOUT;\n" % (table, table))
+        cur.copy_expert("COPY public.%s TO STDOUT WITH (FORMAT text)" % table, out)
+conn.close()
+PY
+    info "backup written: $local_dump ($(du -h "$local_dump" | cut -f1))"
 }
 
 # ── The plan ───────────────────────────────────────────────────────────────────
 
 heading "Plan"
-info "1. stop the crawler container ($REMOTE_CONTAINER on $VPS_HOST)"
-info "2. back up the database (pg_dump)"
+info "1. stop the crawler (container, systemd unit, or nothing — whichever is there)"
+info "2. back up the database (pg_dump, or a data copy through the postgres client)"
 info "3. report the row counts"
 info "4. delete the stale observations (scraped_items) and the job history (crawl_jobs, crawl_errors)"
 info "5. reload the catalogue targets from $CATALOG_YAML"
 info "6. reload the subject dictionary (wb_subjects)"
-info "7. start the crawler and wait for it to report healthy"
+info "7. start the crawler again and wait for it to report healthy"
 info "8. report the row counts again"
 echo ""
 info "NOT touched: crawl_targets (the catalogue), wb_subjects (WB's dictionary)"
@@ -396,10 +499,27 @@ fi
 # ── 1. Stop the crawler ────────────────────────────────────────────────────────
 
 heading "1. Stop the crawler"
-confirm "stop the container $REMOTE_CONTAINER on $VPS_HOST"
-remote "docker ps -a --filter 'name=^/${REMOTE_CONTAINER}\$' --format '{{.Names}} {{.Status}}'"
-remote "docker compose -f '$REMOTE_COMPOSE' --project-directory '$REMOTE_BASE' stop '$REMOTE_SERVICE'"
-info "container stopped"
+CRAWLER_KIND="$(detect_crawler)"
+info "the crawler on $VPS_HOST is: $CRAWLER_KIND"
+case "$CRAWLER_KIND" in
+    container)
+        confirm "stop the container $REMOTE_CONTAINER on $VPS_HOST"
+        remote "docker ps -a --filter 'name=^/${REMOTE_CONTAINER}\$' --format '{{.Names}} {{.Status}}'"
+        remote "docker compose -f '$REMOTE_COMPOSE' --project-directory '$REMOTE_BASE' stop '$REMOTE_SERVICE'"
+        info "container stopped"
+        ;;
+    systemd)
+        confirm "stop the systemd unit $REMOTE_UNIT on $VPS_HOST"
+        remote "sudo systemctl stop '$REMOTE_UNIT'"
+        info "unit stopped"
+        ;;
+    *)
+        # Nothing to stop: the crawler is not deployed on this host. The data steps
+        # below are still the right thing to do — the dataset is rebuilt either way
+        # — and there is nothing that could write to it while it is rebuilt.
+        info "no crawler on $VPS_HOST — nothing to stop"
+        ;;
+esac
 
 # ── 2. Backup ──────────────────────────────────────────────────────────────────
 
@@ -454,16 +574,38 @@ run_loader "$REPO_ROOT/scripts/wb-catalog/load_subjects.py" \
 # ── 7. Start the crawler ───────────────────────────────────────────────────────
 
 heading "7. Start the crawler"
-confirm "start the container $REMOTE_CONTAINER again"
-remote "docker compose -f '$REMOTE_COMPOSE' --project-directory '$REMOTE_BASE' start '$REMOTE_SERVICE'"
+case "$CRAWLER_KIND" in
+    container)
+        confirm "start the container $REMOTE_CONTAINER again"
+        remote "docker compose -f '$REMOTE_COMPOSE' --project-directory '$REMOTE_BASE' start '$REMOTE_SERVICE'"
+        ;;
+    systemd)
+        confirm "start the systemd unit $REMOTE_UNIT again"
+        remote "sudo systemctl start '$REMOTE_UNIT'"
+        ;;
+    *)
+        info "no crawler on $VPS_HOST — nothing to start"
+        ;;
+esac
 
-if [[ "$DRY_RUN" -eq 0 ]]; then
+if [[ "$CRAWLER_KIND" == "none" ]]; then
+    # Nothing was started, so there is nothing to wait for. Waiting anyway would
+    # report a failure that belongs to a crawler that was never deployed.
+    info "no crawler on $VPS_HOST — nothing to wait for"
+elif [[ "$DRY_RUN" -eq 0 ]]; then
     deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
     status=""
     while [[ $(date +%s) -lt $deadline ]]; do
         # A container that is still restarting answers with a non-zero exit; that is
         # the state of the wait, not a failure of the script.
-        if status="$(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+        if [[ "$CRAWLER_KIND" == "systemd" ]]; then
+            status="$(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
+                "$SSH_USER@$VPS_HOST" \
+                "systemctl is-active '$REMOTE_UNIT'")"
+            if [[ "$status" == "active" ]]; then
+                break
+            fi
+        elif status="$(ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=15 \
             "$SSH_USER@$VPS_HOST" \
             "docker inspect --format '{{.State.Health.Status}}' '$REMOTE_CONTAINER'")"; then
             if [[ "$status" == "healthy" ]]; then
@@ -474,12 +616,19 @@ if [[ "$DRY_RUN" -eq 0 ]]; then
         fi
         sleep "$HEALTH_DELAY"
     done
-    if [[ "$status" != "healthy" ]]; then
-        fail "the container did not report healthy within ${HEALTH_TIMEOUT}s (last status: ${status:-unknown})"
+    if [[ "$CRAWLER_KIND" == "systemd" ]]; then
+        if [[ "$status" != "active" ]]; then
+            fail "the unit did not become active within ${HEALTH_TIMEOUT}s (last status: ${status:-unknown})"
+        fi
+        info "unit active"
+    else
+        if [[ "$status" != "healthy" ]]; then
+            fail "the container did not report healthy within ${HEALTH_TIMEOUT}s (last status: ${status:-unknown})"
+        fi
+        info "container healthy"
     fi
-    info "container healthy"
 else
-    echo "  [dry-run] wait for the container to report healthy (${HEALTH_TIMEOUT}s)"
+    echo "  [dry-run] wait for the crawler to report healthy (${HEALTH_TIMEOUT}s)"
 fi
 
 # ── 8. Counts after ────────────────────────────────────────────────────────────
