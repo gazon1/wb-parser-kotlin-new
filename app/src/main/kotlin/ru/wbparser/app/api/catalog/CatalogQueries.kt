@@ -354,7 +354,6 @@ class CatalogQueries(
             }
         return REQUIRED_COLUMNS.filterNot { it in present }
     }
-
 }
 
 /**
@@ -456,9 +455,9 @@ private fun cardProjection(source: String): String =
  */
 private const val MODEL_COLUMNS =
     """
-        s.id, s.target_id, t.name AS target_name, s.title, s.price_kopecks,
-        s.sale_price_kopecks, s.brand, s.seller, s.cashback_percent, s.cashback,
-        s.in_stock, s.image_url, s.product_url, s.scraped_at, s.product_id, s.match_id
+    s.id, s.target_id, t.name AS target_name, s.title, s.price_kopecks,
+    s.sale_price_kopecks, s.brand, s.seller, s.cashback_percent, s.cashback,
+    s.in_stock, s.image_url, s.product_url, s.scraped_at, s.product_id, s.match_id
     """
 
 /**
@@ -490,12 +489,12 @@ private const val MODEL_COLUMNS =
  */
 private fun currentProducts(identity: Where): String =
     """
-        SELECT DISTINCT ON (s.product_id)
-               $MODEL_COLUMNS
-          FROM scraped_items s
-          JOIN crawl_targets t ON t.id = s.target_id
-         ${identity.sql}
-         ORDER BY s.product_id, s.scraped_at DESC, s.id DESC
+    SELECT DISTINCT ON (s.product_id)
+           $MODEL_COLUMNS
+      FROM scraped_items s
+      JOIN crawl_targets t ON t.id = s.target_id
+     ${identity.sql}
+     ORDER BY s.product_id, s.scraped_at DESC, s.id DESC
     """.trimIndent()
 
 /**
@@ -509,13 +508,13 @@ private fun currentProducts(identity: Where): String =
  */
 private fun currentProductTargets(where: Where): String =
     """
-        SELECT DISTINCT ON (s.product_id, s.target_id)
-               $MODEL_COLUMNS
-          FROM scraped_items s
-          JOIN crawl_targets t ON t.id = s.target_id
-         WHERE s.match_id IS NOT NULL
-           ${where.clauses.joinToString(" AND ")}
-         ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC
+    SELECT DISTINCT ON (s.product_id, s.target_id)
+           $MODEL_COLUMNS
+      FROM scraped_items s
+      JOIN crawl_targets t ON t.id = s.target_id
+     WHERE s.match_id IS NOT NULL
+       ${where.clauses.joinToString(" AND ")}
+     ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC
     """.trimIndent()
 
 /**
