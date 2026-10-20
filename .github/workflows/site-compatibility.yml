@@ -179,7 +179,19 @@ jobs:
           echo "dispatched_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           payload="$(printf '{"event_type":"crawler-image-published","client_payload":{"digest":"%s","crawler_image":"%s","tag":"%s","crawler_commit":"%s","dispatch_id":"%s","site_ref":"%s"}}' \
             "$DIGEST" "$IMAGE" "$TAG" "$GITHUB_SHA" "$DISPATCH_ID" "$SITE_REF")"
-          echo "$payload" | gh api --method POST "repos/${SITE_REPO}/dispatches" --input -
+          # A refused dispatch is the common failure here, and the API's own
+          # answer — "Resource not accessible by personal access token" — does
+          # not say what is missing. A fine-grained token needs "Contents: read
+          # and write" on the storefront to create a dispatch event, and
+          # "Actions: read-only" to read the run that event starts; a classic
+          # token needs the `repo` scope. The message says so, because a gate
+          # that fails without saying why is a gate nobody can act on.
+          if ! answer="$(echo "$payload" | gh api --method POST "repos/${SITE_REPO}/dispatches" --input - 2>&1)"; then
+            echo "::error::the dispatch to ${SITE_REPO} was refused: ${answer}"
+            echo "::error::the token needs 'Contents: read and write' on ${SITE_REPO} to create a dispatch event, and 'Actions: read-only' to read the run it starts (a classic token needs the repo scope)."
+            exit 1
+          fi
+          echo "dispatched to ${SITE_REPO}"
 
       # The dispatch starts a run; the run's conclusion is the answer. The run
       # is found by its event and by when it was created — the dispatch is the
