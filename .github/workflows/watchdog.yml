@@ -55,7 +55,20 @@ jobs:
               --jq '[.workflow_runs[] | select(.event == "schedule" and .conclusion == "success")][0].created_at // empty'
           )"
 
+          # How old the nightly itself is. A schedule that has existed for
+          # less than two days has not had the chance to miss a night, and a
+          # watchdog that reports the first night as a failure teaches people
+          # to ignore it — which is the opposite of what it is for.
+          workflow_created="$(
+            gh api "repos/$GH_REPO/actions/workflows/nightly.yml" --jq .created_at
+          )"
+          workflow_age_hours=$(( ( $(date -u +%s) - $(date -u -d "$workflow_created" +%s) ) / 3600 ))
+
           if [ -z "$last_success" ]; then
+            if [ "$workflow_age_hours" -le 48 ]; then
+              echo "the nightly is ${workflow_age_hours}h old — it has not had a night to miss yet"
+              exit 0
+            fi
             reason="the nightly has never completed successfully"
           else
             age_hours=$(( ( $(date -u +%s) - $(date -u -d "$last_success" +%s) ) / 3600 ))
