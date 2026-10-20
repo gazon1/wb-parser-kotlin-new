@@ -400,12 +400,18 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
             "jobs:\n  autofix:\n    steps:\n      - run: bash scripts/ci/lint-autofix.sh\n"
         ),
         "ci.yml": (
-            "on:\n  schedule:\n    - cron: \"0 3 * * *\"\n"
+            "name: CI\n"
             "jobs:\n"
             "  static:\n    steps:\n      - run: echo static\n"
             "  build:\n    steps:\n      - run: echo build\n"
             "  nightly-alert:\n    needs: [static, build]\n"
             "    steps:\n      - run: gh issue create --title x\n"
+        ),
+        "nightly.yml": (
+            "name: CI (nightly)\n"
+            "on:\n  schedule:\n    - cron: \"0 3 * * *\"\n"
+            "jobs:\n"
+            "  nightly:\n    uses: ./.github/workflows/ci.yml\n"
         ),
     }
 
@@ -510,6 +516,33 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
     def test_a_wait_list_that_covers_every_job_is_quiet(self):
         findings = self._check(self._fixture())
         self.assertFalse(any("does not wait for" in f for f in findings), findings)
+
+    def test_a_pipeline_with_a_schedule_of_its_own_is_a_finding(self):
+        """The schedule is an entry point, not a property of the pipeline.
+
+        A schedule inside the pipeline is a copy of the entry point: the next
+        job added to the pipeline has to be added to the copy too, and the
+        copy is what goes stale.
+        """
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace(
+            "name: CI\n", "name: CI\non:\n  schedule:\n    - cron: \"0 4 * * *\"\n"
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("schedule" in f for f in findings), findings)
+
+    def test_a_scheduled_run_that_does_not_call_the_pipeline_is_a_finding(self):
+        workflows = dict(self.GOOD)
+        workflows["nightly.yml"] = workflows["nightly.yml"].replace(
+            "    uses: ./.github/workflows/ci.yml\n",
+            "    runs-on: ubuntu-latest\n    steps:\n      - run: echo nightly\n",
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("calls the pipeline" in f for f in findings), findings)
+
+    def test_a_scheduled_run_that_calls_the_pipeline_is_quiet(self):
+        findings = self._check(self._fixture())
+        self.assertFalse(any("calls the pipeline" in f for f in findings), findings)
 
 
 def _kover_report(covered: int, missed: int) -> str:
