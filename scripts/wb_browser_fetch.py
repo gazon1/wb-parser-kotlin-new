@@ -50,6 +50,10 @@ DEFAULT_HEADERS = {
 # Задержка прогрева сессии: антибот-челлендж WB живёт несколько секунд.
 DEFAULT_WARMUP_DELAY = 3.5
 
+# HTTP-статусы, которыми WB отказывает. Именно они считаются отказом в замере
+# доли отказов (docs/operations/egress-groups-runbook.md).
+REFUSAL_STATUSES = {498, 403, 401}
+
 
 def build_params(query: str, page_num: int = 1, dest: str = DEFAULT_DEST) -> dict:
     """Параметры запроса к WB search-эндпоинту (чистая функция)."""
@@ -140,8 +144,13 @@ def default_warmup_url(query: str, menu_node=None) -> str:
     return "https://www.wildberries.ru/catalog/0/search.aspx?search=" + quote(query)
 
 
-async def fetch_products_page(page, query: str, page_num: int, headers: dict) -> dict:
-    """Fetch one page using page.evaluate(fetch())"""
+async def fetch_page_with_status(page, query: str, page_num: int, headers: dict) -> tuple[int, dict]:
+    """Fetch one page, returning the HTTP status and the parsed body.
+
+    The status is what the refusal measurement needs: WB answers 498/403/401
+    with a body that is not a catalog, and the body alone cannot tell a refusal
+    from an empty catalog.
+    """
     url = build_url(query, page_num)
     referer_headers = {**headers, "referer": "https://www.wildberries.ru/"}
 
@@ -152,10 +161,26 @@ async def fetch_products_page(page, query: str, page_num: int, headers: dict) ->
             headers: {json.dumps(referer_headers)},
             credentials: 'include'
         }});
-        return await resp.json();
+        const text = await resp.text();
+        let body = null;
+        try {{
+            body = JSON.parse(text);
+        }} catch (e) {{
+            body = {{__raw: text.slice(0, 500)}};
+        }}
+        return {{status: resp.status, body: body}};
     }}
     """
-    return await page.evaluate(script)
+    result = await page.evaluate(script)
+    status = int(result.get("status") or 0)
+    body = result.get("body")
+    return status, body if isinstance(body, dict) else {}
+
+
+async def fetch_products_page(page, query: str, page_num: int, headers: dict) -> dict:
+    """Fetch one page using page.evaluate(fetch())"""
+    _, body = await fetch_page_with_status(page, query, page_num, headers)
+    return body
 
 
 def extract_product_fields(prod: dict) -> dict:
@@ -252,8 +277,20 @@ async def fetch_catalog(
     warmup_url: str | None = None,
     warmup_delay: float = DEFAULT_WARMUP_DELAY,
     headers: dict | None = None,
+    count: int | None = None,
 ) -> dict:
-    """Connect to AdsPower Chrome and fetch products via page.evaluate(fetch())"""
+    """Connect to AdsPower Chrome and fetch products via page.evaluate(fetch()).
+
+    Two modes:
+
+    - **pages mode** (the default): fetch up to `pages` catalog pages and stop
+      at the first refusal or empty page. This is what a crawl wants.
+    - **count mode** (`count` given): make exactly `count` requests, whatever
+      the answers are, and report how many were refused. This is what the
+      egress measurement wants: a fixed request volume is the denominator the
+      refusal share is computed against, and stopping early would make the
+      sample size depend on the very thing being measured.
+    """
     from playwright.async_api import async_playwright
 
     headers = headers if headers is not None else DEFAULT_HEADERS
@@ -261,6 +298,7 @@ async def fetch_catalog(
     page_counts: list[int] = []
     exhausted = False
     catalog_total: int | None = None
+    outcomes: list[dict] = []
 
     async with async_playwright() as p:
         browser = await p.chromium.connect_over_cdp(ws_url)
@@ -279,22 +317,57 @@ async def fetch_catalog(
             # Wait for anti-bot challenge to resolve
             await asyncio.sleep(warmup_delay)
 
-            for page_num in range(1, pages + 1):
-                print(f"Fetching page {page_num}/{pages}...", file=sys.stderr)
+            total_requests = count if count is not None else pages
+            for attempt in range(total_requests):
+                # The request shape is held constant: the same catalog, the same
+                # headers, the same page range. Only the rate and the profile
+                # change between the runs of the measurement.
+                page_num = (attempt % pages) + 1
+                label = f"{attempt + 1}/{total_requests}"
+                print(f"Fetching request {label} (page {page_num})...", file=sys.stderr)
 
                 try:
-                    data = await fetch_products_page(page, query, page_num, headers)
+                    status, data = await fetch_page_with_status(page, query, page_num, headers)
+                    refused = status in REFUSAL_STATUSES
+                    outcome = {
+                        "n": attempt + 1,
+                        "page": page_num,
+                        "status": status,
+                        "refused": refused,
+                        "error": None,
+                    }
+                    if refused:
+                        print(f"  Refused with HTTP {status}", file=sys.stderr)
+                        outcomes.append(outcome)
+                        if count is None:
+                            break
+                        if attempt + 1 < total_requests:
+                            await asyncio.sleep(delay_between_pages)
+                        continue
+
                     if not isinstance(data, dict) or 'products' not in data:
                         # WB на антиботе/ошибке отдаёт конверт без `products` —
                         # пустой список здесь означал бы «каталог кончился», а это ложь.
                         reason = (data or {}).get('message') or (data or {}).get('msg') or data
-                        raise RuntimeError(f"неожиданный ответ WB: {str(reason)[:200]}")
+                        outcome["error"] = f"unexpected response: {str(reason)[:200]}"
+                        outcomes.append(outcome)
+                        if count is None:
+                            break
+                        if attempt + 1 < total_requests:
+                            await asyncio.sleep(delay_between_pages)
+                        continue
                     page_products = data.get('products') or []
 
                     if not page_products:
-                        print(f"  No products on page {page_num}, stopping.", file=sys.stderr)
-                        exhausted = True
-                        break
+                        print(f"  No products on page {page_num}.", file=sys.stderr)
+                        outcome["empty"] = True
+                        outcomes.append(outcome)
+                        if count is None:
+                            exhausted = True
+                            break
+                        if attempt + 1 < total_requests:
+                            await asyncio.sleep(delay_between_pages)
+                        continue
 
                     meta_total = (data.get('metadata') or {}).get('total') or data.get('total')
                     if isinstance(meta_total, int):
@@ -306,14 +379,23 @@ async def fetch_catalog(
                         products.append(extracted)
 
                     page_counts.append(len(page_products))
+                    outcomes.append(outcome)
                     print(f"  Got {len(page_products)} products (total: {len(products)})", file=sys.stderr)
 
-                    if page_num < pages:
-                        await asyncio.sleep(delay_between_pages)
-
                 except Exception as e:
-                    print(f"  Error on page {page_num}: {e}", file=sys.stderr)
-                    break
+                    print(f"  Error on request {label}: {e}", file=sys.stderr)
+                    outcomes.append({
+                        "n": attempt + 1,
+                        "page": page_num,
+                        "status": 0,
+                        "refused": False,
+                        "error": str(e)[:200],
+                    })
+                    if count is None:
+                        break
+
+                if attempt + 1 < total_requests:
+                    await asyncio.sleep(delay_between_pages)
         finally:
             # Закрываем свою вкладку только если в контексте есть и другие:
             # если наша вкладка — единственная, её закрытие убьёт Chrome AdsPower.
@@ -331,6 +413,7 @@ async def fetch_catalog(
         "pages_fetched": len(page_counts),
         "exhausted": exhausted,
         "catalog_total": catalog_total,
+        "outcomes": outcomes,
     }
 
 
@@ -344,6 +427,27 @@ def price_stats_rub(products: list[dict]) -> dict:
     mid = len(values) // 2
     median = values[mid] if len(values) % 2 else round((values[mid - 1] + values[mid]) / 2, 2)
     return {"min": values[0], "max": values[-1], "median": median, "count": len(values)}
+
+
+def measurement_of(outcomes: list[dict], label: str | None) -> dict:
+    """Сводка замера: объём запросов, отказы, доля отказов.
+
+    Доля отказов = отказы / запросы. Знаменатель обязателен: без него числитель
+    ничего не значит (docs/decisions/2026-10-20-anti-bot-refusals-are-measured.md).
+    """
+    requests = len(outcomes)
+    refused = sum(1 for o in outcomes if o.get("refused"))
+    errored = sum(1 for o in outcomes if o.get("error"))
+    succeeded = requests - refused - errored
+    return {
+        "label": label,
+        "requests": requests,
+        "refused": refused,
+        "errored": errored,
+        "succeeded": succeeded,
+        "refusal_ratio": round(refused / requests, 4) if requests else None,
+        "statuses": sorted({o.get("status", 0) for o in outcomes}),
+    }
 
 
 def print_summary(summary: dict, catalog_id, query: str, query_source: str, pages_requested: int) -> None:
@@ -370,6 +474,18 @@ def print_summary(summary: dict, catalog_id, query: str, query_source: str, page
     else:
         print("prices (RUB, ₽): no prices in the response", file=sys.stderr)
 
+    measurement = summary.get("measurement")
+    if measurement:
+        label = f" [{measurement['label']}]" if measurement.get("label") else ""
+        print(f"=== Measurement{label} ===", file=sys.stderr)
+        print(
+            f"requests={measurement['requests']}, refused={measurement['refused']}, "
+            f"succeeded={measurement['succeeded']}, errored={measurement['errored']}",
+            file=sys.stderr,
+        )
+        ratio = measurement.get("refusal_ratio")
+        print(f"refusal ratio: {ratio if ratio is not None else 'n/a'}", file=sys.stderr)
+
 
 async def main():
     parser = argparse.ArgumentParser(description="Fetch WB catalog products via browser")
@@ -378,6 +494,24 @@ async def main():
     parser.add_argument("--search-query", dest="search_query", help="Alias for --query")
     parser.add_argument("--menu-file", help="Path to WB main-menu-by-ru-v3.json (fallback source of --query)")
     parser.add_argument("--pages", type=int, default=1, help="Number of pages to fetch")
+    parser.add_argument(
+        "--count",
+        type=int,
+        help=(
+            "Make exactly this many requests, whatever the answers are, and report the "
+            "refusal share. Overrides --pages: the request volume is the denominator "
+            "the refusal share is computed against."
+        ),
+    )
+    parser.add_argument(
+        "--label",
+        help="Label of this run (A0..A6 in the egress measurement protocol)",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the measurement summary as JSON on stdout instead of the products dump",
+    )
     parser.add_argument("--profile", default="k18a6v75", help="AdsPower profile ID")
     parser.add_argument("--output", "-o", help="Output JSON file")
     parser.add_argument("--delay", type=float, default=2.0, help="Delay between pages (seconds)")
@@ -423,12 +557,14 @@ async def main():
         delay_between_pages=args.delay,
         warmup_url=args.warmup_url or default_warmup_url(query, menu_node),
         warmup_delay=args.warmup_delay,
+        count=args.count,
     )
 
     products = result["products"]
     for prod in products:
         prod['catalog_id'] = args.catalog
 
+    measurement = measurement_of(result["outcomes"], args.label)
     summary = {
         "total": len(products),
         "page_counts": result["page_counts"],
@@ -436,6 +572,7 @@ async def main():
         "exhausted": result["exhausted"],
         "catalog_total": result["catalog_total"],
         "price_stats": price_stats_rub(products),
+        "measurement": measurement,
     }
     print_summary(summary, args.catalog, query, query_source, args.pages)
 
@@ -448,6 +585,7 @@ async def main():
         "exhausted": result["exhausted"],
         "catalog_total": result["catalog_total"],
         "total_products": len(products),
+        "measurement": measurement,
         "products": products
     }
 
@@ -455,6 +593,10 @@ async def main():
         with open(args.output, 'w') as f:
             json.dump(output, f, indent=2, ensure_ascii=False)
         print(f"Written {len(products)} products to {args.output}", file=sys.stderr)
+    elif args.json:
+        # The measurement run does not need the goods — it needs the numbers, and
+        # they have to land somewhere a comparison script can read.
+        print(json.dumps(measurement, indent=2, ensure_ascii=False))
     else:
         print(json.dumps(output, indent=2, ensure_ascii=False))
 
