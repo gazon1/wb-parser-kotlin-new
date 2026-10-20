@@ -270,6 +270,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** держать два способа описать профили: они разойдутся, и разойдутся тихо. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать профиль без прокси прямой, если AdsPower говорит, что прокси есть, _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать статическую проверку достаточной: два разных прокси могут _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Always** отделять антибот (498) от транспортного сброса (статус 0) в любом _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Always** писать измеренные числа в репозиторий рядом с решением, которое на них _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Always** считать параллельную работу на одном адресе отдельным фактором: адрес _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **MUST** повторить замер по правилам протокола (≥3 повторов, рандомизированный _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Never** объявлять лимит WB rate-based по одному блоку: гейт протокола требует _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Never** откатывать мульти-egress на основании одного замера: конструкция держится _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Never** покупать второй адрес, опираясь на блок 2026-10-20: гейт не пройден, а _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 
 ## Per-tag
 
@@ -926,6 +933,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
+- `2026-10-27-the-measurement-does-not-authorize-a-second-address` — antibot  operations  infrastructure  measurement
 
 ## Active entries
 
@@ -1004,3 +1012,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
+- `2026-10-27-the-measurement-does-not-authorize-a-second-address` — Измерение не даёт оснований покупать второй адрес
