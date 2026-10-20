@@ -214,6 +214,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** считать, что список каталога — это товары, а `scraped_items` — их история. _(from `2026-10-20-the-catalog-lists-products-not-observations`)
 - **Never** применять фильтр по цене к строкам, а не к модели: товар, который стоил _(from `2026-10-20-the-catalog-lists-products-not-observations`)
 - **Never** считать «количество товаров» количеством строк: это количество наблюдений, _(from `2026-10-20-the-catalog-lists-products-not-observations`)
+- **Always** держать `totalItems`/`withCashback` (наблюдения) и `totalProducts`/ _(from `2026-10-20-the-counters-measure-different-things`)
+- **Always** измерять `offset` в строках модели (в товарах) — так же, как строки, из _(from `2026-10-20-the-counters-measure-different-things`)
+- **Always** называть ось измерения в имени, когда имя можно выбрать: `totalItems` — _(from `2026-10-20-the-counters-measure-different-things`)
+- **Always** считать счётчик цели по товарам **этой** цели. Счётчик по всей модели рядом _(from `2026-10-20-the-counters-measure-different-things`)
+- **Never** менять смысл существующего поля контракта. Это ломающее изменение, и оно _(from `2026-10-20-the-counters-measure-different-things`)
+- **Never** складывать счётчики по целям и называть результат «товарами в каталоге»: _(from `2026-10-20-the-counters-measure-different-things`)
 - **Always** держать гейт покрытия и ратчет полов на одном измерении: ратчет, который _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
 - **Always** мерить строку floors по merged-отчёту с фильтром по пакетам модуля. _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
 - **Never** выводить «покрытие модуля» из отчёта, который этот модуль не видел. _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
@@ -225,6 +231,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** выставлять `known_pages_limit` по круглому числу: сначала измерить длину _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** грузить в БД цель без `wb_search_query`. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** оставлять в каталоге поле, которое никто не читает. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Always** измерять модель тем же скриптом (`scripts/load-catalog.sh`) и тем же набором _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
+- **Always** указывать в ответе, когда собраны агрегаты (`asOf` это уже делает) — staleness _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
+- **Never** материализовать модель каталога, не решив заранее: кто её пересобирает, в каких _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
+- **Never** считать `latest_product_observations` материализованной моделью: это view, _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
 - **Always** give every `Side` variant a non-null interpreter. The registry _(from `2026-10-20-the-registry-is-total-by-construction`)
 - **Always** keep the no-op defaults for `Side.Log` and `Side.Metric`. A _(from `2026-10-20-the-registry-is-total-by-construction`)
 - **Never** add a `Side` variant that no stage emits. If the effect is not _(from `2026-10-20-the-registry-is-total-by-construction`)
@@ -420,6 +430,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `known_pages_limit` is now a real cap. A target that sets it to 1 is crawled _(from `2026-10-19-subject-dictionary-and-known-pages-limit`)_
 - `latest_product_observations` отдаёт по строке на товар; историю цен по-прежнему видно _(from `2026-10-20-versioned-catalog-and-latest-observation-view`)_
 - `wb_subjects` is a reference table the crawler only reads. It is not part of _(from `2026-10-19-subject-dictionary-and-known-pages-limit`)_
+- Пока решения нет, цифры живут в ADR _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)_
 
 ### `ci`
 
@@ -528,6 +539,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `crawl_jobs.last_heartbeat_at` is now meaningful; queries that assumed it was _(from `2026-10-19-crawl-job-heartbeat-and-crash-reconciliation`)_
 - `latest_product_observations` отдаёт по строке на товар; историю цен по-прежнему видно _(from `2026-10-20-versioned-catalog-and-latest-observation-view`)_
 - `scraped_items.subject_parent_id` is now populated. Rows scraped before this _(from `2026-10-19-admin-api-target-write-path-and-category-tree`)_
+- Пока решения нет, цифры живут в ADR _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)_
 
 ### `dead-code`
 
@@ -652,6 +664,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
 - Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
 - Первый запрос pacer'а не ждёт: интервал отсчитывается от предыдущего разрешения, а не от _(from `2026-10-20-the-request-rate-has-one-owner`)_
+- Пока решения нет, цифры живут в ADR _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)_
 
 ### `pipeline`
 
@@ -902,8 +915,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-catalog-is-opened-by-a-procedure` — catalog  operations  database
 - `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary` — crawler  catalog  data-quality  operations
 - `2026-10-20-the-catalog-lists-products-not-observations` — catalog  database  contract
+- `2026-10-20-the-counters-measure-different-things` — catalog  contract  observability
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — build  tests  gate  coverage
 - `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
+- `2026-10-20-the-materialized-read-model-is-a-separate-decision` — catalog  performance  database
 - `2026-10-20-the-registry-is-total-by-construction` — pipeline  architecture  domain  types
 - `2026-10-20-the-repository-measures-its-own-posture` — ci  security  supply-chain  scorecard  gate
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
@@ -978,8 +993,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-catalog-is-opened-by-a-procedure` — The catalog is opened by a procedure, and the schema is never rolled back
 - `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary` — the catalog length is measured at the pagination boundary, and the limit follows it
 - `2026-10-20-the-catalog-lists-products-not-observations` — Каталог показывает товары, а не наблюдения
+- `2026-10-20-the-counters-measure-different-things` — Счётчики измеряют разные вещи, и ось названа в имени
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — Покрытие меряется по коду, а не по модулю, которому он принадлежит
 - `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
+- `2026-10-20-the-materialized-read-model-is-a-separate-decision` — Материализованная модель каталога — это отдельное решение, и вот какое
 - `2026-10-20-the-registry-is-total-by-construction` — The registry is total by construction, and a side nobody emits is not a side
 - `2026-10-20-the-repository-measures-its-own-posture` — The repository measures its own posture, and the actions it runs are pinned
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
