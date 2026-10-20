@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.scheduling.FailureClass
+import ru.wbparser.domain.scheduling.RunOutcome
 import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.infra.advisory.LockUnavailable
@@ -22,7 +23,9 @@ import ru.wbparser.infra.db.repositories.fetchActiveTargets
 import ru.wbparser.infra.db.repositories.markTargetCrawled
 import ru.wbparser.infra.db.repositories.markTargetFailed
 import ru.wbparser.infra.db.repositories.markTargetRequeued
+import ru.wbparser.infra.db.repositories.recordTargetRun
 import ru.wbparser.infra.scheduler.targetsDue
+import java.time.Instant
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -132,7 +135,7 @@ class CrawlRunner(
                     failures += "${target.name}: ${result.error}"
                     log.error("Target {} failed: {}", target.name, result.error)
                 }
-                recordOutcome(target, result)
+                recordOutcome(jobId, target, result)
             }
 
             // crawl_jobs.status has no Partial value (CHECK constraint), so a run that lost
@@ -197,17 +200,35 @@ class CrawlRunner(
      * address has seen the same thing.
      */
     private fun recordOutcome(
+        jobId: UUID,
         target: Target,
         result: TargetResult,
     ) {
         val failureClass = result.failureClass
+        val egress = source.egress
+        val group = egress?.lastGroupFor(target.id)
+
+        // The run leaves a row: which group served the target, from which address, and
+        // how it went. Without it the question "which address gave the refusal?" is
+        // answerable only from the logs, and the logs do not last.
+        runCatching {
+            db.ds.recordTargetRun(
+                jobId = jobId,
+                targetId = target.id,
+                egressGroup = group,
+                outcome = RunOutcome.of(failed = result.error != null, failureClass = failureClass),
+                pages = result.pages,
+                items = result.items,
+                startedAt = result.startedAt,
+                finishedAt = Instant.now(),
+            )
+        }.onFailure { log.warn("Could not record the run of target {}: {}", target.name, it.message) }
+
         if (failureClass == null) {
             db.ds.markTargetCrawled(target.id)
             return
         }
 
-        val egress = source.egress
-        val group = egress?.lastGroupFor(target.id)
         if (failureClass == FailureClass.Egress) {
             val delay = db.ds.markTargetRequeued(target.id)
             log.warn(

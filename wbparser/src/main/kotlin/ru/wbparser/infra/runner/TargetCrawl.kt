@@ -22,6 +22,7 @@ import ru.wbparser.infra.pipeline.ParserPipelineConfig
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
+import java.time.Instant
 import java.util.UUID
 import ru.wbparser.domain.pipeline.Pipeline as DomainPipeline
 
@@ -44,6 +45,13 @@ internal data class TargetResult(
      * is put aside for its own reasons or for the address's.
      */
     val failureClass: FailureClass? = null,
+    /**
+     * When the crawl of this target started.
+     *
+     * The run's own history needs it: "when was this target served, by whom" is a
+     * question about time, and a run that only knows when it ended cannot answer it.
+     */
+    val startedAt: Instant,
 )
 
 /**
@@ -89,6 +97,7 @@ internal class TargetCrawl(
         startTaskIdGen: () -> String = { UUID.randomUUID().toString() },
     ): TargetResult {
         val targetId = target.id
+        val startedAt = Instant.now()
 
         // How many pages of this target to crawl. The target's own
         // `known_pages_limit` wins; the runner-wide cap is the fallback.
@@ -154,6 +163,7 @@ internal class TargetCrawl(
                 pages = 0,
                 items = 0,
                 error = missingTokenError(target),
+                startedAt = startedAt,
             )
 
         val startTask =
@@ -176,6 +186,7 @@ internal class TargetCrawl(
                     items = 0,
                     error = result.value.message ?: "crawl failed",
                     failureClass = result.value.failureClass(),
+                    startedAt = startedAt,
                 )
             }
             is Either.Right -> {
@@ -191,6 +202,7 @@ internal class TargetCrawl(
                     items = crawled.itemsSaved,
                     error = null,
                     failureClass = if (empty) FailureClass.TargetCandidate else null,
+                    startedAt = startedAt,
                 )
             }
         }

@@ -84,6 +84,13 @@ gate blocking "domain purity: no infra imports in domain" bash scripts/ci/check-
 # switch it on.
 gate blocking "the demo seed is not enabled in production" python3 scripts/ci/check-demo-seed-not-in-production.py
 
+# --- the catalogue's rights ---------------------------------------------------
+# The role script refuses to run when a table is in neither of its lists — but it
+# refuses at provisioning time, after the migration that created the table has
+# already been applied. The decision belongs to the migration, so the check that
+# finds the undecided table belongs to the same change as the table.
+gate blocking "every table is decided about in the catalogue role" python3 scripts/ci/check-catalogue-role-tables.py
+
 # --- report ------------------------------------------------------------------
 echo
 echo "static gates: ${#PASSED[@]} passed, ${#FAILED[@]} failed, ${#WARNED[@]} advisory-failed"
