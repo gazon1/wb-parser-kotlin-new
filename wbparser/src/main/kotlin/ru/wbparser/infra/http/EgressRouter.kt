@@ -242,6 +242,25 @@ class EgressRouter(
     }
 
     /**
+     * The group changed its address: everything the old address earned does not carry
+     * over to the new one.
+     *
+     * A circuit that the old address opened must not keep the new one closed, and the
+     * counters the old address collected describe an address that is no longer there.
+     * The books go, and the circuit closes — the new address starts with the whole
+     * budget it was promised.
+     */
+    fun onAddressChanged(groupId: String) {
+        breakers[groupId]?.reset()
+        books.remove(groupId)
+        log.warn(
+            "Egress group {} changed address — its circuit is closed and its books are cleared. " +
+                "The new address has its own budget.",
+            groupId,
+        )
+    }
+
+    /**
      * The state of one group.
      */
     fun groupState(groupId: String): GroupState {

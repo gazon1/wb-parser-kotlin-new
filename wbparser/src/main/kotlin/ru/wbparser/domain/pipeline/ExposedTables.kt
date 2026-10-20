@@ -160,6 +160,33 @@ object CrawlEgressGroupsTable : Table("crawl_egress_groups") {
 }
 
 /**
+ * The runs of the targets: which egress group served which target, from which
+ * address, and how it went.
+ *
+ * `crawl_targets` holds the aggregate of a target — when it was read, how many times
+ * in a row it failed — and this table holds the runs themselves. The aggregate says
+ * "when"; this table says "by whom" and "how".
+ *
+ * The `outcome` column carries `CHECK (outcome IN ('ok', 'antibot',
+ * 'target_candidate', 'error'))` — the same four values as
+ * [ru.wbparser.domain.scheduling.RunOutcome], which is what the write path sends.
+ */
+object CrawlTargetRunsTable : Table("crawl_target_runs") {
+    val id: Column<UUID> = uuid("id")
+    val jobId: Column<UUID> = uuid("job_id")
+    val targetId: Column<UUID> = uuid("target_id")
+    val egressGroup: Column<String?> = varchar("egress_group", 64).nullable()
+    val egressIp: Column<String?> = varchar("egress_ip", 45).nullable()
+    val outcome: Column<String> = varchar("outcome", 32)
+    val pages: Column<Int> = integer("pages")
+    val items: Column<Int> = integer("items")
+    val startedAt: Column<OffsetDateTime> = timestampWithTimeZone("started_at")
+    val finishedAt: Column<OffsetDateTime> = timestampWithTimeZone("finished_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
  * The category tree observed while crawling.
  *
  * One row per (target, category): the category a product was seen in, the name WB
