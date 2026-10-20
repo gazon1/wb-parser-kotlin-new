@@ -2,6 +2,10 @@ plugins {
     // No `version`: the Kotlin plugins live on the settings classloader (see
     // settings.gradle.kts) — DAGP needs them there to analyze Kotlin modules.
     id("org.jetbrains.kotlin.jvm")
+    // The coverage plugin, for the same reason as in the other modules: this
+    // module's suites exercise the crawler and the application, and the report
+    // has to say what they covered.
+    id("org.jetbrains.kotlinx.kover")
 }
 
 kotlin {
@@ -98,8 +102,7 @@ configurations.configureEach {
 }
 
 tasks.test {
-    useJUnitPlatform()
-    // The Docker API pin (`api.version`) lives in the root build, for every module
+    useJUnitPlatform() // The Docker API pin (`api.version`) lives in the root build, for every module
     // that starts a container — it was declared here first, where it was needed
     // first, and every other module that needed it failed with an error that says
     // nothing about the database.

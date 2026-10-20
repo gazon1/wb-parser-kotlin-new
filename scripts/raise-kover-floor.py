@@ -90,6 +90,14 @@ HEADER = [
     "#   each a percentage point below what the tests reach: `app` 24% against",
     "#   25.0% (65 of 260 lines), `wbparser` 49% against 50.05% (935 of 1868).",
     "#   The headroom is what keeps an unrelated edit from tripping the gate.",
+    "# - 70% / 25% — after the crawl-runner coverage work: `wbparser` 70% against",
+    "#   71.3% (CrawlRunner now covered against a real PostgreSQL, 0/153 → 117/151),",
+    "#   `app` 25% against 26.5%.",
+    "# - 71% / 32% / 75% — after the repository-wide report: `merged` 75% against",
+    "#   76.8%. The root project is the merging module, so this row counts what every",
+    "#   suite actually exercised, including the integration module's. Without it the",
+    "#   integration suites were invisible to the gate: a module's own report holds",
+    "#   only that module's classes.",
 ]
 
 

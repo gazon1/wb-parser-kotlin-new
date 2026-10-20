@@ -143,10 +143,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** тратить весь бюджет попыток на запросы к открытой цепи: пауза и back-off _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
 - **Always** treat a value that is older than ten minutes as "as of ten minutes _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
 - **Never** run two crawler instances behind one address while the aggregates are _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
-- **Always** писать интеграционный тест рядом с кодом, который он проверяет, а не в отдельном _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
+- **Always** объявлять merged report в root-проекте: без него отчёт модуля `tests` _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
+- **Always** писать интеграционный тест рядом с кодом, который он проверяет, а не в _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
 - **Always** поднимать floor покрытия тем же коммитом, который поднял покрытие _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
 - **Never** дублировать DDL в тестах: схема строится из модели, соответствие миграциям _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
-- **Never** считать, что kover агрегирует покрытие зависимых модулей: он этого не делает, и _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
+- **Never** считать, что отчёт модуля содержит классы зависимостей: он содержит только _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
 - **Always** bind a transaction to the DataSource it belongs to — _(from `2026-10-20-job-timestamps-carry-an-offset`)
 - **Always** write `crawl_jobs` timestamps through Exposed with an `OffsetDateTime`. _(from `2026-10-20-job-timestamps-carry-an-offset`)
 - **Never** use `java.sql.Timestamp` for a `TIMESTAMPTZ` column: it is a naive _(from `2026-10-20-job-timestamps-carry-an-offset`)
@@ -813,7 +814,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-anti-bot-refusals-are-measured` — Отказы антибота измеряются и получают собственный back-off
 - `2026-10-20-antibot-profile-rotation-and-backoff` — Антибот: ротация профиля, свой back-off и ожидание вместо отказа
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — The catalog's aggregates are cached in the process, and that shapes the topology
-- `2026-10-20-coverage-is-measured-where-the-code-lives` — Покрытие измеряется в том модуле, которому принадлежит код
+- `2026-10-20-coverage-is-measured-where-the-code-lives` — Покрытие меряется там, где живёт код, и по всему репозиторию сразу
 - `2026-10-20-job-timestamps-carry-an-offset` — Job timestamps are written as offsets, not as naive local times
 - `2026-10-20-pagination-does-not-increase-depth` — Пагинация не увеличивает глубину краула
 - `2026-10-20-schedule-cadence-single-parameter` — Каденция краула задаётся одним параметром — окном свежести

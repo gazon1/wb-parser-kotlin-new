@@ -12,7 +12,7 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1" apply false
     // One version for the coverage plugin: it is applied in more than one module,
     // and two versions of the same plugin do not share a report.
-    id("org.jetbrains.kotlinx.kover") version "0.9.11" apply false
+    id("org.jetbrains.kotlinx.kover") version "0.9.11"
 }
 
 allprojects {
@@ -95,6 +95,25 @@ subprojects {
 
 tasks.register<Delete>("clean") {
     delete(layout.buildDirectory)
+}
+
+// ==============================================================================
+// Coverage: the report that sees the whole repository
+// ==============================================================================
+//
+// A module's own report only contains the classes of that module. The integration
+// module therefore contributed nothing to the coverage of the code it exercises:
+// `CrawlRunner` showed 0 of 153 covered lines even though the integration suite
+// drove it against a real PostgreSQL.
+//
+// The root project is the merging module: it has no sources of its own, and the
+// `kover` dependencies make its report the union of the modules' classes and of
+// the coverage their own suites produced. The report below is therefore the
+// honest number for the repository.
+dependencies {
+    kover(project(":app"))
+    kover(project(":wbparser"))
+    kover(project(":tests"))
 }
 
 // ==============================================================================
