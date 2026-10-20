@@ -197,6 +197,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** split a class by the decision it holds, not by the layer it sits in. A new unit _(from `2026-10-20-the-big-classes-are-split-by-decision`)
 - **Never** give a split unit a second copy of state the original owned. The batch shares the _(from `2026-10-20-the-big-classes-are-split-by-decision`)
 - **Never** move a piece of behaviour into a collaborator without carrying the state it _(from `2026-10-20-the-big-classes-are-split-by-decision`)
+- **Always** build an index concurrently, before the migration that names it, and _(from `2026-10-20-the-catalog-is-opened-by-a-procedure`)
+- **Always** carry the credential an image needs before deploying that image. A _(from `2026-10-20-the-catalog-is-opened-by-a-procedure`)
+- **Always** verify the API from outside, with the key, before the storefront is _(from `2026-10-20-the-catalog-is-opened-by-a-procedure`)
+- **Always** write a cutover as a procedure, with the way back for every step _(from `2026-10-20-the-catalog-is-opened-by-a-procedure`)
+- **Never** close the crawler's route to gate the catalog. The key is the gate. _(from `2026-10-20-the-catalog-is-opened-by-a-procedure`)
+- **Never** roll the production schema back under the crawler. The migrations _(from `2026-10-20-the-catalog-is-opened-by-a-procedure`)
 - **Always** измерять `known_pages_limit` до того, как его выставлять. _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
 - **Always** перезамерять каталог, а не достраивать лимит вручную: пагинация WB _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
 - **Always** указывать в отчёте, чем закончилась пагинация (`catalog_end` или `api_cap`). _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
@@ -893,6 +899,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-schedule-cadence-single-parameter` — scheduling  configuration
 - `2026-10-20-subject-dictionary-loaded-at-startup` — bootstrap  data-quality  crawler
 - `2026-10-20-the-big-classes-are-split-by-decision` — architecture  refactoring  maintainability
+- `2026-10-20-the-catalog-is-opened-by-a-procedure` — catalog  operations  database
 - `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary` — crawler  catalog  data-quality  operations
 - `2026-10-20-the-catalog-lists-products-not-observations` — catalog  database  contract
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — build  tests  gate  coverage
@@ -968,6 +975,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-schedule-cadence-single-parameter` — Каденция краула задаётся одним параметром — окном свежести
 - `2026-10-20-subject-dictionary-loaded-at-startup` — Справочник предметов WB загружается при старте приложения
 - `2026-10-20-the-big-classes-are-split-by-decision` — The three large classes are split by the decision they hold, not by the layer they live in
+- `2026-10-20-the-catalog-is-opened-by-a-procedure` — The catalog is opened by a procedure, and the schema is never rolled back
 - `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary` — the catalog length is measured at the pagination boundary, and the limit follows it
 - `2026-10-20-the-catalog-lists-products-not-observations` — Каталог показывает товары, а не наблюдения
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — Покрытие меряется по коду, а не по модулю, которому он принадлежит
