@@ -68,11 +68,27 @@ class CatalogCache(
      *
      * The method takes the lock of the key it was asked about, and only of that key.
      */
-    @Suppress("UNCHECKED_CAST")
     fun <T> get(
         key: String,
         loader: () -> T,
-    ): T {
+    ): T = getWithTime(key, loader).value
+
+    /**
+     * The cached value for [key], together with the moment it was computed.
+     *
+     * The moment matters because the value is not the truth at the moment it is served: it
+     * is the truth as of the moment it was computed, up to the time to live ago. A
+     * storefront that shows a count without saying how old it is shows a number it cannot
+     * vouch for.
+     *
+     * The moment is the moment the *query* ran, not the moment the entry was last read: a
+     * value served on the hundredth hit is as old as the value served on the first.
+     */
+    @Suppress("UNCHECKED_CAST")
+    fun <T> getWithTime(
+        key: String,
+        loader: () -> T,
+    ): CachedValue<T> {
         val lock = locks.computeIfAbsent(key) { ReentrantLock() }
         lock.lock()
         try {
@@ -80,12 +96,12 @@ class CatalogCache(
             val existing = entries[key]
             if (existing != null && existing.expiresAt.isAfter(now)) {
                 existing.touchedAt = now
-                return existing.value as T
+                return CachedValue(existing.value as T, existing.computedAt)
             }
             val value = loader()
-            entries[key] = Entry(value, now.plus(ttl), now)
+            entries[key] = Entry(value, now.plus(ttl), now, now)
             evictIfNeeded()
-            return value
+            return CachedValue(value, now)
         } finally {
             lock.unlock()
         }
@@ -124,6 +140,7 @@ class CatalogCache(
         val value: Any?,
         val expiresAt: Instant,
         @Volatile var touchedAt: Instant,
+        val computedAt: Instant,
     )
 
     companion object {
@@ -138,3 +155,11 @@ class CatalogCache(
         const val DEFAULT_MAX_ENTRIES: Int = 128
     }
 }
+
+/**
+ * A value and the moment it was computed.
+ */
+data class CachedValue<T>(
+    val value: T,
+    val computedAt: Instant,
+)

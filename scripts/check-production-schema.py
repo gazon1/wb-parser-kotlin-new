@@ -96,34 +96,66 @@ REQUIRED_COLUMNS: list[tuple[str, str]] = [
 ]
 
 #: The card projection, as the API writes it.
+#:
+#: The projection is by name: every source exposes the card's columns under the card's
+#: own names. The gate's statements mirror the API's queries, and a projection that
+#: spelled the table out per source would be one more place for the two to drift.
 CARD_PROJECTION = """
         i.id                AS id,
-        i.target_id          AS target_id,
-        t.name               AS target_name,
-        i.title              AS title,
-        i.price_kopecks      AS price_kopecks,
+        i.target_id         AS target_id,
+        i.target_name       AS target_name,
+        i.title             AS title,
+        i.price_kopecks     AS price_kopecks,
         i.sale_price_kopecks AS sale_price_kopecks,
-        i.brand              AS brand,
-        i.seller             AS seller,
-        i.cashback_percent   AS cashback_percent,
-        i.cashback           AS cashback,
-        i.in_stock           AS in_stock,
-        i.image_url          AS image_url,
-        i.product_url        AS product_url,
-        i.scraped_at         AS scraped_at
+        i.brand             AS brand,
+        i.seller            AS seller,
+        i.cashback_percent  AS cashback_percent,
+        i.cashback          AS cashback,
+        i.in_stock          AS in_stock,
+        i.image_url         AS image_url,
+        i.product_url       AS product_url,
+        i.scraped_at        AS scraped_at
+"""
+
+#: The columns of the read model — the current observation of each product.
+MODEL_COLUMNS = """
+        s.id, s.target_id, t.name AS target_name, s.title, s.price_kopecks,
+        s.sale_price_kopecks, s.brand, s.seller, s.cashback_percent, s.cashback,
+        s.in_stock, s.image_url, s.product_url, s.scraped_at, s.product_id, s.match_id
+"""
+
+#: The read model: one row per product, the observation that was scraped last.
+CURRENT_PRODUCTS = f"""
+        SELECT DISTINCT ON (s.product_id)
+               {MODEL_COLUMNS}
+          FROM scraped_items s
+          JOIN crawl_targets t ON t.id = s.target_id
+         ORDER BY s.product_id, s.scraped_at DESC, s.id DESC
+"""
+
+#: The read model of the top-deals list: the current observation per product per target.
+CURRENT_PRODUCT_TARGETS = f"""
+        SELECT DISTINCT ON (s.product_id, s.target_id)
+               {MODEL_COLUMNS}
+          FROM scraped_items s
+          JOIN crawl_targets t ON t.id = s.target_id
+         WHERE s.match_id IS NOT NULL
+         ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC
 """
 
 #: The statements the gate runs, in the order it runs them.
-#
-# Every statement here is one the API runs on a request. They are the queries of §7.6 —
-# the ones that fail with `42703` when the schema is behind.
+#:
+#: Every statement here is one the API runs on a request. They are the queries of §7.6 —
+#: the ones that fail with `42703` when the schema is behind.
 STATEMENTS: list[tuple[str, str]] = [
     (
         "items",
         f"""
+        WITH i AS (
+        {CURRENT_PRODUCTS}
+        )
         SELECT {CARD_PROJECTION}
-          FROM scraped_items i
-          JOIN crawl_targets t ON t.id = i.target_id
+          FROM i
          ORDER BY i.scraped_at DESC, i.id
          LIMIT 24 OFFSET 0
         """,
@@ -131,11 +163,17 @@ STATEMENTS: list[tuple[str, str]] = [
     (
         "items-filtered",
         f"""
+        WITH i AS (
+              SELECT DISTINCT ON (s.product_id)
+                     {MODEL_COLUMNS}
+                FROM scraped_items s
+                JOIN crawl_targets t ON t.id = s.target_id
+               WHERE (s.title ILIKE '%probe%' OR s.brand ILIKE '%probe%' OR s.seller ILIKE '%probe%')
+               ORDER BY s.product_id, s.scraped_at DESC, s.id DESC
+        )
         SELECT {CARD_PROJECTION}
-          FROM scraped_items i
-          JOIN crawl_targets t ON t.id = i.target_id
-         WHERE (i.title ILIKE '%probe%' OR i.brand ILIKE '%probe%' OR i.seller ILIKE '%probe%')
-           AND COALESCE(i.sale_price_kopecks, i.price_kopecks) >= 100
+          FROM i
+         WHERE COALESCE(i.sale_price_kopecks, i.price_kopecks) >= 100
            AND COALESCE(i.sale_price_kopecks, i.price_kopecks) <= 100000
            AND i.cashback_percent >= 1.5
            AND i.in_stock = true
@@ -145,20 +183,26 @@ STATEMENTS: list[tuple[str, str]] = [
     ),
     (
         "items-count",
-        """
+        f"""
+        WITH i AS (
+        {CURRENT_PRODUCTS}
+        )
         SELECT COUNT(*)
-          FROM scraped_items i
-          JOIN crawl_targets t ON t.id = i.target_id
+          FROM i
          WHERE COALESCE(i.sale_price_kopecks, i.price_kopecks) >= 100
         """,
     ),
     (
         "items-detail",
         f"""
+        WITH i AS (
+              SELECT {MODEL_COLUMNS}
+                FROM scraped_items s
+                JOIN crawl_targets t ON t.id = s.target_id
+               WHERE s.id = (SELECT id FROM scraped_items LIMIT 1)
+        )
         SELECT {CARD_PROJECTION}
-          FROM scraped_items i
-          JOIN crawl_targets t ON t.id = i.target_id
-         WHERE i.id = (SELECT id FROM scraped_items LIMIT 1)
+          FROM i
         """,
     ),
     (
@@ -175,52 +219,70 @@ STATEMENTS: list[tuple[str, str]] = [
     (
         "top-deals",
         f"""
-        WITH best AS (
-              SELECT DISTINCT ON (i.match_id)
-                     {CARD_PROJECTION},
-                     i.match_id::text AS match_id
-                FROM scraped_items i
-                JOIN crawl_targets t ON t.id = i.target_id
-               WHERE i.match_id IS NOT NULL
-                 AND i.cashback_percent >= 1.5
-               ORDER BY i.match_id, i.cashback_percent DESC NULLS LAST, i.scraped_at DESC, i.id
+        WITH current AS (
+        {CURRENT_PRODUCT_TARGETS}
+        ),
+        best AS (
+              SELECT DISTINCT ON (c.match_id)
+                     c.id                AS id,
+                     c.target_id         AS target_id,
+                     c.target_name       AS target_name,
+                     c.title             AS title,
+                     c.price_kopecks     AS price_kopecks,
+                     c.sale_price_kopecks AS sale_price_kopecks,
+                     c.brand             AS brand,
+                     c.seller            AS seller,
+                     c.cashback_percent  AS cashback_percent,
+                     c.cashback          AS cashback,
+                     c.in_stock          AS in_stock,
+                     c.image_url         AS image_url,
+                     c.product_url       AS product_url,
+                     c.scraped_at        AS scraped_at,
+                     c.match_id::text    AS match_id
+                FROM current c
+               ORDER BY c.match_id, c.cashback_percent DESC NULLS LAST, c.scraped_at DESC, c.id
         )
         SELECT best.id                AS id,
-               best.target_id          AS target_id,
-               best.target_name        AS target_name,
-               best.title              AS title,
-               best.price_kopecks      AS price_kopecks,
+               best.target_id         AS target_id,
+               best.target_name       AS target_name,
+               best.title             AS title,
+               best.price_kopecks     AS price_kopecks,
                best.sale_price_kopecks AS sale_price_kopecks,
-               best.brand              AS brand,
-               best.seller             AS seller,
-               best.cashback_percent   AS cashback_percent,
-               best.cashback           AS cashback,
-               best.in_stock           AS in_stock,
-               best.image_url          AS image_url,
-               best.product_url        AS product_url,
-               best.scraped_at         AS scraped_at
+               best.brand             AS brand,
+               best.seller            AS seller,
+               best.cashback_percent  AS cashback_percent,
+               best.cashback          AS cashback,
+               best.in_stock          AS in_stock,
+               best.image_url         AS image_url,
+               best.product_url       AS product_url,
+               best.scraped_at        AS scraped_at
           FROM best
+         WHERE best.cashback_percent >= 1.5
          ORDER BY best.cashback_percent DESC NULLS LAST, best.scraped_at DESC, best.id
          LIMIT 24 OFFSET 0
         """,
     ),
     (
         "top-deals-count",
-        """
+        f"""
+        WITH current AS (
+        {CURRENT_PRODUCT_TARGETS}
+        ),
+        best AS (
+              SELECT DISTINCT ON (c.match_id)
+                     c.match_id::text     AS match_id,
+                     c.cashback_percent   AS cashback_percent
+                FROM current c
+               ORDER BY c.match_id, c.cashback_percent DESC NULLS LAST, c.scraped_at DESC, c.id
+        )
         SELECT COUNT(*)
-          FROM (
-                SELECT DISTINCT ON (i.match_id) i.match_id
-                  FROM scraped_items i
-                  JOIN crawl_targets t ON t.id = i.target_id
-                 WHERE i.match_id IS NOT NULL
-                   AND i.cashback_percent >= 1.5
-                 ORDER BY i.match_id, i.cashback_percent DESC NULLS LAST, i.scraped_at DESC, i.id
-          ) AS best
+          FROM best
+         WHERE best.cashback_percent >= 1.5
         """,
     ),
     (
         "targets",
-        """
+        f"""
         SELECT t.id                 AS id,
                t.name               AS name,
                t.root_category_name AS root_category_name,
@@ -228,18 +290,25 @@ STATEMENTS: list[tuple[str, str]] = [
                COUNT(i.id)          AS item_count,
                MAX(i.scraped_at)    AS newest_scraped_at
           FROM crawl_targets t
-          LEFT JOIN scraped_items i ON i.target_id = t.id
+          LEFT JOIN (
+        {CURRENT_PRODUCTS}
+          ) i ON i.target_id = t.id
          GROUP BY t.id, t.name, t.root_category_name, t.is_active
          ORDER BY t.name ASC
         """,
     ),
     (
         "stats",
-        """
-        SELECT (SELECT COUNT(*) FROM scraped_items)                                AS total_items,
-               (SELECT COUNT(*) FROM crawl_targets)                               AS total_targets,
-               (SELECT MAX(scraped_at) FROM scraped_items)                       AS newest_scraped_at,
-               (SELECT COUNT(*) FROM scraped_items WHERE cashback_percent IS NOT NULL) AS with_cashback
+        f"""
+        WITH i AS (
+        {CURRENT_PRODUCTS}
+        )
+        SELECT (SELECT COUNT(*) FROM scraped_items)                    AS total_items,
+               (SELECT COUNT(*) FROM crawl_targets)                   AS total_targets,
+               (SELECT MAX(scraped_at) FROM scraped_items)           AS newest_scraped_at,
+               (SELECT COUNT(*) FROM scraped_items WHERE cashback_percent IS NOT NULL) AS with_cashback,
+               (SELECT COUNT(*) FROM i)                              AS total_products,
+               (SELECT COUNT(*) FROM i WHERE cashback_percent IS NOT NULL) AS products_with_cashback
         """,
     ),
 ]
