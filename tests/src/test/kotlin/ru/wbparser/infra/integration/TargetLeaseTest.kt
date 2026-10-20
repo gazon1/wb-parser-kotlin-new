@@ -64,12 +64,13 @@ class TargetLeaseTest :
         test("a target that was read recently is not claimed") {
             val id = db.seedTarget("recent")
             db.ds.connection.use { conn ->
-                conn.prepareStatement(
-                    "UPDATE crawl_targets SET last_crawled_at = now() - interval '10 minutes' WHERE id = ?",
-                ).use { ps ->
-                    ps.setObject(1, id)
-                    ps.executeUpdate()
-                }
+                conn
+                    .prepareStatement(
+                        "UPDATE crawl_targets SET last_crawled_at = now() - interval '10 minutes' WHERE id = ?",
+                    ).use { ps ->
+                        ps.setObject(1, id)
+                        ps.executeUpdate()
+                    }
             }
 
             claim("host-a") shouldBe emptyList()
@@ -78,12 +79,13 @@ class TargetLeaseTest :
         test("a target that was read long ago is claimed") {
             val id = db.seedTarget("old")
             db.ds.connection.use { conn ->
-                conn.prepareStatement(
-                    "UPDATE crawl_targets SET last_crawled_at = now() - interval '10 hours' WHERE id = ?",
-                ).use { ps ->
-                    ps.setObject(1, id)
-                    ps.executeUpdate()
-                }
+                conn
+                    .prepareStatement(
+                        "UPDATE crawl_targets SET last_crawled_at = now() - interval '10 hours' WHERE id = ?",
+                    ).use { ps ->
+                        ps.setObject(1, id)
+                        ps.executeUpdate()
+                    }
             }
 
             claim("host-a") shouldBe listOf(id)
@@ -92,12 +94,13 @@ class TargetLeaseTest :
         test("a target that is waiting after a failure is not claimed") {
             val id = db.seedTarget("waiting")
             db.ds.connection.use { conn ->
-                conn.prepareStatement(
-                    "UPDATE crawl_targets SET next_attempt_at = now() + interval '30 minutes' WHERE id = ?",
-                ).use { ps ->
-                    ps.setObject(1, id)
-                    ps.executeUpdate()
-                }
+                conn
+                    .prepareStatement(
+                        "UPDATE crawl_targets SET next_attempt_at = now() + interval '30 minutes' WHERE id = ?",
+                    ).use { ps ->
+                        ps.setObject(1, id)
+                        ps.executeUpdate()
+                    }
             }
 
             claim("host-a") shouldBe emptyList()
@@ -120,12 +123,13 @@ class TargetLeaseTest :
         test("an expired lease is a free lease") {
             val id = db.seedTarget("expired")
             db.ds.connection.use { conn ->
-                conn.prepareStatement(
-                    "UPDATE crawl_targets SET lease_owner = 'dead-host', lease_until = now() - interval '1 minute' WHERE id = ?",
-                ).use { ps ->
-                    ps.setObject(1, id)
-                    ps.executeUpdate()
-                }
+                conn
+                    .prepareStatement(
+                        "UPDATE crawl_targets SET lease_owner = 'dead-host', lease_until = now() - interval '1 minute' WHERE id = ?",
+                    ).use { ps ->
+                        ps.setObject(1, id)
+                        ps.executeUpdate()
+                    }
             }
 
             claim("host-b") shouldBe listOf(id)

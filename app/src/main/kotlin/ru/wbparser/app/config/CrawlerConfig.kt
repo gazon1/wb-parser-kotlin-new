@@ -76,8 +76,11 @@ class CrawlerConfig {
             return ru.wbparser.infra.advisory.DEPLOYMENT_LOCK_KEY
         }
         val hostName =
-            runCatching { java.net.InetAddress.getLocalHost().hostName }
-                .getOrDefault("unknown-host")
+            runCatching {
+                java.net.InetAddress
+                    .getLocalHost()
+                    .hostName
+            }.getOrDefault("unknown-host")
         // A different key per host, from the same key: the two never collide, and the
         // key stays recognisable in pg_locks.
         return ru.wbparser.infra.advisory.DEPLOYMENT_LOCK_KEY xor (hostName.hashCode().toLong() and 0xFFFFL)
