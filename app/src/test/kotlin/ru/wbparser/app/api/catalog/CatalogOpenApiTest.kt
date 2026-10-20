@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import ru.wbparser.app.security.CatalogApiKeyFilter
 import java.math.BigDecimal
 import java.time.Instant
@@ -164,6 +165,16 @@ class CatalogOpenApiTest :
             (pageSize["maximum"] as Int) shouldBe CatalogQueryParams.MAX_PAGE_SIZE
             (pageSize["minimum"] as Int) shouldBe 1
             (pageSize["default"] as Int) shouldBe CatalogQueryParams.DEFAULT_PAGE_SIZE
+        }
+
+        test("the offset bound of the contract is the bound of the code") {
+            // The storefront clamps to the number in the contract, and the API clamps to
+            // the number in the contract. If the code carried its own copy, the two
+            // sides could drift — and the storefront would show a page the API never
+            // sent, which is exactly the failure this check exists to prevent.
+            val limits = document["x-catalog-paging"] as? Map<String, Any?>
+            limits shouldNotBe null
+            (limits!!["maxOffset"] as Int) shouldBe Paging.MAX_OFFSET
         }
 
         test("the endpoints of the contract are the endpoints of the controller") {

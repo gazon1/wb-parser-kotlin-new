@@ -47,8 +47,13 @@ data class CatalogQueryParams(
          *
          * Kept here as well as on [Paging] because this is the type the rest of the code
          * reads, and a reader should not have to know which of the two owns the number.
+         *
+         * It is the bound for the *smallest* page size: the page index a request may
+         * carry depends on how many rows the page holds, and this is the largest of those
+         * bounds. The bound that applies to a given request is
+         * [Paging.maxPageFor].
          */
-        const val MAX_PAGE: Int = Paging.MAX_PAGE
+        val MAX_PAGE: Int = Paging.MAX_PAGE
 
         /**
          * The largest page size the API will serve.
@@ -63,22 +68,22 @@ data class CatalogQueryParams(
         /**
          * Read the parameters of `/items`.
          *
-         * The parameters arrive as a map rather than as nine arguments: the list grows
-         * whenever the contract grows, and a function that takes nine of them is a
-         * function nobody wants to call.
+         * The parameters arrive typed: every value is read through [QueryParameters], so
+         * the name of a parameter and the type it is read as are one decision rather than
+         * two that a change to one would not touch.
          *
          * @throws CatalogBadRequestException when a parameter cannot be interpreted at all.
          */
-        fun parse(parameters: Map<String, String?>): CatalogQueryParams =
+        fun parse(parameters: QueryParameters): CatalogQueryParams =
             CatalogQueryParams(
-                targetId = parseUuid(parameters["targetId"], "targetId"),
-                search = parameters["q"]?.takeIf { it.isNotBlank() },
-                minPriceKopecks = parsePriceRubles(parameters["minPrice"], "minPrice"),
-                maxPriceKopecks = parsePriceRubles(parameters["maxPrice"], "maxPrice"),
-                minCashbackPercent = parseDecimal(parameters["minCashback"], "minCashback"),
-                inStockOnly = parseBoolean(parameters["inStock"], "inStock"),
-                sort = parseSort(parameters["sort"]),
-                paging = Paging.of(parseInt(parameters["page"], "page"), parseInt(parameters["pageSize"], "pageSize")),
+                targetId = parameters.uuid("targetId"),
+                search = parameters.text("q"),
+                minPriceKopecks = priceRubles(parameters.decimal("minPrice")),
+                maxPriceKopecks = priceRubles(parameters.decimal("maxPrice")),
+                minCashbackPercent = parameters.decimal("minCashback"),
+                inStockOnly = parameters.flag("inStock"),
+                sort = parseSort(parameters.text("sort")),
+                paging = Paging.of(parameters.integer("page"), parameters.integer("pageSize")),
             )
     }
 }
@@ -109,16 +114,16 @@ data class TopDealsQueryParams(
          *
          * @throws CatalogBadRequestException when a parameter cannot be interpreted at all.
          */
-        fun parse(parameters: Map<String, String?>): TopDealsQueryParams =
+        fun parse(parameters: QueryParameters): TopDealsQueryParams =
             TopDealsQueryParams(
-                minCashbackPercent = parseDecimal(parameters["minCashback"], "minCashback"),
-                paging = Paging.of(parseInt(parameters["page"], "page"), parseInt(parameters["pageSize"], "pageSize")),
+                minCashbackPercent = parameters.decimal("minCashback"),
+                paging = Paging.of(parameters.integer("page"), parameters.integer("pageSize")),
             )
     }
 }
 
 /**
- * The order to sort by, or `null` when the caller named one that does not exist.
+ * The order to sort by, or the default one when the caller named none.
  *
  * A missing order means the default; a wrong one is an error. Silently falling back would
  * answer a question the caller did not ask.
@@ -128,25 +133,6 @@ private fun parseSort(sort: String?): CatalogSort =
         CatalogSort.DEFAULT
     } else {
         CatalogSort.fromName(sort) ?: throw CatalogBadRequestException("unknown sort order")
-    }
-
-/**
- * A UUID, or `null` when there is none.
- *
- * The check happens before the query, not in the database: PostgreSQL rejects a
- * non-UUID string in a `uuid` comparison with error `22P02`, which would turn a typo in a
- * URL into a server error instead of a `400`.
- */
-private fun parseUuid(
-    raw: String?,
-    name: String,
-): UUID? =
-    raw?.takeIf { it.isNotBlank() }?.let {
-        try {
-            UUID.fromString(it)
-        } catch (e: IllegalArgumentException) {
-            throw CatalogBadRequestException("$name is not a UUID")
-        }
     }
 
 /**
@@ -163,64 +149,12 @@ private fun parseUuid(
  * what clamping to zero also means. Answering `400` would turn a nonsense URL into an
  * error page for a filter that never had a sensible reading.
  */
-private fun parsePriceRubles(
-    raw: String?,
-    name: String,
-): Long? =
-    parseDecimal(raw, name)?.let { rubles ->
-        rubles
-            .max(BigDecimal.ZERO)
-            .multiply(HUNDRED)
-            .setScale(0, RoundingMode.HALF_UP)
-            .longValueExact()
-    }
-
-/**
- * A decimal number, or `null` when there is none.
- *
- * `NaN` and `Infinity` are not numbers PostgreSQL accepts, and neither is a string that
- * does not parse as one — all three are a `400`.
- */
-private fun parseDecimal(
-    raw: String?,
-    name: String,
-): BigDecimal? =
-    raw?.takeIf { it.isNotBlank() }?.let {
-        try {
-            BigDecimal(it)
-        } catch (e: NumberFormatException) {
-            throw CatalogBadRequestException("$name is not a number")
-        }
-    }
-
-/**
- * A boolean, or `null` when there is none.
- */
-private fun parseBoolean(
-    raw: String?,
-    name: String,
-): Boolean =
-    when {
-        raw.isNullOrBlank() -> false
-        raw.equals("true", ignoreCase = true) -> true
-        raw.equals("false", ignoreCase = true) -> false
-        else -> throw CatalogBadRequestException("$name is not a boolean")
-    }
-
-/**
- * An integer, or `null` when there is none.
- */
-private fun parseInt(
-    raw: String?,
-    name: String,
-): Int? =
-    raw?.takeIf { it.isNotBlank() }?.let {
-        try {
-            it.toInt()
-        } catch (e: NumberFormatException) {
-            throw CatalogBadRequestException("$name is not an integer")
-        }
-    }
+private fun priceRubles(rubles: BigDecimal?): Long? =
+    rubles
+        ?.max(BigDecimal.ZERO)
+        ?.multiply(HUNDRED)
+        ?.setScale(0, RoundingMode.HALF_UP)
+        ?.longValueExact()
 
 /**
  * Escape the wildcards of a `LIKE` pattern so a search is literal.

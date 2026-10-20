@@ -7,6 +7,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import ru.wbparser.app.api.catalog.CatalogQueryParams
 import ru.wbparser.app.api.catalog.CatalogSort
+import ru.wbparser.app.api.catalog.QueryParameters
 import ru.wbparser.app.api.catalog.TopDealsQueryParams
 import java.time.Instant
 
@@ -27,6 +28,15 @@ class CatalogQueriesTest :
     FunSpec({
         val fixture = CatalogFixture()
 
+        /**
+         * The parameters of a request, as the servlet hands them over.
+         *
+         * The helper exists so the call sites below stay readable: the parsing is typed
+         * now, and spelling the type out at every call site would bury the property each
+         * test is about.
+         */
+        fun params(vararg pairs: Pair<String, String?>): QueryParameters = QueryParameters.of(mapOf(*pairs))
+
         beforeSpec { fixture.start() }
         afterSpec { fixture.stop() }
         beforeTest { fixture.clear() }
@@ -40,7 +50,7 @@ class CatalogQueriesTest :
             while (true) {
                 val result =
                     fixture.queries.listItems(
-                        CatalogQueryParams.parse(mapOf("page" to page.toString(), "pageSize" to "10")),
+                        CatalogQueryParams.parse(params("page" to page.toString(), "pageSize" to "10")),
                     )
                 seen += result.items.map { it.id }
                 if (!result.hasNextPage) break
@@ -55,7 +65,7 @@ class CatalogQueriesTest :
             val target = fixture.seedTarget("Категория")
             repeat(25) { index -> fixture.seedItem(target, title = "Товар $index", productId = index.toLong()) }
 
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("pageSize" to "10")))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params("pageSize" to "10")))
 
             result.totalCount shouldBe 25
             result.totalPages shouldBe 3
@@ -78,8 +88,8 @@ class CatalogQueriesTest :
             }
 
             CatalogSort.entries.forEach { sort ->
-                val first = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("sort" to sort.name)))
-                val second = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("sort" to sort.name)))
+                val first = fixture.queries.listItems(CatalogQueryParams.parse(params("sort" to sort.name)))
+                val second = fixture.queries.listItems(CatalogQueryParams.parse(params("sort" to sort.name)))
                 first.items.map { it.id } shouldBe second.items.map { it.id }
             }
         }
@@ -100,7 +110,7 @@ class CatalogQueriesTest :
             // Every row has the same price and the same timestamp: the tiebreaker on the
             // id is the only thing that can order them, and without it the order would
             // be whatever the planner felt like.
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("sort" to "PriceAsc")))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params("sort" to "PriceAsc")))
             result.items.map { it.id }.distinct() shouldHaveSize 12
         }
 
@@ -110,7 +120,7 @@ class CatalogQueriesTest :
             fixture.seedItem(target, title = "Скидка 1000", productId = 2)
             fixture.seedItem(target, title = "Скидка", productId = 3)
 
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("q" to "100%")))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params("q" to "100%")))
 
             result.items shouldHaveSize 1
             result.items.first().title shouldBe "Скидка 100%"
@@ -121,7 +131,7 @@ class CatalogQueriesTest :
             fixture.seedItem(target, title = "Размер M_L", productId = 1)
             fixture.seedItem(target, title = "Размер MXL", productId = 2)
 
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("q" to "M_L")))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params("q" to "M_L")))
 
             result.items shouldHaveSize 1
             result.items.first().title shouldBe "Размер M_L"
@@ -132,8 +142,8 @@ class CatalogQueriesTest :
             fixture.seedItem(target, title = "Товар", brand = "Bosch", productId = 1)
             fixture.seedItem(target, title = "Другое", seller = "Ozon", productId = 2)
 
-            val byBrand = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("q" to "bosch")))
-            val bySeller = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("q" to "ozon")))
+            val byBrand = fixture.queries.listItems(CatalogQueryParams.parse(params("q" to "bosch")))
+            val bySeller = fixture.queries.listItems(CatalogQueryParams.parse(params("q" to "ozon")))
 
             byBrand.items shouldHaveSize 1
             byBrand.items.first().brand shouldBe "Bosch"
@@ -147,7 +157,7 @@ class CatalogQueriesTest :
             fixture.seedItem(target, title = "Без скидки", priceKopecks = 60000)
 
             // 450 rubles is 45000 kopecks: the first item is sold at 40000, so it is out.
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("minPrice" to "450")))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params("minPrice" to "450")))
 
             result.items shouldHaveSize 1
             result.items.first().title shouldBe "Без скидки"
@@ -161,7 +171,7 @@ class CatalogQueriesTest :
             // 101 rubles is 10100 kopecks. Were the number taken as kopecks, both items
             // would be above it and the filter would select nothing useful; the filter
             // only excludes the cheap one when the conversion to kopecks happened.
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("minPrice" to "101")))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params("minPrice" to "101")))
 
             result.items shouldHaveSize 1
             result.items.first().title shouldBe "Дорогой"
@@ -172,7 +182,7 @@ class CatalogQueriesTest :
             fixture.seedItem(target, title = "Большой", cashbackPercent = 20.0)
             fixture.seedItem(target, title = "Маленький", cashbackPercent = 5.0)
 
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("minCashback" to "10")))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params("minCashback" to "10")))
 
             result.items shouldHaveSize 1
             result.items.first().title shouldBe "Большой"
@@ -183,7 +193,7 @@ class CatalogQueriesTest :
             fixture.seedItem(target, title = "Есть", inStock = true, productId = 1)
             fixture.seedItem(target, title = "Нет", inStock = false, productId = 2)
 
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("inStock" to "true")))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params("inStock" to "true")))
 
             result.items shouldHaveSize 1
             result.items.first().title shouldBe "Есть"
@@ -195,7 +205,7 @@ class CatalogQueriesTest :
             fixture.seedItem(first, title = "Из первой", productId = 1)
             fixture.seedItem(second, title = "Из второй", productId = 2)
 
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(mapOf("targetId" to first.toString())))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params("targetId" to first.toString())))
 
             result.items shouldHaveSize 1
             result.items.first().title shouldBe "Из первой"
@@ -205,7 +215,7 @@ class CatalogQueriesTest :
             val target = fixture.seedTarget("Категория")
             val id = fixture.seedItem(target, title = null)
 
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(emptyMap()))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params()))
 
             result.items shouldHaveSize 1
             result.items.first().title shouldBe "Товар ${id.toString().take(8)}"
@@ -217,7 +227,7 @@ class CatalogQueriesTest :
             fixture.seedItem(first, title = "Лучший", matchId = 777, cashbackPercent = 20.0, productId = 777)
             fixture.seedItem(second, title = "Худший", matchId = 777, cashbackPercent = 5.0, productId = 777)
 
-            val result = fixture.queries.listTopDeals(TopDealsQueryParams.parse(emptyMap()))
+            val result = fixture.queries.listTopDeals(TopDealsQueryParams.parse(params()))
 
             result.items shouldHaveSize 1
             result.items.first().title shouldBe "Лучший"
@@ -228,7 +238,7 @@ class CatalogQueriesTest :
             val target = fixture.seedTarget("Категория")
             fixture.seedItem(target, title = "Без match id", matchId = null, productId = 1)
 
-            val result = fixture.queries.listTopDeals(TopDealsQueryParams.parse(emptyMap()))
+            val result = fixture.queries.listTopDeals(TopDealsQueryParams.parse(params()))
 
             result.items shouldHaveSize 0
         }
@@ -239,7 +249,7 @@ class CatalogQueriesTest :
             fixture.seedItem(target, title = "Лучший", matchId = 2, cashbackPercent = 30.0, productId = 2)
             fixture.seedItem(target, title = "Худший", matchId = 3, cashbackPercent = 1.0, productId = 3)
 
-            val result = fixture.queries.listTopDeals(TopDealsQueryParams.parse(emptyMap()))
+            val result = fixture.queries.listTopDeals(TopDealsQueryParams.parse(params()))
 
             result.items.map { it.title } shouldBe listOf("Лучший", "Средний", "Худший")
         }
@@ -256,8 +266,8 @@ class CatalogQueriesTest :
                 )
             }
 
-            val first = fixture.queries.listTopDeals(TopDealsQueryParams.parse(mapOf("pageSize" to "5")))
-            val second = fixture.queries.listTopDeals(TopDealsQueryParams.parse(mapOf("page" to "1", "pageSize" to "5")))
+            val first = fixture.queries.listTopDeals(TopDealsQueryParams.parse(params("pageSize" to "5")))
+            val second = fixture.queries.listTopDeals(TopDealsQueryParams.parse(params("page" to "1", "pageSize" to "5")))
 
             first.items shouldHaveSize 5
             second.items shouldHaveSize 5
@@ -312,7 +322,7 @@ class CatalogQueriesTest :
             val target = fixture.seedTarget("Категория")
             fixture.seedItem(target, cashback = 24.95, cashbackPercent = 5.0)
 
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(emptyMap()))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params()))
 
             result.items.first().cashbackRubles shouldBe java.math.BigDecimal("24.95")
             result.items.first().cashbackPercent shouldBe java.math.BigDecimal("5.00")
@@ -322,7 +332,7 @@ class CatalogQueriesTest :
             val target = fixture.seedTarget("Категория")
             fixture.seedItem(target, priceKopecks = null)
 
-            val result = fixture.queries.listItems(CatalogQueryParams.parse(emptyMap()))
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params()))
 
             result.items
                 .first()

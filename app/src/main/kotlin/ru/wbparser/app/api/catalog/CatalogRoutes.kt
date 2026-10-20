@@ -48,7 +48,7 @@ class CatalogRoutes(
      */
     @GetMapping("/items", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun items(request: HttpServletRequest): ResponseEntity<Paged<ProductCard>> {
-        val params = CatalogQueryParams.parse(request.parameters())
+        val params = CatalogQueryParams.parse(QueryParameters.of(request.parameters()))
         return pagedResponse(queries.listItems(params))
     }
 
@@ -77,7 +77,7 @@ class CatalogRoutes(
      */
     @GetMapping("/top-deals", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun topDeals(request: HttpServletRequest): ResponseEntity<Paged<ProductCard>> {
-        val params = TopDealsQueryParams.parse(request.parameters())
+        val params = TopDealsQueryParams.parse(QueryParameters.of(request.parameters()))
         return pagedResponse(queries.listTopDeals(params))
     }
 

@@ -20,21 +20,47 @@ data class Paging(
     /**
      * The offset of the requested page, for the `OFFSET` clause.
      *
-     * The multiplication cannot overflow: both factors are clamped to a range whose
-     * product fits in an `Int` — the page index by [MAX_PAGE], the page size by
-     * [MAX_PAGE_SIZE].
+     * The multiplication cannot overflow: the offset is clamped to [MAX_OFFSET] before it
+     * is computed, and the page size to [MAX_PAGE_SIZE].
      */
     val offset: Int get() = page * pageSize
 
     companion object {
         /**
+         * The largest offset the API will serve, in rows.
+         *
+         * ## Why the offset and not the page index
+         *
+         * The database pays for the rows *before* the page: it walks them one by one. The
+         * measurement says what that costs — at two hundred thousand observations, a page
+         * whose offset is a hundred thousand rows takes about a hundred milliseconds, and
+         * the cost grows with the offset rather than with the page.
+         *
+         * So the bound belongs on the offset. A page index on its own says nothing about
+         * the work: with a page size of sixty, a million pages means sixty million rows to
+         * walk, which the session's eight-second timeout would cut off — and a request the
+         * database gives up on is a `500`, not an answer.
+         *
+         * A million rows is about a second of work at the measured rate, which leaves the
+         * timeout room to spare and keeps the bound inside what the storefront can use.
+         *
+         * ## Why it is read from the contract
+         *
+         * The number lives in `contract/catalog-v1.openapi.yaml`, under
+         * `x-catalog-paging.maxOffset`, because the storefront has to clamp to the same
+         * one — and a number that lives in two places is a number that will differ in two
+         * places. The contract is the one document both sides already read, and the
+         * crawler's own test compares it with this constant.
+         */
+        val MAX_OFFSET: Int = CatalogContract.maxOffset()
+
+        /**
          * The largest page the API will serve.
          *
-         * There is no upper bound in the contract, but a page index beyond `Int.MAX / 60`
-         * would overflow the offset arithmetic, and an offset that large is a mistake rather
-         * than a request.
+         * Derived from [MAX_OFFSET] and the smallest possible page size, so that the
+         * number is never larger than the work it allows.
          */
-        const val MAX_PAGE: Int = 1_000_000
+        val MAX_PAGE: Int = MAX_OFFSET
 
         /**
          * The largest page size the API will serve.
@@ -53,19 +79,36 @@ data class Paging(
          * A value outside the range is clamped rather than refused: a hostile page number is
          * a mistake in a URL, and the first page is a better answer than an error. The
          * contract says so, and the storefront clamps as well, so the two answers agree.
+         *
+         * The page is clamped against the *page size of this request*, because that is what
+         * decides how many rows the offset means. The two clamps are one decision: a page
+         * of sixty rows and a page of one row cannot be bounded by the same index.
          */
         fun of(
             page: Int?,
             pageSize: Int?,
-        ): Paging = Paging(clampPage(page), clampPageSize(pageSize))
+        ): Paging {
+            val size = clampPageSize(pageSize)
+            return Paging(clampPage(page, size), size)
+        }
 
-        private fun clampPage(page: Int?): Int =
-            when {
+        /**
+         * The largest page index that keeps the offset within [MAX_OFFSET] rows.
+         */
+        fun maxPageFor(pageSize: Int): Int = (MAX_OFFSET / pageSize.coerceAtLeast(1)).coerceAtLeast(1)
+
+        private fun clampPage(
+            page: Int?,
+            pageSize: Int,
+        ): Int {
+            val maxPage = maxPageFor(pageSize)
+            return when {
                 page == null -> 0
                 page < 0 -> 0
-                page > MAX_PAGE -> MAX_PAGE
+                page > maxPage -> maxPage
                 else -> page
             }
+        }
 
         private fun clampPageSize(pageSize: Int?): Int =
             when {

@@ -116,7 +116,31 @@ jobs:
 
           digest="$(docker buildx imagetools inspect "$image" --format '{{.Manifest.Digest}}')"
           echo "image=${image}@${digest}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
           echo "digest: ${image}@${digest}"
+
+      # The tag is what tells the storefront whether this image is a release.
+      #
+      # A pull request's image and the image of the merge that follows it are
+      # two different images with two different digests — the merge rebuilds, and
+      # the rebuild is not bit-for-bit the same bytes. The storefront's pin names
+      # the digest of a *merged* commit's build, so it has to be able to tell
+      # the two apart; the tag is what says which one this is.
+      - name: The tag of this build
+        id: tag
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          SHA_SHORT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            tag="pr-${PR_NUMBER}"
+          else
+            tag="${SHA_SHORT}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "tag: ${tag}"
 
       # The dispatch id is this job's own attempt at asking. The storefront
       # prints it and names its artifact after it, which is how the answer is
@@ -147,12 +171,14 @@ jobs:
           SITE_REPO: ${{ vars.SITE_REPO }}
           SITE_REF: ${{ inputs.site_ref || 'main' }}
           IMAGE: ${{ steps.image.outputs.image }}
+          DIGEST: ${{ steps.image.outputs.digest }}
+          TAG: ${{ steps.tag.outputs.tag }}
           DISPATCH_ID: ${{ steps.dispatch.outputs.dispatch_id }}
         run: |
           set -euo pipefail
           echo "dispatched_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
           payload="$(printf '{"event_type":"crawler-image-published","client_payload":{"digest":"%s","crawler_image":"%s","tag":"%s","crawler_commit":"%s","dispatch_id":"%s","site_ref":"%s"}}' \
-            "$IMAGE" "$IMAGE" "${GITHUB_SHA::7}" "$GITHUB_SHA" "$DISPATCH_ID" "$SITE_REF")"
+            "$DIGEST" "$IMAGE" "$TAG" "$GITHUB_SHA" "$DISPATCH_ID" "$SITE_REF")"
           echo "$payload" | gh api --method POST "repos/${SITE_REPO}/dispatches" --input -
 
       # The dispatch starts a run; the run's conclusion is the answer. The run

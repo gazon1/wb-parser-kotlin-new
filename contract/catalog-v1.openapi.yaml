@@ -60,6 +60,24 @@ tags:
   - name: operational
     description: Liveness, readiness and the contract document itself.
 
+# The paging bounds, in one place, and in a form a program can read.
+#
+# The `page` parameter below is bounded by the *offset* it produces, not by a
+# page index of its own: the database walks every row before the page, so the
+# work is measured in rows, not in pages. A page of sixty rows and a page of
+# one row cannot be bounded by the same index.
+#
+# This block is the single source of that number. The crawler's code reads it,
+# the storefront's code reads it, and both clamp to the same bound — a
+# storefront that clamped to a different page than the API serves would show
+# a page the API never sent.
+#
+# `maxOffset` is the largest number of rows the offset may reach. The largest
+# page index that fits is therefore `floor(maxOffset / pageSize)`: 41 666 with
+# the default page size of 24, 16 666 with the largest one of 60.
+x-catalog-paging:
+  maxOffset: 1000000
+
 paths:
   /targets:
     get:
@@ -163,6 +181,13 @@ paths:
             Zero-based page index. A value outside the range is clamped into it
             rather than rejected: a hostile page number is a mistake in a URL, and
             the first page is a better answer than an error.
+
+            The bound is on the *offset* — `page x pageSize` — and not on the page
+            index, because the offset is what the database pays for: it walks every
+            row before the page. The offset never exceeds 1 000 000 rows, so the
+            largest page depends on the page size (1 000 000 with the default page
+            size of 24, 16 666 with the largest one of 60). A request beyond that
+            is answered with the last page that fits, not with an error.
           schema:
             type: integer
             minimum: 0
@@ -259,6 +284,13 @@ paths:
             Zero-based page index. A value outside the range is clamped into it
             rather than rejected: a hostile page number is a mistake in a URL, and
             the first page is a better answer than an error.
+
+            The bound is on the *offset* — `page x pageSize` — and not on the page
+            index, because the offset is what the database pays for: it walks every
+            row before the page. The offset never exceeds 1 000 000 rows, so the
+            largest page depends on the page size (1 000 000 with the default page
+            size of 24, 16 666 with the largest one of 60). A request beyond that
+            is answered with the last page that fits, not with an error.
           schema:
             type: integer
             minimum: 0
