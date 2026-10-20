@@ -48,8 +48,7 @@ class EgressProbeServiceTest :
 
             override fun stopProfileV2(profileId: String): Boolean = true
 
-            override fun listProfileProxies(): List<AdsPowerProfileProxy> =
-                listOf(AdsPowerProfileProxy("p1", null, null, null, "no_proxy"))
+            override fun listProfileProxies(): List<AdsPowerProfileProxy> = listOf(AdsPowerProfileProxy("p1", null, null, null, "no_proxy"))
 
             override fun isAvailable(): Boolean = true
         }
@@ -93,7 +92,8 @@ class EgressProbeServiceTest :
                 override fun getLoginTimeout(): Int = 0
 
                 override fun getParentLogger(): java.util.logging.Logger =
-                    java.util.logging.Logger.getLogger("fake")
+                    java.util.logging.Logger
+                        .getLogger("fake")
 
                 override fun <T : Any> unwrap(iface: Class<T>?): T = throw UnsupportedOperationException()
 
