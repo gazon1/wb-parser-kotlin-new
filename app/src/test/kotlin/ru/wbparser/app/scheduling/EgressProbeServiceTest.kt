@@ -19,9 +19,9 @@ import ru.wbparser.infra.http.BrowserAutomation
 import ru.wbparser.infra.http.BrowserPool
 import ru.wbparser.infra.http.BrowserProfileConfig
 import ru.wbparser.infra.http.EgressGroupProbe
+import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressReport
 import ru.wbparser.infra.http.EgressRouter
-import ru.wbparser.infra.http.RequestPacing
 import java.io.PrintWriter
 import java.sql.Connection
 import java.sql.SQLException
@@ -113,7 +113,6 @@ class EgressProbeServiceTest :
                     profiles = profiles,
                     adsPower = AdsPowerConfig(api = FakeAdsPower()),
                     browserAutomations = profiles.map { FakeBrowser(page()) },
-                    groupPacings = mapOf("ip-1" to RequestPacing(0L, 0L, 0L)),
                 )
             return EgressProbeService(
                 browserPool = pool,
@@ -137,9 +136,8 @@ class EgressProbeServiceTest :
                 BrowserPool(
                     profiles = profiles,
                     browserAutomations = profiles.map { FakeBrowser(page()) },
-                    groupPacings = mapOf("ip-1" to RequestPacing(0L, 0L, 0L)),
                 )
-            val router = EgressRouter(pool)
+            val router = EgressRouter(pool, EgressPacerRegistry(groups = listOf("ip-1")))
             val borrowed = router.borrow()
             router.onOutcome(borrowed, ru.wbparser.infra.http.DownloadOutcome.Antibot, null)
             borrowed.close()
@@ -174,9 +172,8 @@ class EgressProbeServiceTest :
                 BrowserPool(
                     profiles = profiles,
                     browserAutomations = profiles.map { FakeBrowser(page()) },
-                    groupPacings = mapOf("ip-1" to RequestPacing(0L, 0L, 0L)),
                 )
-            val router = EgressRouter(pool)
+            val router = EgressRouter(pool, EgressPacerRegistry(groups = listOf("ip-1")))
             val borrowed = router.borrow()
             router.onOutcome(borrowed, ru.wbparser.infra.http.DownloadOutcome.Antibot, null)
             borrowed.close()

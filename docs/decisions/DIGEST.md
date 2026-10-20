@@ -276,6 +276,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** останавливать краулер из-за недоступного эхо-сервиса: это «проверка не _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **Never** переносить накопленное старым адресом на новый: circuit, книги и штраф. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **Never** считать `crawl_targets` историей прогонов: это агрегат цели, а не журнал. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Always** отличать «нечего делать» от «провалилось»: отдельный исход, а не _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Always** показывать состояние egress в health-ответе. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Always** считать, что недоступный эхо-сервис — это «проверка не выполнилась», а не _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **MUST** называть пороги числами, а не описаниями. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Never** класть адрес в тег метрики: он меняется, а серия остаётся. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Never** открывать прогон, когда ни один адрес не может обслужить запрос. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Never** открывать строку прогона для прогона, который ничего не обслужил. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
 - **Always** отделять антибот (498) от транспортного сброса (статус 0) в любом _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 - **Always** писать измеренные числа в репозиторий рядом с решением, которое на них _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 - **Always** считать параллельную работу на одном адресе отдельным фактором: адрес _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
@@ -940,6 +947,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
+- `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — antibot  operations  infrastructure  measurement
 
 ## Active entries
@@ -1020,4 +1028,5 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
+- `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — Измерение не даёт оснований покупать второй адрес

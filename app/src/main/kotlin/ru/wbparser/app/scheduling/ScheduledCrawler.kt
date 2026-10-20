@@ -36,6 +36,9 @@ class ScheduledCrawler(
                 is CrawlRunner.RunResult.NothingDue -> {
                     log.info("Nothing to crawl: no target is due yet (freshness window not reached)")
                 }
+                is CrawlRunner.RunResult.NoEgressAvailable -> {
+                    log.warn("Crawl not started: no egress group can serve a request right now")
+                }
                 is CrawlRunner.RunResult.Failure -> {
                     log.error("Crawl failed: ${result.message}")
                 }

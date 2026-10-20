@@ -121,6 +121,8 @@ class CrawlTargetStateTest :
                 override fun lastGroupFor(targetId: UUID): String? = "ip-1"
 
                 override fun isGroupHealthy(groupId: String): Boolean = true
+
+                override fun isAnyGroupAvailable(): Boolean = true
             }
 
         /**
@@ -131,6 +133,20 @@ class CrawlTargetStateTest :
                 override fun lastGroupFor(targetId: UUID): String? = "ip-1"
 
                 override fun isGroupHealthy(groupId: String): Boolean = false
+
+                override fun isAnyGroupAvailable(): Boolean = true
+            }
+
+        /**
+         * An egress side where every address is refusing: there is nothing to serve.
+         */
+        val allDownEgress =
+            object : EgressAttribution {
+                override fun lastGroupFor(targetId: UUID): String? = "ip-1"
+
+                override fun isGroupHealthy(groupId: String): Boolean = false
+
+                override fun isAnyGroupAvailable(): Boolean = false
             }
 
         fun runnerWith(
@@ -170,6 +186,24 @@ class CrawlTargetStateTest :
                 state["consecutive_failures"] shouldBe 0
                 state["egress_failure_count"] shouldBe 0
                 (state["next_attempt_at"] == null) shouldBe true
+            }
+        }
+
+        test("the crawl does not start when no address can serve a request") {
+            runTest {
+                val id = db.seedTarget("Всё лежит")
+
+                val result = runnerWith(refused, allDownEgress).run()
+
+                result shouldBe CrawlRunner.RunResult.NoEgressAvailable
+                // Nothing was served, so nothing is blamed — and no job row was opened
+                // for a run that never served a target.
+                val state = stateOf(id)
+                (state["last_crawled_at"] == null) shouldBe true
+                state["consecutive_failures"] shouldBe 0
+                state["egress_failure_count"] shouldBe 0
+                (state["next_attempt_at"] == null) shouldBe true
+                db.rows("SELECT id FROM crawl_jobs").size shouldBe 0
             }
         }
 

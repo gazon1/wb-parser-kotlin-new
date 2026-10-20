@@ -104,9 +104,10 @@ class CrawlRunner(
         val targets = db.ds.fetchActiveTargets()
         val due = targetsDue(targets, config.freshness)
 
-        // Nothing to crawl — no job row is opened, which also keeps crawl_jobs.target_id
-        // (NOT NULL, foreign key) satisfiable.
-        if (due.isEmpty()) return RunResult.NothingDue
+        // The two reasons not to start are decided before a job row exists, and both
+        // are answers about the world rather than about the crawl.
+        val refusal = reasonNotToStart(due)
+        if (refusal != null) return refusal
 
         var jobId: UUID? = null
         try {
@@ -185,6 +186,32 @@ class CrawlRunner(
             }
             return RunResult.Failure(t.message ?: "Unknown error")
         }
+    }
+
+    /**
+     * The reasons a run does not start, decided before a job row exists.
+     *
+     * Two of them, and both are answers about the world rather than about the crawl:
+     *
+     * - **Nothing is due.** No job row is opened, which also keeps
+     *   `crawl_jobs.target_id` (NOT NULL, foreign key) satisfiable.
+     * - **Every address is refusing.** A run started now would serve nothing, fail
+     *   every target at once and close as a failed crawl — and the refusal belongs to
+     *   the addresses, not to the targets and not to the crawler. So the run does not
+     *   start, and no job row is opened for a run that served nothing.
+     *
+     * @param due the targets that are due to be crawled.
+     * @return the outcome that stops the run, or `null` when the run may start.
+     */
+    private fun reasonNotToStart(due: List<Target>): RunResult? {
+        if (due.isEmpty()) return RunResult.NothingDue
+
+        val egress = source.egress
+        if (egress != null && !egress.isAnyGroupAvailable()) {
+            log.warn("No egress group can serve a request right now — the crawl is not started.")
+            return RunResult.NoEgressAvailable
+        }
+        return null
     }
 
     /**
@@ -349,6 +376,20 @@ class CrawlRunner(
          * have nothing to do.
          */
         data object NothingDue : RunResult() {
+            fun exitCode(): Int = EXIT_CODE_SUCCESS
+        }
+
+        /**
+         * The crawl was not started: no egress group can serve a request right now.
+         *
+         * Every address is refusing, so there is nothing to serve. Starting the run
+         * anyway would fail every target at once and close the job as a failed crawl
+         * — and the refusal belongs to the addresses, not to the targets.
+         *
+         * The exit code is the success one, like [NothingDue]: the crawler did what it
+         * could, and what it could was nothing.
+         */
+        data object NoEgressAvailable : RunResult() {
             fun exitCode(): Int = EXIT_CODE_SUCCESS
         }
     }

@@ -19,6 +19,7 @@ import ru.wbparser.infra.http.AdsPowerConfig
 import ru.wbparser.infra.http.AdsPowerProfileProxy
 import ru.wbparser.infra.http.BrowserAutomation
 import ru.wbparser.infra.http.BrowserPool
+import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressRouter
 import java.io.PrintWriter
 import java.sql.Connection
@@ -139,7 +140,7 @@ class AdsPowerPreflightRunnerTest :
                         properties = properties,
                         groups = groups,
                         database = database,
-                        router = EgressRouter(pool),
+                        router = EgressRouter(pool, EgressPacerRegistry(groups = listOf("ip-1"))),
                     ),
             )
         }
