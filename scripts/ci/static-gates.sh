@@ -77,6 +77,14 @@ gate blocking "the CI workflows are wired" python3 scripts/ci/check-ci-workflows
 # are intentional and safe; all other org.jetbrains.exposed imports in domain/ are forbidden.
 gate blocking "domain purity: no infra imports in domain" bash scripts/ci/check-domain-purity.sh
 
+# --- the catalog measurement ---------------------------------------------------
+# `known_pages_limit` is a number about a catalog, and a number without its evidence
+# cannot be checked: no date, no boundary, no source. The YAML is the source of truth
+# and `catalog_measurements.json` is the measurement behind it. A limit that was edited
+# by hand — back to a round number, because that is what the file looked like before —
+# is exactly what this gate exists to catch, and it costs one file comparison.
+gate blocking "the catalog YAML agrees with the measurement artifact" python3 scripts/check-measurements.py
+
 # --- the demo seed ------------------------------------------------------------
 # The demo seed writes synthetic rows into the table the crawler writes into. Its
 # five run-time barriers are the last line of defence; this gate is the first one,

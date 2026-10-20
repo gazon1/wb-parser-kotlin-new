@@ -109,6 +109,13 @@ private fun ResultRow.toTarget(): Target =
         wbParentCatalogId = this[CrawlTargetsTable.wbParentCatalogId],
         rootCategoryName = this[CrawlTargetsTable.rootCategoryName],
         knownPagesLimit = this[CrawlTargetsTable.knownPagesLimit],
+        // The measurement metadata of the limit. TIMESTAMPTZ, so it arrives as an
+        // instant rather than as a wall time that means different things in different
+        // zones.
+        knownPagesLimitMeasuredAt = this[CrawlTargetsTable.knownPagesLimitMeasuredAt]?.toInstant(),
+        knownPagesLimitBoundary = this[CrawlTargetsTable.knownPagesLimitBoundary],
+        knownPagesLimitSource = this[CrawlTargetsTable.knownPagesLimitSource],
+        wbSubjectId = this[CrawlTargetsTable.wbSubjectId],
         wbSearchQuery = this[CrawlTargetsTable.wbSearchQuery],
         lastCrawledAt = this[CrawlTargetsTable.lastCrawledAt]?.toInstant(),
         consecutiveFailures = this[CrawlTargetsTable.consecutiveFailures],
