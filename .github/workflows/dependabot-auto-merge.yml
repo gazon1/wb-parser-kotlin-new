@@ -66,8 +66,9 @@ jobs:
           echo "bump=${bump}" >> "$GITHUB_OUTPUT"
 
       # The branch protection has the last word, and it is asked, not assumed:
-      # `mergeStateStatus` is GitHub's own answer to "are the required checks
-      # green for this pull request", and it is CLEAN only when they are.
+      # `mergeable_state` is GitHub's own answer to "may this pull request be
+      # merged now?", and it is `clean` only when the required checks are
+      # green.
       #
       # The merge is then made directly rather than queued through the
       # auto-merge API: the token of a workflow cannot enable auto-merge in
@@ -85,13 +86,22 @@ jobs:
           set -euo pipefail
           deadline=$(( $(date +%s) + 1800 ))
           while true; do
-            state="$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '.mergeStateStatus')"
+            # `mergeable_state` is the REST name of the answer; the GraphQL
+            # name is `mergeStateStatus` and the REST API does not have it.
+            # The values are lower case here.
+            state="$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '.mergeable_state // "unknown"')"
             case "$state" in
-              CLEAN)
-                echo "the required checks are green"
+              clean|unstable)
+                # `clean` — everything the branch protection asks for is
+                # green. `unstable` — a check that is not required failed;
+                # GitHub still says the pull request may be merged.
+                echo "the branch protection is satisfied ('$state')"
                 exit 0
                 ;;
-              BLOCKED|DIRTY|UNKNOWN)
+              blocked|unknown|behind)
+                # `blocked` — a required check is not green yet. `unknown` —
+                # GitHub has not computed it yet. `behind` — the branch is
+                # behind the base branch.
                 if [ "$(date +%s)" -ge "$deadline" ]; then
                   echo "::error::the pull request is '$state' and the checks did not become green"
                   exit 1
