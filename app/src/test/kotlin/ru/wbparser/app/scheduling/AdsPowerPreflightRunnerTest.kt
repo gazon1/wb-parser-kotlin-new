@@ -5,20 +5,18 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import org.jetbrains.exposed.sql.Database
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.EgressGroupConfig
 import ru.wbparser.app.config.EgressGroups
 import ru.wbparser.app.config.Spider
 import ru.wbparser.app.config.Worker
-import org.jetbrains.exposed.sql.Database
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.AdsPowerApi
 import ru.wbparser.infra.http.AdsPowerConfig
 import ru.wbparser.infra.http.AdsPowerProfileProxy
 import ru.wbparser.infra.http.BrowserAutomation
 import ru.wbparser.infra.http.BrowserPool
-import ru.wbparser.infra.http.BrowserProfileConfig
-import ru.wbparser.infra.http.EgressGroup
 import java.io.PrintWriter
 import java.sql.Connection
 import java.sql.SQLException
@@ -100,7 +98,8 @@ class AdsPowerPreflightRunnerTest :
                 override fun getLoginTimeout(): Int = 0
 
                 override fun getParentLogger(): java.util.logging.Logger =
-                    java.util.logging.Logger.getLogger("fake")
+                    java.util.logging.Logger
+                        .getLogger("fake")
 
                 override fun <T : Any> unwrap(iface: Class<T>?): T = throw UnsupportedOperationException()
 

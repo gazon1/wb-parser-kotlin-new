@@ -62,7 +62,10 @@ class EgressGroupQueriesPostgresTest :
         test("a group that is not isolated is recorded as such") {
             database.dataSource.upsertEgressGroup("ip-1", "203.0.113.7", isolated = false)
 
-            database.dataSource.fetchEgressGroups().single().isolated shouldBe false
+            database.dataSource
+                .fetchEgressGroups()
+                .single()
+                .isolated shouldBe false
         }
 
         test("the groups are kept apart") {
