@@ -114,6 +114,47 @@ class TargetAdminPostgresTest :
             target.rootCategoryName.shouldNotBeNull()
         }
 
+        test("fetchAllTargets carries the measurement metadata of the limit") {
+            // The admin API is where an operator looks to find out whether a target's
+            // limit was ever checked. A limit without its measurement date is a number
+            // nobody looked at.
+            val id = db.seedTarget("Смартфоны")
+            val sql =
+                "UPDATE crawl_targets SET known_pages_limit = 60, " +
+                    "known_pages_limit_measured_at = ?, known_pages_limit_boundary = 'api_cap', " +
+                    "known_pages_limit_source = 'measurement', wb_subject_id = 1260 WHERE id = ?"
+            db.ds.connection.use { conn ->
+                conn.prepareStatement(sql).use { ps ->
+                    ps.setTimestamp(1, Timestamp.from(Instant.parse("2026-10-20T13:34:31Z")))
+                    ps.setObject(2, id)
+                    ps.executeUpdate()
+                }
+            }
+
+            val target = db.ds.fetchAllTargets().single()
+
+            target.knownPagesLimit shouldBe 60
+            target.knownPagesLimitMeasuredAt shouldBe Instant.parse("2026-10-20T13:34:31Z")
+            target.knownPagesLimitBoundary shouldBe "api_cap"
+            target.knownPagesLimitSource shouldBe "measurement"
+            target.wbSubjectId shouldBe 1260L
+        }
+
+        test("a target that was never measured carries no measurement metadata") {
+            // NULL is the statement "nobody checked my limit". A date nobody observed
+            // would be a lie, and NOT NULL would have forced one into the rows written
+            // before the measurement existed.
+            db.seedTarget("Без измерения")
+
+            val target = db.ds.fetchAllTargets().single()
+
+            target.knownPagesLimit shouldBe null
+            target.knownPagesLimitMeasuredAt shouldBe null
+            target.knownPagesLimitBoundary shouldBe null
+            target.knownPagesLimitSource shouldBe null
+            target.wbSubjectId shouldBe null
+        }
+
         // -------------------------------------------------------------------------
         // insertTarget
         // -------------------------------------------------------------------------

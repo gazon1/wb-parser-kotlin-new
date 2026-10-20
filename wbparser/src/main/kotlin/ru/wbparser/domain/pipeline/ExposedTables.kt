@@ -135,6 +135,30 @@ object CrawlTargetsTable : Table("crawl_targets") {
      * seen from the same group is more likely the address's.
      */
     val anomalyGroup: Column<String?> = varchar("anomaly_group", 64).nullable()
+    // V10: the measurement metadata of `knownPagesLimit`. The limit is a number
+    // about a catalog, and these four are the evidence behind it — when it was measured, where
+    // the pagination ended, where the number came from, and which WB subject the
+    // catalog's products carry. Without them the limit is an assertion nobody can
+    // check, and `catalog_end` (the catalog ended by itself) cannot be told apart from
+    // `api_cap` (WB refused the next page — the crawl stores a slice, and the
+    // truncation counter fires honestly about it).
+    //
+    // All four are nullable: a target whose limit was never measured says so with
+    // NULL, which is a statement a NOT NULL column cannot make.
+    val knownPagesLimitMeasuredAt: Column<OffsetDateTime?> =
+        timestampWithTimeZone("known_pages_limit_measured_at").nullable()
+    val knownPagesLimitBoundary: Column<String?> = text("known_pages_limit_boundary").nullable()
+    val knownPagesLimitSource: Column<String?> = text("known_pages_limit_source").nullable()
+
+    /**
+     * The WB subject id the products of this target carry.
+     *
+     * It is measured, not guessed: the products of a catalog carry a single
+     * `subjectId`. It is not a foreign key to `wb_subjects` — that table is a
+     * dictionary WB publishes and the crawler loads on demand.
+     */
+    val wbSubjectId: Column<Long?> = long("wb_subject_id").nullable()
+
 
     // TIMESTAMPTZ, and the database fills both with now().
     val createdAt: Column<OffsetDateTime> = timestampWithTimeZone("created_at")
