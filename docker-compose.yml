@@ -19,7 +19,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"
+      - "5438:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wbparser} -d ${DB_NAME:-wbparser}"]
       interval: 5s
@@ -45,8 +45,8 @@ services:
       LOGGING_LEVEL_ROOT: DEBUG
       LOGGING_LEVEL_RU_WBPARSER: DEBUG
     ports:
-      - "8081:8080"
-      - "5005:5005"
+      - "8088:8080"
+      - "5001:5005"
     depends_on:
       postgres:
         condition: service_healthy
