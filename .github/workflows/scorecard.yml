@@ -11,6 +11,14 @@ name: Scorecard
 # SARIF file is uploaded to code scanning so the findings sit next to the
 # CodeQL alerts.
 #
+# The API keeps a score only for a repository it indexes. This one is not
+# indexed there: the API answers 404 for it, and for the other repositories of
+# this owner. The publication is attempted on every run — the action signs the
+# results and posts them — and the API takes the post and keeps nothing. That
+# is why the step that checks the API distinguishes "the API does not know this
+# repository" from "the publication was rejected": only the second one is a
+# failure. See docs/decisions/2026-10-20-a-missing-score-is-not-a-failed-posture.md.
+#
 # `id-token: write` is required by scorecard-action v2 to publish the
 # results: the publication is authenticated with an OIDC token that proves
 # this run is the run that produced the file. Without it the action refuses
@@ -102,26 +110,72 @@ jobs:
       # `if: always()`: the check must also run when the action itself
       # failed, because that is when "no score was published" is the most
       # important thing to say.
+      #
+      # What the check says depends on what the API says, and the two cases
+      # are not the same:
+      #
+      #   - The API holds a score for this repository (HTTP 200). Then the
+      #     publication is expected to happen, and the wait is the right
+      #     thing to do: the publication is asynchronous with the run, so a
+      #     single immediate query would report a publication that had not
+      #     landed yet as a failure. A score that stays on an older commit is
+      #     a rejected publication — the imposter-commit bug — and it fails.
+      #
+      #   - The API does not know this repository (HTTP 404). Then nothing was
+      #     rejected: there was nothing to reject. The action's publication
+      #     path signs the results and posts them to the API, the API takes
+      #     the post and keeps no score for a repository it does not index,
+      #     and the badge stays empty. This is a warning, not a failure: a
+      #     gate that reports a rejection that never happened teaches its
+      #     readers to ignore the red.
+      #
+      # The step before decides the third case, which is the only one that
+      # is unambiguously a failure: no score at all.
+      - name: The score was computed
+        if: always()
+        run: |
+          if [[ ! -s results.sarif ]]; then
+            echo "::error::the Scorecard run produced no results — the score was not computed at all"
+            exit 1
+          fi
+          echo "the run produced $(wc -c < results.sarif) bytes of results"
+
       - name: The score reached the API
         if: always()
         env:
           GH_REPO: ${{ github.repository }}
+          GH_SHA: ${{ github.sha }}
         run: |
+          url="https://api.scorecard.dev/projects/github.com/$GH_REPO"
+
+          status="$(curl -sS -o /tmp/scorecard.json -w '%{http_code}' "$url" 2>/dev/null || echo 000)"
+          if [[ "$status" == "404" ]]; then
+            echo "::warning::the Scorecard API does not hold a score for this repository — it is not indexed there, so the badge stays empty and the score lives in code scanning only"
+            exit 0
+          fi
+          if [[ "$status" != "200" ]]; then
+            echo "::error::the Scorecard API answered $status for $GH_REPO"
+            exit 1
+          fi
+
           # The API is queried a few times: the publication is asynchronous
           # with the run, and a single immediate query would report a
           # publication that had not landed yet as a failure.
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            published="$(curl -fsS "https://api.scorecard.dev/projects/github.com/$GH_REPO" 2>/dev/null \
-              | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("repo",{}).get("commit",""))' \
-              2>/dev/null || true)"
-            if [[ -n "$published" ]]; then
-              echo "the API holds a score for commit $published"
+            published="$(python3 -c 'import json;print(json.load(open("/tmp/scorecard.json")).get("repo",{}).get("commit",""))' 2>/dev/null || true)"
+            if [[ "$published" == "$GH_SHA" ]]; then
+              echo "the API holds the score of commit $published"
               exit 0
             fi
-            echo "attempt $attempt: no score published yet"
+            echo "attempt $attempt: the API holds '${published:-none}', waiting for $GH_SHA"
             sleep 10
+            status="$(curl -sS -o /tmp/scorecard.json -w '%{http_code}' "$url" 2>/dev/null || echo 000)"
+            if [[ "$status" != "200" ]]; then
+              echo "::error::the Scorecard API answered $status for $GH_REPO"
+              exit 1
+            fi
           done
-          echo "::error::the Scorecard API holds no score for this repository — the publication was rejected"
+          echo "::error::the Scorecard API holds the score of commit ${published:-none}, not of $GH_SHA — the publication was rejected"
           exit 1
 
       # `if: always()` on both: the results file is written before the
