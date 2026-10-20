@@ -109,6 +109,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** write instants through a zoned column type. A naive timestamp in a _(from `2026-10-19-schema-drift-gate`)
 - **Never** change the schema to match the model. The model is the description; _(from `2026-10-19-schema-drift-gate`)
 - **Never** write a table with hand-written SQL while the model describes the _(from `2026-10-19-schema-drift-gate`)
+- **Always** treat a value that is older than ten minutes as "as of ten minutes _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
+- **Never** run two crawler instances behind one address while the aggregates are _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
 
 ## Per-tag
 
@@ -134,7 +136,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `api`
 
+- The API answers a request that arrives right after a restart with a value computed _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
+- The `totalCount` of a page of `/items` is **not** cached, and the reason is _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
+- When the topology grows to more than one instance, the aggregates move to a shared _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 
 ### `architecture`
 
@@ -216,9 +221,18 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
 - The startup gate stays: this gate cannot see a dependency that the framework _(from `2026-10-19-runtime-classpath-gate`)_
 
+### `cache`
+
+- The API answers a request that arrives right after a restart with a value computed _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
+- The `totalCount` of a page of `/items` is **not** cached, and the reason is _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
+- When the topology grows to more than one instance, the aggregates move to a shared _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
+
 ### `catalog`
 
+- The API answers a request that arrives right after a restart with a value computed _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
+- The `totalCount` of a page of `/items` is **not** cached, and the reason is _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
+- When the topology grows to more than one instance, the aggregates move to a shared _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 
 ### `ci`
 
@@ -299,7 +313,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `deployment`
 
+- The API answers a request that arrives right after a restart with a value computed _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
+- The `totalCount` of a page of `/items` is **not** cached, and the reason is _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 - The crawler reaching Wildberries from the VPS is a separate question from _(from `2026-10-14-deploy-crawler-as-registry-image`)_
+- When the topology grows to more than one instance, the aggregates move to a shared _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 
 ### `docker`
 
@@ -345,6 +362,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `migrations`
 
 - The gate compares columns — names, types, nullability. It does not compare _(from `2026-10-19-schema-drift-gate`)_
+
+### `operations`
+
+- The API answers a request that arrives right after a restart with a value computed _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
+- The `totalCount` of a page of `/items` is **not** cached, and the reason is _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
+- When the topology grows to more than one instance, the aggregates move to a shared _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 
 ### `packaging`
 
@@ -520,6 +543,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-jdk-toolchain` — build  toolchain  ci  docker
 - `2026-10-19-runtime-classpath-gate` — build  runtime  gate  packaging
 - `2026-10-19-schema-drift-gate` — database  schema  test  migrations
+- `2026-10-20-catalog-aggregate-cache-is-in-process` — catalog  api  cache  operations  deployment
 
 ## Active entries
 
@@ -560,3 +584,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-jdk-toolchain` — The JDK version is one number in one place, and the toolchain provisions itself
 - `2026-10-19-runtime-classpath-gate` — The image is compared with the classpath the build resolved
 - `2026-10-19-schema-drift-gate` — The table definitions are compared with the schema the migrations create
+- `2026-10-20-catalog-aggregate-cache-is-in-process` — The catalog's aggregates are cached in the process, and that shapes the topology
