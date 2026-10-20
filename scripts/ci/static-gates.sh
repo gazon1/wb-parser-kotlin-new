@@ -63,6 +63,13 @@ gate blocking "gate scripts' own unit tests" python3 -m unittest discover -s scr
 # after the tests, alongside the results it reads.
 gate blocking "gates are wired and declared honestly" python3 scripts/check-gate-wiring.py --static
 
+# The CI surfaces are guarantees too, and they are outside the Gradle graph:
+# CodeQL, Scorecard, the nightly run, and the lint auto-fix. A workflow that
+# silently stops being triggered is indistinguishable from one that never ran,
+# so the wiring is checked here — the same reason the gate above exists for
+# the gates.
+gate blocking "the CI workflows are wired" python3 scripts/ci/check-ci-workflows.py
+
 # --- domain purity -------------------------------------------------------------
 # After the module merge (domain + infrastructure → wbparser) these checks run against
 # the merged tree.  Before the merge they guard the current domain/ independently.

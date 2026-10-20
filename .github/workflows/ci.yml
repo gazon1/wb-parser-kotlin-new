@@ -5,9 +5,27 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  schedule:
+    # Nightly, 03:00 UTC. The whole pipeline runs on its own: a repository
+    # whose tests only run when somebody pushes is a repository whose tests
+    # are never run — the failures that only a week of drift produces
+    # (a dependency that moved, a migration that stopped applying) are
+    # exactly the ones nobody hits on purpose.
+    #
+    # GitHub disables scheduled workflows in a repository with no activity for
+    # 60 days, and it delays scheduled runs that land in a busy hour. The
+    # failure of this run is reported as an issue by the `nightly-alert` job
+    # below, so a delayed run is visible rather than silent.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    # The same pipeline, started by hand — for a repository that wants to
+    # check the state of the world before a release, or right after a
+    # dependency bump that has been sitting unverified.
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # The event name is part of the group, so a push does not cancel the nightly
+  # run and the nightly run does not delay a push: they are different runs.
+  group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
 jobs:
@@ -289,3 +307,65 @@ jobs:
             echo "- Tags: \`${{ steps.meta.outputs.tags }}\`"
             echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Nobody reads a red cron run.
+  #
+  # A scheduled run fails at 03:00, nobody is looking, and the badge stays
+  # red until the next push — which is also the next time the failure is
+  # noticed. The issue is where the failure lands instead: it is in the list
+  # of things to do, and it carries the link to the run.
+  #
+  # `failure()`, not `always()`: this job reports a failure. A green run has
+  # nothing to report, and an issue that says "the nightly run passed" every
+  # night is noise that teaches people to ignore the label.
+  #
+  # Every job of this workflow is in `needs`, so `needs.*.result` names the
+  # ones that failed — the issue says which part broke, not merely that
+  # something did.
+  nightly-alert:
+    name: Nightly failure becomes an issue
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    needs: [static, build, coverage, lint, dependency-health, gate-honesty, publish-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+
+    steps:
+      - name: Open an issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          # The whole `needs` context as JSON: it carries the result of every
+          # job, and a failure report that names the job is worth ten times
+          # one that says "something broke".
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          # The Python is indented with the block and not inside it: a block
+          # scalar ends at the first line that is not indented, and a Python
+          # program that starts with an indent is an IndentationError. Both
+          # sides are satisfied by the same indentation — the block's is
+          # stripped, so Python sees a flush-left program.
+          failed="$(python3 -c '
+          import json, sys
+          needs = json.loads(sys.argv[1])
+          broken = [name for name, job in sorted(needs.items()) if job.get("result") == "failure"]
+          print(", ".join(broken) if broken else "none")
+          ' "$NEEDS_JSON")"
+          echo "failed jobs: $failed"
+          {
+            echo "The nightly CI run failed."
+            echo
+            echo "- run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "- failed jobs: $failed"
+            echo
+            echo "<!-- opened by .github/workflows/ci.yml (nightly-alert) -->"
+          } > "$RUNNER_TEMP/nightly-failure.md"
+          # The label makes the failures findable. `--force` updates it when
+          # it is already there, so this step is idempotent.
+          gh label create ci-failure --color B60205 \
+            --description "The nightly CI run failed" --force
+          gh issue create \
+            --title "Nightly CI failed ($(date -u +%F))" \
+            --label ci-failure \
+            --body-file "$RUNNER_TEMP/nightly-failure.md"

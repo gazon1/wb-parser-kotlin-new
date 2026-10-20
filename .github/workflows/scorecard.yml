@@ -1,0 +1,86 @@
+name: Scorecard
+
+# OpenSSF Scorecard: the security posture of the repository itself, measured
+# by twenty checks that read the repository the way an attacker would — is
+# there a branch protection, are the actions pinned, is there a security
+# policy, does the CI run on every pull request.
+#
+# The score is not a gate. It is a number that moves, and a number that moves
+# without anyone noticing is the same as no number. It is published to the
+# Scorecard API, where the badge and the per-check breakdown live, and the
+# SARIF file is uploaded to code scanning so the findings sit next to the
+# CodeQL alerts.
+#
+# `id-token: write` is required by scorecard-action v2 to publish the
+# results: the publication is authenticated with an OIDC token that proves
+# this run is the run that produced the file. Without it the action refuses
+# to publish, which is a check that says "your results are not trustworthy"
+# — the opposite of what this workflow is for.
+#
+# See docs/decisions/2026-10-20-ci-security-gates-and-lint-autofix.md.
+
+on:
+  branch_protection_rule:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, Monday 04:23 UTC — after the CodeQL run, so the two do not
+    # compete for the same runners at the same time.
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scorecard-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analysis:
+    name: OSSF Scorecard
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Publishing to the Scorecard API is authenticated with OIDC.
+      id-token: write
+      # The SARIF results are uploaded to code scanning.
+      security-events: write
+      # Scorecard reads the workflow files of the repository.
+      actions: read
+      contents: read
+
+    steps:
+      # `persist-credentials: false`: the checkout's token is not left in the
+      # git configuration, where the next step could pick it up. This workflow
+      # pushes nothing.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Run the analysis
+        id: scorecard
+        uses: ossf/scorecard-action@v2
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      # `if: always()` on both: the results file is written before the
+      # publication is attempted, so it exists even when the publication
+      # failed — and a run whose publication failed is exactly the run whose
+      # file somebody needs to read.
+      - name: Upload the results as an artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: scorecard-results
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload the results to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: results.sarif
+          category: scorecard
