@@ -85,9 +85,10 @@ paths:
       operationId: listTargets
       summary: Every crawl target with its item count.
       description: |
-        A full pass over the scraped items, grouped per target. It is the one
-        aggregate that does not scale for free, so the API caches it for ten
-        minutes rather than recomputing it per request.
+        A full pass over the read model — the current observation of each product —
+        grouped per target. It is the one aggregate that does not scale for free, so
+        the API caches it for ten minutes rather than recomputing it per request,
+        and the answer says when it was computed.
       responses:
         "200":
           description: The targets.
@@ -98,12 +99,18 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, asOf]
                 properties:
                   items:
                     type: array
                     items:
                       $ref: "#/components/schemas/TargetSummary"
+                  asOf:
+                    type: string
+                    format: date-time
+                    description: >
+                      The moment the counts were computed. The aggregate is cached for ten
+                      minutes, so a count without a moment is a count of unknown age.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "429":
@@ -114,6 +121,18 @@ paths:
       tags: [catalog]
       operationId: listItems
       summary: A filtered, sorted, paginated page of product cards.
+      description: |
+        The list is a list of **products**: the crawler stores one row per
+        (target, product, price) — a price change writes a new row and keeps the old
+        one, because the price history is made of those rows — and this endpoint
+        answers with the current observation of each product. A product that changed
+        price is one card, with the price it has now, not two cards with two prices.
+
+        The price filters read that current price: a product that was cheap last week
+        and is expensive today is not found by "up to N".
+
+        `totalCount` counts the products that match, not the price observations
+        behind them.
       parameters:
         - name: targetId
           in: query
@@ -336,6 +355,13 @@ paths:
       tags: [catalog]
       operationId: getStats
       summary: Aggregate counters for the whole catalog.
+      description: |
+        The counters come in two pairs, because the crawler stores price *observations*
+        and the storefront shows *products*. `totalItems` and `withCashback` count the
+        observations; `totalProducts` and `productsWithCashback` count the products.
+
+        The aggregate is cached for ten minutes, so the answer carries `asOf` — the
+        moment the counters were computed.
       responses:
         "200":
           description: The counters.
@@ -626,7 +652,11 @@ components:
           type: boolean
         itemCount:
           type: integer
-          description: How many items this target holds. Zero for a configured but empty target.
+          description: >
+            How many products this target holds right now — the current observation of
+            each product in it. Zero for a configured but empty target. It is not the
+            number of price observations the target has produced: a product that changed
+            price twice is one product and two observations.
         newestScrapedAt:
           type: [string, "null"]
           format: date-time
@@ -656,10 +686,21 @@ components:
 
     SiteStats:
       type: object
-      required: [totalItems, totalTargets, withCashback]
+      required: [totalItems, totalProducts, totalTargets, withCashback, productsWithCashback, asOf]
       properties:
         totalItems:
           type: integer
+          description: >
+            How many price observations the catalog holds. The crawler stores one row per
+            (target, product, price) — a price change writes a new row and keeps the old
+            one, because the price history is made of those rows. This is the number of
+            those rows, not the number of products.
+        totalProducts:
+          type: integer
+          description: >
+            How many products the catalog holds — the number a visitor means by "how many
+            products are there". It is the number of distinct products, each counted once,
+            with the price it has now.
         totalTargets:
           type: integer
         newestScrapedAt:
@@ -667,4 +708,13 @@ components:
           format: date-time
         withCashback:
           type: integer
-          description: How many items carry a cashback percentage.
+          description: How many observations carry a cashback percentage.
+        productsWithCashback:
+          type: integer
+          description: How many products carry a cashback percentage now.
+        asOf:
+          type: string
+          format: date-time
+          description: >
+            The moment the counters were computed. The aggregate is cached for ten
+            minutes, so a counter without a moment is a counter of unknown age.

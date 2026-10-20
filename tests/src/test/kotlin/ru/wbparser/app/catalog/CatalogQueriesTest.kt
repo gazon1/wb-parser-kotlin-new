@@ -41,6 +41,125 @@ class CatalogQueriesTest :
         afterSpec { fixture.stop() }
         beforeTest { fixture.clear() }
 
+        test("a product that changed price is one card, with the price it has now") {
+            val target = fixture.seedTarget("Категория")
+            val product = 900L
+            fixture.seedItem(
+                target,
+                title = "Карта памяти",
+                productId = product,
+                priceKopecks = 10000L,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            fixture.seedItem(
+                target,
+                title = "Карта памяти",
+                productId = product,
+                priceKopecks = 12000L,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params()))
+
+            // The writer keeps one row per (target, product, price), because the price
+            // history is made of those rows. A list built from them would show the same
+            // product twice — once with the price it has and once with the price it had.
+            result.items shouldHaveSize 1
+            result.items.first().priceKopecks shouldBe 12000L
+            result.totalCount shouldBe 1
+        }
+
+        test("the price filter reads the price the product has now") {
+            val target = fixture.seedTarget("Категория")
+            val product = 901L
+            fixture.seedItem(
+                target,
+                title = "Дешевле вчера",
+                productId = product,
+                priceKopecks = 5000L,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            fixture.seedItem(
+                target,
+                title = "Дороже сегодня",
+                productId = product,
+                priceKopecks = 50000L,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+
+            // The product costs 500 rubles now. Finding it under "up to 100 rubles"
+            // would show a price the product does not have. (The price filter is in
+            // rubles; the database keeps kopecks.)
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params("maxPrice" to "100")))
+
+            result.items shouldHaveSize 0
+        }
+
+        test("the counters say how many products there are, and how many observations") {
+            val target = fixture.seedTarget("Категория")
+            val product = 902L
+            fixture.seedItem(target, productId = product, priceKopecks = 10000L)
+            fixture.seedItem(
+                target,
+                productId = product,
+                priceKopecks = 12000L,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+            fixture.seedItem(target, title = "Другой товар", productId = 903L, priceKopecks = 3000L)
+
+            val stats = fixture.queries.siteStats()
+
+            stats.totalItems shouldBe 3
+            stats.totalProducts shouldBe 2
+            stats.withCashback shouldBe 3
+            stats.productsWithCashback shouldBe 2
+        }
+
+        test("a target holds the products it holds, not the price changes it produced") {
+            val target = fixture.seedTarget("Категория")
+            val product = 904L
+            fixture.seedItem(target, productId = product, priceKopecks = 10000L)
+            fixture.seedItem(
+                target,
+                productId = product,
+                priceKopecks = 12000L,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+
+            val targets = fixture.queries.listTargets()
+
+            targets shouldHaveSize 1
+            targets.first().itemCount shouldBe 1
+        }
+
+        test("the read model and the view agree on what the current observation is") {
+            val target = fixture.seedTarget("Категория")
+            val product = 905L
+            fixture.seedItem(
+                target,
+                title = "Карта памяти",
+                productId = product,
+                priceKopecks = 10000L,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            fixture.seedItem(
+                target,
+                title = "Карта памяти",
+                productId = product,
+                priceKopecks = 12000L,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+
+            // The view `latest_product_observations` and the read model the queries
+            // build are two statements of the same idea: the current observation of a
+            // product. They are written in two places, and two places can drift — so the
+            // drift is what this test is for.
+            val fromModel = fixture.queries.listItems(CatalogQueryParams.parse(params()))
+            val fromView = fixture.readModelIds()
+
+            fromModel.items.map { it.id } shouldBe fromView
+        }
+
         test("a page does not repeat a row and does not drop one") {
             val target = fixture.seedTarget("Категория")
             repeat(25) { index -> fixture.seedItem(target, title = "Товар $index", productId = index.toLong()) }
