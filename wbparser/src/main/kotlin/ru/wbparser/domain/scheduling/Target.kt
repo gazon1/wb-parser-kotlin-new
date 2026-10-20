@@ -73,6 +73,40 @@ data class Target(
      */
     val knownPagesLimit: Int? = null,
     /**
+     * When [knownPagesLimit] was measured.
+     *
+     * Null when the limit was never measured — and that is the honest state: a
+     * target whose limit nobody checked says so instead of carrying a date that
+     * nobody observed.
+     */
+    val knownPagesLimitMeasuredAt: Instant? = null,
+    /**
+     * Where the pagination ended when the limit was measured.
+     *
+     * `catalog_end` — the catalog ended by itself, and the crawl read to the end of
+     * it. `api_cap` — WB refused to serve the next page, so the target is a *slice* of
+     * the category and the truncation counter fires, correctly.
+     *
+     * The two are not the same fact, and a limit without its boundary cannot be
+     * judged: the same number means "the whole category" in one case and "a third of
+     * the category" in the other.
+     */
+    val knownPagesLimitBoundary: String? = null,
+    /**
+     * Where the limit came from, e.g. `measurement`.
+     *
+     * Free-form on purpose — the column records a provenance, and the set of
+     * provenances is not fixed by the schema.
+     */
+    val knownPagesLimitSource: String? = null,
+    /**
+     * The WB subject id the products of this target carry.
+     *
+     * Measured, not guessed: the products of a catalog carry a single `subjectId`.
+     * Null when the target was never measured.
+     */
+    val wbSubjectId: Long? = null,
+    /**
      * WB's own catalog search token, e.g. `menu_v3_9467 карты памяти`.
      *
      * This is the parameter that actually selects the catalog in WB's internal API

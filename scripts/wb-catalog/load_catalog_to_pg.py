@@ -19,24 +19,51 @@ Usage:
     python load_catalog_to_pg.py config.yaml --db-name wbparser --db-user postgres --db-password pass
     python load_catalog_to_pg.py config.yaml --dry-run
     python load_catalog_to_pg.py config.yaml --root-category "Женская одежда" --max-depth 2
+    python load_catalog_to_pg.py config.yaml --measurements /tmp/catalog_lengths.json ...
 
 The YAML may carry `search_query` — WB's catalog token, e.g. "menu_v3_9467 карты памяти".
 It is written to crawl_targets.wb_search_query and is what selects the category in the
 internal catalog API. `scripts/wb-catalog/enrich_catalog_queries.py` adds it from WB's
 published menu.
+
+The measurement metadata
+------------------------
+`known_pages_limit` is a number; the metadata around it says where the number came
+from: when it was measured, where the pagination ended, and which WB subject the
+catalog's products carry. It travels with the limit, because a limit without its
+evidence is an assertion nobody can check.
+
+The metadata is written from the YAML — the YAML is the source of truth of this
+repository — and `--measurements` overrides it with a measurement report, for the
+case where a catalog has just been measured and the YAML has not been synced yet.
+A target whose limit was never measured carries no metadata at all: its columns stay
+NULL, which is how a target says "nobody checked my limit".
 """
 
 from __future__ import annotations
 
 import json
+import sys
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import click
 import psycopg2
 from psycopg2 import extras
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from catalog_measurements import (  # noqa: E402
+    FIELD_BOUNDARY,
+    FIELD_MEASURED_AT,
+    FIELD_SOURCE,
+    FIELD_SUBJECT_ID,
+    best_measurements,
+    measured_at_datetime,
+    metadata_for_catalog,
+)
 
 
 def validate_json(ctx: click.Context, param: click.Parameter, value: str) -> dict | list | None:
@@ -69,6 +96,54 @@ def load_yaml_pages(yaml_path: Path) -> List[dict]:
     return pages
 
 
+def load_measurements(report_paths: Tuple[Path, ...]) -> Dict[str, dict]:
+    """The measurements of the reports, `catalog id -> record`.
+
+    An empty dict when there is no report: the metadata then comes from the YAML,
+    which is the source of truth of this repository. Several reports can be given —
+    the limit is the MAXIMUM over all of them, never the last one.
+    """
+    records: List[dict] = []
+    for report_path in report_paths:
+        try:
+            with open(report_path, "r", encoding="utf-8") as f:
+                report = json.load(f)
+        except (OSError, json.JSONDecodeError) as e:
+            raise click.ClickException(f"Cannot read the measurement report {report_path}: {e}") from e
+        records += list(report.get("catalogs") or [])
+    return best_measurements(records)
+
+
+BOUNDARIES = ("catalog_end", "api_cap")
+
+
+def resolve_metadata(page: dict, limits: Dict[str, dict]) -> dict:
+    """The measurement metadata of one target: the report first, then the YAML.
+
+    The report wins where it has something to say: it is the measurement itself. The
+    YAML carries what the report did not — the subject id of a catalog that was
+    measured before the subject id was recorded, for instance.
+
+    A target with neither carries no metadata, and its columns stay NULL. That is
+    not an omission: it is how a target says that nobody checked its limit.
+    """
+    reported = metadata_for_catalog(limits, page.get("id"))
+    metadata = reported if reported else {
+        FIELD_MEASURED_AT: page.get(FIELD_MEASURED_AT),
+        FIELD_BOUNDARY: page.get(FIELD_BOUNDARY),
+        FIELD_SOURCE: page.get(FIELD_SOURCE),
+        FIELD_SUBJECT_ID: page.get(FIELD_SUBJECT_ID),
+    }
+    boundary = metadata.get(FIELD_BOUNDARY)
+    if boundary is not None and boundary not in BOUNDARIES:
+        raise click.ClickException(
+            f"catalog {page.get('id')}: the boundary {boundary!r} is neither "
+            f"{BOUNDARIES[0]!r} nor {BOUNDARIES[1]!r}. The database only knows these two, "
+            f"and a third one is a bug rather than a new fact."
+        )
+    return metadata
+
+
 # ── SQL template ───────────────────────────────────────────────────────────────
 #
 # Schema columns in order (matches the VALUES tuple order below):
@@ -86,11 +161,17 @@ def load_yaml_pages(yaml_path: Path) -> List[dict]:
 #   12 wb_search_query   TEXT          ← WB catalog search token (e.g. "menu_v3_9467 карты памяти")
 #   13 created_at        TIMESTAMPTZ
 #   14 updated_at        TIMESTAMPTZ
+#   15 known_pages_limit_measured_at TIMESTAMPTZ ← NULL when the limit was never measured
+#   16 known_pages_limit_boundary     TEXT        ← 'catalog_end' | 'api_cap'
+#   17 known_pages_limit_source       TEXT        ← 'measurement'
+#   18 wb_subject_id                  BIGINT      ← the WB subject of the catalog's products
 
 SQL_COLUMNS = (
     "id, name, start_url, allowed_domains, max_depth, parsing_rules, "
     "is_active, known_pages_limit, wb_catalog_id, wb_parent_catalog_id, "
-    "root_category_name, wb_search_query, created_at, updated_at"
+    "root_category_name, wb_search_query, created_at, updated_at, "
+    "known_pages_limit_measured_at, known_pages_limit_boundary, "
+    "known_pages_limit_source, wb_subject_id"
 )
 
 SQL_TEMPLATE = """(
@@ -101,7 +182,11 @@ SQL_TEMPLATE = """(
     %s,          -- wb_parent_catalog_id
     %s,          -- root_category_name
     %s,          -- wb_search_query
-    %s, %s
+    %s, %s,
+    %s,          -- known_pages_limit_measured_at
+    %s,          -- known_pages_limit_boundary
+    %s,          -- known_pages_limit_source
+    %s           -- wb_subject_id
 )"""
 
 INSERT_QUERY = f"INSERT INTO crawl_targets ({SQL_COLUMNS}) VALUES %s"
@@ -122,7 +207,11 @@ SET name = %s,
     root_category_name = %s,
     wb_search_query = %s,
     is_active = %s,
-    updated_at = %s
+    updated_at = %s,
+    known_pages_limit_measured_at = %s,
+    known_pages_limit_boundary = %s,
+    known_pages_limit_source = %s,
+    wb_subject_id = %s
 WHERE wb_catalog_id = %s
 """
 
@@ -171,6 +260,22 @@ WHERE wb_catalog_id = %s
         "crawling. NULL = no limit (the crawler then falls back to its own cap)."
     ),
 )
+# ── Measurement metadata ───────────────────────────────────────────────────────
+@click.option(
+    "--measurements",
+    "measurements_paths",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=(),
+    multiple=True,
+    help=(
+        "JSON measurement report (written by measure_catalog_length.py). The measurement "
+        "metadata — when the limit was measured, where the pagination ended, where the "
+        "number came from — is taken from it instead of from the YAML. Repeat for "
+        "several passes: the limit is the MAXIMUM over all of them, never the last one. "
+        "Without this flag the metadata comes from the YAML, and a target that was never "
+        "measured carries none."
+    ),
+)
 # ── Execution options ──────────────────────────────────────────────────────────
 @click.option(
     "--batch-size",
@@ -196,6 +301,7 @@ def load_catalog_to_pg(
     allowed_domains: str,
     root_category: str | None,
     known_pages_limit: int | None,
+    measurements_paths: Tuple[Path, ...],
     batch_size: int,
     dry_run: bool,
     verbose: bool,
@@ -212,6 +318,10 @@ def load_catalog_to_pg(
     """
     pages = load_yaml_pages(yaml_path)
     click.echo(f"Loaded {len(pages)} categories from {yaml_path}")
+    limits = load_measurements(measurements_paths)
+    if measurements_paths:
+        sources = ", ".join(str(path) for path in measurements_paths)
+        click.echo(f"Measurement metadata from {sources}: {len(limits)} measured target(s)")
 
     # Parse allowed_domains JSON array
     try:
@@ -240,6 +350,7 @@ def load_catalog_to_pg(
                 err=True,
             )
             continue
+        metadata = resolve_metadata(page, limits)
         rows.append((
             str(uuid.uuid4()),                 # 1  id
             page["name"],                      # 2  name
@@ -262,6 +373,13 @@ def load_catalog_to_pg(
             page.get("search_query"),
             now,                               # 13 created_at
             now,                               # 14 updated_at
+            # 15-18 the measurement metadata — when the limit was measured, where the
+            # pagination ended, where the number came from, and which WB subject the
+            # catalog's products carry. A target that was never measured carries none.
+            measured_at_datetime(metadata.get(FIELD_MEASURED_AT)),
+            metadata.get(FIELD_BOUNDARY),
+            metadata.get(FIELD_SOURCE),
+            metadata.get(FIELD_SUBJECT_ID),
         ))
 
     if skipped:
@@ -277,6 +395,10 @@ def load_catalog_to_pg(
             click.echo(f"  • name={r[1]} | url={r[2]}")
             click.echo(f"    wb_catalog_id={r[8]} | wb_parent_catalog_id={r[9]}")
             click.echo(f"    search_query={r[11]}")
+            click.echo(
+                f"    known_pages_limit={r[7]} | measured_at={r[14]} | "
+                f"boundary={r[15]} | source={r[16]} | wb_subject_id={r[17]}"
+            )
 
     if dry_run:
         click.echo(f"\nDRY-RUN: {len(rows)} records prepared. Run without --dry-run to insert.")
@@ -334,6 +456,10 @@ def load_catalog_to_pg(
                         row[11],  # wb_search_query
                         row[6],  # is_active
                         now,  # updated_at
+                        row[14],  # known_pages_limit_measured_at
+                        row[15],  # known_pages_limit_boundary
+                        row[16],  # known_pages_limit_source
+                        row[17],  # wb_subject_id
                         str(row[8]),  # wb_catalog_id — the match key
                     ),
                 )
