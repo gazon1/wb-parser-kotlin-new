@@ -127,6 +127,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** write a table with hand-written SQL while the model describes the _(from `2026-10-19-schema-drift-gate`)
 - **Always** load the dictionary before a crawl that is expected to produce _(from `2026-10-19-subject-dictionary-and-known-pages-limit`)
 - **Never** write a name that did not come from the dictionary. A null name is _(from `2026-10-19-subject-dictionary-and-known-pages-limit`)
+- **Always** check that a publication reached the API. A green run that _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)
+- **Always** declare a top-level `permissions:` in every workflow. _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)
+- **Always** pin an action to a commit, and verify that the pin is a commit _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)
+- **Never** pass an input an action does not declare. It is a warning on _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)
+- **Never** read a pin as a commit because it is forty characters long. A _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)
 - **Always** прогонять `enrich_catalog_queries.py` перед загрузкой каталога в БД. _(from `2026-10-20-a-popular-list-is-not-a-catalog`)
 - **Always** сигналить о таком ответе метрикой и предупреждением: протухший токен виден только _(from `2026-10-20-a-popular-list-is-not-a-catalog`)
 - **Never** грузить в БД цель без `wb_search_query`. _(from `2026-10-20-a-popular-list-is-not-a-catalog`)
@@ -399,6 +404,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The nightly now costs two workflows a week instead of one: the run _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)_
 - The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
 - The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
+- The pin checker needs `GITHUB_TOKEN`: the API's unauthenticated rate limit _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)_
 
 ### `cleanup`
 
@@ -566,6 +572,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Gradle was upgraded to 8.14.6 in the same series: the plugin requires Gradle 8.11.1 or newer. _(from `2026-10-19-dependency-analysis-plugin`)_
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
+- The pin checker needs `GITHUB_TOKEN`: the API's unauthenticated rate limit _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)_
 
 ### `infrastructure`
 
@@ -638,6 +645,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Retry logic in `runDownloadStage` / `runParseStage` / `saveBatch` is fully deterministic and testable with fake clocks. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - Rules read `priceKopecks`, `salePriceKopecks`, `inStock` and `category` from `ParsedItem`, _(from `2026-10-09-wire-business-rules-into-filter`)_
 - The `Side` hierarchy now has three variants. A fourth one is a new effect _(from `2026-10-20-the-registry-is-total-by-construction`)_
+- The pin checker needs `GITHUB_TOKEN`: the API's unauthenticated rate limit _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)_
 - The reconciliation stays a single statement over all stale rows, and its result _(from `2026-10-20-job-timestamps-carry-an-offset`)_
 - `.invoke()` calls become `.run.invoke()` (the function is now a property named `run`) _(from `2026-10-17-stage-data-class-dsl`)_
 - `Coordinator` is the sole owner of deduplication and retry attempt state _(from `2026-10-17-coordinator-extraction`)_
@@ -735,6 +743,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - The nightly run costs a full pipeline every day. It is the price of _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
 - The pin bumps arrive as pull requests from Dependabot, and each one is a _(from `2026-10-20-the-repository-measures-its-own-posture`)_
+- The pin checker needs `GITHUB_TOKEN`: the API's unauthenticated rate limit _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)_
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role _(from `2026-10-19-catalog-read-api-contract`)_
 
 ### `side-effects`
@@ -845,6 +854,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-runtime-classpath-gate` — build  runtime  gate  packaging
 - `2026-10-19-schema-drift-gate` — database  schema  test  migrations
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — catalog  data  domain-model
+- `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked` — pipeline  security  ci  gates
 - `2026-10-20-a-popular-list-is-not-a-catalog` — crawler  data-quality  catalog  api
 - `2026-10-20-a-schedule-that-does-not-run-is-a-failure` — ci  reliability  schedule  observability  gate
 - `2026-10-20-anti-bot-refusals-are-measured` — crawler  antibot  metrics  pipeline
@@ -916,6 +926,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-runtime-classpath-gate` — The image is compared with the classpath the build resolved
 - `2026-10-19-schema-drift-gate` — The table definitions are compared with the schema the migrations create
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — Category names come from WB's subject dictionary, and known_pages_limit is a limit
+- `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked` — A pin is a commit, and a publication is checked, not assumed
 - `2026-10-20-a-popular-list-is-not-a-catalog` — Популярная ротация WB — не каталог: её не сохраняют
 - `2026-10-20-a-schedule-that-does-not-run-is-a-failure` — A schedule that does not run is a failure, and a CI failure should be about the code
 - `2026-10-20-anti-bot-refusals-are-measured` — Отказы антибота измеряются и получают собственный back-off

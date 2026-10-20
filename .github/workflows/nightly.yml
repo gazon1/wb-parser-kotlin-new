@@ -30,6 +30,16 @@ on:
     # check the state of the world before a release, or right after a
     # dependency bump that has been sitting unverified.
 
+# The top level declares what a job gets unless it says otherwise. The one
+# job below declares its own — the grant of the pipeline, which is wider than
+# this workflow's own needs — so this is the floor.
+#
+# It also ends the "no topLevel permission defined" finding the Scorecard
+# reports: a workflow that says nothing about permissions leaves the grant to
+# the repository's default, which is a decision nobody made.
+permissions:
+  contents: read
+
 jobs:
   nightly:
     # The permissions of the caller are the ceiling for every job of the

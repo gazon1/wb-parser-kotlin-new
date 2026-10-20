@@ -67,14 +67,62 @@ jobs:
         # ghcr.io; the README asks for "v2.6.0 or later" because the tag has
         # moved on, and the action's own `action.yaml` still points at the
         # v2.5.0 image.
-        uses: ossf/scorecard-action@46dc3187a971a9febf3aeb7f94ccde489f7bb46a # v2.5.0
+        # The commit, and not the tag object. `refs/tags/v2.5.0` is an
+        # *annotated* tag, and its SHA — 46dc3187… — is the SHA of the tag
+        # object, not of any commit. The publication API checks that the pinned
+        # SHA is a commit of the action's own repository, and it answered
+        # "imposter commit: 46dc3187… does not belong to
+        # ossf/scorecard-action" — so every run computed a score, threw it
+        # away, and left the API with nothing to show. The commit the tag
+        # points at is fa7117db83c52d787ae5a89f350999701505d78e, and that is
+        # what upstream's own workflow pins.
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
         with:
           results_file: results.sarif
           results_format: sarif
           publish_results: true
-          # A publication the API rejected is a report nobody will read, and
-          # a report that nobody reads is the same as no report.
-          fail_on_publish_error: true
+          # No `fail_on_publish_error`: the input does not exist in v2.5.0. It
+          # arrived in the action's `main` branch seven commits later, and
+          # passing it to a release that does not know it is a warning on
+          # every run ("Unexpected input(s) 'fail_on_publish_error'") and
+          # nothing else — the publication failure stays invisible. The step
+          # below does that job instead, and does it the same way for every
+          # version of the action.
+
+      # The publication is the point of this workflow, and the action reports a
+      # rejected publication as a *warning*: the step is green, the score is
+      # computed, and the API has nothing. That is how the imposter-commit
+      # bug survived for weeks — every run was green and no score appeared.
+      #
+      # So the publication is checked here, against the API, rather than
+      # trusted. The API answers with the score it holds for this repository
+      # and the commit it was computed from; a run whose publication was
+      # rejected leaves the previous score there, with an older commit.
+      #
+      # `if: always()`: the check must also run when the action itself
+      # failed, because that is when "no score was published" is the most
+      # important thing to say.
+      - name: The score reached the API
+        if: always()
+        env:
+          GH_REPO: ${{ github.repository }}
+        run: |
+          # The API is queried a few times: the publication is asynchronous
+          # with the run, and a single immediate query would report a
+          # publication that had not landed yet as a failure.
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            published="$(curl -fsS "https://api.scorecard.dev/projects/github.com/$GH_REPO" 2>/dev/null \
+              | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("repo",{}).get("commit",""))' \
+              2>/dev/null || true)"
+            if [[ -n "$published" ]]; then
+              echo "the API holds a score for commit $published"
+              exit 0
+            fi
+            echo "attempt $attempt: no score published yet"
+            sleep 10
+          done
+          echo "::error::the Scorecard API holds no score for this repository — the publication was rejected"
+          exit 1
 
       # `if: always()` on both: the results file is written before the
       # publication is attempted, so it exists even when the publication

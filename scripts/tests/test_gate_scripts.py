@@ -43,6 +43,7 @@ def load(name: str, filename: str):
 BASELINE = load("baseline_ratchet", "check-baseline-ratchet.py")
 TEST_RUNS = load("test_runs", "check-test-runs.py")
 COVERAGE = load("coverage", "check-coverage.py")
+ACTION_PINS = load("action_pins", "ci/check-action-pins.py")
 
 
 def write(tmp: str, name: str, content: str) -> Path:
@@ -386,23 +387,29 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
     GOOD = {
         "codeql.yml": (
             "on:\n  schedule:\n    - cron: \"17 3 * * 1\"\n"
+            "permissions:\n  contents: read\n"
             "jobs:\n  analyze:\n    permissions:\n      security-events: write\n"
             "    steps:\n      - uses: github/codeql-action/init@0123456789abcdef0123456789abcdef01234567\n"
             "        with:\n          languages: java-kotlin\n"
             "      - uses: github/codeql-action/analyze@0123456789abcdef0123456789abcdef01234567\n"
         ),
         "scorecard.yml": (
+            "permissions:\n  contents: read\n"
             "jobs:\n  analysis:\n    permissions:\n      id-token: write\n"
             "    steps:\n      - uses: ossf/scorecard-action@89abcdef0123456789abcdef0123456789abcdef\n"
             "        with:\n          results_file: results.sarif\n"
+            "      - run: curl -fsS https://api.scorecard.dev/projects/github.com/x/y\n"
         ),
         "lint-autofix.yml": (
+            "permissions:\n  contents: read\n"
             "jobs:\n  autofix:\n    steps:\n      - run: bash scripts/ci/lint-autofix.sh\n"
         ),
         "ci.yml": (
             "name: CI\n"
+            "permissions:\n  contents: read\n"
             "jobs:\n"
             "  static:\n    steps:\n      - run: echo static\n"
+            "      - run: python3 scripts/ci/check-action-pins.py\n"
             "  build:\n    steps:\n      - run: echo build\n"
             "  nightly-alert:\n    needs: [static, build]\n"
             "    steps:\n      - run: gh issue create --title x\n"
@@ -410,19 +417,26 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         "nightly.yml": (
             "name: CI (nightly)\n"
             "on:\n  schedule:\n    - cron: \"0 3 * * *\"\n"
+            "permissions:\n  contents: read\n"
             "jobs:\n"
             "  nightly:\n    uses: ./.github/workflows/ci.yml\n"
         ),
         "watchdog.yml": (
             "name: Nightly watchdog\n"
             "on:\n  schedule:\n    - cron: \"0 9 * * 1\"\n"
+            "permissions:\n  actions: read\n  contents: read\n  issues: write\n"
             "jobs:\n"
             "  watchdog:\n    steps:\n"
             "      - run: gh api repos/x/actions/workflows/nightly.yml/runs\n"
         ),
     }
 
-    def _fixture(self, workflows: dict[str, str] | None = None, with_script: bool = True) -> Path:
+    def _fixture(
+        self,
+        workflows: dict[str, str] | None = None,
+        with_script: bool = True,
+        with_checker: bool = True,
+    ) -> Path:
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
         workflow_dir = tmp / ".github" / "workflows"
@@ -433,6 +447,9 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         script.parent.mkdir(parents=True)
         if with_script:
             script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        checker = tmp / "scripts" / "ci" / "check-action-pins.py"
+        if with_checker:
+            checker.write_text("#!/usr/bin/env python3\nexit 0\n", encoding="utf-8")
         return tmp
 
     def _check(self, root: Path) -> list[str]:
@@ -569,6 +586,49 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         findings = self._check(self._fixture())
         self.assertFalse(any("a tag, not a commit" in f for f in findings), findings)
 
+    def test_a_workflow_without_top_level_permissions_is_a_finding(self):
+        """A workflow that says nothing about permissions leaves the grant to the default.
+
+        The Scorecard reports it as "no topLevel permission defined", and it is
+        right: a job that does not declare its own inherits the caller's grant.
+        """
+        workflows = dict(self.GOOD)
+        workflows["nightly.yml"] = workflows["nightly.yml"].replace(
+            "permissions:\n  contents: read\n", ""
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("no top-level permissions" in f for f in findings), findings)
+
+    def test_nobody_checking_the_pins_is_a_finding(self):
+        """A pin to a tag object looks exactly like a pin to a commit.
+
+        Only the upstream repository can tell them apart, so a checker that
+        nothing calls is a pin nothing checks.
+        """
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace(
+            "      - run: python3 scripts/ci/check-action-pins.py\n", ""
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("no workflow calls" in f for f in findings), findings)
+
+    def test_a_missing_pin_checker_is_a_finding(self):
+        findings = self._check(self._fixture(with_checker=False))
+        self.assertTrue(any("check-action-pins.py does not exist" in f for f in findings), findings)
+
+    def test_a_publication_that_is_not_checked_is_a_finding(self):
+        """The action reports a rejected publication as a warning, not a failure.
+
+        Without a check against the API, a run whose publication was refused is
+        green and no score appears — which is what happened here.
+        """
+        workflows = dict(self.GOOD)
+        workflows["scorecard.yml"] = workflows["scorecard.yml"].replace(
+            "      - run: curl -fsS https://api.scorecard.dev/projects/github.com/x/y\n", ""
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("api.scorecard.dev" in f for f in findings), findings)
+
     def test_a_local_workflow_reference_needs_no_pin(self):
         """`uses: ./.github/workflows/ci.yml` is this repository's own code."""
         workflows = dict(self.GOOD)
@@ -633,6 +693,131 @@ def _two_package_report() -> str:
         "  </package>\n"
         "</report>\n"
     )
+
+
+class TestActionPinsGateCanFail(unittest.TestCase):
+    """The pin checker must fail on a pin that is not a commit.
+
+    A 40-character SHA is the identifier of *some* git object, and an
+    annotated tag is a git object too. The action pinned to a tag object runs
+    perfectly, and the Scorecard publication API refuses the result — so the
+    run is green and no score appears. Only the upstream repository can tell
+    the two apart, which is why the API is stubbed here and the question is
+    asked of it.
+    """
+
+    SHA = "a" * 40
+
+    def _root(self, workflows: dict[str, str]) -> Path:
+        tmp = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, tmp, True)
+        workflow_dir = tmp / ".github" / "workflows"
+        workflow_dir.mkdir(parents=True)
+        for name, content in workflows.items():
+            (workflow_dir / name).write_text(content, encoding="utf-8")
+        return tmp
+
+    def _response(self, status: int):
+        class _Response:
+            def __init__(self) -> None:
+                self.status = status
+
+            def read(self) -> bytes:
+                return b"{}"
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args: object) -> None:
+                return None
+
+        return _Response()
+
+    def test_the_repository_of_an_action_ignores_its_sub_path(self):
+        """`github/codeql-action/init` lives in the repository `github/codeql-action`.
+
+        The commit is in the repository, so that is what the API is asked about.
+        """
+        self.assertEqual(
+            ACTION_PINS.repository_of("github/codeql-action/init"),
+            "github/codeql-action",
+        )
+        self.assertEqual(
+            ACTION_PINS.repository_of("ossf/scorecard-action"),
+            "ossf/scorecard-action",
+        )
+
+    def test_a_pin_to_a_tag_object_is_a_finding(self):
+        root = self._root(
+            {
+                "ci.yml": (
+                    "jobs:\n"
+                    "  a:\n"
+                    "    steps:\n"
+                    "      - uses: ossf/scorecard-action@" + self.SHA + " # v2.5.0\n"
+                ),
+            },
+        )
+        findings = ACTION_PINS.check(
+            root,
+            opener=lambda request, timeout=None: self._response(422),
+        )
+        self.assertTrue(findings, "a pin that is not a commit must be a finding")
+        self.assertIn("not a commit", findings[0])
+
+    def test_a_pin_to_a_commit_is_quiet(self):
+        root = self._root(
+            {
+                "ci.yml": (
+                    "jobs:\n"
+                    "  a:\n"
+                    "    steps:\n"
+                    "      - uses: ossf/scorecard-action@" + self.SHA + " # v2.5.0\n"
+                ),
+            },
+        )
+        findings = ACTION_PINS.check(
+            root,
+            opener=lambda request, timeout=None: self._response(200),
+        )
+        self.assertFalse(findings, findings)
+
+    def test_a_tag_reference_is_not_a_pin_at_all(self):
+        """A tag is a different kind of defect, and another gate reports it."""
+        root = self._root(
+            {
+                "ci.yml": (
+                    "jobs:\n"
+                    "  a:\n"
+                    "    steps:\n"
+                    "      - uses: ossf/scorecard-action@v2.5.0\n"
+                ),
+            },
+        )
+        self.assertEqual(ACTION_PINS.pinned_actions(root), [])
+
+    def test_a_local_workflow_reference_needs_no_pin(self):
+        root = self._root(
+            {
+                "ci.yml": (
+                    "jobs:\n"
+                    "  a:\n"
+                    "    steps:\n"
+                    "      - uses: ./.github/workflows/other.yml\n"
+                ),
+            },
+        )
+        self.assertEqual(ACTION_PINS.pinned_actions(root), [])
+
+    def test_the_checker_finds_its_own_positive_control(self):
+        """The control is the check itself, with the API stubbed."""
+        completed = subprocess.run(
+            [sys.executable, str(SCRIPTS / "ci" / "check-action-pins.py"), "--self-test"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 if __name__ == "__main__":

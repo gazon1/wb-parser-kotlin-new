@@ -79,6 +79,10 @@ REQUIRED = {
             "ossf/scorecard-action",
             "results_file",
             "id-token: write",
+            # The publication is checked against the API, because the action
+            # reports a rejected publication as a warning: the step is green
+            # and no score appears.
+            "api.scorecard.dev",
         ],
     },
     "lint-autofix.yml": {
@@ -92,6 +96,12 @@ REQUIRED = {
 #: The shared corrector. Both surfaces call it: the workflow above and the
 #: local recipe (`just lint::autofix`).
 AUTOFIX_SCRIPT = "scripts/ci/lint-autofix.sh"
+
+#: The checker that asks the upstream repository whether a pinned SHA is a
+#: commit. It needs the network, so it runs in the pipeline rather than in the
+#: static registry — and the gate below checks that the pipeline calls it, so
+#: it cannot be deleted unnoticed.
+PIN_CHECKER = "scripts/ci/check-action-pins.py"
 
 #: The pipeline, and the job inside it that reports a failed nightly run.
 PIPELINE = "ci.yml"
@@ -229,6 +239,63 @@ def check_autofix_script(root: Path) -> list[str]:
         f"{AUTOFIX_SCRIPT} does not exist, but the auto-fix workflow calls it. "
         "The corrector is the deliverable; without it the workflow fails on the runner."
     ]
+
+
+def check_action_pins_are_checked(root: Path) -> list[str]:
+    """The pipeline checks that every pinned SHA is a commit, and the checker exists.
+
+    A 40-character SHA is the identifier of *some* git object, and an annotated
+    tag is a git object too. Pinning an action to the SHA of a tag object looks
+    like the strongest form of pinning and is not: the action runs, and the
+    Scorecard publication API refuses the result, because the SHA is not a
+    commit of the action's repository. The run is green and no score appears.
+
+    The question cannot be answered from the shape of the SHA, so it is asked
+    of the upstream repository — which needs the network, which is why the
+    check runs in the pipeline and not in the static registry. A checker that
+    lives nowhere is dead code, and a checker that lives only in the pipeline
+    can be deleted without anything noticing. Both are findings here.
+    """
+    findings: list[str] = []
+    checker = root / PIN_CHECKER
+    if not checker.exists():
+        findings.append(
+            f"{PIN_CHECKER} does not exist. The pipeline calls it to ask the upstream "
+            "repository whether each pinned SHA is a commit, and without it a pin to a "
+            "tag object looks exactly like a pin to a commit — the action runs, the "
+            "publication is refused, and the run is green."
+        )
+    texts = read_workflows(root)
+    called = any(PIN_CHECKER in text for text in texts.values())
+    if not called:
+        findings.append(
+            f"no workflow calls {PIN_CHECKER}. A checker that nothing calls is dead "
+            "code, and the pin it checks is the one thing a green run cannot tell you "
+            "is wrong."
+        )
+    return findings
+
+
+def check_top_level_permissions(root: Path) -> list[str]:
+    """Every workflow declares what a job gets unless it says otherwise.
+
+    A workflow with no top-level `permissions:` leaves the grant to the
+    repository's default — a decision nobody made, and one that can change
+    under the repository. The Scorecard reports it as "no topLevel permission
+    defined", and the finding is correct: a job added later without a
+    declaration of its own inherits everything the caller has.
+    """
+    findings: list[str] = []
+    for path in workflow_paths(root):
+        text = strip_yaml_comments(path.read_text(encoding="utf-8"))
+        if not re.search(r"^permissions:\s*$", text, re.M):
+            findings.append(
+                f"{path.name} declares no top-level permissions. A job that does not "
+                "declare its own inherits the caller's grant, and a workflow that says "
+                "nothing about permissions leaves the grant to the repository's default "
+                "— a decision nobody made."
+            )
+    return findings
 
 
 def check_scheduled_run(root: Path) -> list[str]:
@@ -400,6 +467,8 @@ def check(root: Path) -> list[str]:
     return (
         check_required_files(root)
         + check_autofix_script(root)
+        + check_action_pins_are_checked(root)
+        + check_top_level_permissions(root)
         + check_scheduled_run(root)
         + check_failure_becomes_an_issue(root)
         + check_wait_list(root)
@@ -418,6 +487,8 @@ GOOD_WORKFLOWS = {
         "on:\n"
         "  schedule:\n"
         "    - cron: \"17 3 * * 1\"\n"
+        "permissions:\n"
+        "  contents: read\n"
         "jobs:\n"
         "  analyze:\n"
         "    permissions:\n"
@@ -430,6 +501,8 @@ GOOD_WORKFLOWS = {
     ),
     "scorecard.yml": (
         "name: Scorecard\n"
+        "permissions:\n"
+        "  contents: read\n"
         "jobs:\n"
         "  analysis:\n"
         "    permissions:\n"
@@ -438,9 +511,12 @@ GOOD_WORKFLOWS = {
         "      - uses: ossf/scorecard-action@89abcdef0123456789abcdef0123456789abcdef\n"
         "        with:\n"
         "          results_file: results.sarif\n"
+        "      - run: curl -fsS https://api.scorecard.dev/projects/github.com/x/y\n"
     ),
     "lint-autofix.yml": (
         "name: Lint auto-fix\n"
+        "permissions:\n"
+        "  contents: read\n"
         "jobs:\n"
         "  autofix:\n"
         "    steps:\n"
@@ -448,10 +524,13 @@ GOOD_WORKFLOWS = {
     ),
     "ci.yml": (
         "name: CI\n"
+        "permissions:\n"
+        "  contents: read\n"
         "jobs:\n"
         "  static:\n"
         "    steps:\n"
         "      - run: echo static\n"
+        "      - run: python3 scripts/ci/check-action-pins.py\n"
         "  build:\n"
         "    steps:\n"
         "      - run: echo build\n"
@@ -465,6 +544,8 @@ GOOD_WORKFLOWS = {
         "on:\n"
         "  schedule:\n"
         "    - cron: \"0 3 * * *\"\n"
+        "permissions:\n"
+        "  contents: read\n"
         "jobs:\n"
         "  nightly:\n"
         "    uses: ./.github/workflows/ci.yml\n"
@@ -474,6 +555,10 @@ GOOD_WORKFLOWS = {
         "on:\n"
         "  schedule:\n"
         "    - cron: \"0 9 * * 1\"\n"
+        "permissions:\n"
+        "  actions: read\n"
+        "  contents: read\n"
+        "  issues: write\n"
         "jobs:\n"
         "  watchdog:\n"
         "    steps:\n"
@@ -482,7 +567,12 @@ GOOD_WORKFLOWS = {
 }
 
 
-def write_fixture(root: Path, workflows: dict[str, str], with_script: bool = True) -> None:
+def write_fixture(
+    root: Path,
+    workflows: dict[str, str],
+    with_script: bool = True,
+    with_checker: bool = True,
+) -> None:
     workflows_dir = root / ".github" / "workflows"
     workflows_dir.mkdir(parents=True, exist_ok=True)
     # The cases run one after another in one directory. A case that removes a
@@ -498,6 +588,11 @@ def write_fixture(root: Path, workflows: dict[str, str], with_script: bool = Tru
         script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     elif script.exists():
         script.unlink()
+    checker = root / PIN_CHECKER
+    if with_checker:
+        checker.write_text("#!/usr/bin/env python3\nexit 0\n", encoding="utf-8")
+    elif checker.exists():
+        checker.unlink()
 
 
 def run_self_test() -> int:
@@ -567,6 +662,39 @@ def run_self_test() -> int:
                     ),
                 },
                 "expect": "a tag, not a commit",
+            },
+            "a workflow declares no top-level permissions": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "nightly.yml": GOOD_WORKFLOWS["nightly.yml"].replace(
+                        "permissions:\n  contents: read\n", ""
+                    ),
+                },
+                "expect": "declares no top-level permissions",
+            },
+            "nobody checks that the pins are commits": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "      - run: python3 scripts/ci/check-action-pins.py\n", ""
+                    ),
+                },
+                "expect": "no workflow calls",
+            },
+            "the pin checker does not exist": {
+                "workflows": GOOD_WORKFLOWS,
+                "checker": False,
+                "expect": "does not exist",
+            },
+            "the publication is not checked against the API": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "scorecard.yml": GOOD_WORKFLOWS["scorecard.yml"].replace(
+                        "      - run: curl -fsS https://api.scorecard.dev/projects/github.com/x/y\n",
+                        "",
+                    ),
+                },
+                "expect": "api.scorecard.dev",
             },
             "the watchdog watches a workflow that does not exist": {
                 "workflows": {
@@ -650,6 +778,7 @@ def run_self_test() -> int:
                 root,
                 case.get("workflows", GOOD_WORKFLOWS),
                 with_script=case.get("script", True),
+                with_checker=case.get("checker", True),
             )
             findings = check(root)
             if not any(case["expect"] in f for f in findings):

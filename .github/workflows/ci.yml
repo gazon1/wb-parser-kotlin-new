@@ -41,6 +41,17 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
+# The top level declares what a job gets *unless it says otherwise*. Every job
+# below declares its own permissions, so this is the floor and not the grant:
+# a job added later without a declaration gets read-only access rather than
+# everything the caller has.
+#
+# It also ends the "no topLevel permission defined" finding the Scorecard
+# reports: a workflow that says nothing about permissions leaves the grant
+# to the repository's default, which is a decision nobody made.
+permissions:
+  contents: read
+
 jobs:
   # Fast gate first: no JVM, no build output, a few seconds. The Gradle job below
   # takes minutes, and a documentation or baseline problem should not wait for
@@ -72,6 +83,24 @@ jobs:
         run: |
           chmod +x scripts/ci/static-gates.sh scripts/*.sh
           bash scripts/ci/static-gates.sh
+
+      # A 40-character SHA is the identifier of *some* git object, and an
+      # annotated tag is a git object too. Pinning an action to the SHA of a
+      # tag object looks like the strongest form of pinning and is not: the
+      # action runs, and the Scorecard publication API refuses the result
+      # because the SHA is not a commit of the action's repository. The run is
+      # green and no score appears — which is exactly what happened here.
+      #
+      # The question cannot be answered from the shape of the SHA, so it is
+      # asked of the upstream repository. That needs the network, which is why
+      # this check runs here and not in the static registry: the local cycle
+      # must not fail because a network call did. The gate that guards these
+      # surfaces (scripts/ci/check-ci-workflows.py) checks that this step
+      # exists, so it cannot be deleted unnoticed.
+      - name: Every action is pinned to a commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/ci/check-action-pins.py
 
   build:
     runs-on: ubuntu-latest
