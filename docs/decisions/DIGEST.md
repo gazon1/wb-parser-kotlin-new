@@ -270,6 +270,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** держать два способа описать профили: они разойдутся, и разойдутся тихо. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать профиль без прокси прямой, если AdsPower говорит, что прокси есть, _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать статическую проверку достаточной: два разных прокси могут _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Always** писать прогон цели в базу: без этого история не знает, кто обслуживал цель. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Always** проверять адрес по расписанию, а не только на старте. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **MUST** различать «адрес неизвестен» и «адрес подтверждён»: неизвестный адрес не _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Never** останавливать краулер из-за недоступного эхо-сервиса: это «проверка не _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Never** переносить накопленное старым адресом на новый: circuit, книги и штраф. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Never** считать `crawl_targets` историей прогонов: это агрегат цели, а не журнал. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **Always** отделять антибот (498) от транспортного сброса (статус 0) в любом _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 - **Always** писать измеренные числа в репозиторий рядом с решением, которое на них _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 - **Always** считать параллельную работу на одном адресе отдельным фактором: адрес _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
@@ -933,6 +939,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
+- `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — antibot  operations  infrastructure  measurement
 
 ## Active entries
@@ -1012,4 +1019,5 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
+- `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — Измерение не даёт оснований покупать второй адрес
