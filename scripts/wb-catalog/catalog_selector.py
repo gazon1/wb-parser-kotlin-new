@@ -101,18 +101,44 @@ def save_config(
     selected_nodes: dict[str, dict],
     parent_nodes_ids: set[str],
     config_path: Path = DEFAULT_CONFIG_PATH,
+    child_map: dict[str, str] | None = None,
+    label_map: dict[str, str] | None = None,
 ) -> None:
     """
     Persist selected leaf nodes (non-parent) to YAML.
 
     Filters out any node whose id appears in parent_nodes_ids, so only
     actionable leaf categories are stored.
+
+    Each page also carries `root_category_name` — the label of its top-level
+    ancestor ("Электроника", "Одежда"). The storefront groups categories under
+    that root, and the loader writes it to `crawl_targets.root_category_name`.
+    It is recorded per page rather than globally because one selection can span
+    several roots. Without `child_map`/`label_map` the root cannot be resolved
+    and the field is omitted.
     """
-    filtered = [
-        data
-        for node_id, data in selected_nodes.items()
-        if node_id not in parent_nodes_ids
-    ]
+    child_map = child_map or {}
+    label_map = label_map or {}
+
+    def _root_label(node_id: str) -> str | None:
+        """Walk up the parent chain to the top-level ancestor and return its label."""
+        current = node_id
+        seen: set[str] = set()
+        while current in child_map and current not in seen:
+            seen.add(current)
+            current = child_map[current]
+        return label_map.get(current)
+
+    filtered = []
+    for node_id, data in selected_nodes.items():
+        if node_id in parent_nodes_ids:
+            continue
+        page = dict(data)
+        root_label = _root_label(node_id)
+        if root_label:
+            page["root_category_name"] = root_label
+        filtered.append(page)
+
     config_path.parent.mkdir(parents=True, exist_ok=True)
     with open(config_path, "w", encoding="utf-8") as f:
         yaml.dump({"pages": filtered}, f, allow_unicode=True, sort_keys=False)
@@ -144,11 +170,13 @@ def build_ui(
     # ── Build parent ↔ child maps ─────────────────────────────────────────────
     parent_map: dict[str, list[str]] = {}
     child_map: dict[str, str] = {}
+    label_map: dict[str, str] = {}
     parent_nodes_ids: set[str] = set()
 
     def _build_maps(nodes: list[dict], parent: str | None = None) -> None:
         for n in nodes:
             nid = n["id"]
+            label_map[nid] = n.get("label", nid)
             if parent:
                 parent_map.setdefault(parent, []).append(nid)
                 child_map[nid] = parent
@@ -231,7 +259,13 @@ def build_ui(
         with ui.row().classes("gap-2"):
             ui.button(
                 "Save config",
-                on_click=lambda: save_config(selected_nodes, parent_nodes_ids, config_path),
+                on_click=lambda: save_config(
+                    selected_nodes,
+                    parent_nodes_ids,
+                    config_path,
+                    child_map,
+                    label_map,
+                ),
             ).props("color=primary")
 
             ui.button(

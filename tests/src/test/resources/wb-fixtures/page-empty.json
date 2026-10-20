@@ -1,6 +1,9 @@
 {
-  "data": {
-    "products": []
+  "metadata": {
+    "catalog_type": "catalog-merger",
+    "catalog_value": "preset=500050021",
+    "name": "menu_v3_9463 смартфон"
   },
-  "payload": null
+  "products": [],
+  "total": 49619
 }

@@ -4,7 +4,6 @@ import arrow.core.Either
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
@@ -55,6 +54,15 @@ data class Pipeline(
     val retryPolicy: RetryPolicy = RetryPolicy(),
     val stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
     val clock: Clock,
+    /**
+     * How the pipeline waits between retries.
+     *
+     * The domain decides how long to wait, the runtime decides how. Production
+     * passes a waiter that sleeps; tests pass one that returns immediately —
+     * an anti-bot back-off is ten seconds, and a test suite that waits it out
+     * is a test suite nobody runs.
+     */
+    val waiter: Waiter,
     /** Generates a unique ID for a pagination task. Override in tests for determinism. */
     val idGen: () -> String = {
         java.util.UUID
@@ -117,7 +125,7 @@ data class Pipeline(
         tasks: List<Crawling>,
         concurrency: Int = 1,
     ): Either<Pair<DomainError, List<Side>>, Pair<Crawled, List<Side>>> {
-        val coordinator = Coordinator(retryPolicy) { d -> delay(d) }
+        val coordinator = Coordinator(retryPolicy) { d -> waiter.wait(d) }
 
         val startMs = clock.now().toEpochMilli()
 
@@ -188,6 +196,10 @@ data class Pipeline(
                 // coordinator loop exits immediately, and record the final page count.
                 pending.clear()
                 pagesCrawled = pageResult.pagesCrawled
+                // The items of the last processed page were saved before the stop was
+                // decided. Dropping them from the count made the report say "0 items"
+                // about a page that was written to the database.
+                itemsSaved += pageResult.itemsSaved
                 stopped = pageResult.stopped
                 break
             }
@@ -236,14 +248,48 @@ data class Pipeline(
                 break
             }
 
+            if (done.page.isPresetResponse) {
+                // WB answered with its popular list instead of the catalog. The page
+                // carries no products (the parser drops them), and this counter is
+                // how the operator learns that a target's token has gone stale.
+                //
+                // Such a page is not a catalog page: it is neither counted as crawled
+                // nor treated as the empty end of the catalog. Counting it would
+                // report a healthy crawl that collected nothing.
+                val context = mapOf("target_id" to done.task.targetId.toString())
+                sides +=
+                    Side.Metric(
+                        "presets.responses",
+                        1,
+                        context,
+                    )
+                sides +=
+                    Side.Log(
+                        LogLevel.WARN,
+                        "WB answered with the popular list instead of the catalog — " +
+                            "the target's catalog token is stale, re-enrich it with enrich_catalog_queries.py",
+                        context,
+                    )
+                continue
+            }
+
             pagesCrawled++
             itemsSaved += processItems(done.page, sides)
 
             val nextUrl = done.page.nextPageUrl
             if (nextUrl != null) {
-                val paginationStop = stopAt(pagesCrawled, done.task.depth + 1)
+                // The successor of a page is the *next page of the same catalog*, not a
+                // level deeper in the category tree — so it inherits the depth instead of
+                // increasing it.
+                //
+                // With depth+1 the depth limit stopped the crawl at page 2 of every
+                // catalog (`max_depth = 2`), which is invisible in the counters: the run
+                // reported "2 pages" and a healthy item count. Depth measures how deep
+                // the crawl descended into the tree; paging through one catalog does not
+                // descend.
+                val paginationStop = stopAt(pagesCrawled, done.task.depth)
                 if (paginationStop == null) {
-                    pending.add(Crawling(id = idGen(), url = nextUrl, depth = done.task.depth + 1, targetId = done.task.targetId))
+                    pending.add(Crawling(id = idGen(), url = nextUrl, depth = done.task.depth, targetId = done.task.targetId))
                 } else {
                     stopped = paginationStop
                     break
@@ -503,7 +549,8 @@ data class Pipeline(
                         return 0
                     }
                     attempt++
-                    delay(retryDelayMs(attempt - 1, signal, retryPolicy).milliseconds)
+                    sides += Side.Metric("retries", 1, mapOf("reason" to signal.reason()))
+                    waiter.wait(retryDelayMs(attempt - 1, signal, retryPolicy).milliseconds)
                 }
                 is Retry -> {
                     if (!shouldRetry(attempt + 1, retryPolicy)) {
@@ -515,7 +562,8 @@ data class Pipeline(
                         return 0
                     }
                     attempt++
-                    delay(retryDelayMs(attempt - 1, step.signal, retryPolicy).milliseconds)
+                    sides += Side.Metric("retries", 1, mapOf("reason" to step.signal.reason()))
+                    waiter.wait(retryDelayMs(attempt - 1, step.signal, retryPolicy).milliseconds)
                 }
                 is Cont -> {
                     return 0
@@ -585,22 +633,29 @@ data class Pipeline(
         task: Crawling,
         attempt: Int,
         sides: MutableList<Side>,
-    ): StageDecision<Fetched> =
-        when (val result = attemptStageOnce(task, download)) {
+    ): StageDecision<Fetched> {
+        // Every attempt is a request WB can refuse. The counter is the denominator
+        // of the anti-bot share: without it, "38 % of requests were refused" is a
+        // number nobody can check.
+        sides += Side.Metric("requests", 1, mapOf("target_id" to task.targetId.toString()))
+        return when (val result = attemptStageOnce(task, download)) {
             is AttemptResult.Done -> {
                 sides += result.step.sides()
                 StageDecision.Done(result.step.output)
             }
             is AttemptResult.Failed -> StageDecision.Fail(result.step.failure.toDomainError())
-            is AttemptResult.Retry ->
+            is AttemptResult.Retry -> {
+                sides += retrySides(result.signal, task)
                 StageDecision.Wait(
                     attempt,
                     result.signal,
                     retryDelayMs(attempt, result.signal, retryPolicy),
                     task,
                 )
+            }
             is AttemptResult.Cont -> StageDecision.Cont
         }
+    }
 
     /**
      * Runs the parse stage on [fetched] with [attempt] already tracked by the coordinator.
@@ -621,13 +676,35 @@ data class Pipeline(
                 StageDecision.Done(result.step.output)
             }
             is AttemptResult.Failed -> StageDecision.Fail(result.step.failure.toDomainError())
-            is AttemptResult.Retry ->
+            is AttemptResult.Retry -> {
+                sides += retrySides(result.signal, task)
                 StageDecision.Wait(
                     attempt,
                     result.signal,
                     retryDelayMs(attempt, result.signal, retryPolicy),
                     task,
                 )
+            }
             is AttemptResult.Cont -> StageDecision.Cont
+        }
+
+    /**
+     * The metrics a retry decision produces.
+     *
+     * `retries` counts the decisions, tagged by what went wrong. `antibot.responses`
+     * counts the refusals themselves: the share of requests that WB answers with a
+     * challenge is the number that says whether the pacing and the profile rotation
+     * work at all — and it is the number that was missing while the anti-bot share
+     * was being tuned by eye.
+     */
+    private fun retrySides(
+        signal: ru.wbparser.domain.pipeline.Retry,
+        task: Crawling,
+    ): List<Side> =
+        buildList {
+            add(Side.Metric("retries", 1, mapOf("reason" to signal.reason())))
+            if (signal is ru.wbparser.domain.pipeline.Retry.Antibot) {
+                add(Side.Metric("antibot.responses", 1, mapOf("target_id" to task.targetId.toString())))
+            }
         }
 }

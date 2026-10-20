@@ -12,7 +12,7 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1" apply false
     // One version for the coverage plugin: it is applied in more than one module,
     // and two versions of the same plugin do not share a report.
-    id("org.jetbrains.kotlinx.kover") version "0.9.11" apply false
+    id("org.jetbrains.kotlinx.kover") version "0.9.11"
 }
 
 allprojects {
@@ -39,6 +39,16 @@ subprojects {
         extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension> {
             jvmToolchain(22)
         }
+    }
+
+    // Testcontainers talks to the Docker daemon over its API, and recent daemons
+    // (>= 25) reject the version docker-java negotiates by default (1.32) with
+    // "client version 1.32 is too old". The pin used to live in one module's test
+    // task — the one that needed it first — so every other module that started a
+    // container failed with an error that says nothing about the database.
+    tasks.withType<Test>().configureEach {
+        systemProperty("api.version", "1.44")
+        environment("DOCKER_API_VERSION", "1.44")
     }
 
     // The linters were declared in the version catalogue but never applied, so the
@@ -85,6 +95,25 @@ subprojects {
 
 tasks.register<Delete>("clean") {
     delete(layout.buildDirectory)
+}
+
+// ==============================================================================
+// Coverage: the report that sees the whole repository
+// ==============================================================================
+//
+// A module's own report only contains the classes of that module. The integration
+// module therefore contributed nothing to the coverage of the code it exercises:
+// `CrawlRunner` showed 0 of 153 covered lines even though the integration suite
+// drove it against a real PostgreSQL.
+//
+// The root project is the merging module: it has no sources of its own, and the
+// `kover` dependencies make its report the union of the modules' classes and of
+// the coverage their own suites produced. The report below is therefore the
+// honest number for the repository.
+dependencies {
+    kover(project(":app"))
+    kover(project(":wbparser"))
+    kover(project(":tests"))
 }
 
 // ==============================================================================

@@ -2,9 +2,12 @@ package ru.wbparser.app.api.health
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.sqlite.SQLiteDataSource
 import java.io.PrintWriter
 import java.io.StringWriter
+import java.nio.file.Files
 import java.sql.Connection
 import java.sql.SQLException
 import java.util.logging.Logger
@@ -22,23 +25,40 @@ class HealthRoutesTest :
     FunSpec({
 
         test("liveness reports UP without touching the database") {
-            val routes = HealthRoutes(UnreachableDataSource())
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry())
 
             routes.liveness() shouldBe mapOf("status" to "UP")
         }
 
         test("readiness is UP when the database answers") {
-            val routes = HealthRoutes(workingDataSource())
+            val routes = HealthRoutes(workingDataSource(), idleRegistry())
 
-            routes.readiness() shouldBe
-                mapOf(
-                    "status" to "UP",
-                    "checks" to mapOf("database" to "UP"),
-                )
+            val readiness = routes.readiness()
+
+            readiness["status"] shouldBe "UP"
+            val checks = readiness["checks"] as Map<*, *>
+            checks["database"] shouldBe "UP"
+        }
+
+        test("readiness reports the subject dictionary and the targets without a token") {
+            val routes = HealthRoutes(catalogDataSource(), idleRegistry())
+
+            val readiness = routes.readiness()
+            val checks = readiness["checks"] as Map<*, *>
+
+            // The dictionary is what turns WB's subject ids into names; an empty one
+            // still leaves the service ready, but the rows it produces are nameless.
+            checks["subject_dictionary"] shouldBe "UP (2 subjects)"
+            // A target without a token cannot be crawled: the internal API answers with
+            // WB's popular list instead of the category, under the category's name.
+            checks["targets_without_search_token"] shouldBe
+                "1 target(s) cannot be crawled — the internal API would answer " +
+                "with WB's popular list instead of the category"
+            readiness["status"] shouldBe "UP"
         }
 
         test("readiness is DOWN when the database cannot be reached") {
-            val routes = HealthRoutes(UnreachableDataSource())
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry())
 
             val readiness = routes.readiness()
 
@@ -48,7 +68,7 @@ class HealthRoutesTest :
         }
 
         test("the failure message names the exception and its message") {
-            val routes = HealthRoutes(UnreachableDataSource())
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry())
 
             val readiness = routes.readiness()
             val checks = readiness["checks"] as Map<*, *>
@@ -58,13 +78,44 @@ class HealthRoutesTest :
     })
 
 /**
+ * A registry the crawler has not written anything into yet.
+ *
+ * The real Micrometer registry, not a stand-in for one: the counters only exist
+ * once something increments them, and that is the behaviour under test.
+ */
+internal fun idleRegistry(): MeterRegistry = SimpleMeterRegistry()
+
+/**
  * A real, in-process database — SQLite needs no server and no container.
  *
  * The health check only runs `SELECT 1`, so an empty in-memory database is enough.
  */
-private fun workingDataSource(): DataSource {
+internal fun workingDataSource(): DataSource {
     val source = SQLiteDataSource()
     source.url = "jdbc:sqlite::memory:"
+    return source
+}
+
+/**
+ * A real database with the two tables the readiness checks count rows in.
+ *
+ * A file, not `jdbc:sqlite::memory:`: every connection to an in-memory SQLite
+ * opens its *own* empty database, so the rows created for the fixture would be
+ * gone by the time the next check opened a connection.
+ */
+internal fun catalogDataSource(): DataSource {
+    val file = Files.createTempFile("health-readiness", ".db")
+    file.toFile().deleteOnExit()
+    val source = SQLiteDataSource()
+    source.url = "jdbc:sqlite:${file.toAbsolutePath()}"
+    source.connection.use { conn ->
+        conn.createStatement().use { stmt ->
+            stmt.execute("CREATE TABLE wb_subjects (id INTEGER NOT NULL, name TEXT NOT NULL)")
+            stmt.execute("CREATE TABLE crawl_targets (wb_search_query TEXT)")
+            stmt.execute("INSERT INTO wb_subjects (id, name) VALUES (1, 'Карта памяти'), (2, 'Фотоаппарат')")
+            stmt.execute("INSERT INTO crawl_targets (wb_search_query) VALUES ('menu_v3_9467 карты памяти'), (NULL)")
+        }
+    }
     return source
 }
 

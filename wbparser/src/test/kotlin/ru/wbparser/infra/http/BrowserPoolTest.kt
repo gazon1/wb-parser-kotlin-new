@@ -61,6 +61,17 @@ class FakeAdsPowerApi private constructor(
         return startProfileResponses[profileId]
     }
 
+    /**
+     * Whether the fake pretends the Local API is up.
+     *
+     * The pool consults this to tell "the API is down" from "the API is up but
+     * this profile is not available" — only the second case is an error worth
+     * reporting instead of falling back to the DevTools port scan.
+     */
+    var apiAvailable: Boolean = true
+
+    override fun isAvailable(): Boolean = apiAvailable
+
     fun reset() = _calls.clear()
 }
 

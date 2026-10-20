@@ -19,7 +19,23 @@ data class CrawlProperties(
 )
 
 data class Schedule(
+    /**
+     * When the scheduler looks for work.
+     *
+     * This is a **tick**, not a cadence: it decides how often the crawler checks which
+     * targets are due. The cadence itself is [freshnessMinutes] — how long a target
+     * rests after it was crawled. With the defaults the crawler looks every four hours
+     * and re-crawls a target every four hours, which is the same thing; but a tick of
+     * 30 seconds next to a 4-hour freshness window means 480 empty ticks per crawl,
+     * which is how the schedule became confusing in the first place.
+     */
     val cron: String = "0 0 */4 * * *",
+    /**
+     * How many minutes a target rests after it was crawled.
+     *
+     * The single knob for the crawl cadence. Defaults to four hours.
+     */
+    val freshnessMinutes: Long = 240L,
 )
 
 data class Lock(
@@ -54,6 +70,14 @@ data class Spider(
      */
     val browserJitterMinMs: Long = 200,
     val browserJitterMaxMs: Long = 500,
+    /**
+     * Minimum milliseconds between two requests to WB, across all profiles.
+     *
+     * All AdsPower profiles of a deployment share one egress IP, so WB's rate limiter
+     * sees their sum. At 3000 ms the crawler asks for ~20 requests per minute in total —
+     * the rate at which WB answers normally. Zero disables the limit.
+     */
+    val browserMinRequestIntervalMs: Long = 3_000L,
     val rules: Rules = Rules(),
 )
 

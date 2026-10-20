@@ -1,6 +1,8 @@
 # Gradle
 .gradle/
 build/
+# Kotlin compiler session files
+.kotlin/
 
 # Build output
 *.class
@@ -51,7 +53,10 @@ hs_err_pid*.log
 __pycache__/
 *.pyc
 
-wb_catalog_targets.yaml
+# wb_catalog_targets.yaml is NOT ignored: it is the catalogue of crawl targets, and a
+# deployment that cannot see which targets it is supposed to crawl cannot tell whether
+# the crawl is complete. The file holds no credentials — only WB's public catalog ids,
+# names, paths and search tokens (see scripts/wb-catalog/enrich_catalog_queries.py).
 
 # Live WB browser session capture — holds a real `_wbauid` / `x_wbaas_token` cookie
 # pair for the AdsPower profile. It is a credential, not fixture data: a captured

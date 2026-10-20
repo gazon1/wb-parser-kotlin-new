@@ -158,6 +158,22 @@ class PostgresFixture {
         return id
     }
 
+    fun seedSubject(
+        id: Long,
+        name: String,
+    ) {
+        ds.connection.use { conn ->
+            val sql =
+                "INSERT INTO wb_subjects (id, name) VALUES (?, ?) " +
+                    "ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name"
+            conn.prepareStatement(sql).use { ps ->
+                ps.setLong(1, id)
+                ps.setString(2, name)
+                ps.executeUpdate()
+            }
+        }
+    }
+
     fun item(
         targetId: UUID,
         productId: Long,
@@ -169,6 +185,16 @@ class PostgresFixture {
         cashbackKopecks: Long? = priceKopecks * 5 / 100,
         matchId: Long? = 42L,
         seller: String? = "Продавец",
+        subjectId: Long? = 11L,
+        subjectParentId: Long? = null,
+        /**
+         * The category name carried by the item itself.
+         *
+         * WB's catalog API does not send one — the name lives in WB's subject
+         * dictionary — so a test that exercises the dictionary lookup passes
+         * `null` here.
+         */
+        category: String? = "Категория",
     ): SavedItem {
         val pageUrl =
             CrawlUrl
@@ -185,11 +211,12 @@ class PostgresFixture {
                     cashbackPercent = cashbackPercent,
                     cashbackKopecks = cashbackKopecks,
                     brand = brand,
-                    category = "Категория",
+                    category = category,
                     imageUrl = imageUrl,
                     pageUrl = pageUrl,
                     brandId = 9L,
-                    subjectId = 11L,
+                    subjectId = subjectId,
+                    subjectParentId = subjectParentId,
                     supplierId = 13L,
                     matchId = matchId,
                     seller = seller,
@@ -211,7 +238,7 @@ class PostgresFixture {
     fun clear() {
         ds.connection.use { conn ->
             conn.createStatement().use { st ->
-                st.execute("TRUNCATE crawl_targets, scraped_items CASCADE")
+                st.execute("TRUNCATE crawl_targets, scraped_items, category_mappings CASCADE")
             }
         }
     }

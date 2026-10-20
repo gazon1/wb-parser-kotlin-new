@@ -13,6 +13,7 @@ import ru.wbparser.infra.http.BrowserPool
 import ru.wbparser.infra.http.BrowserProfileConfig
 import ru.wbparser.infra.http.CircuitBreakerDownloader
 import ru.wbparser.infra.http.KtorDownloader
+import ru.wbparser.infra.http.RequestPacing
 import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.runner.CrawlRunner
 
@@ -44,7 +45,17 @@ class CrawlerConfig {
                     cdpWsUrl = null,
                 )
             }
-        return BrowserPool(profiles = profiles)
+        return BrowserPool(
+            profiles = profiles,
+            // The jitter belongs to the pacing: it is the one place that decides when the
+            // next request may go out. The browser used to add a second, hidden delay.
+            pacing =
+                RequestPacing(
+                    minIntervalMs = properties.spider.browserMinRequestIntervalMs,
+                    jitterMinMs = properties.spider.browserJitterMinMs,
+                    jitterMaxMs = properties.spider.browserJitterMaxMs,
+                ),
+        )
     }
 
     @Bean
@@ -57,8 +68,6 @@ class CrawlerConfig {
             timing =
                 BrowserFetchTiming(
                     warmupMs = properties.spider.browserWarmupMs,
-                    jitterMinMs = properties.spider.browserJitterMinMs,
-                    jitterMaxMs = properties.spider.browserJitterMaxMs,
                 ),
         )
 
@@ -108,6 +117,10 @@ class CrawlerConfig {
             targetConcurrency = properties.spider.targetConcurrency,
             lockTimeoutMs = properties.lock.timeoutMinutes * 60_000,
             meterRegistry = deps.meterRegistry,
+            // One parameter for the cadence; the cron expression is only the tick.
+            freshness =
+                ru.wbparser.infra.scheduler
+                    .FreshnessPolicy(properties.schedule.freshnessMinutes),
         )
     }
 

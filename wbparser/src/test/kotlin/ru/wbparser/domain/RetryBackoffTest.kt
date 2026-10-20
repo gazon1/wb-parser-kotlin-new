@@ -50,10 +50,13 @@ class RetryBackoffTest :
             retryDelayMs(3, Retry.ServerError(3), policy, Random(42)) shouldBe 8_000L
         }
 
-        test("Antibot: exponential back-off without override") {
-            retryDelayMs(0, Retry.Antibot(), policy, Random(42)) shouldBe 1_000L
-            retryDelayMs(1, Retry.Antibot(), policy, Random(42)) shouldBe 2_000L
-            retryDelayMs(2, Retry.Antibot(), policy, Random(42)) shouldBe 4_000L
+        test("Antibot: exponential back-off from the anti-bot base, not the generic one") {
+            // An anti-bot answer is not a hiccup: it means WB is refusing this session
+            // for a while. Retrying after a second collects more refusals, so the
+            // anti-bot base is ten times the generic one.
+            retryDelayMs(0, Retry.Antibot(), policy, Random(42)) shouldBe 10_000L
+            retryDelayMs(1, Retry.Antibot(), policy, Random(42)) shouldBe 20_000L
+            retryDelayMs(2, Retry.Antibot(), policy, Random(42)) shouldBe 40_000L
         }
 
         test("StaleContext: exponential back-off without override") {
@@ -83,7 +86,8 @@ class RetryBackoffTest :
             // Verify jitter is non-zero by checking delay exceeds baseDelay
             val seeded = Random(777)
             val delay = retryDelayMs(1, Retry.Antibot(), policy, seeded)
-            val baseDelay = 2_000L
+            // The anti-bot base is 10 s: 10 s * 2^1.
+            val baseDelay = 20_000L
             val capped = baseDelay.coerceAtMost(policy.maxDelayMs)
             val maxJitter = (capped * policy.jitterPercent).toLong()
             // Verify delay > baseDelay (jitter was added) and delay <= capped + maxJitter
@@ -104,8 +108,8 @@ class RetryBackoffTest :
             // delayMs <= 0 is treated as "use default", not as a near-zero sleep.
             // Previously: signal.delayMs ?: ... meant delayMs=-1 would return -1ms (spin-loop).
             // Fixed: non-positive delayMs falls through to the exponential formula.
-            retryDelayMs(0, Retry.Antibot(delayMs = 0L), policy, Random(42)) shouldBe 1_000L
-            retryDelayMs(0, Retry.Antibot(delayMs = -1L), policy, Random(42)) shouldBe 1_000L
+            retryDelayMs(0, Retry.Antibot(delayMs = 0L), policy, Random(42)) shouldBe 10_000L
+            retryDelayMs(0, Retry.Antibot(delayMs = -1L), policy, Random(42)) shouldBe 10_000L
             retryDelayMs(0, Retry.ServerError(0, delayMs = -1L), policy, Random(42)) shouldBe 1_000L
         }
     })

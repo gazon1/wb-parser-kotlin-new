@@ -90,9 +90,52 @@ object CrawlTargetsTable : Table("crawl_targets") {
     val wbParentCatalogId: Column<String?> = varchar("wb_parent_catalog_id", 100).nullable()
     val rootCategoryName: Column<String?> = varchar("root_category_name", 255).nullable()
 
+    /**
+     * WB's own catalog search token, e.g. `menu_v3_9467 карты памяти`.
+     *
+     * This is what selects the category in WB's internal API. The catalog id is not a
+     * parameter of that call — without this token the request returns WB's rotating
+     * popular list instead of the category.
+     */
+    val wbSearchQuery: Column<String?> = text("wb_search_query").nullable()
+
     // TIMESTAMPTZ, and the database fills both with now().
     val createdAt: Column<OffsetDateTime> = timestampWithTimeZone("created_at")
     val updatedAt: Column<OffsetDateTime> = timestampWithTimeZone("updated_at")
+}
+
+/**
+ * The category tree observed while crawling.
+ *
+ * One row per (target, category): the category a product was seen in, the name WB
+ * publishes for it, and the id of its parent. The row *is* the product's own subject
+ * (`level` 0) and the parent is referenced, not materialised — the catalog API sends
+ * exactly two ids per product.
+ */
+object CategoryMappingsTable : Table("category_mappings") {
+    val id: Column<UUID> = uuid("id")
+    val targetId: Column<UUID> = uuid("target_id")
+    val catalogId: Column<String?> = varchar("catalog_id", 100).nullable()
+    val catalogName: Column<String?> = varchar("catalog_name", 255).nullable()
+    val nodeName: Column<String?> = varchar("node_name", 255).nullable()
+    val parentNodeId: Column<String?> = varchar("parent_node_id", 100).nullable()
+    val level: Column<Int> = integer("level").default(0)
+
+    // V1: UNIQUE(target_id, catalog_id)
+    val uxTargetCatalog = uniqueIndex("uq_category_mappings_target_catalog", targetId, catalogId)
+}
+
+/**
+ * WB's product-subject dictionary: the id the catalog API sends as `subjectId`
+ * and `subjectParentId`, and the name that id stands for.
+ *
+ * The API sends ids only. The names come from a dictionary WB publishes
+ * separately and that the crawler does not have to guess: the write path looks
+ * a subject id up here instead of writing a null name next to a real id.
+ */
+object WbSubjectsTable : Table("wb_subjects") {
+    val id: Column<Long> = long("id")
+    val name: Column<String> = text("name")
 }
 
 /**

@@ -8,6 +8,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -29,7 +32,6 @@ import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
-import ru.wbparser.domain.util.WB_BASE_URL
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.infra.advisory.LockUnavailable
@@ -37,8 +39,12 @@ import ru.wbparser.infra.advisory.PostgresAdvisoryLock
 import ru.wbparser.infra.advisory.withLock
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.db.exposedOnce
+import ru.wbparser.infra.db.repositories.CrawlJobQueries
+import ru.wbparser.infra.db.repositories.SubjectNameLookup
 import ru.wbparser.infra.db.repositories.fetchActiveTargets
+import ru.wbparser.infra.db.repositories.touchJobHeartbeat
 import ru.wbparser.infra.db.repositories.upsertSavedItems
+import ru.wbparser.infra.http.WbCatalogRequest
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
@@ -100,7 +106,22 @@ class CrawlRunner(
      * When null, a [NoOpMetricInterpreter] is used instead.
      */
     private val meterRegistry: MeterRegistry? = null,
+/**
+     * The freshness window: how many minutes a target rests after it was crawled.
+     *
+     * The single knob for the crawl cadence — see [freshnessPolicy].
+     */
+    freshness: FreshnessPolicy = FreshnessPolicy(),
 ) {
+    /**
+     * WB's product-subject dictionary, read from `wb_subjects` on first use.
+     *
+     * The catalog API sends ids only; the names come from the dictionary. It is
+     * read once per runner rather than once per saved batch, and a deployment
+     * that has not loaded it writes ids without names.
+     */
+    private val subjectNames = SubjectNameLookup(db.ds)
+
     /**
      * Context for a crawl job — passed to [onCrawlStart] and [onCrawlEnd] hooks.
      *
@@ -115,7 +136,17 @@ class CrawlRunner(
     )
 
     private val advisoryLock = PostgresAdvisoryLock(db.ds, lockTimeoutMs)
-    private val freshnessPolicy = FreshnessPolicy()
+
+    /**
+     * How long a target rests after it was crawled.
+     *
+     * This is the one parameter that decides the crawl cadence. The scheduler's cron
+     * expression is only a tick — it decides how often the crawler *looks* for work, not
+     * how often a catalog is re-crawled. Two knobs for one intent is how the schedule
+     * ended up contradictory: a 30-second tick next to a 4-hour freshness window, where
+     * the tick fired 480 times to start one crawl.
+     */
+    private val freshnessPolicy = freshness
     private var freshnessState = Freshness()
 
     private val log = LoggerFactory.getLogger(CrawlRunner::class.java)
@@ -137,6 +168,34 @@ class CrawlRunner(
             )
         }
 
+    /**
+     * Runs [block] while refreshing the job's heartbeat.
+     *
+     * The heartbeat is what makes a crashed crawl detectable: without it, a
+     * container restart leaves the job row in `Running` and nobody can tell it
+     * apart from a crawl that is still going. The ticker stops as soon as
+     * [block] returns, so a finished job stops looking alive.
+     */
+    private suspend fun <T> withJobHeartbeat(
+        jobId: UUID,
+        block: suspend () -> T,
+    ): T =
+        coroutineScope {
+            val ticker =
+                launch(Dispatchers.IO) {
+                    while (isActive) {
+                        delay(CrawlJobQueries.HEARTBEAT_INTERVAL_MS)
+                        runCatching { db.ds.touchJobHeartbeat(jobId) }
+                            .onFailure { log.warn("Could not refresh job heartbeat: {}", it.message) }
+                    }
+                }
+            try {
+                block()
+            } finally {
+                ticker.cancel()
+            }
+        }
+
     private suspend fun runUnsafe(): RunResult {
         val startedAt = java.time.Instant.now()
         val targets = db.ds.fetchActiveTargets()
@@ -144,7 +203,7 @@ class CrawlRunner(
 
         // Nothing to crawl — no job row is opened, which also keeps crawl_jobs.target_id
         // (NOT NULL, foreign key) satisfiable.
-        if (due.isEmpty()) return RunResult.Success(0, 0)
+        if (due.isEmpty()) return RunResult.NothingDue
 
         var jobId: UUID? = null
         try {
@@ -161,7 +220,7 @@ class CrawlRunner(
             var totalItems = 0
             val failures = mutableListOf<String>()
 
-            val results = runTargets(due)
+            val results = withJobHeartbeat(jobId) { runTargets(due) }
 
             // Aggregated after the fact, from the returned values. Accumulating into shared
             // counters inside the concurrent region would be a data race, and the shape of the
@@ -277,6 +336,10 @@ class CrawlRunner(
     ): TargetResult {
         val targetId = target.id
 
+        // How many pages of this target to crawl. The target's own
+        // `known_pages_limit` wins; the runner-wide cap is the fallback.
+        val pageLimit = target.knownPagesLimit ?: maxPagesPerCatalog
+
         val pipeline: DomainPipeline =
             buildParserPipeline(
                 downloader = downloader,
@@ -288,7 +351,20 @@ class CrawlRunner(
                             try {
                                 // The real crawl_targets.id — scraped_items.target_id is a foreign key,
                                 // so a generated UUID would reject every row.
-                                db.ds.upsertSavedItems(items, targetId)
+                                val names = subjectNames.snapshot()
+                                db.ds.upsertSavedItems(items, targetId, names)
+                                // A product whose subject id is not in WB's dictionary is
+                                // stored with a NULL category name. That is honest — the
+                                // name is never invented — but it makes the row much less
+                                // useful, so the count is worth watching: a dictionary that
+                                // stopped matching shows up here first.
+                                val withoutName =
+                                    items.count { it.subjectId != null && !names.containsKey(it.subjectId) }
+                                if (withoutName > 0) {
+                                    meterRegistry
+                                        ?.counter("crawl.items.without_category_name")
+                                        ?.increment(withoutName.toDouble())
+                                }
                                 Step.Done(Unit)
                             } catch (_: java.sql.SQLException) {
                                 // Transient storage failure. Hand it to the save-stage retry loop:
@@ -302,7 +378,11 @@ class CrawlRunner(
                 retryPolicy = retryPolicy,
                 stopAt = { pages, depth ->
                     when {
-                        pages >= maxPagesPerCatalog -> Stop.MaxPagesReached
+                        // The target's own limit wins when it has one: `known_pages_limit`
+                        // says how many pages of this category are worth crawling, and the
+                        // runner-wide cap is only the fallback for a target that does not
+                        // say.
+                        pages >= pageLimit -> Stop.MaxPagesReached
                         depth >= maxDepth -> Stop.MaxDepthReached(maxDepth, depth)
                         else -> null
                     }
@@ -323,15 +403,9 @@ class CrawlRunner(
                     }
                         ?: ru.wbparser.infra.pipeline
                             .NoOpMetricInterpreter(),
-                saveBatch =
-                    ru.wbparser.infra.pipeline
-                        .NoOpSaveBatchInterpreter(),
                 jobEvent =
                     ru.wbparser.infra.pipeline
                         .JobEventInterpreter(),
-                scheduleRetry =
-                    ru.wbparser.infra.pipeline
-                        .NoOpScheduleRetryInterpreter(),
                 acquireAdvisoryLock =
                     ru.wbparser.infra.pipeline
                         .NoOpAdvisoryLockInterpreter(),
@@ -342,9 +416,24 @@ class CrawlRunner(
         val runner = PipelineRunner(pipeline, registry, failureHandler)
 
         // A target configured with a WB catalog ID is served through the internal catalog API,
-// whose entry point is the catalog page URL. Falling back to target.url keeps targets that
-// carry a plain start URL working unchanged.
-        val startUrlString = target.wbCatalogId?.let { "$WB_BASE_URL/catalog/$it/list.aspx" } ?: target.url
+// whose entry point is the catalog page URL. The crawl URL carries WB's catalog search token,
+// because that token - not the catalog id - is what selects the category in the API. Falling
+// back to target.url keeps targets that carry a plain start URL working unchanged.
+        val startUrlString =
+            target.wbCatalogId?.let { catalogId ->
+                val searchQuery = target.wbSearchQuery
+                if (searchQuery.isNullOrBlank()) {
+                    // Without the token WB answers with its rotating popular list: a page of
+                    // products unrelated to the category, stored under the category's name.
+                    // Failing the target is the honest outcome.
+                    return TargetResult(
+                        pages = 0,
+                        items = 0,
+                        error = "Catalog $catalogId has no WB search token (wb_search_query) - refusing to crawl",
+                    )
+                }
+                WbCatalogRequest.crawlUrlOf(catalogId, searchQuery)
+            } ?: target.url
         val startUrl: CrawlUrl =
             CrawlUrl.of(startUrlString).getOrElse {
                 throw IllegalArgumentException("Invalid target URL: $startUrlString")
@@ -369,9 +458,66 @@ class CrawlRunner(
             }
             is Either.Right -> {
                 val crawled: ru.wbparser.domain.pipeline.Crawled = result.value
+                recordTargetMetrics(target, crawled.pagesCrawled, crawled.itemsSaved, crawled.stopReason)
                 TargetResult(crawled.pagesCrawled, crawled.itemsSaved)
             }
         }
+    }
+
+    /**
+     * Records what one target produced.
+     *
+     * A target that yielded pages but no items is the interesting case: the crawl ran,
+     * the pages came back, and nothing was stored. That happens when WB answers with an
+     * empty catalog, when every product was filtered out by the rules, or when the
+     * catalog token no longer selects what it used to. None of that is visible in the
+     * totals, so it gets its own counter.
+     */
+    private fun recordTargetMetrics(
+        target: Target,
+        pages: Int,
+        items: Int,
+        stopReason: Stop,
+    ) {
+        val registry = meterRegistry ?: return
+        val tag = target.wbCatalogId ?: target.name
+        registry.counter("crawl.pages", "target", tag).increment(pages.toDouble())
+        registry.counter("crawl.items", "target", tag).increment(items.toDouble())
+        if (pages > 0 && items == 0) {
+            registry.counter("crawl.targets.without_items", "target", tag).increment()
+        }
+        recordTruncation(target, pages, stopReason)
+    }
+
+    /**
+     * Records that the crawl stopped at a limit while the catalog still had more to read.
+     *
+     * A target's `known_pages_limit` says how many pages of that category are worth
+     * reading. When the crawl stops at that limit, WB still had a next page — otherwise
+     * the pipeline would have ended with [Stop.EmptyPage] — so what is stored is a slice
+     * of the catalog, not the catalog. Without this counter such a target looks exactly
+     * like a complete one: pages read, items stored, nothing wrong.
+     */
+    private fun recordTruncation(
+        target: Target,
+        pages: Int,
+        stopReason: Stop,
+    ) {
+        val reason =
+            when (stopReason) {
+                Stop.MaxPagesReached -> "pages"
+                is Stop.MaxDepthReached -> "depth"
+                else -> return
+            }
+        val registry = meterRegistry ?: return
+        val tag = target.wbCatalogId ?: target.name
+        registry.counter("crawl.targets.truncated", "target", tag, "reason", reason).increment()
+        log.warn(
+            "Target {} stopped at the {} limit after {} page(s): the catalog was not read to the end",
+            tag,
+            reason,
+            pages,
+        )
     }
 
     private fun openJob(targetId: UUID): UUID {
@@ -385,6 +531,9 @@ class CrawlRunner(
                 it[CrawlJobsTable.status] = JobStatus.Running.name
                 it[CrawlJobsTable.startedAt] = now
                 it[CrawlJobsTable.createdAt] = now
+                // The heartbeat starts with the job: a job that never gets one
+                // would be indistinguishable from a job whose process died.
+                it[CrawlJobsTable.lastHeartbeatAt] = now
             }
         }
         return id
@@ -442,6 +591,19 @@ class CrawlRunner(
             val reason: String,
         ) : RunResult() {
             fun exitCode(): Int = EXIT_CODE_LOCKED
+        }
+
+        /**
+         * There was nothing to crawl: no target is active, or every target is
+         * still inside its freshness window.
+         *
+         * This is not the same as a crawl that ran and found nothing. Reporting
+         * it as `Success(0, 0)` made a healthy idle crawler look like a broken
+         * one — the scheduler ticks every 30 seconds and most of those ticks
+         * have nothing to do.
+         */
+        data object NothingDue : RunResult() {
+            fun exitCode(): Int = EXIT_CODE_SUCCESS
         }
     }
 

@@ -178,6 +178,11 @@ class StageBuilder<I> {
  *   stage with updated input, or skip to the next stage. We propagate `Cont` unchanged.
  * - `Done` — first stage produced output; feed it into [next].
  * - `Retry` and `Fail` — propagate immediately without calling [next].
+ *
+ * The pipeline does not use this operator: its phases are not a linear chain — the filter
+ * and the enricher work on a batch, and the save stage writes it — so the pipeline runs
+ * the phases itself. The operator stays because it is the composition rule of the [Stage]
+ * type, and a stage that cannot be composed is a stage with a hidden contract.
  */
 infix fun <I, M, O> Stage<I, M>.andThen(next: Stage<M, O>): Stage<I, O> =
     Stage(StageInfo("${info.name} → ${next.info.name}")) { input ->

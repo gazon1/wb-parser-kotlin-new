@@ -57,10 +57,17 @@ else
     echo -e "${GREEN}tests:test passed${NC}"
 fi
 
-# --- [4] application compiles -------------------------------------------------
-step 4 "app:compileKotlin"
+# --- [4] application compiles and its own tests run ----------------------------
+# The app module has its own test source set, and the executed-test floor in
+# config/gates/test-runs-floor.txt records it: step 6 reads the JUnit XML the run
+# produced, and a module whose XML directory is missing is a failure, not a module
+# without tests. The local loop ran only :wbparser:test and :tests:test, so the app
+# suite never produced its XML here — while CI runs `./gradlew test`, which covers
+# every module. The same tests, the same floor, one gap fewer.
+step 4 "app:compileKotlin + app:test"
 ./gradlew :app:compileKotlin --quiet || fail "app:compileKotlin FAILED"
-echo -e "${GREEN}app:compileKotlin passed${NC}"
+./gradlew :app:test --quiet || fail "app:test FAILED"
+echo -e "${GREEN}app:compileKotlin + app:test passed${NC}"
 
 # --- [5] compileOnly/runtime classpath ----------------------------------------
 # A compileOnly dep missing at runtime causes NoClassDefFoundError at startup —

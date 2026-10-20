@@ -45,6 +45,17 @@ DECLARE
     known_other text[] := ARRAY[
         'crawl_jobs', 'crawl_errors', 'target_api_contexts',
         'category_mappings', 'flyway_schema_history',
+        -- The crawler's dictionary of WB's product subjects: id → name. The catalog
+        -- does not read it — the product rows already carry the names the crawler
+        -- resolved — but it is a table this script has decided about, so it belongs
+        -- here rather than in the "nobody has decided" bucket that stops the script.
+        'wb_subjects',
+        -- One row per product: the most recent observation of it. The catalog reads
+        -- the observations themselves and decides what "latest" means for its own
+        -- questions; this view is the crawler's answer to the storefront's
+        -- "what does this cost right now". It is not catalog data, so it is not read
+        -- by the catalog role — but it is a table this script has decided about.
+        'latest_product_observations',
         -- The demo seed's own marker: the table that says which environment this
         -- database is. The catalog has no business reading it — it is not catalog
         -- data — but it is a table this script has decided about, so it belongs here

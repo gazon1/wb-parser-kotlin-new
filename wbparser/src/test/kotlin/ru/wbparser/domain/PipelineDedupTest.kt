@@ -16,6 +16,7 @@ import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
+import ru.wbparser.testing.NoopWaiter
 import ru.wbparser.testing.fixedClockOf
 import java.util.UUID
 
@@ -56,12 +57,14 @@ class PipelineDedupTest :
                 save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                 stopAt = stopAt,
                 clock = clock,
+                waiter = NoopWaiter,
             )
 
         test("self-link at same url is de-duplicated and does not infinite loop") {
             runTest {
-                // page1(d=0) has nextPageUrl pointing back to page1 at depth+1.
-                // fp(page1,d=0) added → page1(d=1) enqueued → fp(page1,d=1) already in set → skipped.
+                // page1(d=0) has nextPageUrl pointing back to page1. Pagination inherits the
+                // depth (the next page of a catalog is not a level deeper in the tree), so
+                // the successor is page1(d=0) — already in the fingerprint set → skipped.
                 val page1 = crawling("http://example.com/page1", depth = 0)
 
                 val parseStage: Stage<Fetched, ParsedPage> =
@@ -78,21 +81,26 @@ class PipelineDedupTest :
                         save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 3) Stop.MaxPagesReached else null },
                         clock = clock,
+                        waiter = NoopWaiter,
                     )
 
                 val result = pipeline.run(listOf(page1))
 
                 result.isRight() shouldBe true
                 val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
-                // page1(d=0) → page1(d=1) [already seen → skip] → stop at pages=3
-                crawled.pagesCrawled shouldBe 3
-                crawled.stopReason.shouldBeInstanceOf<Stop.MaxPagesReached>()
+                // page1(d=0) → page1(d=0) [already seen → skipped] → the queue is empty.
+                // One page, and the page limit is never reached — the crawl ends because
+                // there is nothing left to fetch, not because a limit stopped it.
+                crawled.pagesCrawled shouldBe 1
+                crawled.stopReason.shouldBeInstanceOf<Stop.ManualStop>()
             }
         }
 
         test("pagination cycle page1 to page2 back to page1 is de-duplicated") {
             runTest {
-                // page1(d=0) → page2(d=1) → page1(d=1) already seen → skipped.
+                // page1(d=0) → page2(d=0) → page1(d=0) already seen → skipped.
+                // Pagination inherits the depth: the next page of a catalog is not a level
+                // deeper in the category tree.
                 val page1 = crawling("http://example.com/page1", depth = 0)
 
                 val parseStage: Stage<Fetched, ParsedPage> =
@@ -114,14 +122,15 @@ class PipelineDedupTest :
                         save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 2) Stop.MaxPagesReached else null },
                         clock = clock,
+                        waiter = NoopWaiter,
                     )
 
                 val result = pipeline.run(listOf(page1))
 
                 result.isRight() shouldBe true
                 val crawled = result.getOrElse { throw AssertionError("Expected Right") }.first
-                // page1(d=0) → page2(d=1) → [stopAt(1,2) null → enqueue page1(d=1)]
-                // → page1(d=1) already seen → skip → stop at pages=2
+                // page1(d=0) → page2(d=0) → [stopAt(1,0) null → enqueue page1(d=0)]
+                // → page1(d=0) already seen → skip → stop at pages=2
                 crawled.pagesCrawled shouldBe 2
                 crawled.stopReason.shouldBeInstanceOf<Stop.MaxPagesReached>()
             }

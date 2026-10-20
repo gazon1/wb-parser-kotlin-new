@@ -19,6 +19,11 @@ Usage:
     python load_catalog_to_pg.py config.yaml --db-name wbparser --db-user postgres --db-password pass
     python load_catalog_to_pg.py config.yaml --dry-run
     python load_catalog_to_pg.py config.yaml --root-category "Женская одежда" --max-depth 2
+
+The YAML may carry `search_query` — WB's catalog token, e.g. "menu_v3_9467 карты памяти".
+It is written to crawl_targets.wb_search_query and is what selects the category in the
+internal catalog API. `scripts/wb-catalog/enrich_catalog_queries.py` adds it from WB's
+published menu.
 """
 
 from __future__ import annotations
@@ -78,13 +83,14 @@ def load_yaml_pages(yaml_path: Path) -> List[dict]:
 #   9  wb_catalog_id     VARCHAR(100)
 #   10 wb_parent_catalog_id VARCHAR(100)
 #   11 root_category_name VARCHAR(255)  ← NULL by default
-#   12 created_at        TIMESTAMPTZ
-#   13 updated_at        TIMESTAMPTZ
+#   12 wb_search_query   TEXT          ← WB catalog search token (e.g. "menu_v3_9467 карты памяти")
+#   13 created_at        TIMESTAMPTZ
+#   14 updated_at        TIMESTAMPTZ
 
 SQL_COLUMNS = (
     "id, name, start_url, allowed_domains, max_depth, parsing_rules, "
     "is_active, known_pages_limit, wb_catalog_id, wb_parent_catalog_id, "
-    "root_category_name, created_at, updated_at"
+    "root_category_name, wb_search_query, created_at, updated_at"
 )
 
 SQL_TEMPLATE = """(
@@ -94,10 +100,31 @@ SQL_TEMPLATE = """(
     %s,          -- wb_catalog_id
     %s,          -- wb_parent_catalog_id
     %s,          -- root_category_name
+    %s,          -- wb_search_query
     %s, %s
 )"""
 
 INSERT_QUERY = f"INSERT INTO crawl_targets ({SQL_COLUMNS}) VALUES %s"
+
+# Sync an existing target in place, matched by its WB catalog id.
+#
+# `created_at` and `id` are deliberately not touched: the id is what the crawl
+# history hangs off (jobs, items, category mappings), so an update must keep
+# the row it updates.
+UPDATE_QUERY = """
+UPDATE crawl_targets
+SET name = %s,
+    start_url = %s,
+    allowed_domains = %s,
+    max_depth = %s,
+    known_pages_limit = %s,
+    wb_parent_catalog_id = %s,
+    root_category_name = %s,
+    wb_search_query = %s,
+    is_active = %s,
+    updated_at = %s
+WHERE wb_catalog_id = %s
+"""
 
 
 @click.command(context_settings=dict(help_option_names=["-h", "--help"]))
@@ -114,10 +141,15 @@ INSERT_QUERY = f"INSERT INTO crawl_targets ({SQL_COLUMNS}) VALUES %s"
 # ── Parsing defaults ────────────────────────────────────────────────────────────
 @click.option(
     "--max-depth",
-    default=2,
+    default=1,
     type=int,
     show_default=True,
-    help="Value for the max_depth column",
+    help=(
+        "Value for the max_depth column: how deep the crawl may descend into the category "
+        "tree. The internal catalog API returns one catalog per target, so the crawl never "
+        "descends and the value only matters for link-following targets. The page limit is "
+        "known_pages_limit, not max_depth."
+    ),
 )
 @click.option(
     "--allowed-domains",
@@ -129,6 +161,15 @@ INSERT_QUERY = f"INSERT INTO crawl_targets ({SQL_COLUMNS}) VALUES %s"
     "--root-category",
     default=None,
     help="root_category_name value for all rows (optional)",
+)
+@click.option(
+    "--known-pages-limit",
+    default=None,
+    type=int,
+    help=(
+        "known_pages_limit value for all rows: how many pages of a catalog are worth "
+        "crawling. NULL = no limit (the crawler then falls back to its own cap)."
+    ),
 )
 # ── Execution options ──────────────────────────────────────────────────────────
 @click.option(
@@ -154,6 +195,7 @@ def load_catalog_to_pg(
     max_depth: int,
     allowed_domains: str,
     root_category: str | None,
+    known_pages_limit: int | None,
     batch_size: int,
     dry_run: bool,
     verbose: bool,
@@ -182,7 +224,22 @@ def load_catalog_to_pg(
     now = datetime.now(timezone.utc)
     rows: List[Tuple] = []
 
+    skipped = 0
+
     for page in pages:
+        # A target without a token is refused by the crawler: the internal API answers
+        # with the rotating popular list instead of the category, so loading it would
+        # put a row in the table that can only ever collect the wrong products. The
+        # loader says so and leaves it out, instead of loading a target that silently
+        # never produces its category.
+        if not page.get("search_query"):
+            skipped += 1
+            click.echo(
+                f"  skipped '{page['name']}': no search_query — "
+                f"run enrich_catalog_queries.py to add WB's catalog token",
+                err=True,
+            )
+            continue
         rows.append((
             str(uuid.uuid4()),                 # 1  id
             page["name"],                      # 2  name
@@ -191,19 +248,35 @@ def load_catalog_to_pg(
             max_depth,                         # 5  max_depth
             None,                              # 6  parsing_rules (NULL)
             True,                              # 7  is_active
-            None,                              # 8  known_pages_limit (NULL)
+            # 8  known_pages_limit — the page's own value wins over the CLI default, so
+            # the crawl budget travels with the catalogue in the YAML.
+            page.get("known_pages_limit") if page.get("known_pages_limit") is not None else known_pages_limit,
             page.get("id"),                    # 9  wb_catalog_id
             page.get("parent_catalog_id"),    # 10 wb_parent_catalog_id
-            root_category,                     # 11 root_category_name
-            now,                               # 12 created_at
-            now,                               # 13 updated_at
+            # 11 root_category_name — the CLI value wins for every row; otherwise
+            # each page carries its own root, as written by catalog_selector.py.
+            root_category or page.get("root_category_name"),
+            # 12 wb_search_query — WB's catalog token. Without it the internal API answers
+            # with the rotating popular list instead of the category, so a target without a
+            # token is refused by the crawler rather than filled with unrelated products.
+            page.get("search_query"),
+            now,                               # 13 created_at
+            now,                               # 14 updated_at
         ))
+
+    if skipped:
+        click.echo(
+            f"\n{skipped} page(s) skipped: no search_query. Run "
+            f"enrich_catalog_queries.py before loading the catalogue.",
+            err=True,
+        )
 
     if verbose:
         click.echo("\nFirst 3 rows (preview):")
         for r in rows[:3]:
             click.echo(f"  • name={r[1]} | url={r[2]}")
             click.echo(f"    wb_catalog_id={r[8]} | wb_parent_catalog_id={r[9]}")
+            click.echo(f"    search_query={r[11]}")
 
     if dry_run:
         click.echo(f"\nDRY-RUN: {len(rows)} records prepared. Run without --dry-run to insert.")
@@ -223,15 +296,51 @@ def load_catalog_to_pg(
         conn.autocommit = False
         cur = conn.cursor()
 
-        click.echo("Inserting data...")
+        click.echo("Syncing data...")
+
+        # A blind INSERT would create a second copy of every target on every run:
+        # the primary key is a fresh uuid each time, and the crawl history (jobs,
+        # items, category mappings) hangs off the *old* row. Loading the same YAML
+        # twice must not double the target list, so a target that already carries
+        # this wb_catalog_id is updated in place — keeping its id, and therefore
+        # its history.
+        cur.execute("SELECT wb_catalog_id FROM crawl_targets WHERE wb_catalog_id IS NOT NULL")
+        existing = {str(catalog_id) for (catalog_id,) in cur.fetchall()}
+
+        to_update = [row for row in rows if str(row[8]) in existing]
+        to_insert = [row for row in rows if str(row[8]) not in existing]
+
+        click.echo(
+            f"  {len(to_update)} target(s) updated in place, {len(to_insert)} inserted"
+        )
+
         with click.progressbar(
             length=len(rows),
             label="Processing batches",
             show_pos=True,
             width=50,
         ) as bar:
-            for i in range(0, len(rows), batch_size):
-                batch = rows[i:i + batch_size]
+            for row in to_update:
+                cur.execute(
+                    UPDATE_QUERY,
+                    (
+                        row[1],  # name
+                        row[2],  # start_url
+                        row[3],  # allowed_domains
+                        row[4],  # max_depth
+                        row[7],  # known_pages_limit
+                        row[9],  # wb_parent_catalog_id
+                        row[10],  # root_category_name
+                        row[11],  # wb_search_query
+                        row[6],  # is_active
+                        now,  # updated_at
+                        str(row[8]),  # wb_catalog_id — the match key
+                    ),
+                )
+                bar.update(1)
+
+            for i in range(0, len(to_insert), batch_size):
+                batch = to_insert[i:i + batch_size]
                 # psycopg2.extras.execute_values handles Python lists as PostgreSQL ARRAYs
                 extras.execute_values(
                     cur,
@@ -242,7 +351,10 @@ def load_catalog_to_pg(
                 bar.update(len(batch))
 
         conn.commit()
-        click.echo(f"\nSuccessfully inserted {len(rows)} categories into crawl_targets.")
+        click.echo(
+            f"\nSuccessfully synced {len(rows)} categories into crawl_targets "
+            f"({len(to_update)} updated, {len(to_insert)} inserted)."
+        )
 
     except psycopg2.Error as e:
         if conn:

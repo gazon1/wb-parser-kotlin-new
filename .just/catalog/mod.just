@@ -72,3 +72,25 @@ load-if-empty:
         --db-name {{DB_NAME}} \
         --db-user {{DB_USER}} \
         --db-password {{DB_PASSWORD}}
+
+[group('catalog')]
+[doc('Backfill root_category_name in the YAML from WBs public category tree')]
+[working-directory(justfile_directory())]
+fill-roots yaml=CATALOG_YAML:
+    #!/bin/bash
+    set -euo pipefail
+    uv run scripts/wb-catalog/fill_root_categories.py {{yaml}}
+
+[group('catalog')]
+[doc('Load WB product-subject names into wb_subjects')]
+[working-directory(justfile_directory())]
+load-subjects backfill="--backfill":
+    #!/bin/bash
+    set -euo pipefail
+    uv run scripts/wb-catalog/load_subjects.py \
+        --db-host {{DB_HOST}} \
+        --db-port {{DB_PORT}} \
+        --db-name {{DB_NAME}} \
+        --db-user {{DB_USER}} \
+        --db-password {{DB_PASSWORD}} \
+        {{backfill}}

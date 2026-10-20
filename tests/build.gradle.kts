@@ -2,6 +2,10 @@ plugins {
     // No `version`: the Kotlin plugins live on the settings classloader (see
     // settings.gradle.kts) — DAGP needs them there to analyze Kotlin modules.
     id("org.jetbrains.kotlin.jvm")
+    // The coverage plugin, for the same reason as in the other modules: this
+    // module's suites exercise the crawler and the application, and the report
+    // has to say what they covered.
+    id("org.jetbrains.kotlinx.kover")
 }
 
 kotlin {
@@ -98,12 +102,11 @@ configurations.configureEach {
 }
 
 tasks.test {
-    useJUnitPlatform()
-    // Recent Docker daemons (>= 25) reject the API version docker-java negotiates by
-    // default (1.32) with "client version 1.32 is too old". Pin a supported version so
-    // Testcontainers can reach the host engine.
-    systemProperty("api.version", "1.44")
-    environment("DOCKER_API_VERSION", "1.44")
+    useJUnitPlatform() // The Docker API pin (`api.version`) lives in the root build, for every module
+    // that starts a container — it was declared here first, where it was needed
+    // first, and every other module that needed it failed with an error that says
+    // nothing about the database.
+    //
     // AdminApiKeyFilter reads ADMIN_API_KEY with System.getenv and throws in its
     // constructor when it is missing, and the security chain creates that filter in
     // every profile but `once`. The startup gate boots the real application, so the

@@ -37,11 +37,37 @@ sealed interface Retry {
 }
 
 /**
+ * A stable, low-cardinality name of what went wrong.
+ *
+ * This is the tag a retry is counted under: `crawl.retries{reason="antibot"}`.
+ * The name has to stay a small fixed set — a metric tag whose value is a
+ * free-form message is a metric nobody can graph.
+ */
+fun Retry.reason(): String =
+    when (this) {
+        is Retry.Antibot -> "antibot"
+        is Retry.RateLimited -> "rate_limited"
+        is Retry.ServerError -> "server_error"
+        is Retry.StaleContext -> "stale_context"
+        is Retry.Database -> "database"
+    }
+
+/**
  * Retry policy — controls back-off behaviour.
  */
 data class RetryPolicy(
     val maxAttempts: Int = 5,
     val baseDelayMs: Long = 1_000L,
+    /**
+     * Base delay for an anti-bot answer, in milliseconds.
+     *
+     * An anti-bot response is not a hiccup — it means WB is refusing this session for a
+     * while. Retrying after one second just collects more refusals: the retry lands on
+     * the same blocked cookies, and the whole attempt budget is spent inside the block.
+     * Ten seconds is long enough for the block to age out and short enough that five
+     * attempts still fit into a crawl.
+     */
+    val antibotBaseDelayMs: Long = 10_000L,
     val maxDelayMs: Long = 120_000L,
     val jitterPercent: Double = 0.1, // up to 10% jitter
 )
@@ -63,14 +89,19 @@ fun retryDelayMs(
     policy: RetryPolicy = RetryPolicy(),
     random: Random = Random.Default,
 ): Long {
-    // All four Retry variants (ServerError, RateLimited, Antibot, StaleContext)
-    // share the same back-off formula: explicit delayMs override, or exponential.
-    // The when-is covers all Retry subtypes, so no else/unchecked warning.
+    // Every Retry variant shares the same back-off formula: an explicit delayMs override,
+    // or exponential back-off from a base that depends on the kind of failure. The
+    // when-is covers all Retry subtypes, so no else/unchecked warning.
     val explicitDelay = signal.delayMs
+    val base =
+        when (signal) {
+            is Retry.Antibot -> policy.antibotBaseDelayMs
+            else -> policy.baseDelayMs
+        }
     val baseDelay =
         when {
             explicitDelay != null && explicitDelay > 0 -> explicitDelay
-            else -> policy.baseDelayMs * (1 shl attempt.coerceAtMost(10))
+            else -> base * (1 shl attempt.coerceAtMost(10))
         }
     val capped = baseDelay.coerceAtMost(policy.maxDelayMs)
     val jitterBound = (capped * policy.jitterPercent).toLong()

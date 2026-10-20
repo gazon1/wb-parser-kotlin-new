@@ -74,6 +74,10 @@ dependencies {
     implementation(libs.kotlin.coroutines.core)
     implementation(libs.arrow.core)
     implementation(libs.resilience4j.circuitbreaker)
+    // WB's subject dictionary is JSON, and the startup bootstrap parses it here.
+    // The library arrived on the classpath through the crawler's dependencies until
+    // the dependency-analysis gate pointed at the use without the declaration.
+    implementation(libs.kotlin.serialization.json)
 
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.actuator)

@@ -45,6 +45,14 @@ FLOOR_FILE = ROOT / "config" / "gates" / "coverage-floor.txt"
 REPORT_FILES = {
     "wbparser": "wbparser/build/reports/kover/report.xml",
     "app": "app/build/reports/kover/report.xml",
+    # The repository-wide report. The root project is the merging module: it has no
+    # sources of its own, and the `kover` dependencies it declares make its report the
+    # union of every module's classes and of the coverage every suite produced.
+    #
+    # Without it, the integration module's suites were invisible: a module's own report
+    # contains only that module's classes, so the code the integration suite exercised
+    # most was reported as uncovered.
+    "merged": "build/reports/kover/report.xml",
 }
 
 

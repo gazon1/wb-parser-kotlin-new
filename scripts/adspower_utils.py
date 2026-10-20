@@ -4,10 +4,17 @@ AdsPower Local API utilities for Python scripts.
 Handles browser start/stop and CDP WebSocket URL retrieval.
 """
 
-import subprocess, json, time, sys
+import subprocess, json, time, sys, os
 from typing import Optional
 
-ADSPOWER_API_BASE = "http://127.0.0.1:50325"
+# The AdsPower Local API port is not fixed across distributions: the classic
+# desktop app serves 50325, the `adspower-browser` CLI serves 50725. The
+# Kotlin crawler discovers it at runtime (AdsPowerApiResolver); these scripts
+# do the same, in miniature: an explicit override first, then the known ports.
+ADSPOWER_API_BASE = os.environ.get("ADSPOWER_API_BASE", "").rstrip("/")
+
+# Ports the known AdsPower distributions listen on, tried in order.
+KNOWN_ADSPOWER_PORTS = (50325, 50725)
 
 # Known working profiles
 PROFILE_IDS = {
@@ -38,12 +45,63 @@ def get_api_key() -> str:
     return os.environ.get("ADSPOWER_API_KEY", "")
 
 
+def resolve_api_base() -> str:
+    """
+    Find the AdsPower Local API.
+
+    The explicit ADSPOWER_API_BASE wins when it answers; otherwise the known
+    distribution ports are probed. The Local API answers `{"code": 0, ...}` even
+    for a profile id that does not exist, so the probe needs no real profile and
+    no API key — and the envelope is specific enough that an unrelated HTTP
+    server on the same port will not match it.
+    """
+    global ADSPOWER_API_BASE
+
+    if ADSPOWER_API_BASE:
+        if _answers_as_adspower(ADSPOWER_API_BASE):
+            return ADSPOWER_API_BASE
+        print(
+            f"[adspower] {ADSPOWER_API_BASE} did not answer as an AdsPower Local API; "
+            f"falling back to discovery",
+            file=sys.stderr,
+        )
+
+    for port in KNOWN_ADSPOWER_PORTS:
+        candidate = f"http://127.0.0.1:{port}"
+        if _answers_as_adspower(candidate):
+            ADSPOWER_API_BASE = candidate
+            return candidate
+
+    # Nothing known answered — keep the first known port as a best effort so the
+    # caller gets a connection error naming the port it tried, not a crash.
+    ADSPOWER_API_BASE = f"http://127.0.0.1:{KNOWN_ADSPOWER_PORTS[0]}"
+    return ADSPOWER_API_BASE
+
+
+def _answers_as_adspower(base: str) -> bool:
+    """True when `base` replies with the AdsPower JSON envelope."""
+    import httpx
+    try:
+        r = httpx.get(
+            f"{base}/api/v2/browser-profile/active",
+            params={"profile_id": "__adspower_probe__"},
+            timeout=2,
+        )
+        if r.status_code != 200:
+            return False
+        body = r.text
+        return '"code"' in body and '"msg"' in body
+    except Exception:
+        return False
+
+
 def get_browser_status(profile_id: str) -> dict:
     """Get current browser status for a profile."""
     import httpx
     api_key = get_api_key()
+    base = resolve_api_base()
     r = httpx.get(
-        f"{ADSPOWER_API_BASE}/api/v1/browser/active",
+        f"{base}/api/v1/browser/active",
         params={"profile_id": profile_id, "api-key": api_key},
         timeout=10
     )
@@ -147,7 +205,7 @@ def close_browser(profile_id: str):
     import httpx
     api_key = get_api_key()
     r = httpx.get(
-        f"{ADSPOWER_API_BASE}/api/v1/browser/stop",
+        f"{resolve_api_base()}/api/v1/browser/stop",
         params={"profile_id": profile_id, "api-key": api_key},
         timeout=10
     )

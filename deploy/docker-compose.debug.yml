@@ -4,6 +4,12 @@
 #   just app::build bootJar          # the jar has to exist first
 #   docker compose -f deploy/docker-compose.debug.yml up
 #
+# The root docker-compose.yml includes this file, so `docker compose up` from the
+# project root runs the very same stack. The explicit `name:` below is what makes
+# that true: without it the project name would be derived from the directory of
+# whichever compose file was used, and the two invocations would end up with
+# different containers and different database volumes.
+#
 # Runs the jar the host already built, with a remote debugger on :5005 and heap
 # dumps on /logs. This is the reproduction environment, not the release path:
 # deploy/docker-compose.vps.yml is what goes on the VPS, and Dockerfile.app is
@@ -14,9 +20,17 @@
 # going through a proxy.
 # =============================================================================
 
+name: wbparser-debug
+
 services:
   postgres:
     image: postgres:${POSTGRES_IMAGE_TAG:-17-alpine}
+    # Explicit name, like the app's: the project name differs between the two
+    # ways this stack is invoked (root `docker compose up` vs
+    # `docker compose -f deploy/docker-compose.debug.yml up`), and a
+    # project-derived container name would let both run at once — fighting over
+    # port 5433 with two different databases.
+    container_name: wb-parser-debug-postgres
     environment:
       POSTGRES_DB: wbparser
       POSTGRES_USER: postgres
@@ -33,36 +47,91 @@ services:
 
   app:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile.debug
     container_name: wb-parser-debug
     depends_on:
       postgres:
         condition: service_healthy
+    # AdsPower's Local API and the Chrome DevTools ports it hands back
+    # (ws://127.0.0.1:<port>/...) are reachable ONLY through the host's loopback.
+    # In the default bridge network the container's 127.0.0.1 is its own, so every
+    # profile resolves to "no DevTools port reachable" and the crawl fetches nothing.
+    # Host networking makes the container share the host's loopback, which is what
+    # makes the ws URLs the API returns actually connect.
+    network_mode: host
+    env_file:
+      # ADSPOWER_API_KEY lives here (gitignored). Only the AdsPower key is read
+      # from it — DB_* is pinned below, so this file cannot repoint the database.
+      - ../.env
     environment:
       # Flyway runs here on purpose: a throwaway database with no schema is not
       # a useful reproduction of anything. The VPS disables it only because its
       # database already has history this build does not know about.
       SPRING_FLYWAY_ENABLED: "true"
-      DB_HOST: postgres
-      DB_PORT: "5432"
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
+      # Postgres stays in the bridge network and publishes 5433 on the host;
+      # in host mode the app reaches it through that published port.
+      DB_HOST: 127.0.0.1
+      DB_PORT: "5433"
       DB_NAME: wbparser
       DB_USER: postgres
       DB_PASSWORD: ${CRAWLER_DATABASE_PASSWORD:-postgres}
+      # The AdsPower Local API port is NOT pinned here on purpose: it differs
+      # across AdsPower distributions (50325 for the classic desktop app, 50725
+      # for the adspower-browser CLI) and can move again on upgrade.
+      # AdsPowerApiResolver discovers the live port at runtime.
+      # Set ADSPOWER_API_BASE only to override discovery.
       CRAWLER_WORKER_ENABLED: "true"
-      # Fast enough to watch a cycle happen while you step through it.
+      # We drive AdsPower's own Chrome over CDP — Playwright's bundled Chromium is
+      # never launched. Without this, Playwright.create() downloads 161 MB of
+      # Chromium on every browser borrow, and re-downloads it on every retry.
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      # The tick: how often the scheduler looks for work. Fast enough to watch a cycle
+      # happen while you step through it.
       CRAWLER_SCHEDULE_CRON: "*/30 * * * * *"
+      # The cadence: how long a target rests after it was crawled. This is the one
+      # parameter that decides how often a catalog is re-crawled — the cron above is
+      # only the tick. The two used to contradict each other (a 30-second tick next to a
+      # hardcoded 4-hour freshness window) and the hardcoded value could not be changed
+      # without a rebuild.
+      CRAWLER_SCHEDULE_FRESHNESS_MINUTES: "240"
+      # Where AdsPower keeps its browser profiles. The pre-flight check reads this
+      # directory to tell a healthy profile from one whose Preferences belong to
+      # another user; without it the container looks at /root/.adspowerCli, sees
+      # nothing, and reports every profile as missing.
+      ADSPOWER_HOME: /adspower
+      # Nextcloud owns 8080 on this host; 8082 keeps both up.
+      SERVER_PORT: "8082"
       LOGGING_LEVEL_ROOT: DEBUG
       LOGGING_LEVEL_RU_WBPARSER: DEBUG
     volumes:
       # A FILE, not a directory. `app/build/libs:/app/app.jar` mounts the
       # directory over the jar's path, and the JVM then reports "Invalid or
       # corrupt jarfile app.jar" for a perfectly good build.
-      - ./app/build/libs/app.jar:/app/app.jar:ro
+      #
+      # Because the jar is mounted as a file, the container keeps the inode it was
+      # started with. Rebuilding the jar in place leaves the running JVM reading a
+      # half-rewritten archive: classes that were not yet loaded fail with
+      # "NoClassDefFoundError: org/apache/tomcat/util/net/SocketBufferHandler" the
+      # moment a request touches them — the crawl keeps running and the HTTP port
+      # answers with nothing. So: after `./gradlew :app:bootJar`, always recreate
+      # the container (`docker compose -f deploy/docker-compose.debug.yml up -d
+      # --force-recreate app`), do not just restart it.
+      # Path is relative to the compose file location (deploy/), so ../ goes to project root.
+      - ../app/build/libs/app.jar:/app/app.jar:ro
       - ./logs:/logs
-    ports:
-      - "8081:8080"
-      - "5005:5005"
+      # AdsPower's profile directory, read-only: the pre-flight check only
+      # inspects it. The browser itself runs on the host, not in the container.
+      - ${HOME}/.adspowerCli:/adspower:ro
+    # No ports: with network_mode: host the app binds the host directly.
+    #   app      -> http://localhost:8082
+    #   debugger -> localhost:5005 (JDWP, address=*:5005)
 
 volumes:
   postgres_debug_data:
+    # Explicit name: the volume must not follow the project name. This stack is
+    # invoked both as `docker compose up` (root) and as
+    # `docker compose -f deploy/docker-compose.debug.yml up`, and a project-derived
+    # volume name would silently give the second invocation an empty database.
+    name: wbparser_debug_data

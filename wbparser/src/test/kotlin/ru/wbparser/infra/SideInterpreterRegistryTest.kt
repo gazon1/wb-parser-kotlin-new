@@ -10,17 +10,12 @@ import ru.wbparser.domain.pipeline.LogLevel
 import ru.wbparser.domain.pipeline.Side
 import ru.wbparser.infra.pipeline.NoOpAdvisoryLockInterpreter
 import ru.wbparser.infra.pipeline.NoOpMetricInterpreter
-import ru.wbparser.infra.pipeline.NoOpSaveBatchInterpreter
-import ru.wbparser.infra.pipeline.NoOpScheduleRetryInterpreter
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.testing.AcquireAdvisoryLockTestInterpreter
 import ru.wbparser.testing.JobEventTestInterpreter
 import ru.wbparser.testing.LogTestInterpreter
 import ru.wbparser.testing.MetricTestInterpreter
-import ru.wbparser.testing.SaveBatchTestInterpreter
-import ru.wbparser.testing.ScheduleRetryTestInterpreter
 import ru.wbparser.testing.TestSideCollector
-import java.util.UUID
 
 /**
  * Characterisation tests for [SideInterpreterRegistry].
@@ -47,33 +42,6 @@ class SideInterpreterRegistryTest :
                 collector.logs shouldHaveSize 2
                 collector.logs[0].message shouldBe "test message"
                 collector.logs[1].level shouldBe LogLevel.ERROR
-            }
-        }
-
-        test("interpretAll dispatches Side.SaveBatch to saveBatch interpreter") {
-            runTest {
-                val registry =
-                    SideInterpreterRegistry(
-                        saveBatch = SaveBatchTestInterpreter(collector),
-                    )
-                registry.interpretAll(listOf(Side.SaveBatch(emptyList())))
-                collector.saveBatches shouldHaveSize 1
-            }
-        }
-
-        test("interpretAll dispatches Side.ScheduleRetry to scheduleRetry interpreter") {
-            runTest {
-                val registry =
-                    SideInterpreterRegistry(
-                        scheduleRetry = ScheduleRetryTestInterpreter(collector),
-                    )
-                registry.interpretAll(
-                    listOf(
-                        Side.ScheduleRetry("http://example.com", 5000L, UUID.randomUUID()),
-                    ),
-                )
-                collector.scheduleRetries shouldHaveSize 1
-                collector.scheduleRetries[0].afterMs shouldBe 5000L
             }
         }
 
@@ -112,29 +80,26 @@ class SideInterpreterRegistryTest :
             }
         }
 
-        test("interpretAll throws when Side.Log has no interpreter") {
+        test("interpretAll does not fail on a log or a metric without a registered interpreter") {
             runTest {
+                // The domain emits both on its own, so the registry answers both by
+                // default. Failing here would mean failing the crawl at the moment
+                // something went wrong.
                 val registry = SideInterpreterRegistry()
-                shouldThrow<IllegalStateException> {
-                    registry.interpretAll(listOf(Side.Log(LogLevel.INFO, "test")))
-                }
+                registry.interpretAll(
+                    listOf(
+                        Side.Log(LogLevel.INFO, "test"),
+                        Side.Metric("requests", 1L),
+                    ),
+                )
             }
         }
 
-        test("interpretAll throws when Side.SaveBatch has no interpreter") {
+        test("interpretAll throws when Side.JobEvent has no interpreter") {
             runTest {
                 val registry = SideInterpreterRegistry()
                 shouldThrow<IllegalStateException> {
-                    registry.interpretAll(listOf(Side.SaveBatch(emptyList())))
-                }
-            }
-        }
-
-        test("interpretAll throws when Side.ScheduleRetry has no interpreter") {
-            runTest {
-                val registry = SideInterpreterRegistry()
-                shouldThrow<IllegalStateException> {
-                    registry.interpretAll(listOf(Side.ScheduleRetry("http://example.com", 1000L, UUID.randomUUID())))
+                    registry.interpretAll(listOf(Side.JobEvent(JobOp.Open("job-123"))))
                 }
             }
         }
@@ -145,20 +110,17 @@ class SideInterpreterRegistryTest :
                 val registry =
                     SideInterpreterRegistry(
                         log = LogTestInterpreter(collector),
-                        saveBatch = SaveBatchTestInterpreter(collector),
-                        scheduleRetry = ScheduleRetryTestInterpreter(collector),
+                        metric = MetricTestInterpreter(collector),
                     )
                 registry.interpretAll(
                     listOf(
                         Side.Log(LogLevel.INFO, "first"),
-                        Side.SaveBatch(emptyList()),
+                        Side.Metric("pages_crawled", 1L),
                         Side.Log(LogLevel.WARN, "second"),
-                        Side.ScheduleRetry("http://example.com", 500L, UUID.randomUUID()),
                     ),
                 )
                 collector.logs shouldHaveSize 2
-                collector.saveBatches shouldHaveSize 1
-                collector.scheduleRetries shouldHaveSize 1
+                collector.metrics shouldHaveSize 1
             }
         }
 
@@ -168,16 +130,13 @@ class SideInterpreterRegistryTest :
                     SideInterpreterRegistry(
                         log = LogTestInterpreter(collector),
                         metric = NoOpMetricInterpreter(),
-                        saveBatch = NoOpSaveBatchInterpreter(),
                         jobEvent = JobEventTestInterpreter(collector),
-                        scheduleRetry = NoOpScheduleRetryInterpreter(),
                         acquireAdvisoryLock = NoOpAdvisoryLockInterpreter(),
                     )
                 registry.interpretAll(
                     listOf(
-                        Side.SaveBatch(emptyList()),
                         Side.Log(LogLevel.ERROR, "error"),
-                        Side.ScheduleRetry("http://example.com", 1000L, UUID.randomUUID()),
+                        Side.Metric("requests", 1L),
                     ),
                 )
             }

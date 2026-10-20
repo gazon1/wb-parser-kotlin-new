@@ -61,6 +61,8 @@ that fails quietly instead of loudly:
 - `jitterMs(-50, -10)` returned a **negative** delay, because `ThreadLocalRandom.nextLong`
   accepts negative bounds. That delay went straight into `waitForTimeout`, so a mistyped
   `browser-jitter-min-ms` would have thrown mid-request. Both bounds are now clamped at zero.
+  (Since 2026-10-20 the function lives in `RequestPacer`: the request builder does not decide
+  when a request may go out.)
 - `WbItemDto.id` was a required field, so a single product missing `id` threw inside
   `decodeFromString`, the catch-all turned the whole response into an empty page, and the crawl
   reported success while storing nothing. The pre-existing `id <= 0` guard in `toParsedItem`

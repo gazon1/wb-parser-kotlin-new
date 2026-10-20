@@ -169,7 +169,9 @@ class CrawlJobStatusPostgresTest :
 
                 val result = runner.run()
 
-                (result is CrawlRunner.RunResult.Success) shouldBe true
+                // "Nothing to crawl" is its own outcome: reporting it as a successful
+                // crawl with zero pages made an idle scheduler look like a broken one.
+                (result is CrawlRunner.RunResult.NothingDue) shouldBe true
                 db.rows("SELECT id FROM crawl_jobs").size shouldBe 0
             }
         }

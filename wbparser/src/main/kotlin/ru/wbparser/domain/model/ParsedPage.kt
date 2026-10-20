@@ -13,6 +13,15 @@ data class ParsedPage(
     val nextPageUrl: CrawlUrl?,
     val isEmptyPage: Boolean,
     val parsedAt: Instant = Instant.now(),
+    /**
+     * Whether WB answered with the rotating popular list instead of the catalog.
+     *
+     * Such a page is a pool of about 1 200 products that has nothing to do with the
+     * category being crawled, and it looks like a perfectly good page of products.
+     * Storing it under the category's name is the exact mistake this crawler was
+     * rebuilt to stop making, so the page is dropped instead of saved.
+     */
+    val isPresetResponse: Boolean = false,
 )
 
 /**
@@ -42,6 +51,11 @@ data class ParsedItem(
     val pageUrl: CrawlUrl,
     val brandId: Long?,
     val subjectId: Long?,
+    /**
+     * Parent of [subjectId] in WB's subject hierarchy — the edge that lets the
+     * category tree be rebuilt from the scraped rows.
+     */
+    val subjectParentId: Long? = null,
     val supplierId: Long?,
     val matchId: Long? = null,
     val seller: String? = null,

@@ -1,7 +1,6 @@
 package ru.wbparser.domain.pipeline
 
 import ru.wbparser.domain.model.ParsedItem
-import ru.wbparser.domain.model.SavedItem
 
 /**
  * A side effect to be interpreted by the pipeline runner.
@@ -40,21 +39,9 @@ sealed interface Side {
         val tags: Map<String, String> = emptyMap(),
     ) : Side
 
-    /** Persist a batch of items to storage. */
-    data class SaveBatch(
-        val items: List<SavedItem>,
-    ) : Side
-
     /** Record a job lifecycle event. */
     data class JobEvent(
         val operation: JobOp,
-    ) : Side
-
-    /** Schedule a retry for [url] after [afterMs] milliseconds. */
-    data class ScheduleRetry(
-        val url: String,
-        val afterMs: Long,
-        val targetId: java.util.UUID,
     ) : Side
 
     /** Record that we attempted to acquire the advisory lock. */

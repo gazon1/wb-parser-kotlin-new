@@ -71,6 +71,12 @@ logging:
     root: INFO
     ru.wbparser: DEBUG
     org.springframework.web: INFO
+    # Exposed logs every statement at DEBUG — one line per row, which drowns the log.
+    # Worse: on a failed statement Exposed 0.55 expands the statement's placeholders to
+    # log it, and that expansion throws NoSuchElementException, which replaces the real
+    # SQLException with an unrelated error. Keep it off; raise it only when a specific
+    # query needs to be inspected.
+    Exposed: ${EXPOSED_SQL_LOG_LEVEL:INFO}
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
 
@@ -153,7 +159,11 @@ spring:
 
 crawler:
   schedule:
+    # The tick: how often the scheduler looks for work.
     cron: "0 0 */4 * * *"
+    # The cadence: how long a target rests after it was crawled. This is the single
+    # parameter that decides how often a catalog is re-crawled.
+    freshness-minutes: 240
   lock:
     timeout-minutes: 10
   worker:

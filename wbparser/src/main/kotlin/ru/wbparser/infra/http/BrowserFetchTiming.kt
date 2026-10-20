@@ -11,14 +11,12 @@ package ru.wbparser.infra.http
  * @param pageNavTimeoutMs ceiling for the one-off warm-up navigation. It covers a full WB
  *   catalog page load, not a paged API call.
  * @param warmupMs how long the anti-bot challenge is given after that navigation.
- * @param jitterMinMs lower bound of the per-request pacing delay.
- * @param jitterMaxMs exclusive upper bound of the same delay.
+ * The request rate itself is not here: it belongs to the [RequestPacer], which is the
+ * only place that decides when the next request may go out.
  */
 data class BrowserFetchTiming(
     val pageNavTimeoutMs: Long = 30_000,
     val warmupMs: Long = 2_000,
-    val jitterMinMs: Long = 200,
-    val jitterMaxMs: Long = 500,
 ) {
     init {
         require(warmupMs >= 0) { "warmupMs must not be negative: $warmupMs" }

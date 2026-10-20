@@ -25,7 +25,7 @@ wb-parser-kotlin/
 just tests::check      # или: ./check.sh — единственная точка входа
 just t                 # алиас
 
-# ./check.sh — 10 нумерованных шагов. Шаг [1] вызывает scripts/ci/static-gates.sh,
+# ./check.sh — 11 нумерованных шагов. Шаг [1] вызывает scripts/ci/static-gates.sh,
 # тот же реестр, что джоб `static` в ci.yml: один реестр, два вызывающих.
 
 # JDK: версия 22 задана один раз — в root build (`subprojects { }` → `jvmToolchain(22)`).

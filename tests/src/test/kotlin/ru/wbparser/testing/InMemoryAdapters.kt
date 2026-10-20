@@ -13,9 +13,7 @@ import java.time.Instant
 class TestSideCollector {
     val logs = mutableListOf<Side.Log>()
     val metrics = mutableListOf<Side.Metric>()
-    val saveBatches = mutableListOf<Side.SaveBatch>()
     val jobEvents = mutableListOf<Side.JobEvent>()
-    val scheduleRetries = mutableListOf<Side.ScheduleRetry>()
     val advisoryLocks = mutableListOf<Side.AcquireAdvisoryLock>()
     val drops = mutableListOf<Side.Drop>()
 
@@ -23,9 +21,7 @@ class TestSideCollector {
         when (side) {
             is Side.Log -> logs += side
             is Side.Metric -> metrics += side
-            is Side.SaveBatch -> saveBatches += side
             is Side.JobEvent -> jobEvents += side
-            is Side.ScheduleRetry -> scheduleRetries += side
             is Side.AcquireAdvisoryLock -> advisoryLocks += side
             is Side.Drop -> drops += side
         }
@@ -34,14 +30,10 @@ class TestSideCollector {
     fun reset() {
         logs.clear()
         metrics.clear()
-        saveBatches.clear()
         jobEvents.clear()
-        scheduleRetries.clear()
         advisoryLocks.clear()
         drops.clear()
     }
-
-    val totalItemsSaved: Int get() = saveBatches.sumOf { it.items.size }
 }
 
 /** A [Side.Log] interpreter that collects logs into [TestSideCollector]. */
@@ -58,25 +50,11 @@ class MetricTestInterpreter(
     override suspend fun handle(side: Side.Metric) = collector.collect(side)
 }
 
-/** A [Side.SaveBatch] interpreter that collects saves into [TestSideCollector]. */
-class SaveBatchTestInterpreter(
-    private val collector: TestSideCollector,
-) : Interpreter<Side.SaveBatch> {
-    override suspend fun handle(side: Side.SaveBatch) = collector.collect(side)
-}
-
 /** A [Side.JobEvent] interpreter that collects job events into [TestSideCollector]. */
 class JobEventTestInterpreter(
     private val collector: TestSideCollector,
 ) : Interpreter<Side.JobEvent> {
     override suspend fun handle(side: Side.JobEvent) = collector.collect(side)
-}
-
-/** A [Side.ScheduleRetry] interpreter that collects retry schedules into [TestSideCollector]. */
-class ScheduleRetryTestInterpreter(
-    private val collector: TestSideCollector,
-) : Interpreter<Side.ScheduleRetry> {
-    override suspend fun handle(side: Side.ScheduleRetry) = collector.collect(side)
 }
 
 /** A [Side.AcquireAdvisoryLock] interpreter that collects lock attempts into [TestSideCollector]. */
