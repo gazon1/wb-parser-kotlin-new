@@ -27,9 +27,16 @@ taken from the inventory. Do not reorder them.
 ## 0.1 — Inventory of the production database
 
 The point of this step is to write down what the database looks like *now*, before
-anything touches it. The plan's premise is that the production schema is not the
-migrated schema: Flyway is switched off on the VPS, so the running database carries
-whatever the previous .NET stack left there.
+anything touches it. The plan's premise was that the production schema is not the
+migrated schema: when this runbook was written, Flyway was switched off on the VPS,
+so the running database carried whatever the previous .NET stack left there.
+
+Flyway is on now — the production database is migrated by the application itself,
+and its history matches the migrations in this repository. The inventory is still
+worth running: it is the answer to "what does the database look like", and the
+answer changes what the cutover has to do. If the table below shows a schema the
+migrations do not describe, the deploy will apply them and the check in
+`docs/operations/catalog-enablement-runbook.md` §3.2 will say so.
 
 ```bash
 # On the VPS, as the database owner.
