@@ -80,7 +80,6 @@ dependencies {
     implementation(libs.hikaricp)
 
     // Resilience
-    implementation(libs.resilience4j.kotlin)
     implementation(libs.resilience4j.core)
     api(libs.resilience4j.circuitbreaker)
 
