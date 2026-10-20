@@ -1,8 +1,10 @@
 package ru.wbparser.app.scheduling
 
 import com.microsoft.playwright.Page
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
 import org.jetbrains.exposed.sql.Database
@@ -111,14 +113,14 @@ class AdsPowerPreflightRunnerTest :
             groups: EgressGroups.Resolved,
             spider: Spider = Spider(),
             workerEnabled: Boolean = true,
+            answer: String = "203.0.113.7",
         ): AdsPowerPreflightRunner {
             val profiles = groups.profiles
             val pool =
                 BrowserPool(
                     profiles = profiles,
                     adsPower = AdsPowerConfig(api = api),
-                    browserAutomations =
-                        profiles.map { FakeBrowser(pageAnswering("203.0.113.7")) },
+                    browserAutomations = profiles.map { FakeBrowser(pageAnswering(answer)) },
                 )
             return AdsPowerPreflightRunner(
                 browserPool = pool,
@@ -164,6 +166,61 @@ class AdsPowerPreflightRunnerTest :
 
             // An instance that only serves the catalog must not start Chrome.
             runner(api, groups, workerEnabled = false).run(ApplicationArgumentsStub)
+
+            api.available shouldBe true
+        }
+
+        test("two groups seen at one address are refused when the guarantee was asked for") {
+            val api = FakeAdsPower()
+            val spider =
+                Spider(
+                    useBrowserFetch = true,
+                    egressProbeUrls = listOf("https://echo.invalid/ip"),
+                    requireIsolatedEgressGroups = true,
+                )
+            val groups =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1")),
+                                EgressGroupConfig(id = "ip-2", profiles = listOf("p2")),
+                            ),
+                    ),
+                )
+
+            // Both profiles answer with the same address: the isolation the crawl was
+            // promised is not there, and the operator asked for the guarantee.
+            val failure =
+                shouldThrow<IllegalStateException> {
+                    runner(api, groups, spider = spider).run(ApplicationArgumentsStub)
+                }
+
+            failure.message!! shouldContain "ip-1"
+        }
+
+        test("an echo service that does not answer does not stop the crawler") {
+            val api = FakeAdsPower()
+            val spider =
+                Spider(
+                    useBrowserFetch = true,
+                    egressProbeUrls = listOf("https://echo.invalid/ip"),
+                    requireIsolatedEgressGroups = true,
+                )
+            val groups =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1")),
+                                EgressGroupConfig(id = "ip-2", profiles = listOf("p2")),
+                            ),
+                    ),
+                )
+
+            // "The check could not run" is not "the check failed": a third-party echo
+            // service being down must not keep the crawler from working.
+            runner(api, groups, spider = spider, answer = "").run(ApplicationArgumentsStub)
 
             api.available shouldBe true
         }

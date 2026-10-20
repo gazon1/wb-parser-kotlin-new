@@ -121,7 +121,7 @@ class EgressProbe(
                         groupId = group.id,
                         egressIp = ip,
                         isolated = isolation[group.id] ?: false,
-                        proxyIdentity = proxies[group.id],
+                        proxyIdentity = groupProxyIdentity(group, proxies),
                         ipChanged = changed,
                     )
                 }
@@ -137,13 +137,27 @@ class EgressProbe(
     /**
      * The proxy AdsPower has configured for each profile.
      */
-    private fun readConfiguredProxies(): Map<String, String> {
+    private fun readConfiguredProxies(): Map<String, AdsPowerProfileProxy> {
         val listed =
             runCatching { pool.adsPowerApi.listProfileProxies() }.getOrElse {
                 log.warn("Could not read the AdsPower profile list: {}", it.message)
                 emptyList()
             }
-        return listed.associate { it.profileId to it.identity }
+        return listed.associateBy { it.profileId }
+    }
+
+    /**
+     * The proxy one group is behind, as the operator sees it.
+     *
+     * Null when the group's profiles are not all described: a group whose proxy is
+     * partly unknown has no single identity to report.
+     */
+    private fun groupProxyIdentity(
+        group: EgressGroup,
+        proxies: Map<String, AdsPowerProfileProxy>,
+    ): String? {
+        val identities = group.profileIds.mapNotNull { proxies[it]?.identity }.distinct()
+        return identities.singleOrNull()
     }
 
     /**
@@ -152,19 +166,59 @@ class EgressProbe(
      * @return true when the configuration itself is wrong.
      */
     private fun checkStatic(
-        proxies: Map<String, String>,
+        proxies: Map<String, AdsPowerProfileProxy>,
         problems: MutableList<String>,
     ): Boolean {
-        if (proxies.isEmpty()) return false
+        if (proxies.isEmpty()) {
+            // An empty list is not "there is no proxy to check" — it is "the list did
+            // not come back". A check that could not run must not be reported as a
+            // check that passed.
+            problems +=
+                "AdsPower described no profile — the proxy of the groups could not be checked. " +
+                "They are not verified against the proxies the browser actually uses."
+            return false
+        }
         var misconfigured = false
+
+        // Inside a group: one proxy, or the group is not one group.
+        val groupIdentity = mutableMapOf<String, String>()
         for (group in groups) {
-            val identities = group.profileIds.mapNotNull { proxies[it] }.distinct()
+            val known = group.profileIds.mapNotNull { proxies[it] }
+            val identities = known.map { it.identity }.distinct()
             if (identities.size > 1) {
                 misconfigured = true
                 problems +=
                     "Egress group '${group.id}' mixes proxies ($identities). A group is one " +
                     "address — the profiles of one group have to be behind the same proxy."
             }
+            // A group whose profiles AdsPower did not describe cannot be compared: the
+            // comparison would be a guess, and a guess that silently passes is the very
+            // thing this check exists to stop.
+            if (known.size != group.profileIds.size) {
+                problems +=
+                    "Egress group '${group.id}': AdsPower did not describe " +
+                    "${group.profileIds.size - known.size} of its profiles, so its proxy " +
+                    "could not be checked."
+            }
+            if (known.size == group.profileIds.size && identities.size == 1) {
+                groupIdentity[group.id] = identities.first()
+            }
+        }
+
+        // Between groups: a different proxy each.
+        val byIdentity = groupIdentity.entries.groupBy({ it.value }, { it.key })
+        for ((identity, groupIds) in byIdentity) {
+            if (groupIds.size < 2) continue
+            misconfigured = true
+            val what =
+                if (identity == DIRECT_IDENTITY) {
+                    "no proxy at all, so they leave from the address of the machine the crawler runs on"
+                } else {
+                    "the same proxy ($identity)"
+                }
+            problems +=
+                "Egress groups ${groupIds.sorted()} are behind $what. They are one source, " +
+                "not several: the extra IP budget is not there."
         }
         return misconfigured
     }
@@ -305,6 +359,14 @@ class EgressProbe(
     }
 
     companion object {
+        /**
+         * The identity of a profile that goes out directly.
+         *
+         * Direct means "the address of the machine the crawler runs on", which is why
+         * two direct groups are one address and not two.
+         */
+        const val DIRECT_IDENTITY: String = "no_proxy"
+
         /** How long one echo service may take. */
         const val DEFAULT_TIMEOUT_MS: Long = 5_000L
 

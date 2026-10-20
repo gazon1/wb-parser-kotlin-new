@@ -31,7 +31,6 @@ class CrawlPropertiesTest :
             properties.spider.concurrency shouldBe 3
             properties.spider.useBrowserForAuth shouldBe true
             properties.spider.useBrowserFetch shouldBe false
-            properties.spider.browserProfiles shouldBe emptyList()
             properties.spider.browserRetryLimit shouldBe 3
             properties.spider.browserWarmupMs shouldBe 2_000L
             properties.spider.browserJitterMinMs shouldBe 200L
@@ -71,11 +70,14 @@ class CrawlPropertiesTest :
         test("target concurrency is derived from the profiles, not read from the configuration") {
             val properties =
                 bind(
-                    "crawler.spider.browser-profiles[0]" to "profile-1",
-                    "crawler.spider.browser-profiles[1]" to "profile-2",
+                    "crawler.spider.egress-groups[0].id" to "ip-1",
+                    "crawler.spider.egress-groups[0].profiles[0]" to "profile-1",
+                    "crawler.spider.egress-groups[0].profiles[1]" to "profile-2",
                 )
 
-            properties.spider.browserProfiles shouldContainExactlyInAnyOrder listOf("profile-1", "profile-2")
+            properties.spider.egressGroups
+                .single()
+                .profiles shouldContainExactlyInAnyOrder listOf("profile-1", "profile-2")
             // Zero means "derive it where the groups are resolved" — a number kept in
             // this file by hand is a number that can drift away from the profiles.
             properties.spider.targetConcurrency shouldBe 0
@@ -84,7 +86,8 @@ class CrawlPropertiesTest :
         test("an explicit target concurrency wins over the derived one") {
             val properties =
                 bind(
-                    "crawler.spider.browser-profiles[0]" to "profile-1",
+                    "crawler.spider.egress-groups[0].id" to "ip-1",
+                    "crawler.spider.egress-groups[0].profiles[0]" to "profile-1",
                     "crawler.spider.target-concurrency" to 4,
                 )
 

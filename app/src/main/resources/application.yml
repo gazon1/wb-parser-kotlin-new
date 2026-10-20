@@ -91,17 +91,21 @@ crawler:
     # group buy the group a working IP while one of its profiles rests after an
     # anti-bot answer.
     #
-    # The profiles below are all without a proxy, so they all leave from the same
-    # address — which is one group, not three. Give the profiles their own proxies
-    # in AdsPower and declare one group per proxy here.
-    egress-groups: []
-    browser-profiles:
-      # Only include profiles currently open in AdsPower.
-      # k18a6v75 — Inactive
-      - k18a6j35
-      # k187fu14 — Inactive, Chrome 142 not ready
-      - k17bnqsi
-      - kxpu63n
+    # This is the only list of the crawler's profiles: one list is one source of
+    # truth, and a second list of the same profiles would be ignored the day the
+    # two disagree.
+    #
+    # `direct` leaves from the address of the machine the crawler runs on — the two
+    # profiles below have no proxy in AdsPower, so they share that address.
+    # `socks5` leaves from the proxy configured in AdsPower for `kxpu63n`.
+    egress-groups:
+      - id: direct
+        profiles:
+          - k18a6j35
+          - k17bnqsi
+      - id: socks5
+        profiles:
+          - kxpu63n
     # The services asked for the crawler's own address, in order. The first that
     # answers wins. The probe never stops the crawler: an unreachable echo service
     # is a warning, not a failure.
@@ -110,9 +114,10 @@ crawler:
       - https://ifconfig.me/ip
     egress-probe-timeout-ms: 5000
     # Turn "the groups turned out not to be isolated by IP" from a warning into a
-    # refusal to start. Off by default: the crawl still works without the extra
-    # budget, it just does not get it.
-    require-isolated-egress-groups: false
+    # refusal to start. On, because the groups above are separated by a proxy:
+    # the crawl is entitled to the budget it was promised, and a deployment that
+    # loses the proxy must not quietly keep the extra budget in its name.
+    require-isolated-egress-groups: true
     browser-retry-limit: 3
     # How many crawl targets run at once. Derived from the number of profiles when
     # it is not set: the pool serialises per profile, so more workers queue rather
