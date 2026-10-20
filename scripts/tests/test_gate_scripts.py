@@ -387,13 +387,13 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         "codeql.yml": (
             "on:\n  schedule:\n    - cron: \"17 3 * * 1\"\n"
             "jobs:\n  analyze:\n    permissions:\n      security-events: write\n"
-            "    steps:\n      - uses: github/codeql-action/init@v4\n"
+            "    steps:\n      - uses: github/codeql-action/init@0123456789abcdef0123456789abcdef01234567\n"
             "        with:\n          languages: java-kotlin\n"
-            "      - uses: github/codeql-action/analyze@v4\n"
+            "      - uses: github/codeql-action/analyze@0123456789abcdef0123456789abcdef01234567\n"
         ),
         "scorecard.yml": (
             "jobs:\n  analysis:\n    permissions:\n      id-token: write\n"
-            "    steps:\n      - uses: ossf/scorecard-action@v2\n"
+            "    steps:\n      - uses: ossf/scorecard-action@89abcdef0123456789abcdef0123456789abcdef\n"
             "        with:\n          results_file: results.sarif\n"
         ),
         "lint-autofix.yml": (
@@ -543,6 +543,34 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
     def test_a_scheduled_run_that_calls_the_pipeline_is_quiet(self):
         findings = self._check(self._fixture())
         self.assertFalse(any("calls the pipeline" in f for f in findings), findings)
+
+    def test_an_action_pinned_to_a_tag_is_a_finding(self):
+        """A tag is a name that can be moved; a commit is a name that cannot.
+
+        What runs inside the repository's permissions should not be decided by
+        whoever moves a tag.
+        """
+        workflows = dict(self.GOOD)
+        workflows["codeql.yml"] = workflows["codeql.yml"].replace(
+            "github/codeql-action/init@0123456789abcdef0123456789abcdef01234567",
+            "github/codeql-action/init@v4",
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("a tag, not a commit" in f for f in findings), findings)
+
+    def test_an_action_pinned_to_a_commit_is_quiet(self):
+        findings = self._check(self._fixture())
+        self.assertFalse(any("a tag, not a commit" in f for f in findings), findings)
+
+    def test_a_local_workflow_reference_needs_no_pin(self):
+        """`uses: ./.github/workflows/ci.yml` is this repository's own code."""
+        workflows = dict(self.GOOD)
+        workflows["nightly.yml"] = workflows["nightly.yml"].replace(
+            "    uses: ./.github/workflows/ci.yml\n",
+            "    uses: ./.github/workflows/ci.yml\n    # a comment with a tag: @v4\n",
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertFalse(any("a tag, not a commit" in f for f in findings), findings)
 
 
 def _kover_report(covered: int, missed: int) -> str:

@@ -97,6 +97,14 @@ just deploy::dry-run <tag> # ansible --check --diff
   подходящей задаче инвокации.
 - Авто-фикс **никогда** не трогает detekt-baseline: baseline — это долг, а не
   форматирование (см. `scripts/check-baseline-ratchet.py`).
+- **Always** пинить экшены на коммит, версию оставлять в комментарии. Гейт
+  `scripts/ci/check-ci-workflows.py` падает на тег — Scorecard проверяет
+  это раз в неделю, гейт — на каждом изменении.
+- `main` защищён: обязательные проверки — гейты пайплайна
+  (`static`, `build`, `coverage`, `lint`, `dependency-health`,
+  `gate-honesty`) и CodeQL. Аппрувы не требуются: репозиторий ведёт один
+  человек (и агенты от его имени) — правило, которое всегда обходят, учит
+  обходить правила.
 
 ## 🤖 Decision log workflow
 

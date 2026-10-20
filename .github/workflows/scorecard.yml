@@ -54,7 +54,7 @@ jobs:
       # `persist-credentials: false`: the checkout's token is not left in the
       # git configuration, where the next step could pick it up. This workflow
       # pushes nothing.
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -82,7 +82,7 @@ jobs:
       # file somebody needs to read.
       - name: Upload the results as an artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: scorecard-results
           path: results.sarif
@@ -90,7 +90,7 @@ jobs:
 
       - name: Upload the results to code scanning
         if: always()
-        uses: github/codeql-action/upload-sarif@v4
+        uses: github/codeql-action/upload-sarif@6f2ac81f5cd81fe351a197ba0b00d91d03cd2aee # v4
         with:
           sarif_file: results.sarif
           category: scorecard
