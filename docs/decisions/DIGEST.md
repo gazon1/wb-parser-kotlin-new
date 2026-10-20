@@ -165,6 +165,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** push the auto-fix onto a branch somebody is working on. The _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
 - **Never** put the corrector in the gate registry. It is not a gate: it _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
 - **Never** report a scheduled failure anywhere else than the issue. A red _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
+- **Always** добавлять новое поле, а не переименовывать старое, когда меняется только _(from `2026-10-20-contract-versions-are-paths`)
+- **Always** объявлять устаревание в самом контракте (`deprecated: true`) и писать, в _(from `2026-10-20-contract-versions-are-paths`)
+- **Always** проверять, что потребитель, который знает только текущую версию, продолжает _(from `2026-10-20-contract-versions-are-paths`)
+- **Never** менять смысл существующего поля в том же контракте: это ломающее изменение, _(from `2026-10-20-contract-versions-are-paths`)
 - **Always** объявлять merged report в root-проекте: без него отчёт модуля `tests` _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
 - **Always** писать интеграционный тест рядом с кодом, который он проверяет, а не в _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
 - **Always** поднимать floor покрытия тем же коммитом, который поднял покрытие _(from `2026-10-20-coverage-is-measured-where-the-code-lives`)
@@ -190,6 +194,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** выставлять `known_pages_limit` выше предела API: страница выше приходит _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
 - **Never** записывать в YAML число, которого нет в отчёте измерения. _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
 - **Never** принимать `total` за длину каталога: это размер выдачи поиска. _(from `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary`)
+- **Always** держать модель и представление `latest_product_observations` в согласии — _(from `2026-10-20-the-catalog-lists-products-not-observations`)
+- **Always** отдавать `asOf` вместе с кэшированным агрегатом. _(from `2026-10-20-the-catalog-lists-products-not-observations`)
+- **Always** считать, что список каталога — это товары, а `scraped_items` — их история. _(from `2026-10-20-the-catalog-lists-products-not-observations`)
+- **Never** применять фильтр по цене к строкам, а не к модели: товар, который стоил _(from `2026-10-20-the-catalog-lists-products-not-observations`)
+- **Never** считать «количество товаров» количеством строк: это количество наблюдений, _(from `2026-10-20-the-catalog-lists-products-not-observations`)
 - **Always** держать гейт покрытия и ратчет полов на одном измерении: ратчет, который _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
 - **Always** мерить строку floors по merged-отчёту с фильтром по пакетам модуля. _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
 - **Never** выводить «покрытие модуля» из отчёта, который этот модуль не видел. _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
@@ -832,6 +841,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-browsers-are-closed-when-they-are-not-needed` — crawler  browser  adspower  operations
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — catalog  api  cache  operations  deployment
 - `2026-10-20-ci-security-gates-and-lint-autofix` — ci  security  tooling  gate  lint
+- `2026-10-20-contract-versions-are-paths` — catalog  contract
 - `2026-10-20-coverage-is-measured-where-the-code-lives` — build  tests  gate  coverage
 - `2026-10-20-job-timestamps-carry-an-offset` — database  pipeline
 - `2026-10-20-pagination-does-not-increase-depth` — pipeline  domain
@@ -839,6 +849,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-subject-dictionary-loaded-at-startup` — bootstrap  data-quality  crawler
 - `2026-10-20-the-big-classes-are-split-by-decision` — architecture  refactoring  maintainability
 - `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary` — crawler  catalog  data-quality  operations
+- `2026-10-20-the-catalog-lists-products-not-observations` — catalog  database  contract
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — build  tests  gate  coverage
 - `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
 - `2026-10-20-the-repository-measures-its-own-posture` — ci  security  supply-chain  scorecard  gate
@@ -900,6 +911,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-browsers-are-closed-when-they-are-not-needed` — Браузеры AdsPower закрываются, когда они не нужны, и при выходе
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — The catalog's aggregates are cached in the process, and that shapes the topology
 - `2026-10-20-ci-security-gates-and-lint-autofix` — The repository's CI surface is CodeQL, Scorecard, a nightly run that opens an issue, and a lint auto-fix
+- `2026-10-20-contract-versions-are-paths` — Версия контракта — это путь, а не поле
 - `2026-10-20-coverage-is-measured-where-the-code-lives` — Покрытие меряется там, где живёт код, и по всему репозиторию сразу
 - `2026-10-20-job-timestamps-carry-an-offset` — Job timestamps are written as offsets, not as naive local times
 - `2026-10-20-pagination-does-not-increase-depth` — Пагинация не увеличивает глубину краула
@@ -907,6 +919,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-subject-dictionary-loaded-at-startup` — Справочник предметов WB загружается при старте приложения
 - `2026-10-20-the-big-classes-are-split-by-decision` — The three large classes are split by the decision they hold, not by the layer they live in
 - `2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary` — the catalog length is measured at the pagination boundary, and the limit follows it
+- `2026-10-20-the-catalog-lists-products-not-observations` — Каталог показывает товары, а не наблюдения
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — Покрытие меряется по коду, а не по модулю, которому он принадлежит
 - `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
 - `2026-10-20-the-repository-measures-its-own-posture` — The repository measures its own posture, and the actions it runs are pinned

@@ -1,6 +1,7 @@
 package ru.wbparser.app.api.catalog
 
 import ru.wbparser.app.config.CatalogDataSource
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -32,41 +33,64 @@ class CatalogQueries(
     /**
      * One filtered, sorted, paginated page of product cards.
      *
-     * The count is a second query rather than a window function, because the filter is the
-     * same in both and the count is what the storefront's pagination needs; the alternative
-     * would compute the count over the whole result set on every page.
+     * The count comes from the same query as the page, as a window function over the
+     * result set. It used to be a second query, and the reason was that the filter was the
+     * same in both and the count was what the pagination needed. With the read model that
+     * reason inverts: the second query would build the model a second time, and building
+     * the model is the expensive part. One scan, one count, one page.
+     *
+     * The rows come from the read model — the current observation of each product — so a
+     * product that changed price appears once, with the price it has now.
      */
     fun listItems(params: CatalogQueryParams): Paged<ProductCard> {
-        val where = buildWhere(params)
+        val filters = buildFilters(params)
+        var totalCount = 0
         val rows =
             dataSource.read { connection ->
                 connection
                     .prepareStatement(
                         """
-                        SELECT ${cardProjection("i")}
-                          FROM scraped_items i
-                          JOIN crawl_targets t ON t.id = i.target_id
-                          ${where.sql}
+                        WITH model AS (
+                        ${currentProducts(filters.identity)}
+                        ),
+                        counted AS (
+                              SELECT ${cardProjection("model")},
+                                     COUNT(*) OVER () AS total_count
+                                FROM model
+                               ${filters.value.sql}
+                        )
+                        SELECT ${cardProjection("i")},
+                               i.total_count
+                          FROM counted i
                          ORDER BY ${params.sort.orderBy}
                          LIMIT ? OFFSET ?
                         """.trimIndent(),
                     ).use { statement ->
-                        statement.bind(where.values, params.pageSize, params.offset)
+                        statement.bind(filters.identity.values + filters.value.values, params.pageSize, params.offset)
                         statement.executeQuery().use { resultSet ->
-                            resultSet.collect(::toCard)
+                            val collected = mutableListOf<ProductCard>()
+                            while (resultSet.next()) {
+                                // The count is on every row, and there is a row only when
+                                // there is something to count.
+                                if (totalCount == 0) {
+                                    totalCount = resultSet.getInt("total_count")
+                                }
+                                collected += toCard(resultSet)
+                            }
+                            collected
                         }
                     }
             }
-        val totalCount = countMatching(where)
         return paged(rows, totalCount, params.page, params.pageSize)
     }
 
     /**
      * Every crawl target with the number of items it holds.
      *
-     * The `LEFT JOIN` and the `GROUP BY` are a full pass over `scraped_items`. With the
-     * index on `target_id` that is an index-only scan per target, which is why the result
-     * is cached for ten minutes by the caller rather than recomputed per request.
+     * The `LEFT JOIN` and the `GROUP BY` are a full pass over the read model, which is a
+     * full pass over `scraped_items`. The count is the number of *products* the target
+     * currently holds — not the number of price observations it has produced, which is the
+     * number a visitor does not mean by "how many items are in this category".
      */
     fun listTargets(): List<TargetSummary> =
         dataSource.read { connection ->
@@ -80,7 +104,9 @@ class CatalogQueries(
                            COUNT(i.id)         AS item_count,
                            MAX(i.scraped_at)   AS newest_scraped_at
                       FROM crawl_targets t
-                      LEFT JOIN scraped_items i ON i.target_id = t.id
+                      LEFT JOIN (
+                      ${currentProductTargets(Where.EMPTY, onlyMatched = false)}
+                      ) i ON i.target_id = t.id
                      GROUP BY t.id, t.name, t.root_category_name, t.is_active
                      ORDER BY t.name ASC
                     """.trimIndent(),
@@ -109,10 +135,14 @@ class CatalogQueries(
                 connection
                     .prepareStatement(
                         """
+                        WITH i AS (
+                              SELECT $MODEL_COLUMNS
+                                FROM scraped_items s
+                                JOIN crawl_targets t ON t.id = s.target_id
+                               WHERE s.id = ?
+                        )
                         SELECT ${cardProjection("i")}
-                          FROM scraped_items i
-                          JOIN crawl_targets t ON t.id = i.target_id
-                         WHERE i.id = ?
+                          FROM i
                         """.trimIndent(),
                     ).use { statement ->
                         statement.setObject(1, id)
@@ -194,66 +224,100 @@ class CatalogQueries(
      * Rows without a `match_id` are excluded: without a stable grouping key the list would
      * deduplicate arbitrarily, and showing a product once per target is worse than showing
      * it once at its best.
+     *
+     * ## Why the comparison is between targets
+     *
+     * The cashback of a product depends on the target it was found in — that is the whole
+     * point of the list, which is "where can this product be bought with the most cashback
+     * back". So the rows that are compared are the *current* observation of a product in
+     * each target, and the winner is the target with the best cashback now. Comparing the
+     * observations themselves would let a price from last week win a list about today.
      */
     fun listTopDeals(params: TopDealsQueryParams): Paged<ProductCard> {
-        val filter = mutableListOf<String>()
-        val values = mutableListOf<Any?>()
-        params.minCashbackPercent?.let {
-            filter += "AND i.cashback_percent >= ?"
-            values += it
-        }
+        val cashbackFilter =
+            if (params.minCashbackPercent == null) {
+                ""
+            } else {
+                "WHERE best.cashback_percent >= ?"
+            }
+        var totalCount = 0
         val rows =
             dataSource.read { connection ->
                 connection
                     .prepareStatement(
                         """
-                        WITH best AS (
-                              SELECT DISTINCT ON (i.match_id)
-                                     ${cardProjection("i")},
-                                     i.match_id::text AS match_id
-                                FROM scraped_items i
-                                JOIN crawl_targets t ON t.id = i.target_id
-                               WHERE i.match_id IS NOT NULL
-                                 ${filter.joinToString(" ")}
-                               ORDER BY i.match_id, i.cashback_percent DESC NULLS LAST, i.scraped_at DESC, i.id
+                        WITH current AS (
+                        ${currentProductTargets(Where.EMPTY)}
+                        ),
+                        best AS (
+                              SELECT DISTINCT ON (c.match_id)
+                                     ${cardProjection("c")},
+                                     c.match_id::text AS match_id
+                                FROM current c
+                               ORDER BY c.match_id, c.cashback_percent DESC NULLS LAST, c.scraped_at DESC, c.id
+                        ),
+                        counted AS (
+                              SELECT ${cardProjection("best")},
+                                     COUNT(*) OVER () AS total_count
+                                FROM best
+                               $cashbackFilter
                         )
-                        SELECT ${cardProjection("best")}
-                          FROM best
-                         ORDER BY best.cashback_percent DESC NULLS LAST, best.scraped_at DESC, best.id
+                        SELECT ${cardProjection("i")},
+                               i.total_count
+                          FROM counted i
+                         ORDER BY i.cashback_percent DESC NULLS LAST, i.scraped_at DESC, i.id
                          LIMIT ? OFFSET ?
                         """.trimIndent(),
                     ).use { statement ->
-                        statement.bind(values, params.pageSize, params.offset)
+                        statement.bind(listOfNotNull(params.minCashbackPercent), params.pageSize, params.offset)
                         statement.executeQuery().use { resultSet ->
-                            resultSet.collect(::toCard)
+                            val collected = mutableListOf<ProductCard>()
+                            while (resultSet.next()) {
+                                if (totalCount == 0) {
+                                    totalCount = resultSet.getInt("total_count")
+                                }
+                                collected += toCard(resultSet)
+                            }
+                            collected
                         }
                     }
             }
-        val totalCount = countTopDeals(params)
         return paged(rows, totalCount, params.page, params.pageSize)
     }
 
     /**
      * Aggregate counters for the whole catalog.
+     *
+     * The counters come in two pairs, because the crawler stores price *observations* and
+     * the storefront shows *products*: `totalItems` and `withCashback` count the
+     * observations, `totalProducts` and `productsWithCashback` count the products.
      */
     fun siteStats(): SiteStats =
         dataSource.read { connection ->
             connection
                 .prepareStatement(
                     """
-                    SELECT (SELECT COUNT(*) FROM scraped_items)                                AS total_items,
-                           (SELECT COUNT(*) FROM crawl_targets)                               AS total_targets,
-                           (SELECT MAX(scraped_at) FROM scraped_items)                       AS newest_scraped_at,
-                           (SELECT COUNT(*) FROM scraped_items WHERE cashback_percent IS NOT NULL) AS with_cashback
+                    WITH i AS (
+                    ${currentProducts(Where.EMPTY)}
+                    )
+                    SELECT (SELECT COUNT(*) FROM scraped_items)                    AS total_items,
+                           (SELECT COUNT(*) FROM crawl_targets)                   AS total_targets,
+                           (SELECT MAX(scraped_at) FROM scraped_items)           AS newest_scraped_at,
+                           (SELECT COUNT(*) FROM scraped_items WHERE cashback_percent IS NOT NULL) AS with_cashback,
+                           (SELECT COUNT(*) FROM i)                              AS total_products,
+                           (SELECT COUNT(*) FROM i WHERE cashback_percent IS NOT NULL) AS products_with_cashback
                     """.trimIndent(),
                 ).use { statement ->
                     statement.executeQuery().use { resultSet ->
                         resultSet.next()
                         SiteStats(
                             totalItems = resultSet.getInt("total_items"),
+                            totalProducts = resultSet.getInt("total_products"),
                             totalTargets = resultSet.getInt("total_targets"),
                             newestScrapedAt = resultSet.getInstant("newest_scraped_at"),
                             withCashback = resultSet.getInt("with_cashback"),
+                            productsWithCashback = resultSet.getInt("products_with_cashback"),
+                            asOf = Instant.now(),
                         )
                     }
                 }
@@ -290,99 +354,51 @@ class CatalogQueries(
             }
         return REQUIRED_COLUMNS.filterNot { it in present }
     }
-
-    private fun countMatching(where: Where): Int =
-        dataSource.read { connection ->
-            connection
-                .prepareStatement(
-                    """
-                    SELECT COUNT(*)
-                      FROM scraped_items i
-                      JOIN crawl_targets t ON t.id = i.target_id
-                      ${where.sql}
-                    """.trimIndent(),
-                ).use { statement ->
-                    statement.bind(where.values)
-                    statement.executeQuery().use { resultSet ->
-                        resultSet.next()
-                        resultSet.getInt(1)
-                    }
-                }
-        }
-
-    private fun countTopDeals(params: TopDealsQueryParams): Int {
-        val filter = mutableListOf<String>()
-        val values = mutableListOf<Any?>()
-        params.minCashbackPercent?.let {
-            filter += "AND i.cashback_percent >= ?"
-            values += it
-        }
-        return dataSource.read { connection ->
-            connection
-                .prepareStatement(
-                    """
-                    SELECT COUNT(*)
-                      FROM (
-                            SELECT DISTINCT ON (i.match_id) i.match_id
-                              FROM scraped_items i
-                              JOIN crawl_targets t ON t.id = i.target_id
-                             WHERE i.match_id IS NOT NULL
-                               ${filter.joinToString(" ")}
-                             ORDER BY i.match_id, i.cashback_percent DESC NULLS LAST, i.scraped_at DESC, i.id
-                      ) AS best
-                    """.trimIndent(),
-                ).use { statement ->
-                    statement.bind(values)
-                    statement.executeQuery().use { resultSet ->
-                        resultSet.next()
-                        resultSet.getInt(1)
-                    }
-                }
-        }
-    }
 }
 
 /**
  * A WHERE clause and the values it binds.
+ *
+ * The clauses are joined here, so that a query which has no filter at all has no `WHERE`
+ * — a query with an empty `WHERE` is a different query, and a filter that was meant to be
+ * there but was written wrong would look the same.
  */
 private class Where(
-    val sql: String,
+    val clauses: List<String>,
     val values: List<Any?>,
-)
+) {
+    val sql: String = if (clauses.isEmpty()) "" else "WHERE " + clauses.joinToString(" AND ")
 
-/**
- * One column of the card projection: the name it has in the result set, and the
- * expression that produces it inside the item query.
- */
-private class CardField(
-    val name: String,
-    val inner: String,
-)
+    companion object {
+        /** A clause set that filters nothing. */
+        val EMPTY: Where = Where(emptyList(), emptyList())
+    }
+}
 
 /**
  * The card's columns, in the order the DTO declares them.
  *
- * One list, two projections. The item query names the table each column comes from; the
- * top-deals query takes the names from the subquery. Listing them twice would be a second
- * place to forget a column — and a forgotten column is not a compile error, it is a
- * response that quietly has one field less.
+ * One list, and every source exposes the card's columns under these names, so that the
+ * projection is the same everywhere. Listing them twice would be a second place to forget
+ * a column — and a forgotten column is not a compile error, it is a response that quietly
+ * has one field less.
  */
-private val CARD_FIELDS: List<CardField> =
+private val CARD_FIELDS: List<String> =
     listOf(
-        CardField("id", "i.id"),
-        CardField("target_id", "i.target_id"),
-        CardField("target_name", "t.name"),
-        CardField("title", "i.title"),
-        CardField("price_kopecks", "i.price_kopecks"),
-        CardField("sale_price_kopecks", "i.sale_price_kopecks"),
-        CardField("brand", "i.brand"),
-        CardField("seller", "i.seller"),
-        CardField("cashback_percent", "i.cashback_percent"),
-        CardField("cashback", "i.cashback"),
-        CardField("in_stock", "i.in_stock"),
-        CardField("image_url", "i.image_url"),
-        CardField("product_url", "i.product_url"),
-        CardField("scraped_at", "i.scraped_at"),
+        "id",
+        "target_id",
+        "target_name",
+        "title",
+        "price_kopecks",
+        "sale_price_kopecks",
+        "brand",
+        "seller",
+        "cashback_percent",
+        "cashback",
+        "in_stock",
+        "image_url",
+        "product_url",
+        "scraped_at",
     )
 
 /**
@@ -418,63 +434,160 @@ private val REQUIRED_COLUMNS: List<String> =
 /**
  * The card projection for a query whose rows come from [source].
  *
- * The `i` source reads the tables; the `best` source reads the top-deals subquery, whose
- * columns already carry the card's names.
+ * The projection is by name: every source — the read model, the top-deals subquery — has
+ * to expose the card's columns under the card's own names, and then the projection is the
+ * same for all of them. A projection that spelled out `i.id` for one source and
+ * `best.id` for another would be two places to forget a column, and a forgotten column is
+ * not a compile error, it is a response that quietly has one field less.
  */
 private fun cardProjection(source: String): String =
     CARD_FIELDS.joinToString(",\n         ") { field ->
-        val expression = if (source == "i") field.inner else "best.${field.name}"
-        "$expression AS ${field.name}"
+        "$source.$field AS $field"
     }
 
 /**
- * The shared WHERE fragment of the item query, and the values it binds.
+ * The columns of the read model.
+ *
+ * One list, so that the item list, the top-deals list and the single product read the
+ * same columns in the same order. `target_name` is joined in rather than looked up: a
+ * card without the name of the catalog it came from is a card the storefront cannot
+ * render.
+ */
+private const val MODEL_COLUMNS =
+    """
+    s.id, s.target_id, t.name AS target_name, s.title, s.price_kopecks,
+    s.sale_price_kopecks, s.brand, s.seller, s.cashback_percent, s.cashback,
+    s.in_stock, s.image_url, s.product_url, s.scraped_at, s.product_id, s.match_id
+    """
+
+/**
+ * The catalog's read model: the observation of each product that was scraped last.
+ *
+ * ## Why the model is a product and not an observation
+ *
+ * The writer stores one row per (target, product, price): a price change writes a new row
+ * and keeps the old one, because the price history is made of those rows. A list built
+ * from those rows shows the same product twice — once with the price it has now and once
+ * with the price it had yesterday — and the size of a catalog becomes the number of price
+ * changes rather than the number of products.
+ *
+ * `DISTINCT ON (product_id)` with `ORDER BY product_id, scraped_at DESC, id` keeps the
+ * newest observation of each product. The `id` is the tiebreaker: two observations of one
+ * product can share a timestamp, and without it the winner would be arbitrary — which
+ * would make a page boundary inexact and a product appear on two pages.
+ *
+ * ## Why the filters are split
+ *
+ * The filters that say *which product* — the catalog it was found in, the text that was
+ * searched for — narrow the rows the model is built from, because those are the ones an
+ * index can answer: the search's trigram index is only used if the predicate reaches the
+ * table.
+ *
+ * The filters that say *what it costs* — the price range, the cashback, the stock — are
+ * applied to the model, because they are about the price the product has *now*. A product
+ * that was cheap last week and expensive today must not be found by "up to 1000".
+ */
+private fun currentProducts(identity: Where): String =
+    """
+    SELECT DISTINCT ON (s.product_id)
+           $MODEL_COLUMNS
+      FROM scraped_items s
+      JOIN crawl_targets t ON t.id = s.target_id
+     ${identity.sql}
+     ORDER BY s.product_id, s.scraped_at DESC, s.id DESC
+    """.trimIndent()
+
+/**
+ * The read model of the top-deals list: the current observation of each product in each
+ * catalog.
+ *
+ * The grain is the product *and* the catalog, not the product alone: the cashback of a
+ * product depends on the catalog it was found in, and the list is "where can this product
+ * be bought with the most cashback back". Collapsing the catalogs would leave one price
+ * per product and the comparison the list exists for would be gone.
+ */
+private fun currentProductTargets(
+    where: Where,
+    onlyMatched: Boolean = true,
+): String {
+    val conditions = where.clauses.toMutableList()
+    if (onlyMatched) {
+        conditions += "s.match_id IS NOT NULL"
+    }
+    val sql = if (conditions.isEmpty()) "" else "WHERE " + conditions.joinToString(" AND ")
+    return """
+        SELECT DISTINCT ON (s.product_id, s.target_id)
+               $MODEL_COLUMNS
+          FROM scraped_items s
+          JOIN crawl_targets t ON t.id = s.target_id
+         $sql
+         ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC
+        """.trimIndent()
+}
+
+/**
+ * The filters of a request, split into the ones that narrow the read model and the ones
+ * that are applied to it.
+ *
+ * The split is not a matter of taste: the filters that name a product have to be inside
+ * the model for the index to answer them, and the filters that state a price have to be
+ * outside it for the price to be the current one.
+ */
+private class Filters(
+    val identity: Where,
+    val value: Where,
+)
+
+/**
+ * The filters of an item request, split.
  *
  * The filters are the ones the storefront had, in the same order and with the same
  * meaning — including the price filter reading the sale price when there is one, because
  * a card shows the price it is sold at.
  */
-private fun buildWhere(params: CatalogQueryParams): Where {
-    val clauses = mutableListOf<String>()
-    val values = mutableListOf<Any?>()
+private fun buildFilters(params: CatalogQueryParams): Filters {
+    val identity = mutableListOf<String>()
+    val identityValues = mutableListOf<Any?>()
+    val value = mutableListOf<String>()
+    val valueValues = mutableListOf<Any?>()
 
     params.targetId?.let {
-        clauses += "i.target_id = ?"
-        values += it
+        identity += "s.target_id = ?"
+        identityValues += it
     }
 
     params.search?.let {
         val pattern = "%" + escapeLikePattern(it) + "%"
         // Title first, then brand and seller: a match in the title is what the user meant,
         // and the parentheses keep the brand clause from escaping the filter.
-        clauses += "(i.title ILIKE ? OR i.brand ILIKE ? OR i.seller ILIKE ?)"
-        values += pattern
-        values += pattern
-        values += pattern
+        identity += "(s.title ILIKE ? OR s.brand ILIKE ? OR s.seller ILIKE ?)"
+        identityValues += pattern
+        identityValues += pattern
+        identityValues += pattern
     }
 
     params.minPriceKopecks?.let {
-        clauses += "COALESCE(i.sale_price_kopecks, i.price_kopecks) >= ?"
-        values += it
+        value += "COALESCE(model.sale_price_kopecks, model.price_kopecks) >= ?"
+        valueValues += it
     }
 
     params.maxPriceKopecks?.let {
-        clauses += "COALESCE(i.sale_price_kopecks, i.price_kopecks) <= ?"
-        values += it
+        value += "COALESCE(model.sale_price_kopecks, model.price_kopecks) <= ?"
+        valueValues += it
     }
 
     params.minCashbackPercent?.let {
-        clauses += "i.cashback_percent >= ?"
-        values += it
+        value += "model.cashback_percent >= ?"
+        valueValues += it
     }
 
     if (params.inStockOnly) {
-        clauses += "i.in_stock = true"
+        value += "model.in_stock = true"
     }
 
-    return Where(
-        sql = if (clauses.isEmpty()) "" else "WHERE " + clauses.joinToString(" AND "),
-        values = values,
+    return Filters(
+        identity = Where(identity, identityValues),
+        value = Where(value, valueValues),
     )
 }
 
