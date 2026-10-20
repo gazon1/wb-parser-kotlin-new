@@ -5,8 +5,8 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
-import ru.wbparser.domain.pipeline.CrawlTargetsTable
 import ru.wbparser.domain.pipeline.CrawlTargetRunsTable
+import ru.wbparser.domain.pipeline.CrawlTargetsTable
 import ru.wbparser.domain.scheduling.RunOutcome
 import ru.wbparser.domain.scheduling.TargetBackoff
 import ru.wbparser.infra.db.exposedOnce
