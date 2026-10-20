@@ -19,6 +19,7 @@ import ru.wbparser.infra.pipeline.ParserPipelineConfig
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
+import ru.wbparser.testing.DropTestInterpreter
 import ru.wbparser.testing.LogTestInterpreter
 import ru.wbparser.testing.SqliteTestHandle
 import ru.wbparser.testing.TestSideCollector
@@ -80,6 +81,7 @@ class WbParserEmptyPageTest :
                 val registry =
                     SideInterpreterRegistry(
                         log = LogTestInterpreter(collector),
+                        drop = DropTestInterpreter(collector),
                     )
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 

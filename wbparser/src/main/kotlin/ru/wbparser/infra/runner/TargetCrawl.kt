@@ -16,7 +16,6 @@ import ru.wbparser.infra.db.repositories.upsertSavedItems
 import ru.wbparser.infra.http.WbCatalogRequest
 import ru.wbparser.infra.pipeline.LogDropInterpreter
 import ru.wbparser.infra.pipeline.LogInterpreter
-import ru.wbparser.infra.pipeline.NoOpAdvisoryLockInterpreter
 import ru.wbparser.infra.pipeline.ParserPipelineConfig
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
@@ -137,10 +136,6 @@ internal class TargetCrawl(
             SideInterpreterRegistry(
                 log = LogInterpreter(),
                 metric = metrics.metricInterpreter(),
-                jobEvent =
-                    ru.wbparser.infra.pipeline
-                        .JobEventInterpreter(),
-                acquireAdvisoryLock = NoOpAdvisoryLockInterpreter(),
                 drop = LogDropInterpreter(),
             )
         val runner = PipelineRunner(pipeline, registry, failureHandler)

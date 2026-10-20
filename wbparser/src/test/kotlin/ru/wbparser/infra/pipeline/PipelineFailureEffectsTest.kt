@@ -109,8 +109,6 @@ class PipelineFailureEffectsTest :
                             }
                         },
                     metric = NoOpMetricInterpreter(),
-                    jobEvent = JobEventInterpreter(),
-                    acquireAdvisoryLock = NoOpAdvisoryLockInterpreter(),
                     drop = LogDropInterpreter(),
                 )
             return registry to seen

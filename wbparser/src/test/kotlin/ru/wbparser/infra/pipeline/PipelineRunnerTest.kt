@@ -88,7 +88,7 @@ class PipelineRunnerTest :
         test("PipelineRunner returns Right with Crawled on success") {
             runTest {
                 val pipeline = makePipeline()
-                val registry = SideInterpreterRegistry()
+                val registry = SideInterpreterRegistry(drop = NoOpDropInterpreter())
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
                 val result = runner.run(listOf(testCrawling()))
@@ -111,7 +111,7 @@ class PipelineRunnerTest :
                                 )
                             },
                     )
-                val registry = SideInterpreterRegistry()
+                val registry = SideInterpreterRegistry(drop = NoOpDropInterpreter())
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
                 val result = runner.run(listOf(testCrawling()))
@@ -132,7 +132,7 @@ class PipelineRunnerTest :
                             },
                         stopAt = { pages, _ -> if (pages >= 1) Stop.MaxPagesReached else null },
                     )
-                val registry = SideInterpreterRegistry()
+                val registry = SideInterpreterRegistry(drop = NoOpDropInterpreter())
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
                 val result = runner.run(listOf(testCrawling()))
@@ -168,6 +168,7 @@ class PipelineRunnerTest :
                 val registry =
                     SideInterpreterRegistry(
                         log = ru.wbparser.testing.LogTestInterpreter(collector),
+                        drop = ru.wbparser.testing.DropTestInterpreter(collector),
                     )
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 

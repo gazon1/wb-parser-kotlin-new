@@ -88,21 +88,21 @@ Each stage is a pure function — given the same input it returns the same outpu
 
 ```kotlin
 sealed interface Side {
-    data class Fetch(...)        // HTTP GET
-    data class SaveBatch(...)    // DB write
     data class Log(...)          // logging
     data class Metric(...)       // metrics
-    data class JobEvent(...)     // job state transitions
+    data class Drop(...)         // item dropped by the filter stage
     // Note: ScheduleRetry was removed in PR 8 (NoOp interpreter always returned)
     // Retry is now handled by re-adding the task to the pending queue directly.
+    // Note: JobEvent and AcquireAdvisoryLock were removed in PR 77 — no stage
+    // emitted them, so they were promises the type system made and nobody kept.
 }
 ```
 
-Every `Side` variant must have an interpreter registered in `SideInterpreterRegistry` before use. Unregistered sides are silent no-ops — **Always register all Side variants**.
+Every `Side` variant must have an interpreter in `SideInterpreterRegistry`. The registry is **total by construction**: every interpreter parameter is non-null and the dispatch is an exhaustive `when`, so a side without an interpreter is a compile error, not a runtime surprise. **Always register all Side variants**.
 
 ### 6. NoOp* convention for optional side effects
 
-If a side effect is optional (e.g., metrics may be disabled), provide a `NoOp*` stub that is registered by default:
+If a side effect is optional (e.g., metrics may be disabled), provide a `NoOp*` stub that the registry uses by default:
 
 ```kotlin
 class NoOpMetricInterpreter : MetricInterpreter {
@@ -110,7 +110,7 @@ class NoOpMetricInterpreter : MetricInterpreter {
 }
 ```
 
-**Convention**: `NoOp*` classes are registered in the default registry so the pipeline is always runnable without wiring up every optional component.
+**Convention**: `NoOp*` classes are the registry's defaults for diagnostics — `Side.Log` and `Side.Metric` answer themselves, so a caller never has to wire a logger just to keep the crawl alive. A side that carries a fact about the data (`Side.Drop`) has no default: the caller says where the fact goes, explicitly, with `NoOpDropInterpreter` if the answer is "not here".
 
 ### 7. Time abstraction — never use Instant.now() directly
 
