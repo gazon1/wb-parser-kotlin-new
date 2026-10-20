@@ -15,12 +15,23 @@ in a module with no third-party imports. The gate that runs the script tests
 without `click` or `PyYAML` installed, and a test that cannot run there is a
 test that does not protect anything.
 
-The CLI scripts (`measure_catalog_length.py`, `apply_measured_limits.py`) import
-this module and do the talking to the browser, the file and the terminal.
+The policy between two measurements
+----------------------------------
+When a catalog was measured more than once, the number that goes into the YAML is
+the **maximum** over the measurements, never the last one. WB's pagination shifts
+between runs — the same catalog measured 59 and 60 available pages on different
+passes — so "the last measurement" would make the YAML depend on which run
+happened to be written last, and a re-measurement could silently shrink a catalog
+that had grown. The maximum is the number that is true of every measurement.
+
+The CLI scripts (`measure_catalog_length.py`, `apply_measured_limits.py`,
+`sync_measurement_metadata.py`) import this module and do the talking to the
+browser, the file and the terminal.
 """
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
 # The measurement statuses a report record can carry. Only the first one carries
@@ -28,6 +39,28 @@ from typing import Dict, List, Optional, Tuple
 STATUS_MEASURED = "measured"
 STATUS_BLOCKED = "blocked"
 STATUS_ERROR = "error"
+
+
+def parse_measured_at(value: object) -> Optional[datetime]:
+    """The instant a measurement was taken, or None.
+
+    The report writes ISO-8601 with an offset (`2026-10-20T13:34:31+00:00`). A `Z`
+    suffix is the same instant written differently and must not look like another
+    measurement. A naive timestamp is a wall time rather than an instant — it means
+    different moments in different zones — so it is not an instant at all.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text = value.strip()
+    if text.endswith(("Z", "z")):
+        text = text[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
 
 
 class Change:
@@ -56,6 +89,19 @@ def measured_limits(report: dict) -> Dict[str, dict]:
     A record that was not measured is not here: the report of a failed or blocked
     measurement carries no number, and a number that was not measured must not reach
     the YAML.
+
+    When a catalog was measured more than once, the record kept is the **best** one,
+    and "best" means the largest limit — never the last one. WB's pagination shifts
+    between runs: the same catalog measured 59 and 60 available pages on different
+    passes, and the boundary moved with it. "The last measurement" is therefore a coin
+    flip, and the number in the YAML would depend on which run happened to be written
+    last. The maximum is the number that is true of every measurement: it never
+    under-reads a catalog that grew, and it never asks WB for a page the API refuses
+    (the limit is clamped to the API cap anyway).
+
+    Ties are broken by the measurement date — the newer pass wins — and a tie that
+    survives that is broken by the order of the report, so the result never depends on
+    a dictionary's iteration order.
     """
     limits: Dict[str, dict] = {}
     for record in report.get("catalogs") or []:
@@ -64,8 +110,33 @@ def measured_limits(report: dict) -> Dict[str, dict]:
         limit = record.get("known_pages_limit")
         if not isinstance(limit, int) or limit < 1:
             continue
-        limits[str(record.get("id"))] = record
+        catalog_id = str(record.get("id"))
+        current = limits.get(catalog_id)
+        if current is None or _is_better(record, current):
+            limits[catalog_id] = record
     return limits
+
+
+def _is_better(candidate: dict, current: dict) -> bool:
+    """Whether `candidate` is a better measurement of a catalog than `current`.
+
+    The rule is the maximum, then the newer pass, then the later record.
+    """
+    candidate_limit = candidate.get("known_pages_limit")
+    current_limit = current.get("known_pages_limit")
+    if candidate_limit != current_limit:
+        return bool(candidate_limit) and candidate_limit > current_limit
+
+    candidate_at = parse_measured_at(candidate.get("measured_at"))
+    current_at = parse_measured_at(current.get("measured_at"))
+    if candidate_at != current_at:
+        if candidate_at is None:
+            return False
+        if current_at is None:
+            return True
+        return candidate_at > current_at
+
+    return True
 
 
 def plan_changes(pages: List[dict], limits: Dict[str, dict]) -> Tuple[List[Change], List[str]]:
@@ -105,6 +176,11 @@ def merge_report(existing: dict, fresh: dict) -> dict:
     A run that was blocked by the anti-bot has to be repeated, and a repeat must not
     throw away what the first run measured: the catalog that was blocked keeps its
     place in the report and is replaced only when a new run says something about it.
+
+    The merge is per field, not per record: a field the fresh record does not carry
+    keeps the value the old one had. A pass that observed only the subject id of a
+    catalog therefore does not erase the length measured by an earlier pass — the two
+    are different facts, and one run is not always able to answer both.
     """
     records = {str(record.get("id")): record for record in existing.get("catalogs") or []}
     order = [str(record.get("id")) for record in existing.get("catalogs") or []]
@@ -113,7 +189,13 @@ def merge_report(existing: dict, fresh: dict) -> dict:
         catalog_id = str(record.get("id"))
         if catalog_id not in records:
             order.append(catalog_id)
-        records[catalog_id] = record
+            records[catalog_id] = dict(record)
+            continue
+        merged_record = {**records[catalog_id], **record}
+        if merged_record.get("status") == STATUS_MEASURED:
+            # A measurement that succeeded has no error to report any more.
+            merged_record.pop("error", None)
+        records[catalog_id] = merged_record
 
     merged = dict(fresh)
     merged["catalogs"] = [records[catalog_id] for catalog_id in order]

@@ -1,0 +1,1199 @@
+{
+  "version": 1,
+  "policy": "maximum-over-measurements",
+  "source_reports": [
+    "catalog_lengths.json",
+    "catalog_lengths_subject_9467.json"
+  ],
+  "catalogs": [
+    {
+      "id": "7588",
+      "name": "Умный дом",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T14:01:18+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 161479
+    },
+    {
+      "id": "9240",
+      "name": "Электротранспорт и аксессуары",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:53:09+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 97532
+    },
+    {
+      "id": "9463",
+      "name": "Смартфоны",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:34:31+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 114692
+    },
+    {
+      "id": "9467",
+      "name": "Карты памяти",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T16:46:20+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 49404,
+      "wb_subject_id": 1260
+    },
+    {
+      "id": "9473",
+      "name": "Аксессуары для съемки",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:36:01+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 289299
+    },
+    {
+      "id": "9477",
+      "name": "Планшеты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:35:46+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 111904
+    },
+    {
+      "id": "9492",
+      "name": "Ноутбуки",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:40:31+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 24267
+    },
+    {
+      "id": "9493",
+      "name": "Аксессуары для ноутбуков",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:42:46+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 297332
+    },
+    {
+      "id": "9496",
+      "name": "Аудиотехника",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:36:24+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 274689
+    },
+    {
+      "id": "9497",
+      "name": "Развлечения и гаджеты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:52:09+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 150936
+    },
+    {
+      "id": "9508",
+      "name": "Чехлы и рюкзаки",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:40:10+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 289739
+    },
+    {
+      "id": "9509",
+      "name": "Аксессуары для консолей",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:52:00+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 58663
+    },
+    {
+      "id": "9835",
+      "name": "Автоэлектроника и навигация",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:52:19+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 275927
+    },
+    {
+      "id": "9837",
+      "name": "Наушники и гарнитуры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:59:28+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 292605
+    },
+    {
+      "id": "9845",
+      "name": "Смарт-часы и браслеты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:48:51+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 286835
+    },
+    {
+      "id": "9856",
+      "name": "DVD и медиа-плееры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:37:32+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 225187
+    },
+    {
+      "id": "9924",
+      "name": "Телевизоры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:36:16+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 11451
+    },
+    {
+      "id": "9927",
+      "name": "Стилусы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:36:08+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 112094
+    },
+    {
+      "id": "9963",
+      "name": "Компьютеры и моноблоки",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:40:38+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 78600
+    },
+    {
+      "id": "10028",
+      "name": "Кронштейны",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:39:55+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 118655
+    },
+    {
+      "id": "10459",
+      "name": "Студийное оборудование",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:59:51+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 160094
+    },
+    {
+      "id": "10491",
+      "name": "Игры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:51:38+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 288648
+    },
+    {
+      "id": "15580",
+      "name": "МФУ",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:49:09+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 2534
+    },
+    {
+      "id": "15692",
+      "name": "Геймпады",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:51:45+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 106846
+    },
+    {
+      "id": "16292",
+      "name": "Системы видеонаблюдения",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:52:28+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 193028
+    },
+    {
+      "id": "58397",
+      "name": "Микрофоны",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:37:24+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 127219
+    },
+    {
+      "id": "60758",
+      "name": "Замки и домофоны",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:52:35+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 144155
+    },
+    {
+      "id": "60763",
+      "name": "Сигнализация",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:52:49+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 112912
+    },
+    {
+      "id": "60772",
+      "name": "Аксессуары для систем видеонаблюдения",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:52:56+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 292472
+    },
+    {
+      "id": "60775",
+      "name": "Датчики и сенсоры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:52:41+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 25490
+    },
+    {
+      "id": "60805",
+      "name": "Внешние накопители информации",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:42:24+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 291566
+    },
+    {
+      "id": "60808",
+      "name": "3D-печать",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:49:48+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 197660
+    },
+    {
+      "id": "60809",
+      "name": "Расходные материалы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:49:19+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 293794
+    },
+    {
+      "id": "61808",
+      "name": "Аксессуары для геймпадов",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:51:53+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 58247
+    },
+    {
+      "id": "63017",
+      "name": "Оборудование для презентаций",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:49:40+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 102035
+    },
+    {
+      "id": "128306",
+      "name": "ИБП и аксессуары",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:49:33+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 27436
+    },
+    {
+      "id": "128307",
+      "name": "Ламинаторы, сканеры, шредеры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:49:26+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 43166
+    },
+    {
+      "id": "128308",
+      "name": "Видеокамеры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:37:17+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 117792
+    },
+    {
+      "id": "128516",
+      "name": "Музыка и видео",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:55:21+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 282820
+    },
+    {
+      "id": "130374",
+      "name": "Объективы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:39:42+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 58865
+    },
+    {
+      "id": "130375",
+      "name": "Аккумуляторы для камер",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:37:39+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 141381
+    },
+    {
+      "id": "130376",
+      "name": "Кабели и зарядные устройства",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:38:07+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 45744
+    },
+    {
+      "id": "130377",
+      "name": "Карты памяти и картридеры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:38:14+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 8886
+    },
+    {
+      "id": "130378",
+      "name": "Фотопленка",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:39:19+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 52524
+    },
+    {
+      "id": "130379",
+      "name": "Защитные пленки и стекла",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:37:56+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 77057
+    },
+    {
+      "id": "130392",
+      "name": "Штативы и моноподы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:39:27+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 57745
+    },
+    {
+      "id": "130393",
+      "name": "Пульты для камер",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:38:58+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 5378
+    },
+    {
+      "id": "130394",
+      "name": "Средства для чистки оптики",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:39:12+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 30001
+    },
+    {
+      "id": "130400",
+      "name": "Крышки для камер",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:38:31+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 49202
+    },
+    {
+      "id": "130401",
+      "name": "Вспышки для камер",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:37:47+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 60088
+    },
+    {
+      "id": "130402",
+      "name": "Линзы и фильтры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:38:39+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 220011
+    },
+    {
+      "id": "130403",
+      "name": "Крепления для камер",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:38:23+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 58683
+    },
+    {
+      "id": "130623",
+      "name": "Аксессуары для телевизоров",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:39:35+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 285090
+    },
+    {
+      "id": "130753",
+      "name": "Фоторамки цифровые",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:40:02+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 11461
+    },
+    {
+      "id": "130772",
+      "name": "Игровые консоли",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:51:30+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 118226
+    },
+    {
+      "id": "131080",
+      "name": "Реквизит для фотографа",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:39:05+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 34107
+    },
+    {
+      "id": "131796",
+      "name": "Клавиатуры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:40:54+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 293080
+    },
+    {
+      "id": "131797",
+      "name": "Мыши",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:41:02+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 287972
+    },
+    {
+      "id": "131798",
+      "name": "Комплекты клавиатур и мышей",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T14:00:08+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 55329
+    },
+    {
+      "id": "131800",
+      "name": "Веб-камеры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:41:22+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 39465
+    },
+    {
+      "id": "131801",
+      "name": "Микрофоны",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:41:29+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 21077
+    },
+    {
+      "id": "131802",
+      "name": "Кабели и переходники",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:42:08+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 18711
+    },
+    {
+      "id": "131803",
+      "name": "Графические планшеты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:42:38+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 36133
+    },
+    {
+      "id": "131924",
+      "name": "Неттопы и Мини ПК",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:42:31+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 14608
+    },
+    {
+      "id": "131928",
+      "name": "Видеокарты",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:46:36+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 3103
+    },
+    {
+      "id": "131929",
+      "name": "Компьютеры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:46:43+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 117135
+    },
+    {
+      "id": "131930",
+      "name": "Мониторы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:46:51+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 68332
+    },
+    {
+      "id": "131931",
+      "name": "Ноутбуки",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:47:16+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 19368
+    },
+    {
+      "id": "131954",
+      "name": "Колонки",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:41:38+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 82425
+    },
+    {
+      "id": "131994",
+      "name": "Видеокарты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:43:51+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 10280
+    },
+    {
+      "id": "131995",
+      "name": "Процессоры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:43:59+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 19097
+    },
+    {
+      "id": "131996",
+      "name": "Материнские платы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:44:07+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 57959
+    },
+    {
+      "id": "131997",
+      "name": "Твердотельные накопители SSD",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T14:00:23+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 114020
+    },
+    {
+      "id": "131998",
+      "name": "Оперативная память",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:44:32+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 16720
+    },
+    {
+      "id": "131999",
+      "name": "USB-накопители и карты памяти",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:44:40+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 117464
+    },
+    {
+      "id": "132000",
+      "name": "Жесткие диски HDD",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:45:05+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 22970
+    },
+    {
+      "id": "132001",
+      "name": "Охлаждение компьютера",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:45:12+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 35950
+    },
+    {
+      "id": "132002",
+      "name": "Термоинтерфейсы для ПК",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:45:19+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 15005
+    },
+    {
+      "id": "132003",
+      "name": "Корпуса для ПК",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:45:44+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 82383
+    },
+    {
+      "id": "132004",
+      "name": "Блоки питания",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:45:53+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 116226
+    },
+    {
+      "id": "132005",
+      "name": "Устройства расширения и аксессуары",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:46:18+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 19164
+    },
+    {
+      "id": "132010",
+      "name": "Наушники",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:47:23+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 113110
+    },
+    {
+      "id": "132011",
+      "name": "Клавиатуры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:47:31+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 97419
+    },
+    {
+      "id": "132012",
+      "name": "Мыши",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:47:39+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 114542
+    },
+    {
+      "id": "132013",
+      "name": "Коврики для мыши",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:47:47+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 223617
+    },
+    {
+      "id": "132014",
+      "name": "Игровые консоли",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:47:55+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 118231
+    },
+    {
+      "id": "132015",
+      "name": "Геймпады и джойстики",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:48:03+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 106841
+    },
+    {
+      "id": "132016",
+      "name": "Рули игровые",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:48:09+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 11397
+    },
+    {
+      "id": "132017",
+      "name": "Электронные книги",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:59:14+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 9593
+    },
+    {
+      "id": "132019",
+      "name": "Игровые наушники",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:41:15+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 113109
+    },
+    {
+      "id": "132020",
+      "name": "Рули игровые",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:41:45+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 11397
+    },
+    {
+      "id": "132021",
+      "name": "Графические планшеты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:41:53+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 36133
+    },
+    {
+      "id": "132022",
+      "name": "Мониторы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:40:46+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 83235
+    },
+    {
+      "id": "132023",
+      "name": "Flash-накопители",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:42:01+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 117462
+    },
+    {
+      "id": "132026",
+      "name": "Кронштейны для мониторов",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:42:16+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 83014
+    },
+    {
+      "id": "132027",
+      "name": "Квадрокоптеры и аксессуары",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:40:23+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 57945
+    },
+    {
+      "id": "132028",
+      "name": "Проекторы и аксессуары",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T14:03:28+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 114799
+    },
+    {
+      "id": "132029",
+      "name": "Роутеры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:49:55+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 38111
+    },
+    {
+      "id": "132355",
+      "name": "Mesh системы",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T14:07:24+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 2973
+    },
+    {
+      "id": "132356",
+      "name": "Модемы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:50:15+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 11072
+    },
+    {
+      "id": "132357",
+      "name": "Коммутаторы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T14:01:07+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 34390
+    },
+    {
+      "id": "132358",
+      "name": "Усилители сигнала",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:50:27+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 57672
+    },
+    {
+      "id": "132359",
+      "name": "Сетевые адаптеры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:50:34+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 19820
+    },
+    {
+      "id": "132360",
+      "name": "PoE инжекторы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:50:41+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 6322
+    },
+    {
+      "id": "132361",
+      "name": "Панели коммутационные",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:51:00+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 3306
+    },
+    {
+      "id": "132363",
+      "name": "Сетевые хранилища",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:51:08+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 33560
+    },
+    {
+      "id": "132364",
+      "name": "Медиаконвертеры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:51:15+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 10921
+    },
+    {
+      "id": "132365",
+      "name": "Трансиверы",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:51:22+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 6463
+    },
+    {
+      "id": "132366",
+      "name": "Сетевые фильтры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:42:53+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 80878
+    },
+    {
+      "id": "132367",
+      "name": "Элементы питания",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:43:02+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 87808
+    },
+    {
+      "id": "132368",
+      "name": "Источники бесперебойного питания",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:43:10+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 27278
+    },
+    {
+      "id": "132369",
+      "name": "Стабилизаторы напряжения",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:43:17+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 31030
+    },
+    {
+      "id": "132370",
+      "name": "Контроллеры ИБП",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:43:36+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 3092
+    },
+    {
+      "id": "132371",
+      "name": "Аккумуляторы для ИБП",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:43:43+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 7550
+    },
+    {
+      "id": "146581",
+      "name": "Беззеркальные фотоаппараты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:36:37+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 6325
+    },
+    {
+      "id": "146582",
+      "name": "Зеркальные фотоаппараты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:59:39+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 13737
+    },
+    {
+      "id": "146583",
+      "name": "Цифровые фотоаппараты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:36:49+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 58476
+    },
+    {
+      "id": "146584",
+      "name": "Пленочные фотоаппараты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:36:56+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 7222
+    },
+    {
+      "id": "146585",
+      "name": "Детские фотоаппараты",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:37:03+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 42254
+    },
+    {
+      "id": "146586",
+      "name": "Фотоаппараты моментальной печати",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:37:10+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 25250
+    },
+    {
+      "id": "148872",
+      "name": "Наушники беспроводные",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:48:17+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 115470
+    },
+    {
+      "id": "148873",
+      "name": "Наушники проводные",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:48:24+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 116142
+    },
+    {
+      "id": "148874",
+      "name": "Гарнитуры",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:48:32+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 118489
+    },
+    {
+      "id": "148876",
+      "name": "Док-станции",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:48:40+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 57552
+    },
+    {
+      "id": "148951",
+      "name": "Внешние аккумуляторы и аксессуары",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T14:01:30+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 117999
+    },
+    {
+      "id": "148952",
+      "name": "Элементы питания и аксессуары",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:53:23+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 87803
+    },
+    {
+      "id": "148953",
+      "name": "Кабели и аксессуары",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:53:32+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 83860
+    },
+    {
+      "id": "148954",
+      "name": "Блоки питания",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:54:00+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 116174
+    },
+    {
+      "id": "148955",
+      "name": "Беспроводные зарядные устройства",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:54:12+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 94519
+    },
+    {
+      "id": "148956",
+      "name": "Проводные зарядные устройства",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:54:36+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 36049
+    },
+    {
+      "id": "148958",
+      "name": "Адаптеры и переходники",
+      "boundary": "catalog_end",
+      "measured_at": "2026-10-20T13:55:01+00:00",
+      "pages_available": 59,
+      "known_pages_limit": 60,
+      "wb_total": 190072
+    },
+    {
+      "id": "148959",
+      "name": "Разветвители",
+      "boundary": "api_cap",
+      "measured_at": "2026-10-20T13:55:08+00:00",
+      "pages_available": 60,
+      "known_pages_limit": 60,
+      "wb_total": 58292
+    }
+  ]
+}
