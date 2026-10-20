@@ -19,6 +19,7 @@ import ru.wbparser.infra.http.AdsPowerConfig
 import ru.wbparser.infra.http.AdsPowerProfileProxy
 import ru.wbparser.infra.http.BrowserAutomation
 import ru.wbparser.infra.http.BrowserPool
+import ru.wbparser.infra.http.EgressRouter
 import java.io.PrintWriter
 import java.sql.Connection
 import java.sql.SQLException
@@ -122,15 +123,24 @@ class AdsPowerPreflightRunnerTest :
                     adsPower = AdsPowerConfig(api = api),
                     browserAutomations = profiles.map { FakeBrowser(pageAnswering(answer)) },
                 )
+            val properties =
+                CrawlProperties(
+                    worker = Worker(enabled = workerEnabled),
+                    spider = spider,
+                )
+            val database = DatabaseHandle(brokenDatabase, Database.connect(brokenDatabase))
             return AdsPowerPreflightRunner(
                 browserPool = pool,
-                properties =
-                    CrawlProperties(
-                        worker = Worker(enabled = workerEnabled),
-                        spider = spider,
-                    ),
+                properties = properties,
                 groups = groups,
-                database = DatabaseHandle(brokenDatabase, Database.connect(brokenDatabase)),
+                probeService =
+                    EgressProbeService(
+                        browserPool = pool,
+                        properties = properties,
+                        groups = groups,
+                        database = database,
+                        router = EgressRouter(pool),
+                    ),
             )
         }
 

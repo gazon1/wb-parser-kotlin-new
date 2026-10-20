@@ -140,4 +140,22 @@ class EgressRouterTest :
             state.refused shouldBe 1
             state.groupId shouldBe "ip-1"
         }
+        test("a changed address clears the books of the group") {
+            val pool = poolOf("ip-1" to listOf("p1"))
+            val router = EgressRouter(pool)
+
+            val page = router.borrow()
+            router.onOutcome(page, DownloadOutcome.Success, null)
+            router.onOutcome(page, DownloadOutcome.Antibot, null)
+            page.close()
+            router.groupState("ip-1").requests shouldBe 2
+
+            // The address changed: the old address's requests and refusals describe an
+            // address that is no longer there.
+            router.onAddressChanged("ip-1")
+
+            val state = router.groupState("ip-1")
+            state.requests shouldBe 0
+            state.refused shouldBe 0
+        }
     })
