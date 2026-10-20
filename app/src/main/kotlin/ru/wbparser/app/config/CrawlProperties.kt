@@ -41,6 +41,23 @@ data class Schedule(
 data class Lock(
     /** Advisory lock acquisition timeout, in minutes. 0 means no timeout (wait forever). */
     val timeoutMinutes: Long = 10,
+    /**
+     * What the lock's scope is: `database` or `host`.
+     *
+     * `database` means one crawl at a time in the whole database — the crawler is
+     * alone, and a second instance waits. `host` means one crawl at a time on this
+     * host: several hosts may crawl at the same time, and they divide the work by
+     * leasing the targets. The work is divided either way; what changes is whether
+     * the hosts take turns or work together.
+     */
+    val scope: String = "database",
+    /**
+     * How long a target's lease holds, in minutes.
+     *
+     * It has to outlive the crawl of the target and expire on its own: a host that
+     * dies must not hold its targets until somebody notices.
+     */
+    val leaseMinutes: Long = 120,
 )
 
 data class Spider(
