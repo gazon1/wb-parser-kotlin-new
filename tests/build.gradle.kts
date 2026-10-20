@@ -32,13 +32,25 @@ dependencies {
     testImplementation(libs.spring.boot.test)
     testImplementation(libs.spring.beans)
     testImplementation(libs.spring.test)
+    // @AutoConfigureMockMvc lives here.
+    testImplementation(libs.spring.boot.test.autoconfigure)
     // The startup gate reads the health endpoint, and TestRestTemplate answers
     // with a ResponseEntity — a spring-web type. The application gets spring-web
     // from its own starter, but an `implementation` dependency of a project
     // dependency does not reach this module's compile classpath.
     testImplementation(libs.spring.web)
+    // The demo-seed guard test builds the runner the application builds and hands it
+    // a Spring environment: `DefaultApplicationArguments` is the application's own
+    // type and `MockEnvironment` is the test double of the environment the runner
+    // reads. Both are named here rather than arriving through the starter.
+    testImplementation(libs.spring.boot)
+    testImplementation(libs.spring.core)
+    // The route suite asserts on the response body with `content().string(matcher)`.
+    // The matcher type is Hamcrest's, and the module names it in its own sources.
+    testImplementation(libs.hamcrest)
     testImplementation(libs.kotest.runner.junit5)
     testImplementation(libs.kotest.assertions.core)
+    testImplementation(libs.testcontainers)
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.testcontainers.junit.jupiter)
     // Compile-time access to the driver so tests can build a DataSource against the
@@ -69,6 +81,22 @@ dependencies {
     testImplementation(libs.junit.jupiter.api)
 }
 
+// JUnit 4 arrives through Testcontainers, and it carries `hamcrest-core:1.3`, whose
+// `org.hamcrest.Matcher` is the same class `hamcrest:2.2` — which Spring's test starter
+// brings — provides. Two jars with the same class on one classpath means the behaviour
+// depends on the order the jars appear in.
+//
+// `hamcrest-core:2.2` is the shim the Hamcrest project publishes for exactly this: it
+// carries no classes, only a marker that says "the classes live in `hamcrest`". Pinning
+// it leaves one copy of every Hamcrest class on the classpath, and JUnit 4 keeps
+// compiling — `PostgreSQLContainer` implements JUnit 4's `TestRule`, so the JUnit 4 API
+// has to stay on the compile classpath.
+configurations.configureEach {
+    resolutionStrategy {
+        force("org.hamcrest:hamcrest-core:2.2")
+    }
+}
+
 tasks.test {
     useJUnitPlatform()
     // Recent Docker daemons (>= 25) reject the API version docker-java negotiates by
@@ -82,4 +110,9 @@ tasks.test {
     // variable has to exist in the test JVM's environment — a system property would
     // not be read.
     environment("ADMIN_API_KEY", "test-admin-key")
+    // The catalog's key filter refuses to be built without a key, and the security chain
+    // builds it in every profile but `once`. The suites that boot the real application
+    // need the variable to exist in the test JVM's environment — a system property would
+    // not be read.
+    environment("CATALOG_API_KEY", "test-catalog-key")
 }
