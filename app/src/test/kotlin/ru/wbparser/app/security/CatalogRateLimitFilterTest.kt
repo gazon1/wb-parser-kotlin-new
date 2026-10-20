@@ -112,6 +112,91 @@ class CatalogRateLimitFilterTest :
             // credential.
             filter.clientOf(requestWithKey("a-secret-key")) shouldNotBe "a-secret-key"
         }
+
+        test("the window slides rather than restarting on a boundary") {
+            // The defect of a fixed window: a request at the end of one window and one at
+            // the start of the next both count, and neither sees the other — so twice the
+            // limit gets through. The sliding window counts the last minute wherever it
+            // happened, and the number that comes out is the number the limit names.
+            val clock = MutableClock(Instant.parse("2026-01-01T00:00:00Z"))
+            val filter =
+                CatalogRateLimitFilter(
+                    requestsPerWindow = 2,
+                    window = Duration.ofMinutes(1),
+                    clock = clock,
+                )
+            val chain = RateLimitChain()
+
+            // Two requests, at the very end of the first minute.
+            clock.now = Instant.parse("2026-01-01T00:00:59Z")
+            filter.doFilter(requestWithKey("the-key"), MockHttpServletResponse(), chain)
+            filter.doFilter(requestWithKey("the-key"), MockHttpServletResponse(), chain)
+
+            // A third one, a second later — a fixed window would have started a new one
+            // here and let it through.
+            clock.now = Instant.parse("2026-01-01T00:01:00Z")
+            filter.doFilter(requestWithKey("the-key"), MockHttpServletResponse(), chain)
+            chain.calls shouldBe 2
+
+            // The budget comes back when the first request falls out of the window, and
+            // not a moment earlier.
+            clock.now = Instant.parse("2026-01-01T00:01:58Z")
+            filter.doFilter(requestWithKey("the-key"), MockHttpServletResponse(), chain)
+            chain.calls shouldBe 2
+
+            // The first request was made at 00:00:59, and a request made exactly a
+            // window ago is already outside it — so a slot is free at 00:01:59.
+            clock.now = Instant.parse("2026-01-01T00:01:59Z")
+            filter.doFilter(requestWithKey("the-key"), MockHttpServletResponse(), chain)
+            chain.calls shouldBe 3
+        }
+
+        test("a refused request does not push the window forward") {
+            // If a refusal were recorded, a client that kept hammering would keep the
+            // window alive and would never be let back in.
+            val clock = MutableClock(Instant.parse("2026-01-01T00:00:00Z"))
+            val filter =
+                CatalogRateLimitFilter(
+                    requestsPerWindow = 1,
+                    window = Duration.ofMinutes(1),
+                    clock = clock,
+                )
+            val chain = RateLimitChain()
+
+            filter.doFilter(requestWithKey("the-key"), MockHttpServletResponse(), chain)
+            repeat(10) {
+                filter.doFilter(requestWithKey("the-key"), MockHttpServletResponse(), chain)
+            }
+            chain.calls shouldBe 1
+
+            // One minute after the *first* request, the budget is back.
+            clock.now = Instant.parse("2026-01-01T00:01:00Z")
+            filter.doFilter(requestWithKey("the-key"), MockHttpServletResponse(), chain)
+            chain.calls shouldBe 2
+        }
+
+        test("the refusal says when the oldest request leaves the window") {
+            // The `Retry-After` has to name a moment at which a request would actually be
+            // let through — otherwise the caller waits for the number the filter chose
+            // and is refused again.
+            val clock = MutableClock(Instant.parse("2026-01-01T00:00:00Z"))
+            val filter =
+                CatalogRateLimitFilter(
+                    requestsPerWindow = 1,
+                    window = Duration.ofMinutes(1),
+                    clock = clock,
+                )
+
+            filter.doFilter(requestWithKey("the-key"), MockHttpServletResponse(), RateLimitChain())
+
+            clock.now = Instant.parse("2026-01-01T00:00:10Z")
+            val response = MockHttpServletResponse()
+            filter.doFilter(requestWithKey("the-key"), response, RateLimitChain())
+
+            // The first request leaves the window at 00:01:00, which is fifty seconds
+            // away — not the whole minute, and not zero.
+            response.getHeader(CatalogRateLimitFilter.RETRY_AFTER_HEADER)?.toInt() shouldBe 50
+        }
     })
 
 /**

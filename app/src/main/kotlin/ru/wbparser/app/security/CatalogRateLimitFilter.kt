@@ -35,11 +35,18 @@ import java.util.concurrent.ConcurrentHashMap
  * The key itself is never stored: the counter is keyed by the SHA-256 digest of the key,
  * so a heap dump of the process does not hand out the credential.
  *
- * ## Why the window is fixed rather than sliding
+ * ## Why the window slides
  *
- * A fixed window can let through twice the limit across a boundary — a request at the end
- * of one window and one at the start of the next. For a limit whose job is to stop a
- * runaway, that is acceptable, and it is one counter per key instead of one per request.
+ * A fixed window can let through twice the limit across its boundary: a request at the end
+ * of one window and one at the start of the next both count, and neither sees the other.
+ * The limit is then not the limit it says it is, and the limit that is wrong in this way
+ * is wrong in the direction that lets a runaway through.
+ *
+ * The sliding window counts the requests of the last minute wherever they happened, so
+ * the number that comes out is the number the limit names. It costs a timestamp per
+ * request rather than one counter per window, which is the price of the accuracy: the
+ * timestamps are bounded by the limit itself, because a request that would exceed the
+ * limit is not recorded.
  *
  * ## Why it answers `429` itself
  *
@@ -94,32 +101,59 @@ class CatalogRateLimitFilter(
         return digestOf(key)
     }
 
+    /**
+     * The requests of one client, as the moments they happened.
+     *
+     * The window slides: the count is the number of timestamps that are still inside the
+     * window, and the timestamps that have fallen out of it are dropped. A request that
+     * would take the count over the limit is refused and *not* recorded — otherwise a
+     * client that keeps hammering would push the window forward forever and never be
+     * let back in.
+     *
+     * The whole decision happens under the counter's own lock: two requests arriving
+     * together must not both see the same count and both be let through.
+     */
     private class Counter {
-        private var windowStart: Instant = Instant.EPOCH
-        private var count: Int = 0
+        private val moments = ArrayDeque<Instant>()
 
-        /**
-         * Count one request, and say whether it is within the limit.
-         *
-         * The whole decision happens under the counter's own lock: two requests arriving
-         * together must not both see the same count and both be let through.
-         */
         @Synchronized
         fun acquire(
             now: Instant,
             limit: Int,
             window: Duration,
         ): Decision {
-            if (windowStart.plus(window).isBefore(now)) {
-                windowStart = now
-                count = 0
-            }
-            count += 1
-            if (count > limit) {
-                val retryAfter = Duration.between(now, windowStart.plus(window)).seconds.coerceAtLeast(1)
+            forget(now, window)
+
+            if (moments.size >= limit) {
+                // The client may try again when the oldest request still in the window
+                // falls out of it — that is the first moment a slot is free again.
+                val oldest = moments.first()
+                val retryAfter = Duration.between(now, oldest.plus(window)).seconds.coerceAtLeast(1)
                 return Decision(allowed = false, retryAfterSeconds = retryAfter)
             }
+
+            moments.addLast(now)
             return Decision(allowed = true, retryAfterSeconds = 0)
+        }
+
+        /**
+         * Drop the timestamps that have fallen out of the window.
+         *
+         * The window's start is the moment that matters: a request that happened at or
+         * before `now - window` is outside it, no matter how many requests came after it.
+         *
+         * The boundary belongs to the outside: a request made exactly a window ago is a
+         * request from the previous window, and the caller waiting for the limit to lift
+         * is waiting for that request to age out — not for a moment after it.
+         */
+        private fun forget(
+            now: Instant,
+            window: Duration,
+        ) {
+            val oldest = now.minus(window)
+            while (moments.isNotEmpty() && !moments.first().isAfter(oldest)) {
+                moments.removeFirst()
+            }
         }
     }
 
