@@ -5,7 +5,6 @@ pages:
   parent_catalog_id: '9455'
   root_category_name: Электроника
   search_query: menu_v3_9463 смартфон
-  menu_query: subject=515
   shard: electronic84
   known_pages_limit: 5
 - id: '132017'
@@ -14,7 +13,6 @@ pages:
   parent_catalog_id: '9455'
   root_category_name: Электроника
   search_query: menu_redirect_132017 электронные книги
-  menu_query: subject=1976
   shard: electronic21
   known_pages_limit: 5
 - id: '9477'
@@ -23,7 +21,6 @@ pages:
   parent_catalog_id: '9455'
   root_category_name: Электроника
   search_query: menu_v3_9477 планшеты
-  menu_query: subject=517
   shard: electronic84
   known_pages_limit: 5
 - id: '9467'
@@ -32,7 +29,6 @@ pages:
   parent_catalog_id: '9455'
   root_category_name: Электроника
   search_query: menu_v3_9467 карты памяти
-  menu_query: cat=9467
   shard: electronic74
   known_pages_limit: 5
 - id: '9473'
@@ -41,7 +37,6 @@ pages:
   parent_catalog_id: '9455'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_9473
-  menu_query: cat=9473
   shard: electronic75
   known_pages_limit: 5
 - id: '9927'
@@ -50,7 +45,6 @@ pages:
   parent_catalog_id: '9455'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_9927
-  menu_query: subject=2833
   shard: electronic84
   known_pages_limit: 5
 - id: '9924'
@@ -59,7 +53,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_v3_9924 телевизор
-  menu_query: subject=2819
   shard: electronic50
   known_pages_limit: 5
 - id: '9496'
@@ -68,7 +61,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9496 аудиотехника
-  menu_query: cat=9496
   shard: electronic51
   known_pages_limit: 5
 - id: '9837'
@@ -77,7 +69,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_v3_9837 гарнитуры и наушники
-  menu_query: cat=9837
   shard: electronic52
   known_pages_limit: 5
 - id: '146581'
@@ -86,7 +77,6 @@ pages:
   parent_catalog_id: '6631'
   root_category_name: Электроника
   search_query: menu_146581 беззеркальные фотоаппараты
-  menu_query: cat=146581
   shard: electronic53
   known_pages_limit: 5
 - id: '146582'
@@ -95,7 +85,6 @@ pages:
   parent_catalog_id: '6631'
   root_category_name: Электроника
   search_query: menu_146582 зеркальный фотоаппарат
-  menu_query: cat=146582
   shard: electronic53
   known_pages_limit: 5
 - id: '146583'
@@ -104,7 +93,6 @@ pages:
   parent_catalog_id: '6631'
   root_category_name: Электроника
   search_query: menu_146583 цифровой фотоаппарат
-  menu_query: cat=146583
   shard: electronic53
   known_pages_limit: 5
 - id: '146584'
@@ -113,7 +101,6 @@ pages:
   parent_catalog_id: '6631'
   root_category_name: Электроника
   search_query: menu_146584 пленочный фотоаппарат
-  menu_query: cat=146584
   shard: electronic53
   known_pages_limit: 5
 - id: '146585'
@@ -122,7 +109,6 @@ pages:
   parent_catalog_id: '6631'
   root_category_name: Электроника
   search_query: menu_146585 детские фотоаппараты
-  menu_query: subject=8690
   shard: electronic53
   known_pages_limit: 5
 - id: '146586'
@@ -131,7 +117,6 @@ pages:
   parent_catalog_id: '6631'
   root_category_name: Электроника
   search_query: menu_146586 фотоаппарат для моментальной печати
-  menu_query: subject=6104
   shard: electronic53
   known_pages_limit: 5
 - id: '128308'
@@ -140,7 +125,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_128308
-  menu_query: cat=128308
   shard: electronic53
   known_pages_limit: 5
 - id: '58397'
@@ -149,7 +133,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_58397
-  menu_query: subject=1142
   shard: electronic53
   known_pages_limit: 5
 - id: '9856'
@@ -158,7 +141,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_9856
-  menu_query: cat=9856
   shard: electronic53
   known_pages_limit: 5
 - id: '130375'
@@ -167,7 +149,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130375
-  menu_query: cat=130375
   shard: electronic54
   known_pages_limit: 5
 - id: '130401'
@@ -176,7 +157,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130401
-  menu_query: cat=130401
   shard: electronic54
   known_pages_limit: 5
 - id: '130379'
@@ -185,7 +165,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130379
-  menu_query: cat=130379
   shard: electronic54
   known_pages_limit: 5
 - id: '130376'
@@ -194,7 +173,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_130376 кабели и зарядные устройства
-  menu_query: cat=130376
   shard: electronic54
   known_pages_limit: 5
 - id: '130377'
@@ -203,7 +181,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130377
-  menu_query: cat=130377
   shard: electronic54
   known_pages_limit: 5
 - id: '130403'
@@ -212,7 +189,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_v3_130403 крепления для камер
-  menu_query: cat=130403
   shard: electronic55
   known_pages_limit: 5
 - id: '130400'
@@ -221,7 +197,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_v3_130400 крышки для камер
-  menu_query: subject=1240
   shard: electronic55
   known_pages_limit: 5
 - id: '130402'
@@ -230,7 +205,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130402
-  menu_query: cat=130402
   shard: electronic55
   known_pages_limit: 5
 - id: '130393'
@@ -239,7 +213,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_v3_130393 пульты для камер
-  menu_query: subject=2104
   shard: electronic55
   known_pages_limit: 5
 - id: '131080'
@@ -248,7 +221,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_v3_131080 реквизит фотограф
-  menu_query: subject=6568
   shard: electronic55
   known_pages_limit: 5
 - id: '130394'
@@ -257,7 +229,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130394
-  menu_query: cat=130394
   shard: electronic55
   known_pages_limit: 5
 - id: '130378'
@@ -266,7 +237,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130378
-  menu_query: cat=130378
   shard: electronic55
   known_pages_limit: 5
 - id: '130392'
@@ -275,7 +245,6 @@ pages:
   parent_catalog_id: '5016'
   root_category_name: Электроника
   search_query: menu_v3_130392 моноподы и штативы
-  menu_query: cat=130392
   shard: electronic55
   known_pages_limit: 5
 - id: '130623'
@@ -284,7 +253,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130623
-  menu_query: cat=130623
   shard: electronic53
   known_pages_limit: 5
 - id: '130374'
@@ -293,7 +261,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_v3_130374 объективы
-  menu_query: subject=548
   shard: electronic50
   known_pages_limit: 5
 - id: '10459'
@@ -302,7 +269,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_10459
-  menu_query: cat=10459
   shard: electronic50
   known_pages_limit: 5
 - id: '10028'
@@ -311,7 +277,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_v3_10028 кронштейн
-  menu_query: cat=10028
   shard: electronic50
   known_pages_limit: 5
 - id: '130753'
@@ -320,7 +285,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_v3_130753 цифровая фоторамка
-  menu_query: subject=1966
   shard: electronic50
   known_pages_limit: 5
 - id: '9508'
@@ -329,7 +293,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_9508
-  menu_query: cat=9508
   shard: electronic50
   known_pages_limit: 5
 - id: '132028'
@@ -338,7 +301,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_redirect_132028 проекторы и аксессуары
-  menu_query: cat=132028
   shard: electronic48
   known_pages_limit: 5
 - id: '132027'
@@ -347,7 +309,6 @@ pages:
   parent_catalog_id: '9834'
   root_category_name: Электроника
   search_query: menu_redirect_132027 квадрокоптеры и аксессуары
-  menu_query: cat=132027
   shard: electronic48
   known_pages_limit: 5
 - id: '9492'
@@ -356,7 +317,6 @@ pages:
   parent_catalog_id: '9491'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9492 ноутбуки
-  menu_query: subject=2290
   shard: electronic43
   known_pages_limit: 5
 - id: '9963'
@@ -365,7 +325,6 @@ pages:
   parent_catalog_id: '9491'
   root_category_name: Электроника
   search_query: menu_v3_9963 компьютеры и моноблоки
-  menu_query: cat=9963
   shard: electronic43
   known_pages_limit: 5
 - id: '132022'
@@ -374,7 +333,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_10009 мониторы
-  menu_query: subject=2892
   shard: electronic43
   known_pages_limit: 5
 - id: '131796'
@@ -383,7 +341,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_131796
-  menu_query: cat=131796
   shard: electronic45
   known_pages_limit: 5
 - id: '131797'
@@ -392,7 +349,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_131797
-  menu_query: cat=131797
   shard: electronic45
   known_pages_limit: 5
 - id: '131798'
@@ -401,7 +357,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_v3_131798 клавиатура и мышка
-  menu_query: subject=5806
   shard: electronic45
   known_pages_limit: 5
 - id: '132019'
@@ -410,7 +365,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_redirect_132010 игровые наушники
-  menu_query: subject=9042
   shard: electronic47
   known_pages_limit: 5
 - id: '131800'
@@ -419,7 +373,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_v3_131800 web-камера
-  menu_query: cat=131800
   shard: electronic45
   known_pages_limit: 5
 - id: '131801'
@@ -428,7 +381,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_v3_131801 колонки для компьютера с микрофоном
-  menu_query: cat=131801
   shard: electronic45
   known_pages_limit: 5
 - id: '131954'
@@ -437,7 +389,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_redirect_131954 колонки
-  menu_query: subject=8997
   shard: electronic45
   known_pages_limit: 5
 - id: '132020'
@@ -446,7 +397,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_redirect_132020 рули игровые
-  menu_query: subject=1066
   shard: electronic49
   known_pages_limit: 5
 - id: '132021'
@@ -455,7 +405,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_v3_131803 графический планшеты
-  menu_query: subject=1681
   shard: electronic43
   known_pages_limit: 5
 - id: '132023'
@@ -464,7 +413,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_v3_59065 usb накопитель
-  menu_query: cat=59065
   shard: preset_electronic83
   known_pages_limit: 5
 - id: '131802'
@@ -473,7 +421,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_v3_131802 кабели и переходники для пк
-  menu_query: cat=131802
   shard: electronic45
   known_pages_limit: 5
 - id: '132026'
@@ -482,7 +429,6 @@ pages:
   parent_catalog_id: '9494'
   root_category_name: Электроника
   search_query: menu_redirect_132026 кронштейны для мониторов
-  menu_query: subject=2922
   shard: electronic46
   known_pages_limit: 5
 - id: '60805'
@@ -491,7 +437,6 @@ pages:
   parent_catalog_id: '9491'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60805
-  menu_query: cat=60805
   shard: electronic43
   known_pages_limit: 5
 - id: '131924'
@@ -500,7 +445,6 @@ pages:
   parent_catalog_id: '9491'
   root_category_name: Электроника
   search_query: menu_v3_131924 неттопы и мини пк
-  menu_query: subject=8992
   shard: electronic43
   known_pages_limit: 5
 - id: '131803'
@@ -509,7 +453,6 @@ pages:
   parent_catalog_id: '9491'
   root_category_name: Электроника
   search_query: menu_v3_131803 графический планшеты
-  menu_query: subject=1681
   shard: electronic43
   known_pages_limit: 5
 - id: '9493'
@@ -518,7 +461,6 @@ pages:
   parent_catalog_id: '9491'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9493 аксессуары для ноутбука
-  menu_query: cat=9493
   shard: electronic71
   known_pages_limit: 5
 - id: '132366'
@@ -527,7 +469,6 @@ pages:
   parent_catalog_id: '131795'
   root_category_name: Электроника
   search_query: menu_redirect_132366 сетевые фильтры
-  menu_query: subject=785
   shard: electronic43
   known_pages_limit: 5
 - id: '132367'
@@ -536,7 +477,6 @@ pages:
   parent_catalog_id: '131795'
   root_category_name: Электроника
   search_query: menu_redirect_132367 элементы питания
-  menu_query: cat=132367
   shard: electronic43
   known_pages_limit: 5
 - id: '132368'
@@ -545,7 +485,6 @@ pages:
   parent_catalog_id: '131795'
   root_category_name: Электроника
   search_query: menu_redirect_132368 источники бесперебойного питания
-  menu_query: subject=2195
   shard: electronic43
   known_pages_limit: 5
 - id: '132369'
@@ -554,7 +493,6 @@ pages:
   parent_catalog_id: '131795'
   root_category_name: Электроника
   search_query: menu_redirect_132369 стабилизаторы напряжения
-  menu_query: subject=2194
   shard: electronic43
   known_pages_limit: 5
 - id: '132370'
@@ -563,7 +501,6 @@ pages:
   parent_catalog_id: '131795'
   root_category_name: Электроника
   search_query: menu_redirect_132370 контроллеры ибп
-  menu_query: subject=5942
   shard: electronic43
   known_pages_limit: 5
 - id: '132371'
@@ -572,7 +509,6 @@ pages:
   parent_catalog_id: '131795'
   root_category_name: Электроника
   search_query: menu_redirect_132371 аккумуляторы для ибп
-  menu_query: subject=2196
   shard: electronic43
   known_pages_limit: 5
 - id: '131994'
@@ -581,7 +517,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_131994 видеокарты
-  menu_query: subject=3274
   shard: electronic73
   known_pages_limit: 5
 - id: '131995'
@@ -590,7 +525,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_131995 процессоры
-  menu_query: subject=3698
   shard: electronic71
   known_pages_limit: 5
 - id: '131996'
@@ -599,7 +533,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_131996 материнские платы
-  menu_query: subject=3690
   shard: preset_electronic72
   known_pages_limit: 5
 - id: '131997'
@@ -608,7 +541,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_131997 твердотельные накопители ssd
-  menu_query: cat=131997
   shard: preset_electronic72
   known_pages_limit: 5
 - id: '131998'
@@ -617,7 +549,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_131998 оперативная память
-  menu_query: subject=3357
   shard: preset_electronic72
   known_pages_limit: 5
 - id: '131999'
@@ -626,7 +557,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_131999 usb-накопители и карты памяти
-  menu_query: cat=131999
   shard: preset_electronic72
   known_pages_limit: 5
 - id: '132000'
@@ -635,7 +565,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_132000 жесткий диск hdd
-  menu_query: cat=132000
   shard: electronic73
   known_pages_limit: 5
 - id: '132001'
@@ -644,7 +573,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_132001 охлаждение для пк
-  menu_query: cat=132001
   shard: preset_electronic72
   known_pages_limit: 5
 - id: '132002'
@@ -653,7 +581,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_132002 термоинтерфейсы для пк
-  menu_query: subject=5175
   shard: preset_electronic72
   known_pages_limit: 5
 - id: '132003'
@@ -662,7 +589,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_132003 корпуса для пк
-  menu_query: subject=4066
   shard: preset_electronic72
   known_pages_limit: 5
 - id: '132004'
@@ -671,7 +597,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_redirect_132004 блоки питания для пк
-  menu_query: subject=8994
   shard: preset_electronic72
   known_pages_limit: 5
 - id: '132005'
@@ -680,7 +605,6 @@ pages:
   parent_catalog_id: '60807'
   root_category_name: Электроника
   search_query: menu_132005 аксессуары для ноутбуков и пк
-  menu_query: cat=132005
   shard: preset_electronic72
   known_pages_limit: 5
 - id: '131928'
@@ -689,7 +613,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_131928 игровая видеокарта
-  menu_query: cat=131928
   shard: electronic47
   known_pages_limit: 5
 - id: '131929'
@@ -698,7 +621,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_131929 компьютеры
-  menu_query: cat=131929
   shard: electronic47
   known_pages_limit: 5
 - id: '131930'
@@ -707,7 +629,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_131930 мониторы
-  menu_query: cat=131930
   shard: electronic47
   known_pages_limit: 5
 - id: '131931'
@@ -716,7 +637,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_131931 ноутбуки
-  menu_query: cat=131931
   shard: electronic47
   known_pages_limit: 5
 - id: '132010'
@@ -725,7 +645,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_132010 игровые наушники
-  menu_query: subject=9042
   shard: electronic47
   known_pages_limit: 5
 - id: '132011'
@@ -734,7 +653,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_132011 клавиатуры
-  menu_query: cat=132011
   shard: electronic49
   known_pages_limit: 5
 - id: '132012'
@@ -743,7 +661,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_132012 мыши
-  menu_query: cat=132012
   shard: electronic49
   known_pages_limit: 5
 - id: '132013'
@@ -752,7 +669,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_132013 коврики для мыши
-  menu_query: cat=132013
   shard: electronic49
   known_pages_limit: 5
 - id: '132014'
@@ -761,7 +677,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_132014 игровые консоли
-  menu_query: cat=132014
   shard: electronic49
   known_pages_limit: 5
 - id: '132015'
@@ -770,7 +685,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_132015 геймпады и джойстики
-  menu_query: subject=524
   shard: electronic49
   known_pages_limit: 5
 - id: '132016'
@@ -779,7 +693,6 @@ pages:
   parent_catalog_id: '131927'
   root_category_name: Электроника
   search_query: menu_redirect_132020 рули игровые
-  menu_query: subject=1066
   shard: electronic49
   known_pages_limit: 5
 - id: '148872'
@@ -788,7 +701,6 @@ pages:
   parent_catalog_id: '9468'
   root_category_name: Электроника
   search_query: menu_148872 наушники беспроводные
-  menu_query: subject=593
   shard: preset_electronic56
   known_pages_limit: 5
 - id: '148873'
@@ -797,7 +709,6 @@ pages:
   parent_catalog_id: '9468'
   root_category_name: Электроника
   search_query: menu_148873 наушники проводные
-  menu_query: subject=9230
   shard: preset_electronic56
   known_pages_limit: 5
 - id: '148874'
@@ -806,7 +717,6 @@ pages:
   parent_catalog_id: '9468'
   root_category_name: Электроника
   search_query: menu_148874 гарнитуры
-  menu_query: subject=518
   shard: preset_electronic56
   known_pages_limit: 5
 - id: '148876'
@@ -815,7 +725,6 @@ pages:
   parent_catalog_id: '9468'
   root_category_name: Электроника
   search_query: menu_148876 док-станции
-  menu_query: cat=148876
   shard: preset_electronic56
   known_pages_limit: 5
 - id: '9845'
@@ -824,7 +733,6 @@ pages:
   parent_catalog_id: '4830'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9845 смарт часы и аксессуары
-  menu_query: cat=9845
   shard: electronic58
   known_pages_limit: 5
 - id: '15580'
@@ -833,7 +741,6 @@ pages:
   parent_catalog_id: '58331'
   root_category_name: Электроника
   search_query: menu_v3 мфу
-  menu_query: subject=795
   shard: electronic81
   known_pages_limit: 5
 - id: '60809'
@@ -842,7 +749,6 @@ pages:
   parent_catalog_id: '58331'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60809
-  menu_query: cat=60809
   shard: electronic81
   known_pages_limit: 5
 - id: '128307'
@@ -851,7 +757,6 @@ pages:
   parent_catalog_id: '58331'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_128307
-  menu_query: cat=128307
   shard: electronic81
   known_pages_limit: 5
 - id: '128306'
@@ -860,7 +765,6 @@ pages:
   parent_catalog_id: '58331'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_128306
-  menu_query: cat=128306
   shard: electronic81
   known_pages_limit: 5
 - id: '63017'
@@ -869,7 +773,6 @@ pages:
   parent_catalog_id: '58331'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_63017
-  menu_query: cat=63017
   shard: electronic81
   known_pages_limit: 5
 - id: '60808'
@@ -878,7 +781,6 @@ pages:
   parent_catalog_id: '58331'
   root_category_name: Электроника
   search_query: menu_v3_60808 3d печать
-  menu_query: cat=60808
   shard: electronic81
   known_pages_limit: 5
 - id: '132029'
@@ -887,7 +789,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132029 роутеры
-  menu_query: subject=910
   shard: electronic78
   known_pages_limit: 5
 - id: '132355'
@@ -896,7 +797,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132355 mesh системы
-  menu_query: subject=5541
   shard: electronic78
   known_pages_limit: 5
 - id: '132356'
@@ -905,7 +805,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132356 модемы
-  menu_query: subject=3866
   shard: electronic78
   known_pages_limit: 5
 - id: '132357'
@@ -914,7 +813,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132357 коммутаторы
-  menu_query: cat=132357
   shard: electronic78
   known_pages_limit: 5
 - id: '132358'
@@ -923,7 +821,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132358 усилители сигнала
-  menu_query: cat=132358
   shard: electronic78
   known_pages_limit: 5
 - id: '132359'
@@ -932,7 +829,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132359 сетевые адаптеры
-  menu_query: cat=132359
   shard: electronic78
   known_pages_limit: 5
 - id: '132360'
@@ -941,7 +837,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132360 poe инжекторы
-  menu_query: subject=4398
   shard: electronic78
   known_pages_limit: 5
 - id: '132361'
@@ -950,7 +845,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132361 панели коммутационные
-  menu_query: subject=5898
   shard: electronic78
   known_pages_limit: 5
 - id: '132363'
@@ -959,7 +853,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132363 сетевые хранилища
-  menu_query: subject=5627
   shard: electronic78
   known_pages_limit: 5
 - id: '132364'
@@ -968,7 +861,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132364 медиаконвертеры
-  menu_query: subject=5003
   shard: electronic78
   known_pages_limit: 5
 - id: '132365'
@@ -977,7 +869,6 @@ pages:
   parent_catalog_id: '9846'
   root_category_name: Электроника
   search_query: menu_redirect_132365 трансиверы
-  menu_query: subject=5002
   shard: electronic78
   known_pages_limit: 5
 - id: '130772'
@@ -986,7 +877,6 @@ pages:
   parent_catalog_id: '15693'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_130772 игровые консоли
-  menu_query: cat=130772
   shard: electronic89
   known_pages_limit: 5
 - id: '10491'
@@ -995,7 +885,6 @@ pages:
   parent_catalog_id: '15693'
   root_category_name: Электроника
   search_query: menu_mined_10491 игры
-  menu_query: cat=10491
   shard: electronic90
   known_pages_limit: 5
 - id: '15692'
@@ -1004,7 +893,6 @@ pages:
   parent_catalog_id: '15693'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_15692 геймпады
-  menu_query: subject=524
   shard: electronic89
   known_pages_limit: 5
 - id: '61808'
@@ -1013,7 +901,6 @@ pages:
   parent_catalog_id: '15693'
   root_category_name: Электроника
   search_query: menu_v3_61808 аксессуары для геймпадов
-  menu_query: subject=4030
   shard: electronic90
   known_pages_limit: 5
 - id: '9509'
@@ -1022,7 +909,6 @@ pages:
   parent_catalog_id: '15693'
   root_category_name: Электроника
   search_query: menu_v3_9509 аксессуары для консолей
-  menu_query: cat=9509
   shard: electronic90
   known_pages_limit: 5
 - id: '9497'
@@ -1031,7 +917,6 @@ pages:
   parent_catalog_id: '4830'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9497 развлечения и гаджеты электроника
-  menu_query: cat=9497
   shard: electronic82
   known_pages_limit: 5
 - id: '9835'
@@ -1040,7 +925,6 @@ pages:
   parent_catalog_id: '4830'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9835 автоэлектроника и навигация
-  menu_query: cat=9835
   shard: electronic79
   known_pages_limit: 5
 - id: '16292'
@@ -1049,7 +933,6 @@ pages:
   parent_catalog_id: '9746'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_16292
-  menu_query: cat=16292
   shard: electronic60
   known_pages_limit: 5
 - id: '60758'
@@ -1058,7 +941,6 @@ pages:
   parent_catalog_id: '9746'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60758
-  menu_query: cat=60758
   shard: electronic60
   known_pages_limit: 5
 - id: '60775'
@@ -1067,7 +949,6 @@ pages:
   parent_catalog_id: '9746'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60775
-  menu_query: cat=60775
   shard: electronic60
   known_pages_limit: 5
 - id: '60763'
@@ -1076,7 +957,6 @@ pages:
   parent_catalog_id: '9746'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60763
-  menu_query: cat=60763
   shard: electronic60
   known_pages_limit: 5
 - id: '60772'
@@ -1085,7 +965,6 @@ pages:
   parent_catalog_id: '9746'
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60772
-  menu_query: cat=60772
   shard: electronic60
   known_pages_limit: 5
 - id: '7588'
@@ -1094,7 +973,6 @@ pages:
   parent_catalog_id: '4830'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_7588 товары для умного дома
-  menu_query: cat=7588
   shard: electronic80
   known_pages_limit: 5
 - id: '9240'
@@ -1103,7 +981,6 @@ pages:
   parent_catalog_id: '4830'
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9240 электротранспорт и аксессуары для электросамокаат
-  menu_query: cat=9240
   shard: preset_electronic39
   known_pages_limit: 5
 - id: '148951'
@@ -1112,7 +989,6 @@ pages:
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148951 внешние аккумуляторы
-  menu_query: subject=468;6530
   known_pages_limit: 5
 - id: '148952'
   name: Элементы питания и аксессуары
@@ -1120,7 +996,6 @@ pages:
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148952 элементы питания
-  menu_query: subject=9109;6545;4998;792
   known_pages_limit: 5
 - id: '148953'
   name: Кабели и аксессуары
@@ -1128,7 +1003,6 @@ pages:
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148953 кабель зарядки
-  menu_query: subject=6202;2709;3716;519;2816
   known_pages_limit: 5
 - id: '148954'
   name: Блоки питания
@@ -1136,7 +1010,6 @@ pages:
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148954 блоки питания
-  menu_query: subject=2009
   known_pages_limit: 5
 - id: '148955'
   name: Беспроводные зарядные устройства
@@ -1144,7 +1017,6 @@ pages:
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148955 беспроводная зарядка
-  menu_query: subject=765&ext=22533
   known_pages_limit: 5
 - id: '148956'
   name: Проводные зарядные устройства
@@ -1152,7 +1024,6 @@ pages:
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148956 проводная зарядка
-  menu_query: subject=765&ext=22528
   known_pages_limit: 5
 - id: '148958'
   name: Адаптеры и переходники
@@ -1160,7 +1031,6 @@ pages:
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148958 адаптеры и переходники
-  menu_query: subject=2436;526
   known_pages_limit: 5
 - id: '148959'
   name: Разветвители
@@ -1168,7 +1038,6 @@ pages:
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148959 разветвитель
-  menu_query: subject=794
   known_pages_limit: 5
 - id: '128516'
   name: Музыка и видео
@@ -1176,6 +1045,5 @@ pages:
   parent_catalog_id: '4830'
   root_category_name: Электроника
   search_query: menu_mined_128516 музыка и видео
-  menu_query: cat=128516
   shard: electronic66
   known_pages_limit: 5

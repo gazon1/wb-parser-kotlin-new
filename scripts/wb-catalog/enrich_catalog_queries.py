@@ -23,8 +23,12 @@ Reads the catalog YAML (the output of `catalog_selector.py`), looks every page's
 WB's published menu and writes two fields back:
 
     search_query   the `query` parameter value   → crawl_targets.wb_search_query
-    menu_query     the node's raw `query` field  (e.g. "subject=515") — for reference only
     shard          the node's shard               (e.g. "electronic84") — for reference only
+
+The node's raw `query` field (e.g. "subject=515") used to be stored as `menu_query` as
+well. Nothing ever read it: the crawler selects the category by the token, not by the
+raw query, and the raw query lives in WB's own menu file. A field that looks
+meaningful and does nothing is worse than no field at all.
 
 Pages whose id is not in the menu are reported and left untouched: a catalog WB does not
 publish has no token, and inventing one would silently turn into the popular list again.
@@ -92,9 +96,6 @@ def enrich(pages: List[dict], menu_index: Dict[str, dict]) -> Dict[str, int]:
         stats["enriched"] += 1
 
         # Kept for reference and for future sharded endpoints — not used by the crawler.
-        menu_query = (node.get("query") or "").strip()
-        if menu_query:
-            page["menu_query"] = menu_query
         shard = node.get("shard")
         if shard:
             page["shard"] = shard
