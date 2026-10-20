@@ -16,6 +16,7 @@ import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
+import ru.wbparser.testing.NoopWaiter
 import ru.wbparser.testing.fixedClockOf
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
@@ -71,6 +72,7 @@ class PipelineConcurrencyTest :
                         save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 3) Stop.MaxPagesReached else null },
                         clock = clock,
+                        waiter = NoopWaiter,
                     )
 
                 val page1 = crawling("http://example.com/page1", depth = 0)
@@ -119,6 +121,7 @@ class PipelineConcurrencyTest :
                         save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 3) Stop.MaxPagesReached else null },
                         clock = clock,
+                        waiter = NoopWaiter,
                     )
 
                 val page1 = crawling("http://example.com/page1", depth = 0)
@@ -147,6 +150,7 @@ class PipelineConcurrencyTest :
                         save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 1) Stop.MaxPagesReached else null },
                         clock = clock,
+                        waiter = NoopWaiter,
                     )
 
                 val page1 = crawling("http://example.com/page1", depth = 0)

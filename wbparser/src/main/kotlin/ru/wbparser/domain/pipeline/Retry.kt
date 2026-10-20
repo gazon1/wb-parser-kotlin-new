@@ -37,6 +37,22 @@ sealed interface Retry {
 }
 
 /**
+ * A stable, low-cardinality name of what went wrong.
+ *
+ * This is the tag a retry is counted under: `crawl.retries{reason="antibot"}`.
+ * The name has to stay a small fixed set — a metric tag whose value is a
+ * free-form message is a metric nobody can graph.
+ */
+fun Retry.reason(): String =
+    when (this) {
+        is Retry.Antibot -> "antibot"
+        is Retry.RateLimited -> "rate_limited"
+        is Retry.ServerError -> "server_error"
+        is Retry.StaleContext -> "stale_context"
+        is Retry.Database -> "database"
+    }
+
+/**
  * Retry policy — controls back-off behaviour.
  */
 data class RetryPolicy(

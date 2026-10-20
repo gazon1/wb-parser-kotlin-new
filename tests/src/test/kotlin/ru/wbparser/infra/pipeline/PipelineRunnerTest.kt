@@ -15,6 +15,7 @@ import ru.wbparser.domain.pipeline.Pipeline
 import ru.wbparser.domain.pipeline.Stage
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
+import ru.wbparser.domain.pipeline.Waiter
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.ProductId
@@ -92,6 +93,7 @@ class PipelineRunnerTest :
                 save = save,
                 stopAt = stopAt,
                 clock = ru.wbparser.testing.fixedClockOf(2026, 1, 1),
+                waiter = Waiter { },
             )
 
         test("PipelineRunner returns Right with Crawled on success") {

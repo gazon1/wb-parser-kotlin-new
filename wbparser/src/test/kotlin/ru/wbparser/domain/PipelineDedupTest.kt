@@ -16,6 +16,7 @@ import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
+import ru.wbparser.testing.NoopWaiter
 import ru.wbparser.testing.fixedClockOf
 import java.util.UUID
 
@@ -56,6 +57,7 @@ class PipelineDedupTest :
                 save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                 stopAt = stopAt,
                 clock = clock,
+                waiter = NoopWaiter,
             )
 
         test("self-link at same url is de-duplicated and does not infinite loop") {
@@ -79,6 +81,7 @@ class PipelineDedupTest :
                         save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 3) Stop.MaxPagesReached else null },
                         clock = clock,
+                        waiter = NoopWaiter,
                     )
 
                 val result = pipeline.run(listOf(page1))
@@ -119,6 +122,7 @@ class PipelineDedupTest :
                         save = Stage { _: List<SavedItem> -> Step.Done(Unit) },
                         stopAt = { pages, _ -> if (pages >= 2) Stop.MaxPagesReached else null },
                         clock = clock,
+                        waiter = NoopWaiter,
                     )
 
                 val result = pipeline.run(listOf(page1))

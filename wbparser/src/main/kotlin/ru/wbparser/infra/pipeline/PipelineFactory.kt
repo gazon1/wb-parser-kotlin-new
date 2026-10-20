@@ -14,6 +14,7 @@ import ru.wbparser.domain.pipeline.Side
 import ru.wbparser.domain.pipeline.Stage
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
+import ru.wbparser.domain.pipeline.Waiter
 import ru.wbparser.domain.pipeline.dropIfInvalid
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
@@ -42,6 +43,8 @@ import java.util.UUID
  * @param retryPolicy retry configuration; defaults to 5 attempts with exponential backoff.
  * @param stopAt    called after each page; return a [Stop] reason to halt, or null to continue.
  * @param clock     time source; defaults to [SystemClock].
+ * @param waiter    how the pipeline waits between retries; defaults to [RealWaiter],
+ *                  which sleeps. Tests pass a waiter that returns immediately.
  * @param idGen     ID generator for pagination tasks; defaults to [UUID.randomUUID].
  */
 @Suppress("LongParameterList")
@@ -54,22 +57,32 @@ fun buildParserPipeline(
     retryPolicy: RetryPolicy = RetryPolicy(),
     stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
     clock: Clock = SystemClock,
+    waiter: Waiter = RealWaiter,
     idGen: () -> String = { UUID.randomUUID().toString() },
 ): Pipeline =
     Pipeline(
         download =
             Stage<Crawling, Fetched> { task: Crawling ->
                 downloader(task).fold(
-                    ifLeft = { _ ->
-                        // Both connection failures and HTTP 5xx errors are retryable.
-                        // HTTP 4xx errors from KtorDownloader are non-retryable but KtorDownloader
-                        // returns them as NetworkError too — they will be retried once before failing.
-                        Step.Retry(
-                            Retry.ServerError(
-                                attempt = 0, // actual attempt count is managed by stageWithRetry
-                                delayMs = null, // use policy defaults
-                            ),
-                        )
+                    ifLeft = { error ->
+                        // An anti-bot refusal is not a hiccup: WB is refusing this
+                        // session for a while, and retrying after a second collects
+                        // more refusals on the same blocked cookies. It gets its own
+                        // signal, its own back-off (ten seconds, see [RetryPolicy]),
+                        // and its own counter.
+                        if (error.isAntibot) {
+                            Step.Retry(Retry.Antibot())
+                        } else {
+                            // Both connection failures and HTTP 5xx errors are retryable.
+                            // HTTP 4xx errors from KtorDownloader are non-retryable but KtorDownloader
+                            // returns them as NetworkError too — they will be retried once before failing.
+                            Step.Retry(
+                                Retry.ServerError(
+                                    attempt = 0, // actual attempt count is managed by stageWithRetry
+                                    delayMs = null, // use policy defaults
+                                ),
+                            )
+                        }
                     },
                     ifRight = { fetched -> Step.Done(fetched) },
                 )
@@ -100,5 +113,6 @@ fun buildParserPipeline(
         retryPolicy = retryPolicy,
         stopAt = stopAt,
         clock = clock,
+        waiter = waiter,
         idGen = idGen,
     )

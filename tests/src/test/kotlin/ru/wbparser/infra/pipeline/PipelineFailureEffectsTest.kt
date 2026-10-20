@@ -19,6 +19,7 @@ import ru.wbparser.domain.pipeline.Side
 import ru.wbparser.domain.pipeline.Stage
 import ru.wbparser.domain.pipeline.StageFailure
 import ru.wbparser.domain.pipeline.Step
+import ru.wbparser.domain.pipeline.Waiter
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.ProductId
@@ -94,6 +95,7 @@ class PipelineFailureEffectsTest :
                 save = Stage { Step.Done(Unit) },
                 retryPolicy = RetryPolicy(maxAttempts = 1, baseDelayMs = 1, maxDelayMs = 2),
                 clock = clock,
+                waiter = Waiter { },
             )
 
         fun collectingRegistry(): Pair<SideInterpreterRegistry, MutableList<Side>> {

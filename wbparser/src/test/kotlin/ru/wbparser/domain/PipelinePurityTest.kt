@@ -8,6 +8,7 @@ import io.kotest.matchers.longs.shouldBeLessThanOrEqual
 import io.kotest.matchers.shouldBe
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
@@ -19,6 +20,7 @@ import ru.wbparser.domain.pipeline.Retry
 import ru.wbparser.domain.pipeline.Stage
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
+import ru.wbparser.domain.pipeline.Waiter
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.ProductId
@@ -110,6 +112,9 @@ class PipelinePurityTest :
                 save = save,
                 stopAt = stopAt,
                 clock = clock,
+                // The wait has to be real for these tests: they measure how long
+                // the pipeline waited, on the virtual clock of `runTest`.
+                waiter = Waiter { duration -> delay(duration) },
                 idGen = idGen,
             )
 
