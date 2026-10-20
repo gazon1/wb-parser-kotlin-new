@@ -113,6 +113,12 @@ crawler:
       - https://api.ipify.org?format=json
       - https://ifconfig.me/ip
     egress-probe-timeout-ms: 5000
+    # How often the crawler asks the network which address it leaves from. The
+    # address belongs to the world outside the process: a proxy may rotate it or
+    # die while the crawler runs. A changed address is a new identity — the group's
+    # circuit closes, its books are cleared, and the penalty the old address caused
+    # is lifted from the targets it delayed.
+    egress-probe-interval-ms: 900000
     # Turn "the groups turned out not to be isolated by IP" from a warning into a
     # refusal to start. On, because the groups above are separated by a proxy:
     # the crawl is entitled to the budget it was promised, and a deployment that
