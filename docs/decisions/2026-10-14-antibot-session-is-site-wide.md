@@ -55,6 +55,11 @@ profile lock, plus `markWarm()` to set it.
 Per-request pacing is a randomised delay in `[browser-jitter-min-ms, browser-jitter-max-ms)`
 (default 200–500 ms), applied to **every** request including the first.
 
+> **Updated 2026-10-20.** The delay itself now belongs to the request pacer, which owns the
+> whole rate; the browser no longer waits behind the scenes. See
+> `2026-10-20-the-request-rate-has-one-owner`. The rule below still stands: the jitter is
+> what keeps the request pattern from looking mechanical.
+
 ## Rationale
 
 Steady state dropped to **0.66 s/page** — the fetch itself (~0.3 s) plus the pacing delay

@@ -195,6 +195,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels _(from `2026-10-14-antibot-session-is-site-wide`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
 - Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
+- Первый запрос pacer'а не ждёт: интервал отсчитывается от предыдущего разрешения, а не от _(from `2026-10-20-the-request-rate-has-one-owner`)_
 
 ### `api`
 
@@ -291,6 +292,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `FakeAdsPowerApi` lives in `src/test/kotlin/` alongside the tests that use it. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
 - `FakeBrowserAutomation` lives in `src/test/kotlin/` alongside `BrowserPoolTest`. _(from `2026-10-17-browser-automation-interface`)_
 - Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
+- Первый запрос pacer'а не ждёт: интервал отсчитывается от предыдущего разрешения, а не от _(from `2026-10-20-the-request-rate-has-one-owner`)_
 
 ### `bug-fix`
 
@@ -386,6 +388,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - В логах появляются «профиль отдывает» и «цепи ждёт окна» — это ожидаемое поведение, а _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Данные в базе, собранные старым эндпоинтом, — популярная ротация под чужими названиями. _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)_
 - Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
+- Первый запрос pacer'а не ждёт: интервал отсчитывается от предыдущего разрешения, а не от _(from `2026-10-20-the-request-rate-has-one-owner`)_
 - Полный обход 132 каталогов по 5 страниц при темпе 3 с занимает около 35 минут. Это _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Скачивание при старте добавляет сетевую зависимость: без интернета старт проходит с _(from `2026-10-20-subject-dictionary-loaded-at-startup`)_
 - Цель, у которой антибот не отпустил за 5 попыток, всё равно падает — но теперь это _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
@@ -530,6 +533,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. _(from `2026-10-14-parallel-crawl-targets`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. _(from `2026-10-14-antibot-session-is-site-wide`)_
 - Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не _(from `2026-10-20-the-request-rate-has-one-owner`)_
+- Первый запрос pacer'а не ждёт: интервал отсчитывается от предыдущего разрешения, а не от _(from `2026-10-20-the-request-rate-has-one-owner`)_
 
 ### `pipeline`
 
