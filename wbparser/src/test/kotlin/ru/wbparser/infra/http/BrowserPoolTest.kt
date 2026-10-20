@@ -62,6 +62,23 @@ class FakeAdsPowerApi private constructor(
     }
 
     /**
+     * Whether stopping a profile succeeds.
+     *
+     * The fake answers "yes" by default: a profile that cannot be closed is a
+     * separate case, and the tests that care configure it explicitly.
+     */
+    var stopSucceeds: Boolean = true
+
+    /** The profiles that were stopped, in order. */
+    val stoppedProfiles: MutableList<String> = mutableListOf()
+
+    override fun stopProfileV2(profileId: String): Boolean {
+        _calls += AdsPowerCall(profileId, "stopProfileV2")
+        stoppedProfiles += profileId
+        return stopSucceeds
+    }
+
+    /**
      * Whether the fake pretends the Local API is up.
      *
      * The pool consults this to tell "the API is down" from "the API is up but

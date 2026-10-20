@@ -103,6 +103,7 @@ dependencies {
     implementation(libs.spring.boot.autoconfigure)
     implementation(libs.spring.core)
     implementation(libs.spring.context)
+    implementation(libs.spring.beans)
     implementation(libs.spring.web)
     implementation(libs.spring.security.core)
     implementation(libs.spring.security.config)
@@ -185,6 +186,10 @@ dependencies {
     // container, so the readiness check is tested against a working DataSource
     // rather than against a stand-in for one.
     testImplementation(libs.sqlite.jdbc)
+    // The janitor test implements the crawler's browser contract, and that contract
+    // speaks in Playwright's page type. The dependency arrives with the crawler
+    // module, but the test uses it directly — so it is declared here.
+    testImplementation(libs.playwright)
 }
 
 // The contract document lives at the root of the repository, next to the ADR that explains
