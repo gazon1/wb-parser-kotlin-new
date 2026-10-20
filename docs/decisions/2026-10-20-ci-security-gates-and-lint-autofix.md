@@ -77,6 +77,15 @@ cron run is unread, and the badge stays red until the next push, which is
 also the next time anyone looks. The event name is part of the concurrency
 group, so a push neither cancels the nightly run nor waits behind it.
 
+The report is the run's own API, not a list written by hand: the alert job
+asks the API which jobs failed and prints every job with its conclusion. A
+hand-written list of the pipeline's jobs is a mirror, and a mirror goes
+stale the moment a job is added — at which point the issue says "nothing
+failed" while something did. The job's `needs:` list remains, because it
+says *when* the report is made rather than what it says; and that list is
+checked against the real job list by the gate below, so a stale wait list is
+a finding rather than a quiet omission.
+
 **The lint auto-fix** (`.github/workflows/lint-autofix.yml`) runs
 `scripts/ci/lint-autofix.sh`, which applies detekt's `--auto-correct` and
 ktlint's `ktlintFormat` to the tree. The corrections are *proposed*: they go
@@ -98,10 +107,13 @@ without anyone remembering to edit the script.
 And the wiring is a gate: `scripts/ci/check-ci-workflows.py` is registered in
 `scripts/ci/static-gates.sh` and fails when a workflow is missing, when
 CodeQL cannot write its results, when Scorecard cannot publish them, when
-the auto-fix calls a script that is not there, or when the scheduled run
-stops opening its issue. It has a `--self-test` that breaks each of those
-in turn, because a gate that cannot be shown to fail may be enforcing
-nothing.
+the auto-fix calls a script that is not there, when the scheduled run stops
+opening its issue, or when the alert job's wait list has gone stale. It has
+a `--self-test` that breaks each of those in turn, because a gate that
+cannot be shown to fail may be enforcing nothing. The gate reads the
+workflows with the comments stripped: a commented-out line is not a
+permission, and a check satisfied by its own documentation is a check that
+stopped checking.
 
 ## Rationale
 
@@ -149,6 +161,12 @@ issue is in the list of things to do, and it says which job broke.
 - **Always** keep `security-events: write` on CodeQL and `id-token: write`
   on Scorecard. Without them the analysis runs and nobody sees the result,
   which is the same as not running it.
+- **Always** pin an action to a commit that exists. `ossf/scorecard-action@v2`
+  does not resolve: the published tags stop at v2.5.0 and there is no `v2`,
+  so a workflow that names it fails before it starts — on the first scheduled
+  run, in the dark.
+- **Always** take the report from the run's API. A hand-written list of the
+  pipeline's jobs is a mirror, and the mirror goes stale silently.
 - **Never** put the corrector in the gate registry. It is not a gate: it
   cannot fail a build, it rewrites the tree instead of judging it, and the
   verification loop (`check.sh`) must stay a loop that does not modify the

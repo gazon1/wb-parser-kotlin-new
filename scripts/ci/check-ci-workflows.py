@@ -28,9 +28,15 @@ What it checks
    script the local loop calls (scripts/ci/lint-autofix.sh), and that script
    exists. A workflow that calls a script that is not there fails on the
    runner; a script that nothing calls is dead code.
-4. **The nightly run and its issue** (.github/workflows/ci.yml) — has a
-   `schedule` trigger with a `cron`, and a job that opens a GitHub issue. A
-   scheduled run that fails silently is a scheduled run nobody reads.
+4. **The nightly run and its issue** — some workflow has a `schedule` trigger
+   with a `cron`, and some workflow opens a GitHub issue. A scheduled run that
+   fails silently is a scheduled run nobody reads.
+5. **The wait list of the alert job** — the job that reports a failed nightly
+   run waits for every other job of the pipeline. That list is a mirror of the
+   pipeline, and a mirror goes stale the moment a job is added: the report
+   would then be made before the new job finished, and the issue would say
+   "nothing failed" while something did. The report itself comes from the
+   run's own API; this list is only about *when* to report.
 
 Usage
 -----
@@ -52,8 +58,6 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-
-WORKFLOWS = ROOT / ".github" / "workflows"
 
 #: The workflows this repository promises to run, and what each of them must
 #: contain. A missing file is a finding, not a skipped check: "the workflow is
@@ -87,34 +91,127 @@ REQUIRED = {
 
 #: The shared corrector. Both surfaces call it: the workflow above and the
 #: local recipe (`just lint::autofix`).
-AUTOFIX_SCRIPT = ROOT / "scripts" / "ci" / "lint-autofix.sh"
+AUTOFIX_SCRIPT = "scripts/ci/lint-autofix.sh"
 
-#: The nightly run, and the issue that carries its failure.
-CI_YML = WORKFLOWS / "ci.yml"
+#: The pipeline, and the job inside it that reports a failed nightly run.
+PIPELINE = "ci.yml"
+ALERT_JOB = "nightly-alert"
 
 
-def read(path: Path) -> str:
-    """The file's text, or the empty string when it is not there.
+# ---------------------------------------------------------------------------
+# Reading YAML without a YAML library
+# ---------------------------------------------------------------------------
+#
+# The static gate runs on a bare `actions/setup-python`, with no project
+# dependencies installed, so PyYAML is not available. What is needed here is
+# narrower than YAML anyway: a comment-free text, the names of the jobs, and
+# one `needs:` list.
 
-    An empty string makes every needle missing, which is the right reading: a
-    workflow that is not there cannot contain anything.
+
+def strip_yaml_comments(text: str) -> str:
+    """The text without its comments.
+
+    A `#` starts a comment unless it is inside a quoted string. The gate looks
+    for lines like `security-events: write`, and a commented-out line that
+    still contains the text would satisfy the check — the check would be
+    satisfied by its own documentation, which is the quietest way a gate can
+    stop gating. The meta-gate strips comments for the same reason
+    (scripts/check-gate-wiring.py, `code_lines`).
     """
-    if not path.exists():
-        return ""
-    return path.read_text(encoding="utf-8")
+    out: list[str] = []
+    for line in text.splitlines():
+        in_single = False
+        in_double = False
+        cut: int | None = None
+        i = 0
+        while i < len(line):
+            ch = line[i]
+            if ch == "'" and not in_double:
+                in_single = not in_single
+            elif ch == '"' and not in_single:
+                in_double = not in_double
+            elif ch == "#" and not in_single and not in_double:
+                # A comment starts the line, or follows whitespace. A `#` in
+                # the middle of a word is part of that word.
+                if i == 0 or line[i - 1] in " \t":
+                    cut = i
+                    break
+            i += 1
+        out.append(line[:cut] if cut is not None else line)
+    return "\n".join(out)
 
 
-def check_workflows() -> list[str]:
+def job_names(text: str) -> list[str]:
+    """The names of the jobs in a workflow.
+
+    A job is a key at two spaces of indentation under `jobs:`. This is not a
+    YAML parser; it is a reader that knows one thing about these workflows,
+    and the caller says so when it cannot find what it needs.
+    """
+    names: list[str] = []
+    in_jobs = False
+    for line in text.splitlines():
+        if re.match(r"^jobs:\s*$", line):
+            in_jobs = True
+            continue
+        if not in_jobs:
+            continue
+        if re.match(r"^[A-Za-z]", line):
+            # A new top-level key ends the block.
+            break
+        match = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+        if match:
+            names.append(match.group(1))
+    return names
+
+
+def job_needs(text: str, job: str) -> list[str] | None:
+    """The `needs:` of a job, `[]` when it has none, `None` when it has no such job."""
+    lines = text.splitlines()
+    start: int | None = None
+    for index, line in enumerate(lines):
+        if re.match(rf"^  {re.escape(job)}:\s*$", line):
+            start = index
+            break
+    if start is None:
+        return None
+    for line in lines[start + 1 :]:
+        if re.match(r"^  [A-Za-z0-9_-]+:\s*$", line):
+            break  # the next job starts
+        match = re.match(r"^\s+needs:\s*\[(.*)\]\s*$", line)
+        if match:
+            return [name.strip() for name in match.group(1).split(",") if name.strip()]
+    return []
+
+
+# ---------------------------------------------------------------------------
+# The checks
+# ---------------------------------------------------------------------------
+
+
+def workflow_paths(root: Path) -> list[Path]:
+    return sorted((root / ".github" / "workflows").glob("*.yml"))
+
+
+def read_workflows(root: Path) -> dict[str, str]:
+    """Every workflow's comment-free text. A missing file is an empty text."""
+    texts: dict[str, str] = {}
+    for path in workflow_paths(root):
+        texts[path.name] = strip_yaml_comments(path.read_text(encoding="utf-8"))
+    return texts
+
+
+def check_required_files(root: Path) -> list[str]:
     findings: list[str] = []
     for name, spec in REQUIRED.items():
-        path = WORKFLOWS / name
+        path = root / ".github" / "workflows" / name
         if not path.exists():
             findings.append(
                 f"{name} does not exist. {spec['why']} — and a guarantee that "
                 "silently stopped running is indistinguishable from one that never ran."
             )
             continue
-        text = path.read_text(encoding="utf-8")
+        text = strip_yaml_comments(path.read_text(encoding="utf-8"))
         for needle in spec["needles"]:
             if needle not in text:
                 findings.append(
@@ -124,63 +221,90 @@ def check_workflows() -> list[str]:
     return findings
 
 
-def check_autofix_script() -> list[str]:
+def check_autofix_script(root: Path) -> list[str]:
+    script = root / AUTOFIX_SCRIPT
+    if script.exists():
+        return []
+    return [
+        f"{AUTOFIX_SCRIPT} does not exist, but the auto-fix workflow calls it. "
+        "The corrector is the deliverable; without it the workflow fails on the runner."
+    ]
+
+
+def check_scheduled_run(root: Path) -> list[str]:
+    """Some workflow runs on a schedule, with a time."""
     findings: list[str] = []
-    if not AUTOFIX_SCRIPT.exists():
+    texts = read_workflows(root)
+    scheduled = [name for name, text in texts.items() if re.search(r"^\s*schedule:\s*$", text, re.M)]
+    if not scheduled:
         findings.append(
-            "scripts/ci/lint-autofix.sh does not exist, but the auto-fix workflow "
-            "calls it. The corrector is the deliverable; without it the workflow "
-            "fails on the runner."
-        )
-    return findings
-
-
-def check_nightly() -> list[str]:
-    """The scheduled run, and the issue that carries its failure.
-
-    A red cron run is unread: it scrolls past, and the next person to look at
-    the repository finds a green badge and a stale week. The issue is where the
-    failure lands instead.
-    """
-    findings: list[str] = []
-    text = read(CI_YML)
-    if not text:
-        findings.append(
-            ".github/workflows/ci.yml does not exist — the scheduled run and the "
-            "issue that carries its failure have nowhere to live."
-        )
-        return findings
-
-    if not re.search(r"^\s*schedule:\s*$", text, re.M):
-        findings.append(
-            "ci.yml has no `schedule` trigger. The tests are supposed to run on "
+            "no workflow has a `schedule` trigger. The tests are supposed to run on "
             "their own, and not only when somebody remembers to push."
         )
-    if not re.search(r"^\s*-\s*cron:\s*[\"']?\S+", text, re.M):
+        return findings
+    if not any(re.search(r"^\s*-\s*cron:\s*[\"']?\S+", text, re.M) for text in texts.values()):
         findings.append(
-            "ci.yml has a `schedule` trigger without a `cron` entry — GitHub "
+            "a workflow has a `schedule` trigger without a `cron` entry — GitHub "
             "rejects a schedule that has no time."
         )
-    if "gh issue create" not in text:
-        findings.append(
-            "ci.yml never opens an issue. A scheduled failure has to land "
-            "somewhere a person will see it, not in a scrollback buffer."
-        )
     return findings
+
+
+def check_failure_becomes_an_issue(root: Path) -> list[str]:
+    """A failed scheduled run opens an issue."""
+    texts = read_workflows(root)
+    if any("gh issue create" in text for text in texts.values()):
+        return []
+    return [
+        "no workflow opens an issue. A scheduled failure has to land somewhere a "
+        "person will see it, not in a scrollback buffer."
+    ]
+
+
+def check_wait_list(root: Path) -> list[str]:
+    """The alert job waits for every other job of the pipeline.
+
+    The report is the run's own API, so it cannot be stale. The wait list
+    says *when* the report is made, and it is a mirror of the pipeline: add a
+    job and forget the list, and the report is made while that job is still
+    running.
+    """
+    path = root / ".github" / "workflows" / PIPELINE
+    if not path.exists():
+        return [
+            f".github/workflows/{PIPELINE} does not exist — the pipeline and the "
+            "issue that carries its failure have nowhere to live."
+        ]
+    text = strip_yaml_comments(path.read_text(encoding="utf-8"))
+    jobs = job_names(text)
+    if not jobs:
+        return [f".github/workflows/{PIPELINE} has no readable `jobs:` block."]
+
+    needs = job_needs(text, ALERT_JOB)
+    if needs is None:
+        return [
+            f".github/workflows/{PIPELINE} has no `{ALERT_JOB}` job. A failed "
+            "scheduled run has nobody to report it."
+        ]
+    missing = [job for job in jobs if job != ALERT_JOB and job not in needs]
+    if missing:
+        return [
+            f"the `{ALERT_JOB}` job does not wait for: {', '.join(missing)}. The "
+            "report is made before those jobs finish, and an issue that says "
+            "\"nothing failed\" while something did is worse than no issue."
+        ]
+    return []
 
 
 def check(root: Path) -> list[str]:
     """Run every check against `root`. Used by the self-test on a fixture."""
-    global ROOT, WORKFLOWS, AUTOFIX_SCRIPT, CI_YML
-    real = (ROOT, WORKFLOWS, AUTOFIX_SCRIPT, CI_YML)
-    try:
-        ROOT = root
-        WORKFLOWS = root / ".github" / "workflows"
-        AUTOFIX_SCRIPT = root / "scripts" / "ci" / "lint-autofix.sh"
-        CI_YML = WORKFLOWS / "ci.yml"
-        return check_workflows() + check_autofix_script() + check_nightly()
-    finally:
-        ROOT, WORKFLOWS, AUTOFIX_SCRIPT, CI_YML = real
+    return (
+        check_required_files(root)
+        + check_autofix_script(root)
+        + check_scheduled_run(root)
+        + check_failure_becomes_an_issue(root)
+        + check_wait_list(root)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +351,14 @@ GOOD_WORKFLOWS = {
         "  schedule:\n"
         "    - cron: \"0 3 * * *\"\n"
         "jobs:\n"
+        "  static:\n"
+        "    steps:\n"
+        "      - run: echo static\n"
+        "  build:\n"
+        "    steps:\n"
+        "      - run: echo build\n"
         "  nightly-alert:\n"
+        "    needs: [static, build]\n"
         "    steps:\n"
         "      - run: gh issue create --title nightly\n"
     ),
@@ -244,13 +375,11 @@ def write_fixture(root: Path, workflows: dict[str, str], with_script: bool = Tru
         stale.unlink()
     for name, content in workflows.items():
         (workflows_dir / name).write_text(content, encoding="utf-8")
-    script = root / "scripts" / "ci" / "lint-autofix.sh"
+    script = root / AUTOFIX_SCRIPT
     script.parent.mkdir(parents=True, exist_ok=True)
     if with_script:
         script.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     elif script.exists():
-        # The fixtures are written into one directory, one case after another;
-        # a case that removes the script has to remove it for real.
         script.unlink()
 
 
@@ -294,6 +423,15 @@ def run_self_test() -> int:
                 },
                 "expect": "security-events: write",
             },
+            "the permission is only in a comment": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "codeql.yml": GOOD_WORKFLOWS["codeql.yml"].replace(
+                        "      security-events: write", "      # security-events: write"
+                    ),
+                },
+                "expect": "security-events: write",
+            },
             "scorecard.yml lost the id-token permission": {
                 "workflows": {
                     **GOOD_WORKFLOWS,
@@ -306,21 +444,41 @@ def run_self_test() -> int:
             "the auto-fix script is gone": {
                 "workflows": GOOD_WORKFLOWS,
                 "script": False,
-                "expect": "scripts/ci/lint-autofix.sh does not exist",
+                "expect": "does not exist",
             },
-            "ci.yml has no schedule": {
+            "no workflow has a schedule": {
                 "workflows": {
-                    **GOOD_WORKFLOWS,
-                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace("schedule:", "pull_request:"),
+                    name: text.replace("schedule:", "pull_request:")
+                    for name, text in GOOD_WORKFLOWS.items()
                 },
-                "expect": "no `schedule` trigger",
+                "expect": "schedule",
             },
             "ci.yml never opens an issue": {
                 "workflows": {
                     **GOOD_WORKFLOWS,
                     "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace("gh issue create", "echo"),
                 },
-                "expect": "never opens an issue",
+                "expect": "opens an issue",
+            },
+            "the alert job waits for too little": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "needs: [static, build]", "needs: [static]"
+                    ),
+                },
+                "expect": "does not wait for",
+            },
+            "the alert job is gone": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "  nightly-alert:\n    needs: [static, build]\n    steps:\n"
+                        "      - run: gh issue create --title nightly\n",
+                        "  other-job:\n    steps:\n      - run: gh issue create --title nightly\n",
+                    ),
+                },
+                "expect": "nightly-alert",
             },
         }
 

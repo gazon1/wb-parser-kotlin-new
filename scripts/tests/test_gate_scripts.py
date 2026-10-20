@@ -401,7 +401,11 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         ),
         "ci.yml": (
             "on:\n  schedule:\n    - cron: \"0 3 * * *\"\n"
-            "jobs:\n  nightly-alert:\n    steps:\n      - run: gh issue create --title x\n"
+            "jobs:\n"
+            "  static:\n    steps:\n      - run: echo static\n"
+            "  build:\n    steps:\n      - run: echo build\n"
+            "  nightly-alert:\n    needs: [static, build]\n"
+            "    steps:\n      - run: gh issue create --title x\n"
         ),
     }
 
@@ -450,8 +454,16 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         self.assertTrue(any("lint-autofix.sh does not exist" in f for f in findings), findings)
 
     def test_a_nightly_run_without_a_schedule_is_a_finding(self):
-        workflows = dict(self.GOOD)
-        workflows["ci.yml"] = workflows["ci.yml"].replace("schedule:", "pull_request:")
+        """No workflow has a schedule — the tests are supposed to run on their own.
+
+        The check is across the whole surface: a scheduled run in one workflow
+        satisfies it, whichever workflow that is. This case removes the
+        schedule from every workflow, which is the actual defect.
+        """
+        workflows = {
+            name: text.replace("schedule:", "pull_request:")
+            for name, text in self.GOOD.items()
+        }
         findings = self._check(self._fixture(workflows))
         self.assertTrue(any("schedule" in f for f in findings), findings)
 
@@ -460,6 +472,44 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         workflows["ci.yml"] = workflows["ci.yml"].replace("gh issue create", "echo")
         findings = self._check(self._fixture(workflows))
         self.assertTrue(any("issue" in f for f in findings), findings)
+
+    def test_a_permission_that_is_only_in_a_comment_is_a_finding(self):
+        """A commented-out line is not a permission.
+
+        The gate looks for the line that grants the permission. If the line is
+        commented out, the check would still see the text and be satisfied by
+        its own documentation — the quietest way a gate can stop gating.
+        """
+        workflows = dict(self.GOOD)
+        workflows["codeql.yml"] = workflows["codeql.yml"].replace(
+            "      security-events: write", "      # security-events: write"
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("security-events: write" in f for f in findings), findings)
+
+    def test_a_hash_inside_a_quoted_string_is_not_a_comment(self):
+        text = CI_WORKFLOWS.strip_yaml_comments('    comment: "a # b"\n    real: value\n')
+        self.assertIn('"a # b"', text)
+        self.assertIn("real: value", text)
+
+    def test_a_stale_wait_list_is_a_finding(self):
+        """The alert job must wait for every other job of the pipeline.
+
+        Its report comes from the run's API, so it cannot be stale. The wait
+        list says *when* the report is made — and a job that is not in the
+        list may still be running when the report is made.
+        """
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace(
+            "  nightly-alert:\n    needs: [static, build]",
+            "  nightly-alert:\n    needs: [static]",
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("does not wait for" in f for f in findings), findings)
+
+    def test_a_wait_list_that_covers_every_job_is_quiet(self):
+        findings = self._check(self._fixture())
+        self.assertFalse(any("does not wait for" in f for f in findings), findings)
 
 
 def _kover_report(covered: int, missed: int) -> str:

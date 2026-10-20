@@ -60,11 +60,21 @@ jobs:
 
       - name: Run the analysis
         id: scorecard
-        uses: ossf/scorecard-action@v2
+        # Pinned to the commit, not to a tag: there is no `v2` tag in
+        # ossf/scorecard-action — the published tags stop at v2.5.0 — so
+        # `ossf/scorecard-action@v2` does not resolve and the workflow fails
+        # before it starts. v2.5.0 is the release whose image lives on
+        # ghcr.io; the README asks for "v2.6.0 or later" because the tag has
+        # moved on, and the action's own `action.yaml` still points at the
+        # v2.5.0 image.
+        uses: ossf/scorecard-action@46dc3187a971a9febf3aeb7f94ccde489f7bb46a # v2.5.0
         with:
           results_file: results.sarif
           results_format: sarif
           publish_results: true
+          # A publication the API rejected is a report nobody will read, and
+          # a report that nobody reads is the same as no report.
+          fail_on_publish_error: true
 
       # `if: always()` on both: the results file is written before the
       # publication is attempted, so it exists even when the publication
