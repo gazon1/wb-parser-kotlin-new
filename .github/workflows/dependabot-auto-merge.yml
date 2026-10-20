@@ -23,7 +23,7 @@ on:
 
 # The workflow merges a pull request. It needs exactly that, and nothing else.
 permissions:
-  contents: read
+  contents: write
   pull-requests: write
 
 jobs:
@@ -65,12 +65,53 @@ jobs:
           echo "the update is a $bump"
           echo "bump=${bump}" >> "$GITHUB_OUTPUT"
 
-      - name: Merge it when the gates are green
+      # The branch protection has the last word, and it is asked, not assumed:
+      # `mergeStateStatus` is GitHub's own answer to "are the required checks
+      # green for this pull request", and it is CLEAN only when they are.
+      #
+      # The merge is then made directly rather than queued through the
+      # auto-merge API: the token of a workflow cannot enable auto-merge in
+      # this repository ("Resource not accessible by integration
+      # (enablePullRequestAutoMerge)"), and the question the auto-merge
+      # answers — "may this be merged now?" — is the question this step asks
+      # first and answers with GitHub's own words.
+      - name: The required checks are green
+        id: checks
         if: steps.bump.outputs.bump != ''
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          gh pr merge "$PR_NUMBER" --auto --squash
-          echo "the merge is queued: it happens when the required checks are green"
+          deadline=$(( $(date +%s) + 1800 ))
+          while true; do
+            state="$(gh api "repos/${{ github.repository }}/pulls/${PR_NUMBER}" --jq '.mergeStateStatus')"
+            case "$state" in
+              CLEAN)
+                echo "the required checks are green"
+                exit 0
+                ;;
+              BLOCKED|DIRTY|UNKNOWN)
+                if [ "$(date +%s)" -ge "$deadline" ]; then
+                  echo "::error::the pull request is '$state' and the checks did not become green"
+                  exit 1
+                fi
+                echo "the pull request is '$state' — waiting"
+                sleep 20
+                ;;
+              *)
+                echo "::error::the pull request is '$state' — it cannot be merged"
+                exit 1
+                ;;
+            esac
+          done
+
+      - name: Merge it
+        if: steps.bump.outputs.bump != '' && steps.checks.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh pr merge "$PR_NUMBER" --squash --delete-branch
+          echo "the update is merged"
