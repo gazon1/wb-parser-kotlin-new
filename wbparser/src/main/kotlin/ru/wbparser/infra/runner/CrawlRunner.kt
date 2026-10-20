@@ -23,6 +23,7 @@ import ru.wbparser.infra.db.repositories.fetchActiveTargets
 import ru.wbparser.infra.db.repositories.markTargetCrawled
 import ru.wbparser.infra.db.repositories.markTargetFailed
 import ru.wbparser.infra.db.repositories.markTargetRequeued
+import ru.wbparser.infra.db.repositories.TargetRun
 import ru.wbparser.infra.db.repositories.recordTargetRun
 import ru.wbparser.infra.scheduler.targetsDue
 import java.time.Instant
@@ -214,19 +215,25 @@ class CrawlRunner(
         runCatching {
             db.ds.recordTargetRun(
                 jobId = jobId,
-                targetId = target.id,
-                egressGroup = group,
-                outcome =
-                    RunOutcome.of(
-                        // A target that answered with something that is not the catalog
-                        // failed without an error message: the failure is the class, and
-                        // the class is what the run is judged by.
-                        failed = result.error != null || failureClass != null,
-                        failureClass = failureClass,
+                run =
+                    TargetRun(
+                        targetId = target.id,
+                        egressGroup = group,
+                        // The address is not written from here: the ledger of the groups
+                        // holds the one the probe saw, and one fact has one place.
+                        egressIp = null,
+                        outcome =
+                            RunOutcome.of(
+                                // A target that answered with something that is not the
+                                // catalog failed without an error message: the failure is
+                                // the class, and the class is what the run is judged by.
+                                failed = result.error != null || failureClass != null,
+                                failureClass = failureClass,
+                            ),
+                        pages = result.pages,
+                        items = result.items,
+                        startedAt = result.startedAt,
                     ),
-                pages = result.pages,
-                items = result.items,
-                startedAt = result.startedAt,
                 finishedAt = Instant.now(),
             )
         }.onFailure { log.warn("Could not record the run of target {}: {}", target.name, it.message) }

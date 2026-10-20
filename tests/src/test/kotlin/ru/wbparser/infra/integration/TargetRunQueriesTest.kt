@@ -75,12 +75,16 @@ class TargetRunQueriesTest :
 
             db.ds.recordTargetRun(
                 jobId = jobId,
-                targetId = targetId,
-                egressGroup = group,
-                outcome = RunOutcome.Antibot,
-                pages = 3,
-                items = 0,
-                startedAt = Instant.now(),
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = group,
+                        egressIp = null,
+                        outcome = RunOutcome.Antibot,
+                        pages = 3,
+                        items = 0,
+                        startedAt = Instant.now(),
+                    ),
                 finishedAt = Instant.now(),
             )
 
@@ -99,12 +103,16 @@ class TargetRunQueriesTest :
 
             db.ds.recordTargetRun(
                 jobId = jobId,
-                targetId = targetId,
-                egressGroup = null,
-                outcome = RunOutcome.Error,
-                pages = 0,
-                items = 0,
-                startedAt = Instant.now(),
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = null,
+                        egressIp = null,
+                        outcome = RunOutcome.Error,
+                        pages = 0,
+                        items = 0,
+                        startedAt = Instant.now(),
+                    ),
                 finishedAt = Instant.now(),
             )
 
@@ -126,32 +134,44 @@ class TargetRunQueriesTest :
 
             db.ds.recordTargetRun(
                 jobId = jobId,
-                targetId = targetId,
-                egressGroup = group,
-                outcome = RunOutcome.Antibot,
-                pages = 1,
-                items = 0,
-                startedAt = Instant.now().minusSeconds(60),
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = group,
+                        egressIp = null,
+                        outcome = RunOutcome.Antibot,
+                        pages = 1,
+                        items = 0,
+                        startedAt = Instant.now().minusSeconds(60),
+                    ),
                 finishedAt = Instant.now().minusSeconds(60),
             )
             db.ds.recordTargetRun(
                 jobId = jobId,
-                targetId = targetId,
-                egressGroup = "ip-2",
-                outcome = RunOutcome.Ok,
-                pages = 5,
-                items = 5,
-                startedAt = Instant.now(),
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = "ip-2",
+                        egressIp = null,
+                        outcome = RunOutcome.Ok,
+                        pages = 5,
+                        items = 5,
+                        startedAt = Instant.now(),
+                    ),
                 finishedAt = Instant.now(),
             )
             db.ds.recordTargetRun(
                 jobId = jobId,
-                targetId = other,
-                egressGroup = group,
-                outcome = RunOutcome.Antibot,
-                pages = 1,
-                items = 0,
-                startedAt = Instant.now(),
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = other,
+                        egressGroup = group,
+                        egressIp = null,
+                        outcome = RunOutcome.Antibot,
+                        pages = 1,
+                        items = 0,
+                        startedAt = Instant.now(),
+                    ),
                 finishedAt = Instant.now(),
             )
 
@@ -168,12 +188,16 @@ class TargetRunQueriesTest :
 
             db.ds.recordTargetRun(
                 jobId = jobId,
-                targetId = targetId,
-                egressGroup = group,
-                outcome = RunOutcome.Antibot,
-                pages = 1,
-                items = 0,
-                startedAt = Instant.now(),
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = group,
+                        egressIp = null,
+                        outcome = RunOutcome.Antibot,
+                        pages = 1,
+                        items = 0,
+                        startedAt = Instant.now(),
+                    ),
                 finishedAt = Instant.now(),
             )
 
@@ -192,12 +216,16 @@ class TargetRunQueriesTest :
             db.ds.markTargetRequeued(targetId)
             db.ds.recordTargetRun(
                 jobId = jobId,
-                targetId = targetId,
-                egressGroup = "ip-2",
-                outcome = RunOutcome.Antibot,
-                pages = 1,
-                items = 0,
-                startedAt = Instant.now(),
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = "ip-2",
+                        egressIp = null,
+                        outcome = RunOutcome.Antibot,
+                        pages = 1,
+                        items = 0,
+                        startedAt = Instant.now(),
+                    ),
                 finishedAt = Instant.now(),
             )
 

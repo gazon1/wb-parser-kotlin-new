@@ -41,12 +41,7 @@ data class TargetRun(
  */
 fun DataSource.recordTargetRun(
     jobId: UUID,
-    targetId: UUID,
-    egressGroup: String?,
-    outcome: RunOutcome,
-    pages: Int,
-    items: Int,
-    startedAt: Instant,
+    run: TargetRun,
     finishedAt: Instant,
 ) {
     connection.use { conn ->
@@ -60,13 +55,13 @@ fun DataSource.recordTargetRun(
             ).use { ps ->
                 ps.setObject(1, UUID.randomUUID())
                 ps.setObject(2, jobId)
-                ps.setObject(3, targetId)
-                ps.setString(4, egressGroup)
-                ps.setString(5, egressGroup)
-                ps.setString(6, outcome.dbValue)
-                ps.setInt(7, pages)
-                ps.setInt(8, items)
-                ps.setObject(9, startedAt.atOffset(ZoneOffset.UTC))
+                ps.setObject(3, run.targetId)
+                ps.setString(4, run.egressGroup)
+                ps.setString(5, run.egressGroup)
+                ps.setString(6, run.outcome.dbValue)
+                ps.setInt(7, run.pages)
+                ps.setInt(8, run.items)
+                ps.setObject(9, run.startedAt.atOffset(ZoneOffset.UTC))
                 ps.setObject(10, finishedAt.atOffset(ZoneOffset.UTC))
                 ps.executeUpdate()
             }
