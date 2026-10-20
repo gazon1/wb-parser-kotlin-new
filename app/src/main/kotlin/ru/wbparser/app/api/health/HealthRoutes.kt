@@ -1,6 +1,7 @@
 package ru.wbparser.app.api.health
 
 import arrow.core.Either
+import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -15,6 +16,7 @@ import javax.sql.DataSource
 @RequestMapping("/api/health")
 class HealthRoutes(
     private val datasource: DataSource,
+    private val meterRegistry: MeterRegistry,
 ) {
     @GetMapping("/live")
     fun liveness() = mapOf("status" to "UP")
@@ -65,6 +67,9 @@ class HealthRoutes(
         return mapOf(
             "status" to if (allHealthy) "UP" else "DOWN",
             "checks" to checks,
+            // The counters are a section of their own: "checks" says whether the data
+            // is ready, this says how the crawl is going.
+            "crawler" to crawlerStats(meterRegistry),
         )
     }
 }

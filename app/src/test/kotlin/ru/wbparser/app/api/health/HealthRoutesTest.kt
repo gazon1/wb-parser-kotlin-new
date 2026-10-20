@@ -2,6 +2,8 @@ package ru.wbparser.app.api.health
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.sqlite.SQLiteDataSource
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -23,13 +25,13 @@ class HealthRoutesTest :
     FunSpec({
 
         test("liveness reports UP without touching the database") {
-            val routes = HealthRoutes(UnreachableDataSource())
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry())
 
             routes.liveness() shouldBe mapOf("status" to "UP")
         }
 
         test("readiness is UP when the database answers") {
-            val routes = HealthRoutes(workingDataSource())
+            val routes = HealthRoutes(workingDataSource(), idleRegistry())
 
             val readiness = routes.readiness()
 
@@ -39,7 +41,7 @@ class HealthRoutesTest :
         }
 
         test("readiness reports the subject dictionary and the targets without a token") {
-            val routes = HealthRoutes(catalogDataSource())
+            val routes = HealthRoutes(catalogDataSource(), idleRegistry())
 
             val readiness = routes.readiness()
             val checks = readiness["checks"] as Map<*, *>
@@ -56,7 +58,7 @@ class HealthRoutesTest :
         }
 
         test("readiness is DOWN when the database cannot be reached") {
-            val routes = HealthRoutes(UnreachableDataSource())
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry())
 
             val readiness = routes.readiness()
 
@@ -66,7 +68,7 @@ class HealthRoutesTest :
         }
 
         test("the failure message names the exception and its message") {
-            val routes = HealthRoutes(UnreachableDataSource())
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry())
 
             val readiness = routes.readiness()
             val checks = readiness["checks"] as Map<*, *>
@@ -76,11 +78,19 @@ class HealthRoutesTest :
     })
 
 /**
+ * A registry the crawler has not written anything into yet.
+ *
+ * The real Micrometer registry, not a stand-in for one: the counters only exist
+ * once something increments them, and that is the behaviour under test.
+ */
+internal fun idleRegistry(): MeterRegistry = SimpleMeterRegistry()
+
+/**
  * A real, in-process database — SQLite needs no server and no container.
  *
  * The health check only runs `SELECT 1`, so an empty in-memory database is enough.
  */
-private fun workingDataSource(): DataSource {
+internal fun workingDataSource(): DataSource {
     val source = SQLiteDataSource()
     source.url = "jdbc:sqlite::memory:"
     return source
@@ -93,7 +103,7 @@ private fun workingDataSource(): DataSource {
  * opens its *own* empty database, so the rows created for the fixture would be
  * gone by the time the next check opened a connection.
  */
-private fun catalogDataSource(): DataSource {
+internal fun catalogDataSource(): DataSource {
     val file = Files.createTempFile("health-readiness", ".db")
     file.toFile().deleteOnExit()
     val source = SQLiteDataSource()
