@@ -244,6 +244,31 @@ data class Pipeline(
                 break
             }
 
+            if (done.page.isPresetResponse) {
+                // WB answered with its popular list instead of the catalog. The page
+                // carries no products (the parser drops them), and this counter is
+                // how the operator learns that a target's token has gone stale.
+                //
+                // Such a page is not a catalog page: it is neither counted as crawled
+                // nor treated as the empty end of the catalog. Counting it would
+                // report a healthy crawl that collected nothing.
+                val context = mapOf("target_id" to done.task.targetId.toString())
+                sides +=
+                    Side.Metric(
+                        "presets.responses",
+                        1,
+                        context,
+                    )
+                sides +=
+                    Side.Log(
+                        LogLevel.WARN,
+                        "WB answered with the popular list instead of the catalog — " +
+                            "the target's catalog token is stale, re-enrich it with enrich_catalog_queries.py",
+                        context,
+                    )
+                continue
+            }
+
             pagesCrawled++
             itemsSaved += processItems(done.page, sides)
 

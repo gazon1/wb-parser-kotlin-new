@@ -144,4 +144,38 @@ class WbCatalogParserTest :
 
             parseWbCatalog(fetched(body)).items.single().name shouldBe "С полями"
         }
+        test("a popular-list answer is dropped instead of stored under the category") {
+            val body =
+                """
+                {"metadata":{"catalog_type":"presets","name":"Популярное"},
+                 "products":[
+                   {"id":1,"name":"Первый","sizes":[{"price":{"basic":10000,"product":5000}}]},
+                   {"id":2,"name":"Второй","sizes":[{"price":{"basic":20000,"product":7000}}]}
+                 ]}
+                """.trimIndent()
+
+            val page = parseWbCatalog(fetched(body))
+
+            // The products are real products — that is what makes the answer
+            // dangerous. They are not this category's products, and storing them
+            // under its name is the mistake this crawler was rebuilt to stop.
+            page.isPresetResponse shouldBe true
+            page.items shouldBe emptyList()
+            page.nextPageUrl shouldBe null
+        }
+
+        test("a catalog answer is kept and marked as such") {
+            val body =
+                """
+                {"metadata":{"catalog_type":"catalog-merger","name":"menu_v3_9467 карты памяти"},
+                 "products":[
+                   {"id":1,"name":"Карта памяти","sizes":[{"price":{"basic":10000,"product":5000}}]}
+                 ]}
+                """.trimIndent()
+
+            val page = parseWbCatalog(fetched(body))
+
+            page.isPresetResponse shouldBe false
+            page.items.map { it.name } shouldBe listOf("Карта памяти")
+        }
     })

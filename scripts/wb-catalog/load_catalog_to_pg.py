@@ -224,7 +224,22 @@ def load_catalog_to_pg(
     now = datetime.now(timezone.utc)
     rows: List[Tuple] = []
 
+    skipped = 0
+
     for page in pages:
+        # A target without a token is refused by the crawler: the internal API answers
+        # with the rotating popular list instead of the category, so loading it would
+        # put a row in the table that can only ever collect the wrong products. The
+        # loader says so and leaves it out, instead of loading a target that silently
+        # never produces its category.
+        if not page.get("search_query"):
+            skipped += 1
+            click.echo(
+                f"  skipped '{page['name']}': no search_query — "
+                f"run enrich_catalog_queries.py to add WB's catalog token",
+                err=True,
+            )
+            continue
         rows.append((
             str(uuid.uuid4()),                 # 1  id
             page["name"],                      # 2  name
@@ -248,6 +263,13 @@ def load_catalog_to_pg(
             now,                               # 13 created_at
             now,                               # 14 updated_at
         ))
+
+    if skipped:
+        click.echo(
+            f"\n{skipped} page(s) skipped: no search_query. Run "
+            f"enrich_catalog_queries.py before loading the catalogue.",
+            err=True,
+        )
 
     if verbose:
         click.echo("\nFirst 3 rows (preview):")

@@ -54,12 +54,21 @@ fun parseWbCatalog(response: Fetched): ParsedPage {
                 ?: catalogEnvelope.products
                 ?: emptyList()
 
+        val catalogType = logCatalogMetadata(response, catalogEnvelope, products.size)
+
         val items =
-            products.mapNotNull { dto ->
-                dto.toParsedItem().getOrNull()
+            if (catalogType == PRESETS_CATALOG_TYPE) {
+                emptyList()
+            } else {
+                products.mapNotNull { dto ->
+                    dto.toParsedItem().getOrNull()
+                }
             }
 
-        logCatalogMetadata(response, catalogEnvelope, products.size)
+        // A `presets` answer is the rotating popular list, not the catalog. Its
+        // products look like products and would be stored under a category they have
+        // nothing to do with — the exact mistake this crawler was rebuilt to stop
+        // making. The page is dropped instead, and the caller is told what it was.
 
         // An empty answer is the end of the catalog. A page whose items were all dropped
         // is not: WB still had products there, and the rest of the catalog is still worth
@@ -84,8 +93,9 @@ fun parseWbCatalog(response: Fetched): ParsedPage {
         ParsedPage(
             input = response,
             items = items,
-            nextPageUrl = nextPageUrl,
+            nextPageUrl = if (catalogType == PRESETS_CATALOG_TYPE) null else nextPageUrl,
             isEmptyPage = items.isEmpty(),
+            isPresetResponse = catalogType == PRESETS_CATALOG_TYPE,
         )
     } catch (e: Exception) {
         // A malformed catalog response must not abort the crawl, but turning it into a
@@ -116,7 +126,7 @@ private fun logCatalogMetadata(
     response: Fetched,
     envelope: WbCatalogEnvelope,
     productCount: Int,
-) {
+): String? {
     val metadata = envelope.metadata
     val catalogType = metadata?.catalogType
     if (catalogType == null) {
@@ -125,7 +135,7 @@ private fun logCatalogMetadata(
             response.task.url,
             productCount,
         )
-        return
+        return null
     }
     if (catalogType == PRESETS_CATALOG_TYPE) {
         log.warn(
@@ -134,7 +144,7 @@ private fun logCatalogMetadata(
             response.task.url,
             metadata.name,
         )
-        return
+        return catalogType
     }
     log.debug(
         "WB catalog page {}: {} product(s), catalog_type={}, total={}",
@@ -143,6 +153,7 @@ private fun logCatalogMetadata(
         catalogType,
         envelope.total,
     )
+    return catalogType
 }
 
 /** The `catalog_type` WB reports when the request carried no catalog token. */
