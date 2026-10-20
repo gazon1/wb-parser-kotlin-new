@@ -30,7 +30,12 @@ jobs:
   merge:
     # Only Dependabot's own pull requests. A pull request from anyone else
     # must not be able to ask this workflow for a merge.
-    if: github.actor == 'dependabot[bot]'
+    #
+    # The author of the pull request, not the actor of the event: a pull
+    # request Dependabot opened stays Dependabot's when somebody reopens it
+    # or when Dependabot pushes to it again. The actor would change and the
+    # fact would not — and the fact is the one that decides.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
