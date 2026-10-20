@@ -1,4 +1,4 @@
--- V5__catalog_search_query_and_latest_view.sql
+-- V6__catalog_search_query_and_latest_view.sql
 --
 -- 1. crawl_targets.wb_search_query — WB's own catalog search token, e.g.
 --    "menu_v3_9467 карты памяти".

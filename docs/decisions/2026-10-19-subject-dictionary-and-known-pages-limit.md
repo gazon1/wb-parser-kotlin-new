@@ -39,7 +39,7 @@ assumption was wrong, and it was checked rather than assumed.
 
 ## Decision
 
-**The dictionary is a table: `wb_subjects`.** Migration `V4__wb_subjects.sql`
+**The dictionary is a table: `wb_subjects`.** Migration `V5__wb_subjects.sql`
 creates it; `scripts/wb-catalog/load_subjects.py` fills it from
 `static-basket-01.wbbasket.ru/vol0/data/subjects.json` (8174 subjects, every
 one of them with a name). `just catalog::load-subjects` runs the loader, and

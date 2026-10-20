@@ -8,7 +8,7 @@ by WB in a separate static file, so a crawler that only talks to the API can
 record the tree's shape but not the names that go with it.
 
 This script fetches that dictionary and stores it in the `wb_subjects` table
-(migration `V4__wb_subjects.sql`). The crawler reads the table and writes the
+(migration `V5__wb_subjects.sql`). The crawler reads the table and writes the
 name next to the id — it never invents one.
 
 ## Usage

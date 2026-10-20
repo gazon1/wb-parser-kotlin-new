@@ -32,7 +32,7 @@ tags: [catalog, database, migrations]
 - `wb_catalog_targets.yaml` **больше не игнорируется** и версионируется в репозитории.
   Файл не содержит секретов: только публичные id каталогов WB, названия, пути и токены
   меню.
-- Добавлена миграция `V5__catalog_search_query_and_latest_view.sql`:
+- Добавлена миграция `V6__catalog_search_query_and_latest_view.sql`:
   - колонка `crawl_targets.wb_search_query` — токен меню, выбирающий категорию в API WB;
   - представление `latest_product_observations` — последняя строка по каждому
     `product_id` (`DISTINCT ON (product_id) … ORDER BY product_id, scraped_at DESC, id DESC`);
