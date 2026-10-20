@@ -232,10 +232,29 @@ def check_autofix_script(root: Path) -> list[str]:
 
 
 def check_scheduled_run(root: Path) -> list[str]:
-    """Some workflow runs on a schedule, with a time."""
+    """The scheduled run exercises the pipeline, and the pipeline is defined once.
+
+    Two rules, and the second is the interesting one:
+
+    1. Some workflow runs on a schedule, with a time, and that workflow
+       *calls* the pipeline. A schedule that does not call the pipeline is a
+       schedule for something else.
+    2. The pipeline itself has no schedule of its own. A schedule inside the
+       pipeline is a copy of the entry point: the next job added to the
+       pipeline would have to be added to the copy too, and the copy is what
+       goes stale. A schedule that calls the pipeline has no jobs of its own
+       to fall behind.
+
+    The other workflows have schedules of their own — CodeQL and Scorecard
+    run weekly — and this check does not touch them.
+    """
     findings: list[str] = []
     texts = read_workflows(root)
-    scheduled = [name for name, text in texts.items() if re.search(r"^\s*schedule:\s*$", text, re.M)]
+    scheduled = [
+        name
+        for name, text in texts.items()
+        if re.search(r"^\s*schedule:\s*$", text, re.M)
+    ]
     if not scheduled:
         findings.append(
             "no workflow has a `schedule` trigger. The tests are supposed to run on "
@@ -246,6 +265,19 @@ def check_scheduled_run(root: Path) -> list[str]:
         findings.append(
             "a workflow has a `schedule` trigger without a `cron` entry — GitHub "
             "rejects a schedule that has no time."
+        )
+    pipeline = texts.get(PIPELINE, "")
+    if re.search(r"^\s*schedule:\s*$", pipeline, re.M):
+        findings.append(
+            f"{PIPELINE} has a `schedule` trigger of its own. The schedule is an "
+            "entry point that calls the pipeline; a schedule inside the pipeline is "
+            "a second copy of the entry point, and the copy goes stale."
+        )
+    if not any("uses: ./.github/workflows/" + PIPELINE in texts[name] for name in scheduled):
+        findings.append(
+            "no scheduled workflow calls the pipeline. The scheduled run must be an "
+            f"entry point that calls {PIPELINE} — otherwise the schedule runs "
+            "something that is not the pipeline, and the two drift apart."
         )
     return findings
 
@@ -347,9 +379,6 @@ GOOD_WORKFLOWS = {
     ),
     "ci.yml": (
         "name: CI\n"
-        "on:\n"
-        "  schedule:\n"
-        "    - cron: \"0 3 * * *\"\n"
         "jobs:\n"
         "  static:\n"
         "    steps:\n"
@@ -361,6 +390,15 @@ GOOD_WORKFLOWS = {
         "    needs: [static, build]\n"
         "    steps:\n"
         "      - run: gh issue create --title nightly\n"
+    ),
+    "nightly.yml": (
+        "name: CI (nightly)\n"
+        "on:\n"
+        "  schedule:\n"
+        "    - cron: \"0 3 * * *\"\n"
+        "jobs:\n"
+        "  nightly:\n"
+        "    uses: ./.github/workflows/ci.yml\n"
     ),
 }
 
@@ -452,6 +490,25 @@ def run_self_test() -> int:
                     for name, text in GOOD_WORKFLOWS.items()
                 },
                 "expect": "schedule",
+            },
+            "the pipeline has a schedule of its own": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "name: CI\n", "name: CI\non:\n  schedule:\n    - cron: \"0 4 * * *\"\n"
+                    ),
+                },
+                "expect": "schedule",
+            },
+            "the scheduled run does not call the pipeline": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "nightly.yml": GOOD_WORKFLOWS["nightly.yml"].replace(
+                        "    uses: ./.github/workflows/ci.yml\n",
+                        "    runs-on: ubuntu-latest\n    steps:\n      - run: echo nightly\n",
+                    ),
+                },
+                "expect": "calls the pipeline",
             },
             "ci.yml never opens an issue": {
                 "workflows": {

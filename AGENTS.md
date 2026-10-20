@@ -73,13 +73,19 @@ just deploy::dry-run <tag> # ansible --check --diff
 
 | Workflow | Что делает | Когда |
 |---|---|---|
-| `.github/workflows/ci.yml` | основной пайплайн + **nightly** (`schedule: 0 3 * * *`) + джоб `nightly-alert`, который открывает GitHub issue при падении ночного прогона | push, PR, schedule, dispatch |
+| `.github/workflows/ci.yml` | пайплайн: gates, сборка, тесты, покрытие, линт, публикация образа. Вызывается как `workflow_call` | push, PR, dispatch, вызов из nightly |
+| `.github/workflows/nightly.yml` | **точка входа** ночного прогона: `schedule: 0 3 * * *` + `workflow_dispatch`, вызывает `ci.yml` с `alert_on_failure: true` | schedule, dispatch |
 | `.github/workflows/codeql.yml` | CodeQL: `java-kotlin` (по скомпилированному коду) + `actions` (сами workflow'и) → code scanning | push, PR, еженедельно, dispatch |
 | `.github/workflows/scorecard.yml` | OpenSSF Scorecard → SARIF в code scanning + публикация в Scorecard API | push на main, еженедельно, dispatch |
 | `.github/workflows/lint-autofix.yml` | применяет `scripts/ci/lint-autofix.sh` и **предлагает** правки (ветка `lint-autofix/<run-id>` + PR/комментарий) | push, PR, dispatch |
 
 Правила, которые из этого следуют:
 
+- **Always** определять пайплайн один раз и вызывать его: расписание — это
+  точка входа, а не свойство пайплайна. Расписание внутри пайплайна — копия
+  точки входа, а копия устаревает.
+- **Never** давать health-check права релиза: ночной прогон не пушит образ
+  и не получает `packages: write`.
 - **Never** пушить авто-фикс в ветку, над которой работает человек: правки
   предлагаются, решение — за человеком.
 - **Never** считать авто-фикс гейтом: `ktlintCheck` и `detekt` остаются гейтом,

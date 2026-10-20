@@ -69,13 +69,23 @@ published to the Scorecard API (`publish_results: true`, which needs
 uploaded to code scanning as SARIF. The score is a number that moves; a
 number nobody reads is the same as no number.
 
-**The nightly run and its issue** (`.github/workflows/ci.yml`) runs the whole
-existing pipeline on a `schedule` and adds `workflow_dispatch`. A new
-`nightly-alert` job opens a GitHub issue when a scheduled run fails, naming
-the jobs that failed and linking the run. The issue is the report — a red
-cron run is unread, and the badge stays red until the next push, which is
-also the next time anyone looks. The event name is part of the concurrency
-group, so a push neither cancels the nightly run nor waits behind it.
+**The nightly run and its issue** (`.github/workflows/nightly.yml` and
+`.github/workflows/ci.yml`) runs the whole existing pipeline on a `schedule`
+and adds `workflow_dispatch`. The pipeline is defined once, in `ci.yml`, and
+the nightly is an *entry point* that calls it — the same arrangement this
+repository already uses for the gates (one registry, two callers) and for the
+lint corrector (one script, two callers). A schedule that is one more trigger
+inside the pipeline's own file is a schedule that is invisible as an entry
+point: the question "what runs overnight, and who reads it" has no answer in
+the tree. As a separate file, it does.
+
+The one difference between the two entry points is an input:
+`alert_on_failure`. The nightly passes it, a pull request does not. A new
+`nightly-alert` job opens a GitHub issue when a run fails, naming the jobs
+that failed and linking the run. The issue is the report — a red cron run is
+unread, and the badge stays red until the next push, which is also the next
+time anyone looks. The event name is part of the concurrency group, so a push
+neither cancels the nightly run nor waits behind it.
 
 The report is the run's own API, not a list written by hand: the alert job
 asks the API which jobs failed and prints every job with its conclusion. A
@@ -85,6 +95,9 @@ failed" while something did. The job's `needs:` list remains, because it
 says *when* the report is made rather than what it says; and that list is
 checked against the real job list by the gate below, so a stale wait list is
 a finding rather than a quiet omission.
+
+A scheduled run is a health check, not a release: it does not push an image
+to the registry, and it is not given the registry's write permission.
 
 **The lint auto-fix** (`.github/workflows/lint-autofix.yml`) runs
 `scripts/ci/lint-autofix.sh`, which applies detekt's `--auto-correct` and
@@ -108,12 +121,12 @@ And the wiring is a gate: `scripts/ci/check-ci-workflows.py` is registered in
 `scripts/ci/static-gates.sh` and fails when a workflow is missing, when
 CodeQL cannot write its results, when Scorecard cannot publish them, when
 the auto-fix calls a script that is not there, when the scheduled run stops
-opening its issue, or when the alert job's wait list has gone stale. It has
-a `--self-test` that breaks each of those in turn, because a gate that
-cannot be shown to fail may be enforcing nothing. The gate reads the
-workflows with the comments stripped: a commented-out line is not a
-permission, and a check satisfied by its own documentation is a check that
-stopped checking.
+opening its issue, when the schedule stops calling the pipeline, or when the
+alert job's wait list has gone stale. It has a `--self-test` that breaks
+each of those in turn, because a gate that cannot be shown to fail may be
+enforcing nothing. The gate reads the workflows with the comments stripped:
+a commented-out line is not a permission, and a check satisfied by its own
+documentation is a check that stopped checking.
 
 ## Rationale
 
@@ -167,6 +180,12 @@ issue is in the list of things to do, and it says which job broke.
   run, in the dark.
 - **Always** take the report from the run's API. A hand-written list of the
   pipeline's jobs is a mirror, and the mirror goes stale silently.
+- **Always** define the pipeline once and call it. The schedule is an entry
+  point, not a property of the pipeline: a schedule inside the pipeline is a
+  copy of the entry point, and the copy is what goes stale.
+- **Never** give a health check the permissions of a release. The nightly
+  runs the pipeline to find out whether the repository is healthy; it does
+  not push an image, and it is not given the registry's write permission.
 - **Never** put the corrector in the gate registry. It is not a gate: it
   cannot fail a build, it rewrites the tree instead of judging it, and the
   verification loop (`check.sh`) must stay a loop that does not modify the

@@ -1,30 +1,43 @@
 name: CI
 
+# The pipeline. One definition, two entry points: a pull request (or a push
+# to main) triggers it directly, and .github/workflows/nightly.yml *calls* it
+# on a schedule. The same arrangement this repository already uses for the
+# gates (one registry, two callers) and for the lint corrector (one script,
+# two callers).
+#
+# A schedule that is one more trigger inside the pipeline's own file is a
+# schedule that is invisible as an entry point: the question "what runs
+# overnight, and who reads it" has no answer in the tree. As a separate
+# file, it does.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    # Nightly, 03:00 UTC. The whole pipeline runs on its own: a repository
-    # whose tests only run when somebody pushes is a repository whose tests
-    # are never run — the failures that only a week of drift produces
-    # (a dependency that moved, a migration that stopped applying) are
-    # exactly the ones nobody hits on purpose.
-    #
-    # GitHub disables scheduled workflows in a repository with no activity for
-    # 60 days, and it delays scheduled runs that land in a busy hour. The
-    # failure of this run is reported as an issue by the `nightly-alert` job
-    # below, so a delayed run is visible rather than silent.
-    - cron: "0 3 * * *"
   workflow_dispatch:
     # The same pipeline, started by hand — for a repository that wants to
     # check the state of the world before a release, or right after a
     # dependency bump that has been sitting unverified.
+  workflow_call:
+    # The inputs the callers may set. The nightly sets one of them; a
+    # pull request does not, and gets the defaults.
+    inputs:
+      alert_on_failure:
+        description: >-
+          Open a GitHub issue when a run of this pipeline fails. The nightly
+          sets it; a pull request does not — somebody is watching a pull
+          request, and an issue about a pull request is noise.
+        type: boolean
+        default: false
 
 concurrency:
   # The event name is part of the group, so a push does not cancel the nightly
   # run and the nightly run does not delay a push: they are different runs.
+  #
+  # In a called workflow the `github` context belongs to the caller, so a
+  # nightly call lands in the group `ci-<ref>-schedule` — its own group,
+  # separate from every push.
   group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
 
@@ -254,6 +267,13 @@ jobs:
     # merge is a *different* digest, and only the digest that was checked may be
     # promoted.
     needs: [build, lint, coverage, gate-honesty]
+    # A scheduled run is a health check, not a release. It builds the same
+    # pipeline to find out whether the repository is still healthy, and
+    # pushing an image to the registry at 03:00 answers a question nobody
+    # asked. The comparison is spelled out instead of negated because
+    # GitHub's expressions treat a null input as false, and `!= false` would
+    # skip this job exactly when it must not.
+    if: ${{ github.event_name != 'schedule' }}
     permissions:
       packages: write
       contents: read
@@ -319,12 +339,14 @@ jobs:
   # nothing to report, and an issue that says "the nightly run passed" every
   # night is noise that teaches people to ignore the label.
   #
-  # Every job of this workflow is in `needs`, so `needs.*.result` names the
-  # ones that failed — the issue says which part broke, not merely that
-  # something did.
+  # The switch is the input, not the event: the nightly calls this pipeline
+  # with `alert_on_failure: true`, and a pull request does not. `inputs` is
+  # empty for a direct trigger, and GitHub's expressions treat an absent
+  # value as false — which is the right answer here: nobody is watching a
+  # pull request, and an issue about one is noise.
   nightly-alert:
     name: Nightly failure becomes an issue
-    if: ${{ failure() && github.event_name == 'schedule' }}
+    if: ${{ failure() && inputs.alert_on_failure == true }}
     # The wait list: which jobs must be finished before the report is made.
     # It is checked against the real job list by
     # scripts/ci/check-ci-workflows.py, because a wait list that has gone
