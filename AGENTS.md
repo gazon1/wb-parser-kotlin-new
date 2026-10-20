@@ -106,6 +106,18 @@ just deploy::dry-run <tag> # ansible --check --diff
 - **Always** пинить экшены на коммит, версию оставлять в комментарии. Гейт
   `scripts/ci/check-ci-workflows.py` падает на тег — Scorecard проверяет
   это раз в неделю, гейт — на каждом изменении.
+- **Always** проверять, что пин экшена — это **коммит** его репозитория, а не
+  объект аннотированного тега: 40 hex-символов одинаковы у того и другого, а
+  API публикации отвергает объект тега тихо — анализ посчитан и выброшен,
+  шаг зелёный. Проверка живёт в пайплайне (`scripts/ci/check-action-pins.py`),
+  потому что нужен интернет; гейт поверхностей следит, чтобы она осталась на
+  месте (ADR `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`).
+- **Always** объявлять top-level `permissions:` в каждом workflow — это пол,
+  а не grant: джоб без собственного объявления наследует права вызывающего.
+- **Always** проверять публикацию по API, а не доверять зелёному шагу: экшен
+  сообщает об отвергнутой публикации как о warning, и прогон остаётся зелёным.
+- **Never** передавать экшену вход, которого у него нет: это предупреждение
+  на каждом прогоне и никакой защиты.
 - `main` защищён: обязательные проверки — гейты пайплайна
   (`static`, `build`, `coverage`, `lint`, `dependency-health`,
   `gate-honesty`) и CodeQL. Аппрувы не требуются: репозиторий ведёт один
@@ -208,6 +220,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 |---|---|
 | `docs/decisions/2026-09-08-functional-pipeline-refactor.md` | Stage/Side/Interpreter модель; **Always** регистрировать все интерпретаторы |
 | `docs/decisions/2026-10-20-the-registry-is-total-by-construction.md` | Реестр тотален по построению: интерпретаторы non-null, `when` исчерпывающий; side, который никто не эмитит, — не side |
+| `docs/decisions/2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked.md` | Пин экшена — это коммит, а не объект тега; публикация проверяется по API, а не по зелёному шагу |
 | `docs/decisions/2026-09-08-domain-coverage-pr4.md` | Domain unit tests; **MUST** тестировать `domain/pipeline/**` |
 | `docs/decisions/2026-09-08-conventional-commits-and-cleanup-prs.md` | Commit conventions: `feat:`, `fix:`, `refactor:`, `chore:`, `test:`, `docs:` + `PR N` |
 | `docs/decisions/2026-10-19-dependency-analysis-plugin.md` | DAGP как гейт: baseline = exclude-лист, уменьшающийся по существу (структурные записи неустранимы); `fixDependencies` — только вручную |
