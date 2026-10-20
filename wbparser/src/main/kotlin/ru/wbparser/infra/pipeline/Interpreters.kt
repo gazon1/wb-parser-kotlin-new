@@ -34,12 +34,13 @@ class NoOpMetricInterpreter : Interpreter<Side.Metric> {
  *Prometheus/Grafana without a separate histogram per value.
  *
  * Key metrics recorded:
- * - `crawl.pages` — pages successfully crawled
- * - `crawl.items` — items persisted to DB
- * - `crawl.errors` — non-retryable errors
- * - `crawl.retries` — retry attempts (by signal type)
- * - `crawl.drops` — items dropped by filter
- * - `crawl.circuit_breaker` — circuit breaker state transitions
+ * - `crawl.requests` — requests sent (the denominator of the refusal share)
+ * - `crawl.antibot.responses` — requests refused with an anti-bot answer
+ * - `crawl.retries` — retry attempts (by reason)
+ * - `crawl.presets.responses` — answers that were WB's popular list, not a catalog
+ *
+ * The runner adds its own counters under the same prefix: `crawl.pages`, `crawl.items`,
+ * `crawl.targets.without_items`, `crawl.targets.truncated`.
  */
 class MicrometerMetricInterpreter(
     private val registry: MeterRegistry,
