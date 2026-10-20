@@ -48,6 +48,12 @@ column is the only path in this codebase that keeps it.
 - **Always** write `crawl_jobs` timestamps through Exposed with an `OffsetDateTime`.
 - **Never** use `java.sql.Timestamp` for a `TIMESTAMPTZ` column: it is a naive
   local time, and Postgres interprets it in the session time zone.
+- **Always** bind a transaction to the DataSource it belongs to —
+  `transaction(exposedOnce())` — and never to "the database that happened to be
+  registered last". Exposed's default database is the last one created, so a
+  bare `transaction { }` writes to whichever DataSource was connected last: in
+  a process that holds two, that is a race with the wrong database as its
+  outcome.
 - The reconciliation stays a single statement over all stale rows, and its result
   does not depend on the time zone of the machine that runs it.
 - A job with no heartbeat and no start time falls back to its creation time — the

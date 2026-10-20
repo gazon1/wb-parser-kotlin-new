@@ -20,8 +20,8 @@ import javax.sql.DataSource
  * thing here, so the read must not fail when the dictionary is absent.
  */
 fun DataSource.fetchSubjectNames(): Map<Long, String> {
-    exposedOnce()
-    return transaction {
+    val database = exposedOnce()
+    return transaction(database) {
         WbSubjectsTable
             .selectAll()
             .associate { row -> row[WbSubjectsTable.id] to row[WbSubjectsTable.name] }

@@ -60,8 +60,8 @@ object CrawlJobQueries {
  * between the heartbeat tick and the update.
  */
 fun DataSource.touchJobHeartbeat(jobId: UUID) {
-    exposedOnce()
-    transaction {
+    val database = exposedOnce()
+    transaction(database) {
         CrawlJobsTable.update({
             (CrawlJobsTable.id eq jobId) and (CrawlJobsTable.status eq JobStatus.Running.name)
         }) {
@@ -86,8 +86,8 @@ fun DataSource.touchJobHeartbeat(jobId: UUID) {
 fun DataSource.reconcileOrphanedJobs(staleAfter: Duration = CrawlJobQueries.DEFAULT_STALE_AFTER): Int {
     val now = OffsetDateTime.now(ZoneOffset.UTC)
     val cutoff = now.minus(staleAfter)
-    exposedOnce()
-    return transaction {
+    val database = exposedOnce()
+    return transaction(database) {
         CrawlJobsTable.update({
             (CrawlJobsTable.status eq JobStatus.Running.name) and
                 (

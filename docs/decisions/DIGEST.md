@@ -132,6 +132,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** тратить весь бюджет попыток на запросы к открытой цепи: пауза и back-off _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
 - **Always** treat a value that is older than ten minutes as "as of ten minutes _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
 - **Never** run two crawler instances behind one address while the aggregates are _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
+- **Always** bind a transaction to the DataSource it belongs to — _(from `2026-10-20-job-timestamps-carry-an-offset`)
 - **Always** write `crawl_jobs` timestamps through Exposed with an `OffsetDateTime`. _(from `2026-10-20-job-timestamps-carry-an-offset`)
 - **Never** use `java.sql.Timestamp` for a `TIMESTAMPTZ` column: it is a naive _(from `2026-10-20-job-timestamps-carry-an-offset`)
 - **Always** считать `max_depth` глубиной по дереву категорий, а не лимитом страниц. _(from `2026-10-20-pagination-does-not-increase-depth`)

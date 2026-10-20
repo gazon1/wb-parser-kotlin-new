@@ -41,6 +41,16 @@ subprojects {
         }
     }
 
+    // Testcontainers talks to the Docker daemon over its API, and recent daemons
+    // (>= 25) reject the version docker-java negotiates by default (1.32) with
+    // "client version 1.32 is too old". The pin used to live in one module's test
+    // task — the one that needed it first — so every other module that started a
+    // container failed with an error that says nothing about the database.
+    tasks.withType<Test>().configureEach {
+        systemProperty("api.version", "1.44")
+        environment("DOCKER_API_VERSION", "1.44")
+    }
+
     // The linters were declared in the version catalogue but never applied, so the
     // `ktlintCheck` / `detekt` tasks the CI workflow invokes did not exist — the lint
     // job could only ever fail with "Task not found". Applying them here makes the

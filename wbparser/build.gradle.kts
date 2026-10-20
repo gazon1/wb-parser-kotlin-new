@@ -113,7 +113,10 @@ dependencies {
     // The suite builds a DataSource against the Testcontainers instance, so it
     // needs the driver at compile time.
     testImplementation(libs.postgresql)
-    testRuntimeOnly(libs.testcontainers.postgresql)
+    // The container API, not just its runtime: the job and subject repositories are
+    // exercised against a real PostgreSQL, because their statements are written for
+    // PostgreSQL (TIMESTAMPTZ, uuid) and a stand-in would prove nothing about them.
+    testImplementation(libs.testcontainers.postgresql)
 }
 
 tasks.test {
