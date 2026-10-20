@@ -33,14 +33,22 @@ on:
 jobs:
   nightly:
     # The permissions of the caller are the ceiling for every job of the
-    # called pipeline. This is a health check, not a release: it reads the
-    # repository and opens an issue when the pipeline fails. It does not push
-    # an image (the pipeline skips that job for a scheduled run), so it is not
-    # given the registry's write permission either.
+    # called pipeline, and GitHub checks that ceiling *statically*: it
+    # rejects the call when a nested job asks for more than the caller
+    # grants, whether that job would have run or not. The first version of
+    # this wrapper granted only what the nightly itself needs, and the
+    # pipeline was rejected at startup because the image job asks for
+    # `packages: write` — a job the nightly never runs.
+    #
+    # So the grant is the pipeline's whole ceiling, and the narrowing
+    # happens inside: every job of the pipeline declares the permissions it
+    # needs, so the registry write reaches the image job and nothing else.
+    # The image job does not run on a schedule.
     permissions:
       actions: read
       contents: read
       issues: write
+      packages: write
     uses: ./.github/workflows/ci.yml
     with:
       # The one difference between the two entry points.

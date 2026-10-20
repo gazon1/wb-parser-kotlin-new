@@ -55,6 +55,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
@@ -72,6 +78,12 @@ jobs:
     timeout-minutes: 30
     needs: static
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
@@ -126,6 +138,12 @@ jobs:
     timeout-minutes: 20
     needs: static
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
@@ -165,6 +183,12 @@ jobs:
     timeout-minutes: 15
     needs: static
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
@@ -200,6 +224,12 @@ jobs:
     timeout-minutes: 20
     needs: static
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
@@ -235,6 +265,12 @@ jobs:
     timeout-minutes: 20
     needs: static
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
