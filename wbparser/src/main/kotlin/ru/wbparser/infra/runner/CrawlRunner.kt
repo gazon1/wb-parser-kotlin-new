@@ -216,7 +216,14 @@ class CrawlRunner(
                 jobId = jobId,
                 targetId = target.id,
                 egressGroup = group,
-                outcome = RunOutcome.of(failed = result.error != null, failureClass = failureClass),
+                outcome =
+                    RunOutcome.of(
+                        // A target that answered with something that is not the catalog
+                        // failed without an error message: the failure is the class, and
+                        // the class is what the run is judged by.
+                        failed = result.error != null || failureClass != null,
+                        failureClass = failureClass,
+                    ),
                 pages = result.pages,
                 items = result.items,
                 startedAt = result.startedAt,
