@@ -1,6 +1,5 @@
 package ru.wbparser.infra.http
 
-import com.microsoft.playwright.Page
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe

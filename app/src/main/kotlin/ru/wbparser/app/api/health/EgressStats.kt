@@ -89,7 +89,12 @@ private fun gaugeValue(
     registry: MeterRegistry,
     name: String,
     group: String,
-): Double? = registry.find(name).tag("egress_group", group).gauge()?.value()
+): Double? =
+    registry
+        .find(name)
+        .tag("egress_group", group)
+        .gauge()
+        ?.value()
 
 /**
  * The total time a timer has recorded, in milliseconds.
@@ -98,4 +103,10 @@ private fun timerTotalMs(
     registry: MeterRegistry,
     name: String,
     group: String,
-): Long? = registry.find(name).tag("egress_group", group).timer()?.totalTime(TimeUnit.MILLISECONDS)?.toLong()
+): Long? =
+    registry
+        .find(name)
+        .tag("egress_group", group)
+        .timer()
+        ?.totalTime(TimeUnit.MILLISECONDS)
+        ?.toLong()
