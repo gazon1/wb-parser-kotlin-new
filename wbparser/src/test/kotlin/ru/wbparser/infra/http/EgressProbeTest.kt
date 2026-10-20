@@ -35,7 +35,7 @@ class EgressProbeTest :
         fun poolOf(
             groups: Map<String, List<String>>,
             answers: Map<String, String> = emptyMap(),
-            proxies: List<AdsPowerProfileProxy> = emptyList(),
+            proxies: List<AdsPowerProfileProxy>? = null,
         ): Pair<BrowserPool, FakeAdsPowerApi> {
             val profiles =
                 groups.flatMap { (group, ids) -> ids.map { BrowserProfileConfig(it, "ws://$it", group) } }
@@ -47,9 +47,16 @@ class EgressProbeTest :
                         _currentPage = pageAnswering(answers[profile.profileId] ?: ""),
                     )
                 }
+            // AdsPower describes the proxies of the profiles it knows: by default one
+            // proxy per group, which is what a working deployment looks like.
+            val described =
+                proxies
+                    ?: groups.flatMap { (group, ids) ->
+                        ids.map { AdsPowerProfileProxy(it, "proxy-$group.invalid", "1080", "http") }
+                    }
             val api =
                 FakeAdsPowerApi().also {
-                    it.profileProxies = proxies
+                    it.profileProxies = described
                 }
             return BrowserPool(
                 profiles = profiles,
@@ -161,6 +168,121 @@ class EgressProbeTest :
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
 
+            report.misconfigured shouldBe false
+        }
+
+        test("a profile list that did not come back is reported, not treated as a pass") {
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1")),
+                    mapOf("p1" to "203.0.113.7"),
+                    proxies = emptyList(),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups = listOf(EgressGroup("ip-1", listOf("p1"))),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            // The check could not run. That is not the same as the check passing, and
+            // the report has to say which of the two happened.
+            report.problems.any { it.contains("could not be checked") } shouldBe true
+            report.misconfigured shouldBe false
+        }
+
+        test("two groups behind the same proxy are one source, not two") {
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
+                    mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.8"),
+                    proxies =
+                        listOf(
+                            AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "http"),
+                            AdsPowerProfileProxy("p2", "proxy-a.invalid", "1080", "http"),
+                        ),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups = listOf(EgressGroup("ip-1", listOf("p1")), EgressGroup("ip-2", listOf("p2"))),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.misconfigured shouldBe true
+            report.problems.any { it.contains("the same proxy") } shouldBe true
+        }
+
+        test("two groups without a proxy are one address") {
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
+                    mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.8"),
+                    proxies =
+                        listOf(
+                            AdsPowerProfileProxy("p1", null, null, null, "no_proxy"),
+                            AdsPowerProfileProxy("p2", null, null, null, "no_proxy"),
+                        ),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups = listOf(EgressGroup("ip-1", listOf("p1")), EgressGroup("ip-2", listOf("p2"))),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.misconfigured shouldBe true
+            report.problems.any { it.contains("no proxy at all") } shouldBe true
+        }
+
+        test("two groups behind different proxies are fine") {
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
+                    mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.8"),
+                    proxies =
+                        listOf(
+                            AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "http"),
+                            AdsPowerProfileProxy("p2", "proxy-b.invalid", "1080", "socks5"),
+                        ),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups = listOf(EgressGroup("ip-1", listOf("p1")), EgressGroup("ip-2", listOf("p2"))),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.misconfigured shouldBe false
+        }
+
+        test("a proxy AdsPower does not describe is not a direct connection") {
+            val opaque = AdsPowerProfileProxy("p1", null, null, null, "other")
+
+            opaque.isDirect shouldBe false
+            opaque.hasOpaqueProxy shouldBe true
+            opaque.identity shouldBe "opaque:other"
+
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
+                    mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.8"),
+                    proxies = listOf(opaque, AdsPowerProfileProxy("p2", null, null, null, "no_proxy")),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups = listOf(EgressGroup("ip-1", listOf("p1")), EgressGroup("ip-2", listOf("p2"))),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            // A proxied profile and a direct one are two different addresses, so the
+            // groups are not the same source — but they are not one group either.
             report.misconfigured shouldBe false
         }
 

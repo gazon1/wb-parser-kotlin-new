@@ -31,7 +31,7 @@ internal fun probeChromeEndpoints(ports: List<Int>): List<String> =
             if (found.isEmpty()) {
                 throw IllegalStateException(
                     "No AdsPower Chrome with a DevTools port is reachable. Open a profile in " +
-                        "AdsPower, or set crawler.spider.browser-profiles / ADSPOWER_API_KEY.",
+                        "AdsPower, or set crawler.spider.egress-groups / ADSPOWER_API_KEY.",
                 )
             }
         }

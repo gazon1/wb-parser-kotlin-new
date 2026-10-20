@@ -50,17 +50,11 @@ data class Spider(
     val useBrowserForAuth: Boolean = true,
     val useBrowserFetch: Boolean = false,
     /**
-     * LEGACY: the profiles of a single-IP deployment.
-     *
-     * Ignored when [egressGroups] is set — the groups are then the only source of
-     * profiles, and two lists that have to agree are one list too many.
-     */
-    val browserProfiles: List<String> = emptyList(),
-    /**
      * The egress groups: sets of profiles that are expected to share one egress IP.
      *
-     * A group owns the request budget of its IP. Empty means "one group with all the
-     * profiles", which is what a deployment without a per-profile proxy has.
+     * A group owns the request budget of its IP. This is the only way to declare the
+     * crawler's profiles: a second list of the same profiles would be one list too
+     * many, and the day the two disagree one of them is silently ignored.
      */
     val egressGroups: List<EgressGroupConfig> = emptyList(),
     /**

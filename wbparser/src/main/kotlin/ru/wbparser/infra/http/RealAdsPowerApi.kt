@@ -86,13 +86,19 @@ internal class RealAdsPowerApi(
     /**
      * The proxy of every profile AdsPower knows about.
      *
-     * The v1 list endpoint is paged; the crawler cares about a handful of profiles, so
-     * one page of a hundred is more than enough, and a deployment with more profiles
-     * than that has other problems.
+     * The profile list is read from `/api/v1/user/list` — the endpoint this AdsPower
+     * build actually serves. The older `/api/v1/browser-profile/list` answers `Not
+     * Found` here, and a client that treats a missing answer as an empty list turns
+     * "the check could not run" into "the check passed": the caller cannot tell the
+     * two apart, and a silent check is worse than no check.
+     *
+     * The list is paged; the crawler cares about a handful of profiles, so one page of
+     * a hundred is more than enough, and a deployment with more profiles than that has
+     * other problems.
      */
     override fun listProfileProxies(): List<AdsPowerProfileProxy> {
         val client = client()
-        val envelope = client?.get("/api/v1/browser-profile/list?page=1&page_size=100")
+        val envelope = client?.get("/api/v1/user/list?page=1&page_size=100")
         // The runtime is gone or moved: drop the cached base so the next call re-runs
         // discovery against the new port.
         if (client != null && envelope == null) invalidateBaseUrl()
@@ -102,16 +108,24 @@ internal class RealAdsPowerApi(
 
     /**
      * One entry of the profile list, as a proxy description.
+     *
+     * The list calls the profile's id `user_id`; the newer endpoint calls it
+     * `profile_id`. Both are read, because which one a build serves is not ours to
+     * decide.
      */
     private fun Any?.toProfileProxy(): AdsPowerProfileProxy? {
         val profile = this as? Map<*, *> ?: return null
-        val profileId = profile["profile_id"] as? String ?: return null
+        val profileId =
+            (profile["user_id"] as? String)
+                ?: (profile["profile_id"] as? String)
+                ?: return null
         val proxy = profile["user_proxy_config"] as? Map<*, *>
         return AdsPowerProfileProxy(
             profileId = profileId,
             proxyHost = proxy?.get("proxy_host") as? String,
             proxyPort = proxy?.get("proxy_port")?.toString(),
             proxyType = proxy?.get("proxy_type") as? String,
+            proxySoft = proxy?.get("proxy_soft") as? String,
         )
     }
 }
