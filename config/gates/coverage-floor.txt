@@ -23,5 +23,5 @@
 #   only that module's classes.
 
 app 32
-merged 75
-wbparser 70
+merged 77
+wbparser 75
