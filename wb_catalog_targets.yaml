@@ -6,7 +6,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_9463 смартфон
   shard: electronic84
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132017'
   name: Электронные книги
   url: https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/elektronnye-knigi
@@ -14,7 +14,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132017 электронные книги
   shard: electronic21
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9477'
   name: Планшеты
   url: https://www.wildberries.ru/catalog/elektronika/planshety
@@ -22,7 +22,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_9477 планшеты
   shard: electronic84
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9467'
   name: Карты памяти
   url: https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/karty-pamyati
@@ -30,7 +30,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_9467 карты памяти
   shard: electronic74
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9473'
   name: Аксессуары для съемки
   url: https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/aksessuary-dlya-semki
@@ -38,7 +38,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_9473
   shard: electronic75
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9927'
   name: Стилусы
   url: https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/stilusy
@@ -46,7 +46,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_9927
   shard: electronic84
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9924'
   name: Телевизоры
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/televizory/televizory
@@ -54,7 +54,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_9924 телевизор
   shard: electronic50
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9496'
   name: Аудиотехника
   url: https://www.wildberries.ru/catalog/elektronika/audiotehnika
@@ -62,7 +62,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9496 аудиотехника
   shard: electronic51
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9837'
   name: Наушники и гарнитуры
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/naushniki-i-garnitury
@@ -70,7 +70,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_9837 гарнитуры и наушники
   shard: electronic52
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '146581'
   name: Беззеркальные фотоаппараты
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/bezzerkalnye-fotoapparaty
@@ -78,7 +78,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_146581 беззеркальные фотоаппараты
   shard: electronic53
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '146582'
   name: Зеркальные фотоаппараты
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/zerkalnye-fotoapparaty
@@ -86,7 +86,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_146582 зеркальный фотоаппарат
   shard: electronic53
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '146583'
   name: Цифровые фотоаппараты
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/tsifrovye-fotoapparaty
@@ -94,7 +94,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_146583 цифровой фотоаппарат
   shard: electronic53
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '146584'
   name: Пленочные фотоаппараты
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/plenochnye-fotoapparaty
@@ -102,7 +102,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_146584 пленочный фотоаппарат
   shard: electronic53
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '146585'
   name: Детские фотоаппараты
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/detskie-fotoapparaty
@@ -110,7 +110,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_146585 детские фотоаппараты
   shard: electronic53
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '146586'
   name: Фотоаппараты моментальной печати
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/fotoapparaty-momentalnoy-pechati
@@ -118,7 +118,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_146586 фотоаппарат для моментальной печати
   shard: electronic53
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '128308'
   name: Видеокамеры
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/videokamery
@@ -126,7 +126,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_128308
   shard: electronic53
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '58397'
   name: Микрофоны
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/mikrofony
@@ -134,7 +134,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_58397
   shard: electronic53
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9856'
   name: DVD и медиа-плееры
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/dvd-pleery
@@ -142,7 +142,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_9856
   shard: electronic53
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130375'
   name: Аккумуляторы для камер
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/akkumulyatory-dlya-kamer
@@ -150,7 +150,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130375
   shard: electronic54
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130401'
   name: Вспышки для камер
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/vspyshki-dlya-kamer
@@ -158,7 +158,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130401
   shard: electronic54
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130379'
   name: Защитные пленки и стекла
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/zashchitnye-plenki-i-stekla
@@ -166,7 +166,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130379
   shard: electronic54
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130376'
   name: Кабели и зарядные устройства
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/kabeli-i-zaryadnye-ustroystva
@@ -174,7 +174,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_130376 кабели и зарядные устройства
   shard: electronic54
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130377'
   name: Карты памяти и картридеры
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/karty-pamyati-i-kartridery
@@ -182,7 +182,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130377
   shard: electronic54
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130403'
   name: Крепления для камер
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/krepleniya-dlya-kamer
@@ -190,7 +190,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_130403 крепления для камер
   shard: electronic55
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130400'
   name: Крышки для камер
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/kryshki-dlya-kamer
@@ -198,7 +198,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_130400 крышки для камер
   shard: electronic55
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130402'
   name: Линзы и фильтры
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/linzy-i-filtry
@@ -206,7 +206,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130402
   shard: electronic55
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130393'
   name: Пульты для камер
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/akkumulyatory-dlya-kamer/pulty
@@ -214,7 +214,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_130393 пульты для камер
   shard: electronic55
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131080'
   name: Реквизит для фотографа
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/rekvizit-dlya-fotografa
@@ -222,7 +222,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_131080 реквизит фотограф
   shard: electronic55
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130394'
   name: Средства для чистки оптики
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/sredstva-dlya-chistki-optiki
@@ -230,7 +230,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130394
   shard: electronic55
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130378'
   name: Фотопленка
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/fotoplenka
@@ -238,7 +238,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130378
   shard: electronic55
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130392'
   name: Штативы и моноподы
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/shtativy-i-monopody
@@ -246,7 +246,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_130392 моноподы и штативы
   shard: electronic55
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130623'
   name: Аксессуары для телевизоров
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/aksessuary-dlya-televizorov
@@ -254,7 +254,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_130623
   shard: electronic53
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130374'
   name: Объективы
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/obektivy
@@ -262,7 +262,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_130374 объективы
   shard: electronic50
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '10459'
   name: Студийное оборудование
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/studiynoe-oborudovanie
@@ -270,7 +270,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_10459
   shard: electronic50
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '10028'
   name: Кронштейны
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/kronshteiny
@@ -278,7 +278,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_10028 кронштейн
   shard: electronic50
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130753'
   name: Фоторамки цифровые
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/fotoramki-tsifrovye
@@ -286,7 +286,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_130753 цифровая фоторамка
   shard: electronic50
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9508'
   name: Чехлы и рюкзаки
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/chehly-i-ryukzaki
@@ -294,7 +294,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_9508
   shard: electronic50
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132028'
   name: Проекторы и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/proektory-i-aksessuary
@@ -302,7 +302,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132028 проекторы и аксессуары
   shard: electronic48
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132027'
   name: Квадрокоптеры и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/kvadrokoptery-i-aksessuary
@@ -310,7 +310,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132027 квадрокоптеры и аксессуары
   shard: electronic48
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9492'
   name: Ноутбуки
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/noutbuki-ultrabuki
@@ -318,7 +318,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9492 ноутбуки
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9963'
   name: Компьютеры и моноблоки
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/kompyutery
@@ -326,7 +326,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_9963 компьютеры и моноблоки
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132022'
   name: Мониторы
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/monitory
@@ -334,7 +334,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_10009 мониторы
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131796'
   name: Клавиатуры
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/klaviatury
@@ -342,7 +342,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_131796
   shard: electronic45
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131797'
   name: Мыши
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/myshi
@@ -350,7 +350,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_131797
   shard: electronic45
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131798'
   name: Комплекты клавиатур и мышей
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/komplekty-klaviatur-i-myshey
@@ -358,7 +358,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_131798 клавиатура и мышка
   shard: electronic45
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132019'
   name: Игровые наушники
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/naushniki
@@ -366,7 +366,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132010 игровые наушники
   shard: electronic47
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131800'
   name: Веб-камеры
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/veb-kamery
@@ -374,7 +374,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_131800 web-камера
   shard: electronic45
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131801'
   name: Микрофоны
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/kolonki-i-mikrofony
@@ -382,7 +382,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_131801 колонки для компьютера с микрофоном
   shard: electronic45
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131954'
   name: Колонки
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/kolonki
@@ -390,7 +390,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131954 колонки
   shard: electronic45
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132020'
   name: Рули игровые
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/ruli-igrovye
@@ -398,7 +398,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132020 рули игровые
   shard: electronic49
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132021'
   name: Графические планшеты
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/graficheskie-planshety
@@ -406,7 +406,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_131803 графический планшеты
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132023'
   name: Flash-накопители
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/usb-nakopiteli-i-karty-pamyati
@@ -414,7 +414,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_59065 usb накопитель
   shard: preset_electronic83
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131802'
   name: Кабели и переходники
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/kabeli-i-perekxodniki
@@ -422,7 +422,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_131802 кабели и переходники для пк
   shard: electronic45
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132026'
   name: Кронштейны для мониторов
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/kronshteyny-dlya-monitorov
@@ -430,7 +430,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132026 кронштейны для мониторов
   shard: electronic46
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '60805'
   name: Внешние накопители информации
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/vneshnie-nakopiteli-informatsii
@@ -438,7 +438,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60805
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131924'
   name: Неттопы и Мини ПК
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/nettopy-i-mini-pk
@@ -446,7 +446,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_131924 неттопы и мини пк
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131803'
   name: Графические планшеты
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/graficheskie-planshety
@@ -454,7 +454,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_131803 графический планшеты
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9493'
   name: Аксессуары для ноутбуков
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/notebook-accessories
@@ -462,7 +462,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9493 аксессуары для ноутбука
   shard: electronic71
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132366'
   name: Сетевые фильтры
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/setevye-filtry
@@ -470,7 +470,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132366 сетевые фильтры
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132367'
   name: Элементы питания
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/elementy-pitaniya
@@ -478,7 +478,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132367 элементы питания
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132368'
   name: Источники бесперебойного питания
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/istochniki-bespereboynogo-pitaniya
@@ -486,7 +486,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132368 источники бесперебойного питания
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132369'
   name: Стабилизаторы напряжения
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/stabilizatory-napryazheniya
@@ -494,7 +494,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132369 стабилизаторы напряжения
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132370'
   name: Контроллеры ИБП
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/kontrollery-ibp
@@ -502,7 +502,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132370 контроллеры ибп
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132371'
   name: Аккумуляторы для ИБП
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/akkumulyatory-dlya-ibp
@@ -510,7 +510,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132371 аккумуляторы для ибп
   shard: electronic43
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131994'
   name: Видеокарты
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/videokarty
@@ -518,7 +518,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131994 видеокарты
   shard: electronic73
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131995'
   name: Процессоры
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/protsessory
@@ -526,7 +526,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131995 процессоры
   shard: electronic71
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131996'
   name: Материнские платы
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/materinskie-platy
@@ -534,7 +534,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131996 материнские платы
   shard: preset_electronic72
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131997'
   name: Твердотельные накопители SSD
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/tverdotelnye-nakopiteli-sdd
@@ -542,7 +542,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131997 твердотельные накопители ssd
   shard: preset_electronic72
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131998'
   name: Оперативная память
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/operativnaya-pamyat
@@ -550,7 +550,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131998 оперативная память
   shard: preset_electronic72
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131999'
   name: USB-накопители и карты памяти
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/usb-nakopiteli-i-karty-pamyati
@@ -558,7 +558,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131999 usb-накопители и карты памяти
   shard: preset_electronic72
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132000'
   name: Жесткие диски HDD
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/zhestkie-diski-hdd
@@ -566,7 +566,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132000 жесткий диск hdd
   shard: electronic73
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132001'
   name: Охлаждение компьютера
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/okxlazhdenie-kompyutera
@@ -574,7 +574,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132001 охлаждение для пк
   shard: preset_electronic72
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132002'
   name: Термоинтерфейсы для ПК
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/termointerfeysy-dlya-pk
@@ -582,7 +582,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132002 термоинтерфейсы для пк
   shard: preset_electronic72
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132003'
   name: Корпуса для ПК
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/korpusa-dlya-pk
@@ -590,7 +590,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132003 корпуса для пк
   shard: preset_electronic72
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132004'
   name: Блоки питания
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/bloki-pitaniya
@@ -598,7 +598,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132004 блоки питания для пк
   shard: preset_electronic72
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132005'
   name: Устройства расширения и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/ustroystva-rasshireniya-i-aksessuary
@@ -606,7 +606,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_132005 аксессуары для ноутбуков и пк
   shard: preset_electronic72
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131928'
   name: Видеокарты
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/videokarty
@@ -614,7 +614,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131928 игровая видеокарта
   shard: electronic47
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131929'
   name: Компьютеры
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/kompyutery
@@ -622,7 +622,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131929 компьютеры
   shard: electronic47
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131930'
   name: Мониторы
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/monitory
@@ -630,7 +630,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131930 мониторы
   shard: electronic47
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '131931'
   name: Ноутбуки
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/noutbuki
@@ -638,7 +638,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_131931 ноутбуки
   shard: electronic47
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132010'
   name: Наушники
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/naushniki
@@ -646,7 +646,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132010 игровые наушники
   shard: electronic47
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132011'
   name: Клавиатуры
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/klaviatury
@@ -654,7 +654,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132011 клавиатуры
   shard: electronic49
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132012'
   name: Мыши
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/myshi
@@ -662,7 +662,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132012 мыши
   shard: electronic49
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132013'
   name: Коврики для мыши
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/kovriki-dlya-myshi
@@ -670,7 +670,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132013 коврики для мыши
   shard: electronic49
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132014'
   name: Игровые консоли
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/igrovye-konsoli
@@ -678,7 +678,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132014 игровые консоли
   shard: electronic49
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132015'
   name: Геймпады и джойстики
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/geympady-i-dzhoystiki
@@ -686,7 +686,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132015 геймпады и джойстики
   shard: electronic49
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132016'
   name: Рули игровые
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/ruli-igrovye
@@ -694,7 +694,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132020 рули игровые
   shard: electronic49
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148872'
   name: Наушники беспроводные
   url: https://www.wildberries.ru/catalog/elektronika/igry-i-razvlecheniya/aksessuary/garnitury/naushniki-besprovodnye
@@ -702,7 +702,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_148872 наушники беспроводные
   shard: preset_electronic56
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148873'
   name: Наушники проводные
   url: https://www.wildberries.ru/catalog/elektronika/igry-i-razvlecheniya/aksessuary/garnitury/naushniki-provodnye
@@ -710,7 +710,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_148873 наушники проводные
   shard: preset_electronic56
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148874'
   name: Гарнитуры
   url: https://www.wildberries.ru/catalog/elektronika/igry-i-razvlecheniya/aksessuary/garnitury/garnitury
@@ -718,7 +718,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_148874 гарнитуры
   shard: preset_electronic56
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148876'
   name: Док-станции
   url: https://www.wildberries.ru/catalog/elektronika/igry-i-razvlecheniya/aksessuary/garnitury/dokstantsii
@@ -726,7 +726,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_148876 док-станции
   shard: preset_electronic56
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9845'
   name: Смарт-часы и браслеты
   url: https://www.wildberries.ru/catalog/elektronika/smart-chasy
@@ -734,7 +734,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9845 смарт часы и аксессуары
   shard: electronic58
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '15580'
   name: МФУ
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/periferiynye-ustroystva/mfu
@@ -742,7 +742,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3 мфу
   shard: electronic81
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '60809'
   name: Расходные материалы
   url: https://www.wildberries.ru/catalog/elektronika/ofisnaya-tehnika/rashodnye-materialy
@@ -750,7 +750,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60809
   shard: electronic81
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '128307'
   name: Ламинаторы, сканеры, шредеры
   url: https://www.wildberries.ru/catalog/elektronika/ofisnaya-tehnika/laminatory-skanery-shredery
@@ -758,7 +758,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_128307
   shard: electronic81
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '128306'
   name: ИБП и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/ofisnaya-tehnika/ibp-i-aksessuary
@@ -766,7 +766,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_128306
   shard: electronic81
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '63017'
   name: Оборудование для презентаций
   url: https://www.wildberries.ru/catalog/elektronika/ofisnaya-tehnika/oborudovanie-dlya-prezentatsiy
@@ -774,7 +774,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_63017
   shard: electronic81
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '60808'
   name: 3D-печать
   url: https://www.wildberries.ru/catalog/elektronika/ofisnaya-tehnika/3d-pechat
@@ -782,7 +782,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_60808 3d печать
   shard: electronic81
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132029'
   name: Роутеры
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/routery
@@ -790,7 +790,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132029 роутеры
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132355'
   name: Mesh системы
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/mesh-sistemy
@@ -798,7 +798,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132355 mesh системы
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132356'
   name: Модемы
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/modemy
@@ -806,7 +806,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132356 модемы
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132357'
   name: Коммутаторы
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/kommutatory
@@ -814,7 +814,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132357 коммутаторы
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132358'
   name: Усилители сигнала
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/usiliteli-signala
@@ -822,7 +822,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132358 усилители сигнала
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132359'
   name: Сетевые адаптеры
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/setevye-adaptery
@@ -830,7 +830,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132359 сетевые адаптеры
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132360'
   name: PoE инжекторы
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/poe-inzhektory
@@ -838,7 +838,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132360 poe инжекторы
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132361'
   name: Панели коммутационные
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/paneli-kommutatsionnye
@@ -846,7 +846,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132361 панели коммутационные
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132363'
   name: Сетевые хранилища
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/setevye-kxranilishcha
@@ -854,7 +854,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132363 сетевые хранилища
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132364'
   name: Медиаконвертеры
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/mediakonvertery
@@ -862,7 +862,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132364 медиаконвертеры
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '132365'
   name: Трансиверы
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/transivery
@@ -870,7 +870,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_132365 трансиверы
   shard: electronic78
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '130772'
   name: Игровые консоли
   url: https://www.wildberries.ru/catalog/elektronika/razvlecheniya-i-gadzhety/igrovye-konsoli/igrovye-konsoli
@@ -878,7 +878,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_130772 игровые консоли
   shard: electronic89
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '10491'
   name: Игры
   url: https://www.wildberries.ru/catalog/elektronika/razvlecheniya-i-gadzhety/diski-s-igrami
@@ -886,7 +886,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_10491 игры
   shard: electronic90
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '15692'
   name: Геймпады
   url: https://www.wildberries.ru/catalog/elektronika/razvlecheniya-i-gadzhety/geympady
@@ -894,7 +894,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_15692 геймпады
   shard: electronic89
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '61808'
   name: Аксессуары для геймпадов
   url: https://www.wildberries.ru/catalog/elektronika/igrovye-konsoli-i-igry/aksessuary-dlya-geympadov
@@ -902,7 +902,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_61808 аксессуары для геймпадов
   shard: electronic90
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9509'
   name: Аксессуары для консолей
   url: https://www.wildberries.ru/catalog/elektronika/razvlecheniya-i-gadzhety/gaming-accessories
@@ -910,7 +910,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_v3_9509 аксессуары для консолей
   shard: electronic90
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9497'
   name: Развлечения и гаджеты
   url: https://www.wildberries.ru/catalog/elektronika/razvlecheniya-i-gadzhety
@@ -918,7 +918,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9497 развлечения и гаджеты электроника
   shard: electronic82
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9835'
   name: Автоэлектроника и навигация
   url: https://www.wildberries.ru/catalog/elektronika/avtoelektronika
@@ -926,7 +926,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9835 автоэлектроника и навигация
   shard: electronic79
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '16292'
   name: Системы видеонаблюдения
   url: https://www.wildberries.ru/catalog/elektronika/videonablyudenie
@@ -934,7 +934,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_16292
   shard: electronic60
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '60758'
   name: Замки и домофоны
   url: https://www.wildberries.ru/catalog/elektronika/bezopasnost-doma/zamki-i-domofony
@@ -942,7 +942,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60758
   shard: electronic60
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '60775'
   name: Датчики и сенсоры
   url: https://www.wildberries.ru/catalog/elektronika/bezopasnost-doma/datchiki-i-sensory
@@ -950,7 +950,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60775
   shard: electronic60
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '60763'
   name: Сигнализация
   url: https://www.wildberries.ru/catalog/elektronika/bezopasnost-doma/signalizatsiya
@@ -958,7 +958,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60763
   shard: electronic60
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '60772'
   name: Аксессуары для систем видеонаблюдения
   url: https://www.wildberries.ru/catalog/elektronika/bezopasnost-doma/aksessuary-dlya-sistem-videonablyudeniya
@@ -966,7 +966,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_subject_v2_60772
   shard: electronic60
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '7588'
   name: Умный дом
   url: https://www.wildberries.ru/catalog/elektronika/umnyy-dom
@@ -974,7 +974,7 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_7588 товары для умного дома
   shard: electronic80
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '9240'
   name: Электротранспорт и аксессуары
   url: https://www.wildberries.ru/catalog/sport/elektrotransport-i-aksessuary
@@ -982,63 +982,63 @@ pages:
   root_category_name: Электроника
   search_query: menu_redirect_subject_v2_9240 электротранспорт и аксессуары для электросамокаат
   shard: preset_electronic39
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148951'
   name: Внешние аккумуляторы и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/vneshnie-akkumulyatory-i-aksessuary
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148951 внешние аккумуляторы
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148952'
   name: Элементы питания и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/elementy-pitaniya-i-aksessuary
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148952 элементы питания
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148953'
   name: Кабели и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/kabeli-i-aksessuary
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148953 кабель зарядки
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148954'
   name: Блоки питания
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/bloki-pitaniya
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148954 блоки питания
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148955'
   name: Беспроводные зарядные устройства
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/besprovodnye-zaryadnye-ustroystva
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148955 беспроводная зарядка
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148956'
   name: Проводные зарядные устройства
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/provodnye-zaryadnye-ustroystva
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148956 проводная зарядка
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148958'
   name: Адаптеры и переходники
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/adaptery-i-perehodniki
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148958 адаптеры и переходники
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '148959'
   name: Разветвители
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/razvetviteli
   parent_catalog_id: '59132'
   root_category_name: Электроника
   search_query: menu_148959 разветвитель
-  known_pages_limit: 5
+  known_pages_limit: 60
 - id: '128516'
   name: Музыка и видео
   url: https://www.wildberries.ru/catalog/elektronika/muzyka-i-video
@@ -1046,4 +1046,4 @@ pages:
   root_category_name: Электроника
   search_query: menu_mined_128516 музыка и видео
   shard: electronic66
-  known_pages_limit: 5
+  known_pages_limit: 60
