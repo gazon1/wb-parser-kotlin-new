@@ -466,8 +466,24 @@ private fun samplesFor(name: String): List<Any> {
             )
         "SiteStats" ->
             listOf(
-                SiteStats(totalItems = 3, totalTargets = 1, newestScrapedAt = Instant.parse(SAMPLE_INSTANT), withCashback = 2),
-                SiteStats(totalItems = 0, totalTargets = 0, newestScrapedAt = null, withCashback = 0),
+                SiteStats(
+                    totalItems = 3,
+                    totalProducts = 2,
+                    totalTargets = 1,
+                    newestScrapedAt = Instant.parse(SAMPLE_INSTANT),
+                    withCashback = 2,
+                    productsWithCashback = 1,
+                    asOf = Instant.parse(SAMPLE_INSTANT),
+                ),
+                SiteStats(
+                    totalItems = 0,
+                    totalProducts = 0,
+                    totalTargets = 0,
+                    newestScrapedAt = null,
+                    withCashback = 0,
+                    productsWithCashback = 0,
+                    asOf = Instant.parse(SAMPLE_INSTANT),
+                ),
             )
         "Error" -> listOf(ErrorResponse("something went wrong"), ErrorResponse("something went wrong"))
         else -> error("no sample for the schema '$name'")
