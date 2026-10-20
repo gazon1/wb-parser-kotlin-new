@@ -75,9 +75,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     outputs:
-      image: ${{ needs.image.outputs.image }}
-      digest: ${{ needs.image.outputs.digest }}
+      # The outputs of *this* job come from its own step. A job cannot read
+      # its own outputs through `needs` — `needs` is what the *next* job reads.
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.image.outputs.digest }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The image is named by its digest, because a tag can be moved and a
+      # digest cannot: the storefront has to check *this* image, not whatever
+      # the tag points at when it pulls it.
+      #
+      # The publishing job runs in another workflow, so the image may not be in
+      # the registry yet when this job starts. The wait is part of the job
+      # rather than a race that silently loses.
       - name: Resolve the crawler image
         id: image
         env:
@@ -105,6 +116,7 @@ jobs:
           echo "digest=${digest}" >> "$GITHUB_OUTPUT"
           echo "digest: ${image}@${digest}"
 
+
   site-compatibility:
     needs: image
     runs-on: ubuntu-latest
@@ -129,10 +141,6 @@ jobs:
             exit 1
           fi
 
-      # The image is named by its digest, because a tag can be moved and a
-      # digest cannot: the storefront has to check *this* image, not whatever
-      # the tag points at when it pulls it.
-      #
       # The tag is what tells the storefront whether this image is a release.
       #
       # A pull request's image and the image of the merge that follows it are
@@ -256,23 +264,12 @@ jobs:
             exit 1
           fi
 
-      # The question this gate asks is "did the storefront check itself against
-      # this image", and that is the *contract job's* conclusion. The run as a
-      # whole carries the pin job too, and the pin job refuses to name a pull
-      # request's image — correctly, and for a reason that has nothing to do
-      # with compatibility.
+      # `--exit-status` makes the wait's outcome the step's outcome: a
+      # storefront run that failed must fail this one, and a storefront run that
+      # never finished must not pass silently either.
       - name: The storefront's conclusion
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
           RUN_ID: ${{ env.run_id }}
-        run: |
-          set -euo pipefail
-          gh run watch "$RUN_ID" --repo "$SITE_REPO" || true
-          conclusion="$(gh api "repos/${SITE_REPO}/actions/runs/${RUN_ID}/jobs" \
-            --jq '.jobs[] | select(.name == "contract") | .conclusion' | head -1)"
-          echo "the storefront's contract job: ${conclusion:-<no such job>}"
-          if [ "$conclusion" != "success" ]; then
-            echo "::error::the storefront did not check itself successfully against this image"
-            exit 1
-          fi
+        run: gh run watch "$RUN_ID" --repo "$SITE_REPO" --exit-status
