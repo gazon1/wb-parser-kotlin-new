@@ -186,7 +186,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 
 1. **`!!` (force-unwrap) в prod-коде** — используй `require` / `check` с явным `IllegalStateException`, или nullable + let/also
 2. **`delay(-1L)` как sentinel** — `delayMs = -1L` невалидный контракт; используй `null` или `Optional.delayMs`
-3. **Подключать side-эффекты в обход `SideInterpreterRegistry`** — `ScheduleRetryInterpreter` и `SaveBatchInterpreter` **MUST** быть зарегистрированы в каждом `runTarget` (pipeline ADR)
+3. **Подключать side-эффекты в обход `SideInterpreterRegistry`** — каждый вариант `Side` **MUST** иметь интерпретатор в каждом `runTarget`. Реестр тотален по построению: интерпретаторы non-null, `when` исчерпывающий, поэтому «забытый» интерпретатор — ошибка компиляции, а не рантайм-сюрприз (ADR `2026-10-20-the-registry-is-total-by-construction`)
 4. **Игнорировать `Side.Log(ERROR)`** — в save-стадии `else -> {}` молчаливо проглатывает ошибки;StageFailure — тоже logging
 5. **`runCatching` без обработки** — ошибка должна либо попасть в `StageFailure`, либо быть залогирована через `LogInterpreter`
 6. **Мокки / Mockito** — используй Fake* классы (fake over mock convention)
@@ -207,6 +207,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 | Файл | О чём |
 |---|---|
 | `docs/decisions/2026-09-08-functional-pipeline-refactor.md` | Stage/Side/Interpreter модель; **Always** регистрировать все интерпретаторы |
+| `docs/decisions/2026-10-20-the-registry-is-total-by-construction.md` | Реестр тотален по построению: интерпретаторы non-null, `when` исчерпывающий; side, который никто не эмитит, — не side |
 | `docs/decisions/2026-09-08-domain-coverage-pr4.md` | Domain unit tests; **MUST** тестировать `domain/pipeline/**` |
 | `docs/decisions/2026-09-08-conventional-commits-and-cleanup-prs.md` | Commit conventions: `feat:`, `fix:`, `refactor:`, `chore:`, `test:`, `docs:` + `PR N` |
 | `docs/decisions/2026-10-19-dependency-analysis-plugin.md` | DAGP как гейт: baseline = exclude-лист, уменьшающийся по существу (структурные записи неустранимы); `fixDependencies` — только вручную |

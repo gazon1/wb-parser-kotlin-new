@@ -2,7 +2,6 @@ package ru.wbparser.infra.pipeline
 
 import io.micrometer.core.instrument.MeterRegistry
 import org.slf4j.LoggerFactory
-import ru.wbparser.domain.pipeline.JobOp
 import ru.wbparser.domain.pipeline.Side
 
 private val logger = LoggerFactory.getLogger("Interpreters")
@@ -53,20 +52,6 @@ class MicrometerMetricInterpreter(
     }
 }
 
-/** Logs [Side.JobEvent]. Job rows are written by CrawlRunner via openJob/closeJob. */
-class JobEventInterpreter : Interpreter<Side.JobEvent> {
-    override suspend fun handle(side: Side.JobEvent) {
-        // Job events (open/close) are handled directly by CrawlRunner via openJob/closeJob.
-        // This interpreter is for completeness and future extensibility.
-        val op = side.operation
-        if (op is JobOp.Open) {
-            logger.info("Job opened: ${op.jobId}")
-        } else if (op is JobOp.Close) {
-            logger.info("Job closed: ${op.jobId} status=${op.status}")
-        }
-    }
-}
-
 /**
  * A log interpreter that says nothing.
  *
@@ -80,16 +65,23 @@ class NoOpLogInterpreter : Interpreter<Side.Log> {
     }
 }
 
-/** No-op lock interpreter — actual locking is done by CrawlRunner before calling PipelineRunner. */
-class NoOpAdvisoryLockInterpreter : Interpreter<Side.AcquireAdvisoryLock> {
-    override suspend fun handle(side: Side.AcquireAdvisoryLock) {
-        logger.trace("Advisory lock key=${side.key}")
-    }
-}
-
 /** Logs [Side.Drop] at WARN level so dropped items are visible in observability. */
 class LogDropInterpreter : Interpreter<Side.Drop> {
     override suspend fun handle(side: Side.Drop) {
         logger.warn("Item dropped [${side.reason}]: pageUrl=${side.item.pageUrl} productId=${side.item.productId}")
+    }
+}
+
+/**
+ * A drop interpreter that says nothing.
+ *
+ * The registry has no default for [Side.Drop]: a dropped item is a fact about the
+ * data, and the caller that builds the registry decides where that fact goes. This
+ * stub is how a caller says "not here" — explicitly, at the call site, rather than
+ * by leaving the interpreter out and finding out at runtime.
+ */
+class NoOpDropInterpreter : Interpreter<Side.Drop> {
+    override suspend fun handle(side: Side.Drop) {
+        // intentionally empty — the caller said it does not track drops
     }
 }

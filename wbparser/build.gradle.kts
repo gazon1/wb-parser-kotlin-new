@@ -110,6 +110,12 @@ dependencies {
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.kotlin.coroutines.test)
     testImplementation(libs.mockk)
+    // The suite reads the registry's constructor by reflection to assert that it
+    // holds one non-null interpreter per `Side` variant. The artifact already
+    // reaches this module through `implementation` above; it is declared here
+    // because a test source set that names a type declares the dependency that
+    // carries it.
+    testImplementation(libs.kotlin.reflect)
     // The suite builds a DataSource against the Testcontainers instance, so it
     // needs the driver at compile time.
     testImplementation(libs.postgresql)
