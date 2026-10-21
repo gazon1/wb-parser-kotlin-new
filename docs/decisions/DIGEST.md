@@ -273,6 +273,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** применять `scripts/wb-catalog/enrich_catalog_queries.py` к YAML перед загрузкой в БД. _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
 - **Never** считать, что глубина ограничивает число страниц: `max_depth` — это глубина по дереву категорий, а не лимит страниц (см. ADR про глубину пагинации). _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
 - **Never** читать `nextPage` из `payload` как единственный источник пагинации: у v18 его нет, страница выводится из URL. _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
+- **Always** держать nullable там, где «нет» и «пусто» — разные факты. _(from `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too`)
+- **Always** спрашивать модель тот вопрос, ради которого проверка и затевалась: «есть ли список товаров», а не «есть ли известный ключ». _(from `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too`)
+- **Never** путать отсутствие поля и пустое значение, если различие меняет диагноз: каталог кончился и WB переименовал поле — это разные вещи, и обе выглядят как «0 товаров». _(from `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too`)
+- **Never** разбирать тело в дерево ради редкого случая, если модель может ответить сама. _(from `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too`)
 - **Always** держать артефакты с разными линиями версий в разных группах Dependabot: один красный бамп не должен держать остальные обновления. _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
 - **Always** помнить, что версия из BOM и версия из каталога могут быть строгими: `jackson-bom` 2.22.4 требует `jackson-annotations` ровно `2.22`, и «подойдёт и 2.22.4» здесь неверно. _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
 - **Always** проверять, что версия, которую предлагает Dependabot, есть на Maven Central для **каждого** артефакта, который на неё ссылается, — иначе красная сборка вместо обновления. _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
@@ -1111,6 +1115,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
+- `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too` — crawler  diagnostics  catalog  parsing
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — dependencies  build  workflow
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested` — browser  tests  coverage  diagnostics
@@ -1220,6 +1225,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню
+- `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too` — Переименование ключа внутри обёртки — тоже изменение формы
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — Версия, которой никто не публиковал, — это не версия
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested` — Каждая ветвь браузерного пути, которая говорит краулу «что сломалось», проверена

@@ -132,14 +132,28 @@ data class WbCatalogEnvelope(
     val metadata: WbCatalogMetadata? = null,
 )
 
+/**
+ * The `data` wrapper of the storefront's older shape.
+ *
+ * [products] is **nullable on purpose**: the difference between "the answer has no
+ * products list under this name" and "the answer has an empty products list" is the
+ * difference between "WB renamed the field" and "the catalog is over". A non-nullable
+ * list with an empty default cannot tell them apart — and the first one used to look
+ * exactly like the second.
+ */
 @Serializable
 data class WbCatalogData(
-    val products: List<WbItemDto> = emptyList(),
+    val products: List<WbItemDto>? = null,
 )
 
+/**
+ * The `payload` wrapper of the storefront's older shape.
+ *
+ * [products] is nullable for the same reason as in [WbCatalogData].
+ */
 @Serializable
 data class WbCatalogPayload(
-    val products: List<WbItemDto> = emptyList(),
+    val products: List<WbItemDto>? = null,
     val nextPage: String? = null,
 )
 
@@ -176,3 +190,13 @@ fun WbCatalogEnvelope.toProductsPage(): WbProductsPage {
     val nextPage = payload?.nextPage
     return WbProductsPage(items, nextPage)
 }
+
+/**
+ * Whether the answer carries a products list under any of the names we know.
+ *
+ * This is the question that separates an exhausted catalog from a catalog whose shape
+ * WB has changed. The wrappers' lists are nullable exactly so that this can be asked:
+ * a non-nullable list answers "yes, there is an (empty) list" for an answer that has no
+ * list at all.
+ */
+fun WbCatalogEnvelope.carriesProducts(): Boolean = products != null || data?.products != null || payload?.products != null
