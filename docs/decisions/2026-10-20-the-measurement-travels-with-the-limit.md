@@ -40,7 +40,7 @@ tags: [crawler, catalog, data-quality, operations, tooling]
 
 **Метаданные измерения принадлежат цели.** Четыре поля — `known_pages_limit_measured_at`,
 `known_pages_limit_boundary`, `known_pages_limit_source`, `wb_subject_id` — появляются
-в `crawl_targets` (миграция V10), в зеркале схемы, в доменной модели `Target` и в
+в `crawl_targets` (миграция V12), в зеркале схемы, в доменной модели `Target` и в
 YAML. В админ-API они видны: цель, у которой не видно даты проверки её лимита, — это
 цель, лимит которой никто не смотрел.
 
