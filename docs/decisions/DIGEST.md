@@ -432,6 +432,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **MUST** читать зависимость из тела pull request'а: это то, что dependabot пишет сам, и то, что уже есть у workflow'а. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
 - **Never** ключить решение номером pull request'а: номер меняется при каждом цикле dependabot'а, и решение перестаёт находиться. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
 - **Never** прощать гейту расхождение без записанного решения: никто не решал, что образ может нести не ту версию. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
+- **Always** отдавать circuit'у окно по времени, а не rate по последним вызовам: измеренный порог измеряется десятками запросов, а не десятью последними. _(from `2026-11-04-the-refusal-is-a-count-against-the-session`)
+- **Always** писать в ledger измерение сессии рядом с адресом: вопрос «кто дал 498» имеет два ответа, и оба должны быть записаны. _(from `2026-11-04-the-refusal-is-a-count-against-the-session`)
+- **Always** считать отказ в сессии и отдельно в группе: два счётчика, разные вопросы, сливать их нельзя. _(from `2026-11-04-the-refusal-is-a-count-against-the-session`)
+- **Never** включать лимиты сессии (число запросов, срок жизни, вывод из ротации) до решающего прогона: без источника свежих профилей ротация тратит ёмкость, а не сохраняет её. _(from `2026-11-04-the-refusal-is-a-count-against-the-session`)
+- **Never** открывать circuit антибота по транспортному сбою: у обрыва сети своя цепь, и адрес за чужую неполомку не отвечает. _(from `2026-11-04-the-refusal-is-a-count-against-the-session`)
+- **Never** считать ёмкость краулера в адресах: измеряется она в живых сессиях, и это верно при любом ключе счётчика. _(from `2026-11-04-the-refusal-is-a-count-against-the-session`)
 
 ## Per-tag
 
@@ -1130,6 +1136,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-01-one-crawler-many-addresses` — architecture  egress  operations  antibot
 - `2026-11-02-the-protocol-runs-from-the-repository` — operations  measurement  antibot
 - `2026-11-03-the-decision-belongs-to-the-dependency` — workflow  dependencies  conventions
+- `2026-11-04-the-refusal-is-a-count-against-the-session` — antibot  egress  architecture  measurement
 
 ## Active entries
 
@@ -1237,3 +1244,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-01-one-crawler-many-addresses` — Один краулер — много адресов
 - `2026-11-02-the-protocol-runs-from-the-repository` — Правило протокола живёт в репозитории, а не в памяти оператора
 - `2026-11-03-the-decision-belongs-to-the-dependency` — Решение принадлежит зависимости, а не номеру pull request'а
+- `2026-11-04-the-refusal-is-a-count-against-the-session` — Отказ — это счётчик, и код считает его по сессии

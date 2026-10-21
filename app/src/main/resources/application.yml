@@ -163,7 +163,7 @@ crawler:
     # the capacity instead of preserving it.
     #
     # The keys are here so that enabling the limits is a configuration change and not a
-    # code change. See ADR 2026-11-03-the-refusal-is-a-count-against-the-session.
+    # code change. See ADR 2026-11-04-the-refusal-is-a-count-against-the-session.
     session:
       requests-per-session: 0
       max-age-ms: 0

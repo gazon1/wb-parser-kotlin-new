@@ -1,6 +1,6 @@
 ---
 title: "Отказ — это счётчик, и код считает его по сессии"
-date: 2026-11-03
+date: 2026-11-04
 tags: [antibot, egress, architecture, measurement]
 ---
 
