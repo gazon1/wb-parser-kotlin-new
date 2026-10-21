@@ -254,6 +254,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** применять `scripts/wb-catalog/enrich_catalog_queries.py` к YAML перед _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
 - **Never** считать, что глубина ограничивает число страниц: `max_depth` — это глубина по _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
 - **Never** читать `nextPage` из `payload` как единственный источник пагинации: у v18 его _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
+- **Always** держать артефакты с разными линиями версий в разных группах _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
+- **Always** помнить, что версия из BOM и версия из каталога могут быть _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
+- **Always** проверять, что версия, которую предлагает Dependabot, есть на _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
+- **Never** держать два артефакта с разными линиями версий на одном ключе _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
+- **Never** считать бамп, предложение которого стало грубее _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
 - **Always** выбирать группу по ближайшему свободному слоту паузера. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Always** делить паузу и circuit breaker по egress-группам, а не по процессу. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Always** держать в группе одинаковый прокси: группа — это один источник. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
@@ -961,6 +966,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
+- `2026-10-21-a-version-nobody-published-is-not-a-version` — dependencies  build  workflow
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
@@ -1045,6 +1051,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню
+- `2026-10-21-a-version-nobody-published-is-not-a-version` — Версия, которой никто не публиковал, — это не версия
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след

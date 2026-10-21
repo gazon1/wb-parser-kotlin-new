@@ -40,7 +40,14 @@ kover = "0.9.11"
 logback = "1.5.14"
 kotlin-logging = "3.0.5"
 slf4j = "2.0.17"
-jackson = "2.19.1"
+# Jackson's artifacts do not share one version line. From 2.20 on,
+# jackson-annotations is published as "2.20", "2.21", "2.22" — a line, without
+# a patch — while jackson-databind and jackson-core are published as "2.22.0"
+# … "2.22.4". One version key for both would let a version that exists for one
+# of them travel to the other, and the build would ask Maven Central for a
+# release nobody published. The keys are apart, and so are the versions.
+jackson = "2.22.4"
+jackson-annotations = "2.22"
 micrometer = "1.15.0"
 postgresql = "42.7.4"
 hikaricp = "5.1.0"
@@ -132,7 +139,7 @@ slf4j-api = { group = "org.slf4j", name = "slf4j-api", version.ref = "slf4j" }
 
 # JSON
 jackson-databind = { group = "com.fasterxml.jackson.core", name = "jackson-databind", version.ref = "jackson" }
-jackson-annotations = { group = "com.fasterxml.jackson.core", name = "jackson-annotations", version.ref = "jackson" }
+jackson-annotations = { group = "com.fasterxml.jackson.core", name = "jackson-annotations", version.ref = "jackson-annotations" }
 jackson-datatype-jsr310 = { group = "com.fasterxml.jackson.datatype", name = "jackson-datatype-jsr310", version.ref = "jackson" }
 
 # Metrics
