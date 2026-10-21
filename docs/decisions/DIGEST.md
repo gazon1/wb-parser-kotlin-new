@@ -301,13 +301,19 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** давать каждой новой части собственный тест — о её решении, а не о переносе _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
 - **Always** делить класс по решению, которое он держит, и давать каждой части имя _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
 - **Always** держать публичную поверхность неизменной при разбиении: фасад делегирует, _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
-- **Always** называть в фасаде таблицы, которые читает API: гейт совместимости читает _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Always** называть в фасаде таблицы, которые читает API: это нужно читателю, который _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
 - **Never** собирать SQL в фасаде: фасад держит решения, а не текст запросов. _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
 - **Never** тестировать решение о тексте SQL только через базу: где фильтр уехал и _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
 - **Always** называть лицензию в `README.md` и держать текст `LICENSE` _(from `2026-10-21-the-repository-is-licensed`)
 - **Always** проверять лицензию новой зависимости до того, как она попадает _(from `2026-10-21-the-repository-is-licensed`)
 - **Never** менять лицензию репозитория молча: смена лицензии — это _(from `2026-10-21-the-repository-is-licensed`)
 - **Never** создавать `NOTICE` без причины: Apache-2.0 требует его только _(from `2026-10-21-the-repository-is-licensed`)
+- **Always** называть в находке и таблицу, и файл, который её читает: находка без имени не _(from `2026-10-21-the-schema-gate-reads-the-package`)
+- **Always** проверять гейт гейтом: фикстура с новой таблицей в части обязана ронять гейт — _(from `2026-10-21-the-schema-gate-reads-the-package`)
+- **Always** читать пакет решений, а не один файл пакета: предмет гейта — то, что читает _(from `2026-10-21-the-schema-gate-reads-the-package`)
+- **Never** перечислять в гейте исключения именами: CTE и псевдонимы подзапросов выводятся из _(from `2026-10-21-the-schema-gate-reads-the-package`)
+- **Never** считать прочитанным один файл пакета: фасад не содержит SQL, и гейт, читающий _(from `2026-10-21-the-schema-gate-reads-the-package`)
+- **Never** считать чтением то, что написано в комментарии: гейт читает строковые литералы, _(from `2026-10-21-the-schema-gate-reads-the-package`)
 - **Always** объявлять egress-группы единственным списком профилей. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Always** проверять изоляцию статически, до первого запроса к WB. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **MUST** различать «проверка прошла» и «проверка не смогла выполниться»: второй _(from `2026-10-22-egress-groups-are-declared-and-checked`)
@@ -452,6 +458,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `stageWithRetry` (deleted) is replaced by an inline retry loop in each coordinator — slightly more code but explicit and correct. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - `tests:test` still runs integration tests (fake HTTP + SQLite) _(from `2026-09-09-test-module-boundary-pr10`)_
 - `toDomainError()` has 6 branches (was 7) _(from `2026-09-09-dead-code-purge-pr9`)_
+- Гейт не зарегистрирован в `scripts/ci/static-gates.sh`: ему нужна живая база, и его _(from `2026-10-21-the-schema-gate-reads-the-package`)_
+- Сторона колонок остаётся копией: `REQUIRED_COLUMNS` в гейте и в `CatalogSchemaQueries.kt` — _(from `2026-10-21-the-schema-gate-reads-the-package`)_
 
 ### `arrow`
 
@@ -630,7 +638,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `crawl_jobs.last_heartbeat_at` is now meaningful; queries that assumed it was _(from `2026-10-19-crawl-job-heartbeat-and-crash-reconciliation`)_
 - `latest_product_observations` отдаёт по строке на товар; историю цен по-прежнему видно _(from `2026-10-20-versioned-catalog-and-latest-observation-view`)_
 - `scraped_items.subject_parent_id` is now populated. Rows scraped before this _(from `2026-10-19-admin-api-target-write-path-and-category-tree`)_
+- Гейт не зарегистрирован в `scripts/ci/static-gates.sh`: ему нужна живая база, и его _(from `2026-10-21-the-schema-gate-reads-the-package`)_
 - Пока решения нет, цифры живут в ADR _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)_
+- Сторона колонок остаётся копией: `REQUIRED_COLUMNS` в гейте и в `CatalogSchemaQueries.kt` — _(from `2026-10-21-the-schema-gate-reads-the-package`)_
 
 ### `dead-code`
 
@@ -703,6 +713,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The gate must stay symmetric: the same task runs in `./check.sh` and in `ci.yml`. Part E of _(from `2026-10-19-dependency-analysis-plugin`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by _(from `2026-10-19-application-startup-gate`)_
 - The pin checker needs `GITHUB_TOKEN`: the API's unauthenticated rate limit _(from `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`)_
+- Гейт не зарегистрирован в `scripts/ci/static-gates.sh`: ему нужна живая база, и его _(from `2026-10-21-the-schema-gate-reads-the-package`)_
+- Сторона колонок остаётся копией: `REQUIRED_COLUMNS` в гейте и в `CatalogSchemaQueries.kt` — _(from `2026-10-21-the-schema-gate-reads-the-package`)_
 
 ### `infrastructure`
 
@@ -1024,6 +1036,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — catalog  contract  observability
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — architecture  refactoring  maintainability
 - `2026-10-21-the-repository-is-licensed` — legal  project  governance
+- `2026-10-21-the-schema-gate-reads-the-package` — gates  database  architecture
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
@@ -1118,6 +1131,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — Ответ говорит, кто ответил и о каком моменте данные
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — Запросы каталога живут в решениях, которые они держат, а фасад держит поверхность
 - `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
+- `2026-10-21-the-schema-gate-reads-the-package` — Гейт совместимости схемы читает пакет решений каталога, а не один файл
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна

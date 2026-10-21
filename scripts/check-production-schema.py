@@ -22,10 +22,30 @@ real queries.
 
 The statements below are the API's own, and the gate verifies that they still agree with
 the API's source before it runs them: every column the API's projection reads must be
-named in the statements, and every table the API's source mentions must be covered. A
-gate that quietly checks a subset of the API's queries is a gate that passes while the
-API fails — so a disagreement stops the gate instead of being reported as a compatibility
-problem.
+named in the statements, and every table the API reads must be covered. A gate that
+quietly checks a subset of the API's queries is a gate that passes while the API fails —
+so a disagreement stops the gate instead of being reported as a compatibility problem.
+
+Where the API's tables come from
+--------------------------------
+The API's source is the **package** `app/src/main/kotlin/ru/wbparser/app/api/catalog/`,
+every `.kt` file of it — not one file of it.
+
+`CatalogQueries.kt` used to hold the catalog's SQL. After the split it is a facade: it
+holds no query of its own, and the decisions it used to hold live in ten files now
+(`CatalogItemQueries`, `CatalogTargetQueries`, `CatalogTopDealQueries`,
+`CatalogStatsQueries`, `CatalogSchemaQueries`, `CatalogReadModel`, `CatalogFilters`,
+`CatalogCardProjection`, `CatalogPageEnvelope`, `CatalogStatementBinding`). A gate that
+reads one file of a package stops seeing what it used to see, and it does not know that
+it stopped: the facade names both tables in its documentation, so the gate kept passing
+while a table that a part had added was invisible to it. A check that has quietly
+stopped looking is worse than no check — it reports success about a subject it no
+longer observes.
+
+So the gate reads the package, and it reads the **string literals** of it: a table
+named in a comment is prose, and prose is not a read. What the gate takes from the
+package is the set of tables the code actually reads, and a table that is not among the
+gate's own statements stops the gate — by name, with the file that reads it.
 
 How it is run
 -------------
@@ -45,6 +65,12 @@ entire time. The control here runs the gate against a schema that is deliberatel
 one of the columns the catalog reads — the exact shape of the production database before
 migration V2 — and asserts that the gate reports the failure and names the column.
 
+The control has a second half, and it is the half this gate's own history needed: it
+puts a table into a *part* of the catalog's package — a table that no statement of the
+gate covers — and asserts that the gate names that table. That is the defect the gate
+had: it read one file, so a table added to any of the ten parts was invisible to it,
+and the gate said the schema was fine while the API read a third table.
+
 The control needs a PostgreSQL to run against, so it starts one in Docker, exactly like
 `scripts/load-catalog.sh` does. If Docker is not available, the control says so and fails
 rather than skipping: a control that skips is not a control.
@@ -63,13 +89,77 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
-#: The Kotlin file the catalog's queries live in.
-QUERIES_SOURCE = ROOT / "app" / "src" / "main" / "kotlin" / "ru" / "wbparser" / "app" / "api" / "catalog" / "CatalogQueries.kt"
+#: The Kotlin package that holds the catalog's read decisions.
+#:
+#: The gate reads the whole package, not one file of it. `CatalogQueries.kt` became a
+#: facade — it holds no SQL of its own — and the decisions it used to hold live in ten
+#: files now. A gate that reads one file stops seeing what it used to see without
+#: knowing that it stopped, and a table added to any of the parts would be read by the
+#: API and invisible to the gate.
+CATALOG_PACKAGE = ROOT / "app" / "src" / "main" / "kotlin" / "ru" / "wbparser" / "app" / "api" / "catalog"
+
+#: A Kotlin string literal: a raw string `"""…"""` and an ordinary string `"…"`.
+#:
+#: The gate reads the literals, and only the literals: a table named in a comment is
+#: prose. The facade's documentation names both tables for its reader, and the gate must
+#: not take that sentence for a read.
+RAW_STRING = re.compile(r'"""(.*?)"""', re.DOTALL)
+ORDINARY_STRING = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
+
+#: Where a statement takes its data from: `FROM <table>` and `JOIN <table>`.
+READ_SOURCE = re.compile(r"\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_]*)")
+
+#: A common table expression: `WITH model AS (` or `, counted AS (`.
+#:
+#: A CTE is not a table. It introduces a name that later stands in `FROM`, and a gate
+#: that reported it would report a name the database has never heard of.
+CTE = re.compile(r"(?:\bWITH\b|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(", re.IGNORECASE)
+
+#: An alias of a derived table: `) i ON …`. It names a subquery, not a table.
+DERIVED_ALIAS = re.compile(
+    r"\)\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_]*)\s+(?:ON|LIMIT|WHERE|GROUP|ORDER)\b",
+    re.IGNORECASE,
+)
+
+#: Schemas that are not the catalog's tables. `information_schema` is the catalog's own
+#: question about the shape of the database, not a table it reads a page from.
+NOT_A_TABLE = {"information_schema"}
+
+#: The facade of the control's fixture: it names the tables in its documentation and
+#: holds no SQL of its own — exactly the facade the split left behind.
+FIXTURE_FACADE = """package ru.wbparser.app.api.catalog
+
+/**
+ * The catalog's read API: the facade over the decisions the catalog holds.
+ *
+ * The catalog reads the crawler's observations and the crawler's catalogs:
+ * `FROM scraped_items s JOIN crawl_targets t ON t.id = s.target_id`.
+ */
+class CatalogQueries
+"""
+
+#: A part of the control's fixture: it reads a third table, one that the gate's own
+#: statements do not know about.
+FIXTURE_PART = """package ru.wbparser.app.api.catalog
+
+internal class CatalogItemQueries {
+    fun listItems(): String {
+        val sql = \"\"\"
+            SELECT s.id, s.title
+              FROM scraped_items s
+              JOIN crawl_targets t ON t.id = s.target_id
+             WHERE s.id IN (SELECT id FROM catalog_price_history)
+        \"\"\".trimIndent()
+        return sql
+    }
+}
+"""
 
 #: The columns the catalog reads. A schema that lacks one of them cannot serve the
 #: catalog, and the gate says which one it was.
@@ -358,7 +448,80 @@ def sqlstate_of(error: Exception) -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def check_schema_agreement() -> list[str]:
+def kotlin_sql(source: str) -> list[str]:
+    """The SQL a Kotlin file hands to the database.
+
+    Only the string literals are read. A table named in a comment is prose — the
+    facade's documentation names both tables for its reader — and prose is not a read.
+    Taking it for one would let a sentence keep the gate quiet about a table that no
+    query reads, which is the same blindness in the other direction.
+    """
+    literals: list[str] = []
+    outside: list[str] = []
+    previous = 0
+
+    for match in RAW_STRING.finditer(source):
+        literals.append(match.group(1))
+        outside.append(source[previous : match.start()])
+        previous = match.end()
+
+    outside.append(source[previous:])
+    for match in ORDINARY_STRING.finditer("".join(outside)):
+        literals.append(match.group(1))
+
+    return literals
+
+
+def tables_in_sql(sql: str) -> set[str]:
+    """The tables one statement reads.
+
+    A common table expression is not a table — `WITH model AS (…)` introduces a name
+    that later stands in `FROM` — and an alias of a derived table is not a table
+    either. PostgreSQL folds an unquoted name to lower case, so the names are compared
+    in lower case: `Scraped_Items` and `scraped_items` are one table.
+    """
+    ctes = {name.lower() for name in CTE.findall(sql)}
+    aliases = {name.lower() for name in DERIVED_ALIAS.findall(sql)}
+
+    return {
+        name.lower()
+        for name in READ_SOURCE.findall(sql)
+        if name.lower() not in ctes
+        and name.lower() not in aliases
+        and name.lower() not in NOT_A_TABLE
+    }
+
+
+def catalog_sources(package: Path) -> list[Path]:
+    """Every Kotlin file of the catalog's package.
+
+    The whole package, not one file of it. The package is where the decisions live,
+    and a gate that reads one of them reads a part of the truth.
+    """
+    if not package.is_dir():
+        raise GateError(f"the catalog's package {package} does not exist")
+    return sorted(package.glob("*.kt"))
+
+
+def tables_read_by(sources: list[Path]) -> dict[str, list[str]]:
+    """The tables the sources read, and the files that read them.
+
+    The value is the table's name and the files that read it, because a finding that
+    does not say where the read is leaves the reader hunting for it.
+    """
+    reads: dict[str, list[str]] = {}
+
+    for path in sources:
+        for literal in kotlin_sql(path.read_text(encoding="utf-8")):
+            for table in tables_in_sql(literal):
+                readers = reads.setdefault(table, [])
+                if path.name not in readers:
+                    readers.append(path.name)
+
+    return reads
+
+
+def check_schema_agreement(package: Path | None = None) -> list[str]:
     """The gate's statements must cover what the API reads.
 
     The statements below are the API's own, but they are a copy, and a copy is a place
@@ -366,16 +529,21 @@ def check_schema_agreement() -> list[str]:
     old statement, and the gate passes while the API fails with `42703`.
 
     So the check verifies the agreement before the gate runs anything: every column the
-    API's projection names must appear in the statements, and every table the API's source
-    mentions must be covered. A finding here is a finding about the gate, not about the
+    API's projection names must appear in the statements, and every table the API reads
+    must be covered. A finding here is a finding about the gate, not about the
     database, and it stops the gate.
+
+    The tables are read from the **package** — every `.kt` file of it — because that is
+    where the decisions live. Reading one file of the package is how this gate stopped
+    seeing what it used to see: the facade held the SQL when the gate was written, and
+    the split moved the SQL into ten files without moving the gate.
     """
     findings: list[str] = []
 
     try:
-        source = QUERIES_SOURCE.read_text(encoding="utf-8")
-    except OSError as error:
-        return [f"cannot read {QUERIES_SOURCE}: {error}"]
+        sources = catalog_sources(package or CATALOG_PACKAGE)
+    except GateError as error:
+        return [str(error)]
 
     statements = " ".join(sql for _, sql in STATEMENTS)
 
@@ -386,16 +554,18 @@ def check_schema_agreement() -> list[str]:
                 "The gate would pass while the API failed with 42703.",
             )
 
-    # Every table the API names in its own source must be covered. `information_schema`
-    # is the exception: the API queries it for the readiness check, not for a page.
-    for table in sorted(set(re.findall(r"\b(?:FROM|JOIN)\s+(\w+)", source))):
-        if table in ("information_schema", "best"):
+    # Every table the API reads must be covered by the gate's own statements. A table
+    # that is not among them is a table the gate says nothing about — and the gate's
+    # answer would be "the schema is fine" about a table the API reads.
+    for table, readers in sorted(tables_read_by(sources).items()):
+        if re.search(rf"\b{re.escape(table)}\b", statements):
             continue
-        if table not in statements:
-            findings.append(
-                f"the API reads `{table}`, and the gate's statements do not. The gate does not "
-                "check what the API does.",
-            )
+        where = ", ".join(f"`{name}`" for name in readers)
+        findings.append(
+            f"the API reads `{table}` (in {where}), and the gate's statements do not. "
+            "The gate does not check what the API does: the table has to be among the "
+            "gate's statements, or out of the API.",
+        )
 
     return findings
 
@@ -477,9 +647,98 @@ def missing_columns(url: str) -> list[str]:
     return [f"{table}.{column}" for table, column in REQUIRED_COLUMNS if f"{table}.{column}" not in present]
 
 
+def missing_tables(url: str, tables: list[str]) -> list[str]:
+    """The tables the catalog reads that the database does not have.
+
+    A table that is not there is not a null value either: the query fails with
+    `42P01 undefined_table`, and the endpoint that asked for it fails with it. The
+    tables are the ones the package reads, so the answer is about the catalog and not
+    about a list somebody wrote down once.
+    """
+    if not tables:
+        return []
+
+    driver = import_driver()
+
+    try:
+        connection = driver.connect(url, connect_timeout=10)
+    except Exception as error:  # noqa: BLE001
+        raise GateError(f"cannot connect to the database: {error}") from error
+
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT table_name
+                  FROM information_schema.tables
+                 WHERE table_schema = 'public'
+                """,
+            )
+            present = {row[0] for row in cursor.fetchall()}
+    finally:
+        connection.close()
+
+    return [table for table in tables if table not in present]
+
+
 # ---------------------------------------------------------------------------
 # The positive control
 # ---------------------------------------------------------------------------
+
+
+def self_test_finds_a_table_a_part_reads() -> int:
+    """Prove the gate sees the whole package, not one file of it.
+
+    The control puts a third table into a *part* of the catalog's package — a table
+    that is not among the gate's own statements — and asserts that the gate stops and
+    names that table, together with the file that reads it.
+
+    This is the defect the gate had: it read one file of the package, so a table added
+    to any of the ten parts was invisible to it, and the gate said the schema was fine
+    while the API read a table the gate knew nothing about.
+
+    The fixture is a copy of this script in a tree of its own, so the gate resolves its
+    package from the tree it runs in — the same way it resolves the real one.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "scripts").mkdir()
+        script = root / "scripts" / Path(__file__).name
+        shutil.copy(Path(__file__).resolve(), script)
+
+        package = (
+            root / "app" / "src" / "main" / "kotlin" / "ru" / "wbparser" / "app" / "api" / "catalog"
+        )
+        package.mkdir(parents=True)
+        (package / "CatalogQueries.kt").write_text(FIXTURE_FACADE, encoding="utf-8")
+        (package / "CatalogItemQueries.kt").write_text(FIXTURE_PART, encoding="utf-8")
+
+        completed = subprocess.run(
+            [sys.executable, str(script), "--url", "postgresql://nobody@127.0.0.1:1/none"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        output = completed.stdout + completed.stderr
+
+        if "catalog_price_history" not in output:
+            print(
+                "self-test FAILED: the gate did not name the table that a part of the catalog "
+                "reads. The gate reads one file of the package and calls the schema fine while "
+                f"the API reads a table the gate knows nothing about.\n{output}",
+                file=sys.stderr,
+            )
+            return 1
+
+        if "CatalogItemQueries.kt" not in output:
+            print(
+                "self-test FAILED: the gate named the table but not the file that reads it, "
+                f"which leaves the reader hunting for it.\n{output}",
+                file=sys.stderr,
+            )
+            return 1
+
+    return 0
 
 
 def self_test() -> int:
@@ -492,6 +751,9 @@ def self_test() -> int:
     It starts its own PostgreSQL in Docker, the way `scripts/load-catalog.sh` does, and
     publishes its port on the loopback so the gate can reach it from here.
     """
+    if self_test_finds_a_table_a_part_reads() != 0:
+        return 1
+
     if shutil.which("docker") is None:
         print("self-test FAILED: Docker is needed to run the control", file=sys.stderr)
         return 1
@@ -647,6 +909,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--url is required (or --self-test)")
 
     try:
+        reads = tables_read_by(catalog_sources(CATALOG_PACKAGE))
+        absent_tables = missing_tables(args.url, sorted(reads))
         absent = missing_columns(args.url)
         results = run_statements(args.url)
     except GateError as error:
@@ -657,24 +921,33 @@ def main(argv: list[str] | None = None) -> int:
 
     print("catalog schema compatibility")
     print(f"  database: {redact_url(args.url)}")
+    print(f"  tables the API reads: {', '.join(sorted(reads))}")
+    if absent_tables:
+        print(f"  missing tables: {', '.join(absent_tables)}")
     if absent:
         print(f"  missing columns: {', '.join(absent)}")
     for name, error in results:
         mark = "✓" if error is None else "✗"
         print(f"  {mark} {name}" + (f" — {error}" if error else ""))
 
-    if failed:
+    if failed or absent_tables:
         print()
         print(
             f"the catalog does not work against this schema: {len(failed)} of {len(results)} queries failed",
         )
+        if absent_tables:
+            print(
+                "the schema does not have the tables the catalog reads: "
+                + ", ".join(absent_tables)
+                + ". A missing table is not an empty result — the query fails with 42P01.",
+            )
         if absent:
             print(
                 "the schema is behind the catalog's expectations. The listed columns are the "
                 "ones the catalog reads and the database does not have — a missing column is "
                 "not a null value, the query fails with 42703.",
             )
-        else:
+        elif not absent_tables:
             print("the columns are all there, so the failure is something else — read the message above.")
         return 1
 
