@@ -12,57 +12,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * How a request ended.
- *
- * The distinction that matters is [Antibot] versus everything else: WB refused the
- * request, and the refusal belongs to the address that sent it — the egress group —
- * rather than to the catalog that was being read.
- */
-enum class DownloadOutcome {
-    /** The request was answered normally. */
-    Success,
-
-    /** WB answered with an anti-bot status (498, 403, 401). */
-    Antibot,
-
-    /** The request failed for any other reason: a JS error, a timeout, an empty answer. */
-    Error,
-}
-
-/**
- * What the runner needs to know about the egress side of a crawl.
- *
- * The runner has to decide whether a failure that looks like the catalog's fault
- * really is: a burnt address answers with a degraded body as well, and punishing
- * the target for that would put a healthy catalog to sleep for a day. The address
- * side knows how its own requests are going, so it answers the question — with the
- * state of the group, the same one the health endpoint reports, so the two cannot
- * tell different stories about the same address.
- */
-interface EgressAttribution : EgressGroupStates {
-    /**
-     * The group that served this target last, if any.
-     */
-    fun lastGroupFor(targetId: UUID): String?
-}
-
-/**
- * The tunables of the router.
- *
- * @param circuitConfig the circuit's thresholds — the ones the single global circuit used.
- * @param maxOpenWaitMs how long the router waits for an address to answer again before
- *   it gives up and reports that no group could serve the request.
- * @param healthWindowMs the window over which a group's refusal rate is measured.
- * @param healthRefusalThreshold the refusal rate above which a group is not healthy.
- */
-data class EgressRouterConfig(
-    val circuitConfig: CircuitBreakerConfig = EgressRouter.defaultCircuitConfig(),
-    val maxOpenWaitMs: Long = EgressRouter.DEFAULT_MAX_OPEN_WAIT_MS,
-    val healthWindowMs: Long = EgressRouter.DEFAULT_HEALTH_WINDOW_MS,
-    val healthRefusalThreshold: Double = EgressRouter.DEFAULT_HEALTH_REFUSAL_THRESHOLD,
-)
-
-/**
  * Decides which egress group serves the next request, and keeps the per-group books.
  *
  * ## What a group is
@@ -102,6 +51,14 @@ data class EgressRouterConfig(
  * who is to blame for a failure — asks which group served a target. The state of the
  * groups is asked here too, and it is the same state the router itself reads: one
  * computation, one answer. Nothing about groups leaks into the domain.
+ *
+ * ## What this file holds
+ *
+ * Only the routing: which group serves the next request, and what the group did with it.
+ * The types that describe the state live in their own files — [EgressAttribution] (what
+ * the runner asks the address side), [DownloadOutcome] (how a request ended) and
+ * [EgressRouterConfig] (the tunables) — so that each decision can be read without
+ * reading the router.
  */
 class EgressRouter(
     private val pool: BrowserPool,

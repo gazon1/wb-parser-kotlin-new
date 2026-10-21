@@ -61,8 +61,8 @@
 заняты. Circuit breaker — один на группу (`egress-<groupId>`), с прежними глобальными порогами: 50 % отказов, минимум 5 вызовов, 30 с в открытом состоянии. Открытый
 circuit группы не спрашивается, пока другие отвечают.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `EgressRouter`, `EgressRouter.borrow`, `EgressRouter.onOutcome`, `EgressRouterConfig`,
-`EgressRouter.defaultCircuitConfig`.
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `EgressRouter`, `EgressRouter.borrow`, `EgressRouter.onOutcome`,
+`EgressRouter.defaultCircuitConfig`; `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouterConfig.kt` — `EgressRouterConfig`.
 
 ## Состояние группы (EgressGroupState)
 
@@ -85,7 +85,8 @@ circuit группы не спрашивается, пока другие отв
 измеряется долей отказов **за окно** (по умолчанию 10 минут), а не за всё время: группа, отказывавшая час назад и отвечающая сейчас, здорова; группа без запросов в окне — тоже.
 Раннер спрашивает то же состояние, которое показывает health-эндпоинт, поэтому оператор и краулер не могут обвинить в одном и том же разные адреса.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `EgressAttribution`, `EgressRouter.DEFAULT_HEALTH_WINDOW_MS`,
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressAttribution.kt` — `EgressAttribution`;
+`wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `EgressRouter.DEFAULT_HEALTH_WINDOW_MS`,
 `EgressRouter.DEFAULT_HEALTH_REFUSAL_THRESHOLD`; `wbparser/src/main/kotlin/ru/wbparser/infra/runner/CrawlRunner.kt` — `CrawlRunner.recordOutcome` (решение «адрес или каталог»).
 
 ## Исчерпание групп выхода (AllEgressGroupsUnavailable)
@@ -101,7 +102,8 @@ circuit группы не спрашивается, пока другие отв
 Как закончился один запрос: `Success`, `Antibot` (WB ответил антибот-статусом — 498, 403, 401) или `Error` (JS-ошибка, таймаут, пустой ответ). Различие, которое имеет
 значение, — `Antibot` против всего остального: отказ принадлежит адресу, а не каталогу.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `DownloadOutcome`, `EgressRouter.onOutcome`, `EgressRouter.recordCircuit`.
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/DownloadOutcome.kt` — `DownloadOutcome`;
+`wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `EgressRouter.onOutcome`, `EgressRouter.recordCircuit`.
 
 ## Проба выхода (EgressProbe, EgressProbeConfig)
 
