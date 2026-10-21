@@ -87,7 +87,13 @@ class BrowserDownloaderTest :
             BrowserDownloader(
                 // The router decides which egress group serves the request and keeps
                 // the per-group books; the pool underneath it hands out the profile.
-                router = EgressRouter(pool = pool),
+                //
+                // The second argument is the budget of each group: the router asks the
+                // registry for a slot before every request, so a group that the registry
+                // does not know has no budget at all and the request goes out without
+                // one. The single profile above belongs to the default group, so the
+                // registry declares exactly that group.
+                router = EgressRouter(pool, EgressPacerRegistry(groups = listOf(EgressGroup.DEFAULT_ID))),
                 timing = BrowserFetchTiming(pageNavTimeoutMs = 1_000, warmupMs = 0),
             )
 
