@@ -102,17 +102,37 @@ crawler:
     # truth, and a second list of the same profiles would be ignored the day the
     # two disagree.
     #
-    # `direct` leaves from the address of the machine the crawler runs on — the two
+    # `proxy` says where the group leaves from, and it is DECLARED, never
+    # assumed: the probe compares it with what AdsPower shows for the profiles of
+    # the group, and a group that says one thing and does another gets the budget
+    # and the metric of an address nobody meant. A group without a declaration is
+    # a configuration error — "not declared" is not "direct".
+    #
+    # `none` leaves from the address of the machine the crawler runs on — the
     # profiles below have no proxy in AdsPower, so they share that address.
     # `socks5` leaves from the proxy configured in AdsPower for `kxpu63n`.
+    #
+    # The kind is enough for the check; `host` and `port` are optional and pin the
+    # address as well. A deployment that keeps its addresses out of the repository
+    # states them through the environment:
+    #   host: ${EGRESS_PROXY_HOST_SOCKS5:}
     egress-groups:
       - id: direct
         profiles:
           - k18a6j35
           - k17bnqsi
+        proxy:
+          type: none
       - id: socks5
         profiles:
           - kxpu63n
+        proxy:
+          type: socks5
+          # The address of the proxy, when the deployment pins it. Left empty on
+          # purpose: the address is the deployment's own, and a repository that
+          # holds it holds an address that changes when the provider rotates it.
+          host: ${EGRESS_PROXY_HOST_SOCKS5:}
+          port: ${EGRESS_PROXY_PORT_SOCKS5:0}
     # The services asked for the crawler's own address, in order. The first that
     # answers wins. The probe never stops the crawler: an unreachable echo service
     # is a warning, not a failure.

@@ -47,11 +47,17 @@ data class EgressGroupProbe(
  * @param problems what is wrong, in words an operator can act on.
  * @param misconfigured true when the configuration itself is wrong — the crawl must
  *   not start, because the groups would not be the isolation it promised.
+ * @param proxyMismatch true when the proxy a group declared is not the proxy its
+ *   profiles use. This is a different failure from [misconfigured]: the groups may
+ *   be perfectly isolated, and still be the wrong groups. The crawl must not start
+ *   either — a group that leaves somewhere else gets the budget and the metric of
+ *   an address nobody meant.
  */
 data class EgressReport(
     val groups: List<EgressGroupProbe>,
     val problems: List<String>,
     val misconfigured: Boolean,
+    val proxyMismatch: Boolean = false,
 )
 
 /**
@@ -117,7 +123,7 @@ class EgressProbe(
         withContext(Dispatchers.IO) {
             val problems = mutableListOf<String>()
             val proxies = readConfiguredProxies()
-            val staticProblems = checkStatic(proxies, problems)
+            val static = checkStatic(proxies, problems)
             val addresses = probeAddresses(problems)
             val isolation = checkIsolation(addresses, problems)
 
@@ -140,7 +146,8 @@ class EgressProbe(
             EgressReport(
                 groups = report,
                 problems = problems,
-                misconfigured = staticProblems,
+                misconfigured = static.misconfigured,
+                proxyMismatch = static.proxyMismatch,
             )
         }
 
@@ -171,14 +178,23 @@ class EgressProbe(
     }
 
     /**
+     * The static check: the profiles of one group behind one proxy, and the proxy
+     * they use is the one the group declared.
+     */
+    private data class StaticCheck(
+        /** The groups are not the isolation the configuration promised. */
+        val misconfigured: Boolean,
+        /** The proxy a group declared is not the proxy its profiles use. */
+        val proxyMismatch: Boolean,
+    )
+
+    /**
      * The static check: the profiles of one group behind one proxy.
-     *
-     * @return true when the configuration itself is wrong.
      */
     private fun checkStatic(
         proxies: Map<String, AdsPowerProfileProxy>,
         problems: MutableList<String>,
-    ): Boolean {
+    ): StaticCheck {
         if (proxies.isEmpty()) {
             // An empty list is not "there is no proxy to check" — it is "the list did
             // not come back". A check that could not run must not be reported as a
@@ -186,9 +202,10 @@ class EgressProbe(
             problems +=
                 "AdsPower described no profile — the proxy of the groups could not be checked. " +
                 "They are not verified against the proxies the browser actually uses."
-            return false
+            return StaticCheck(misconfigured = false, proxyMismatch = false)
         }
         var misconfigured = false
+        var proxyMismatch = false
 
         // Inside a group: one proxy, or the group is not one group.
         val groupIdentity = mutableMapOf<String, String>()
@@ -213,6 +230,23 @@ class EgressProbe(
             if (known.size == group.profileIds.size && identities.size == 1) {
                 groupIdentity[group.id] = identities.first()
             }
+
+            // The declared proxy and the proxy the browser really uses must be the same.
+            //
+            // Every profile of the group is compared, not the group's identity: a group
+            // whose profiles disagree with the declaration is wrong in the same way
+            // whether it disagrees in one profile or in all of them.
+            if (group.proxy.isDeclared && known.size == group.profileIds.size) {
+                val wrong = known.filterNot { group.proxy.matches(it) }
+                if (wrong.isNotEmpty()) {
+                    proxyMismatch = true
+                    problems +=
+                        "Egress group '${group.id}' is declared to leave through " +
+                        "${group.proxy}, but its profiles use " +
+                        "${wrong.map { it.identity }.distinct()}. The group would get the " +
+                        "budget and the metric of an address it does not use."
+                }
+            }
         }
 
         // Between groups: a different proxy each.
@@ -230,7 +264,7 @@ class EgressProbe(
                 "Egress groups ${groupIds.sorted()} are behind $what. They are one source, " +
                 "not several: the extra IP budget is not there."
         }
-        return misconfigured
+        return StaticCheck(misconfigured = misconfigured, proxyMismatch = proxyMismatch)
     }
 
     /**

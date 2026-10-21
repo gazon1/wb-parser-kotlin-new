@@ -95,6 +95,26 @@ class AdsPowerPreflightRunner(
 
         val strict = spider.requireIsolatedEgressGroups
 
+        // The proxy a group declared and the proxy its profiles use are not the same.
+        //
+        // This is not the isolation question, and it does not wait for the operator's
+        // answer to it: the groups may be perfectly isolated and still be the wrong
+        // groups. A group that leaves somewhere else gets the budget and the metric of
+        // an address nobody meant, and the crawl would carry on as if nothing were
+        // wrong. So it stops here, unconditionally.
+        if (report.proxyMismatch) {
+            log.error(
+                "The proxy a group declared is not the proxy its profiles use: {}. " +
+                    "The crawl will not start — a group that leaves somewhere else gets the " +
+                    "budget and the metric of an address nobody meant.",
+                report.problems.filter { it.contains("is declared to leave through") },
+            )
+            throw IllegalStateException(
+                "The declared proxy of an egress group does not match the proxy AdsPower shows " +
+                    "for its profiles",
+            )
+        }
+
         if (report.misconfigured) {
             log.error(
                 "The egress groups are misconfigured: a group is not behind one proxy, or two " +

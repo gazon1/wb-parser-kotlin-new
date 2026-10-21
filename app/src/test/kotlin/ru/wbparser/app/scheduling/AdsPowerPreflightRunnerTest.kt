@@ -11,6 +11,7 @@ import org.jetbrains.exposed.sql.Database
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.EgressGroupConfig
 import ru.wbparser.app.config.EgressGroups
+import ru.wbparser.app.config.ProxyConfig
 import ru.wbparser.app.config.Spider
 import ru.wbparser.app.config.Worker
 import ru.wbparser.infra.db.DatabaseHandle
@@ -155,7 +156,7 @@ class AdsPowerPreflightRunnerTest :
             val groups =
                 EgressGroups.resolve(
                     Spider(
-                        egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1"))),
+                        egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none"))),
                     ),
                 )
 
@@ -171,7 +172,7 @@ class AdsPowerPreflightRunnerTest :
             val groups =
                 EgressGroups.resolve(
                     Spider(
-                        egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1"))),
+                        egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none"))),
                     ),
                 )
 
@@ -194,8 +195,8 @@ class AdsPowerPreflightRunnerTest :
                     Spider(
                         egressGroups =
                             listOf(
-                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1")),
-                                EgressGroupConfig(id = "ip-2", profiles = listOf("p2")),
+                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none")),
+                                EgressGroupConfig(id = "ip-2", profiles = listOf("p2"), proxy = ProxyConfig(type = "none")),
                             ),
                     ),
                 )
@@ -223,8 +224,8 @@ class AdsPowerPreflightRunnerTest :
                     Spider(
                         egressGroups =
                             listOf(
-                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1")),
-                                EgressGroupConfig(id = "ip-2", profiles = listOf("p2")),
+                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none")),
+                                EgressGroupConfig(id = "ip-2", profiles = listOf("p2"), proxy = ProxyConfig(type = "none")),
                             ),
                     ),
                 )
@@ -234,6 +235,41 @@ class AdsPowerPreflightRunnerTest :
             runner(api, groups, spider = spider, answer = "").run(ApplicationArgumentsStub)
 
             api.available shouldBe true
+        }
+
+        test("a group whose declared proxy is not the one its profiles use stops the crawler") {
+            val api = FakeAdsPower()
+            // AdsPower says the profile goes through an http proxy; the configuration
+            // says the group leaves through a socks5 one.
+            api.proxies = listOf(AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "http"))
+            val spider =
+                Spider(
+                    useBrowserFetch = true,
+                    egressProbeUrls = listOf("https://echo.invalid/ip"),
+                )
+            val groups =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(
+                                    id = "ip-1",
+                                    profiles = listOf("p1"),
+                                    proxy = ProxyConfig(type = "socks5"),
+                                ),
+                            ),
+                    ),
+                )
+
+            // This one does not wait for the operator's answer about isolation: a group
+            // that leaves somewhere else gets the budget and the metric of an address
+            // nobody meant, and the crawl would carry on as if nothing were wrong.
+            val failure =
+                shouldThrow<IllegalStateException> {
+                    runner(api, groups, spider = spider).run(ApplicationArgumentsStub)
+                }
+
+            failure.message!! shouldContain "declared proxy"
         }
     })
 

@@ -1,6 +1,7 @@
 package ru.wbparser.app.config
 
 import ru.wbparser.infra.http.BrowserProfileConfig
+import ru.wbparser.infra.http.DeclaredProxy
 import ru.wbparser.infra.http.EgressGroup
 import ru.wbparser.infra.http.RequestPacing
 
@@ -10,11 +11,34 @@ import ru.wbparser.infra.http.RequestPacing
  * @param id the group's identifier. It is also the value of the `egress_group` metric tag.
  * @param profiles the AdsPower profile ids that belong to the group.
  * @param pacing how fast this group may talk to WB. Its own IP, its own budget.
+ * @param proxy what the group leaves through. Declared, never assumed: a group that
+ *   does not say where it leaves from has not said, and "not said" is not "direct".
  */
 data class EgressGroupConfig(
     val id: String = EgressGroup.DEFAULT_ID,
     val profiles: List<String> = emptyList(),
     val pacing: PacingConfig = PacingConfig(),
+    val proxy: ProxyConfig = ProxyConfig(),
+)
+
+/**
+ * The proxy a group leaves through, as configured.
+ *
+ * @param type `none` for a group that leaves directly (the address of the machine the
+ *   crawler runs on), or the kind of the proxy: `socks5`, `http`, `https`.
+ * @param host the address of the proxy. Optional: a deployment that declares only the
+ *   kind still gets the kind checked against AdsPower. When it is given, the address
+ *   is checked too.
+ * @param port the port of the proxy. It goes with the host: one without the other is
+ *   a half-declared address.
+ *
+ * The password is not here: the crawler never authenticates to the proxy — the
+ * browser does, and the browser's credentials live in AdsPower.
+ */
+data class ProxyConfig(
+    val type: String = "",
+    val host: String = "",
+    val port: Int = 0,
 )
 
 /**
@@ -91,6 +115,12 @@ object EgressGroups {
                     jitterMinMs = pacing.jitterMinMs ?: spider.browserJitterMinMs,
                     jitterMaxMs = pacing.jitterMaxMs ?: spider.browserJitterMaxMs,
                 ),
+            proxy =
+                DeclaredProxy(
+                    type = proxy.type.trim().lowercase(),
+                    host = proxy.host.trim(),
+                    port = proxy.port,
+                ),
         )
 
     private fun validate(groups: List<EgressGroup>) {
@@ -101,12 +131,55 @@ object EgressGroups {
             require(group.profileIds.distinct().size == group.profileIds.size) {
                 "Egress group '${group.id}' lists the same profile twice: ${group.profileIds}"
             }
+            validateProxy(group)
             for (profileId in group.profileIds) {
                 val owner = seen.put(profileId, group.id)
                 require(owner == null) {
                     "Profile '$profileId' is in two egress groups: '$owner' and '${group.id}'. " +
                         "A profile has one IP, so it belongs to exactly one group."
                 }
+            }
+        }
+    }
+
+    /**
+     * A group says where it leaves from — or it does not, and the crawler refuses
+     * to start.
+     *
+     * The check is deliberately strict. A group that does not declare its proxy
+     * would have to be *assumed* to leave directly, and an assumption that is
+     * wrong is exactly the failure this declaration exists to prevent: the group
+     * would get the budget and the metric of an address nobody meant.
+     */
+    private fun validateProxy(group: EgressGroup) {
+        val proxy = group.proxy
+        require(proxy.isDeclared) {
+            "Egress group '${group.id}' does not declare its proxy. Declare it: " +
+                "'none' for a group that leaves directly, or the kind of the proxy it leaves " +
+                "through ('socks5', 'http', 'https'). An undeclared proxy is not a direct " +
+                "connection — it is an unknown one."
+        }
+        require(proxy.type in DeclaredProxy.KINDS) {
+            "Egress group '${group.id}' declares the proxy kind '${proxy.type}'. The kinds are: " +
+                "${DeclaredProxy.KINDS.sorted().joinToString(", ")}."
+        }
+        if (proxy.isDirect) {
+            require(!proxy.hasAddress && proxy.port == 0) {
+                "Egress group '${group.id}' declares a direct connection and an address at the " +
+                    "same time ('${proxy.host}:${proxy.port}'). A direct connection has no proxy."
+            }
+            return
+        }
+        require(proxy.hasAddress == (proxy.port != 0)) {
+            "Egress group '${group.id}' declares the proxy '${proxy.type}' with only half an " +
+                "address (host='${proxy.host}', port=${proxy.port}). Give both or neither: " +
+                "the kind alone is checked against AdsPower, the address is checked when it " +
+                "is given."
+        }
+        if (proxy.hasAddress) {
+            require(proxy.port in 1..65535) {
+                "Egress group '${group.id}' declares the proxy port ${proxy.port}. A port is " +
+                    "between 1 and 65535."
             }
         }
     }

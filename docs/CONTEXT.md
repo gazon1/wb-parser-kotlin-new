@@ -107,12 +107,27 @@ circuit группы не спрашивается, пока другие отв
 `EgressProbe.DIRECT_IDENTITY`; `app/src/main/kotlin/ru/wbparser/app/scheduling/AdsPowerPreflightRunner.kt` — `AdsPowerPreflightRunner.probeEgressGroups`;
 `docs/decisions/2026-10-22-egress-groups-are-declared-and-checked.md`.
 
+## Объявленный прокси (DeclaredProxy)
+
+Что конфигурация говорит о том, как группа выходит в сеть. Прокси живёт в AdsPower, но **объявлен** он в конфигурации краулера: `proxy.type` — вид прокси (`none` для прямого
+выхода, `socks5`, `http`, `https`), а `host` и `port` — необязательное уточнение адреса. Пароля здесь нет и быть не должно: краулер никогда не ходит в прокси сам, это делает
+браузер, и учётные данные браузера живут в AdsPower.
+
+Объявление **обязательно**. Группа, которая ничего не объявила, — это не «прямая группа», это группа с неизвестным адресом, и такая конфигурация отвергается при старте: «не
+сказал» и «прямой выход» — разные вещи, и второе не должно получаться молча. Объявленный вид сверяется с тем, что AdsPower показывает для профилей группы; расхождение
+останавливает краулер **безусловно** — это не вопрос изоляции, а вопрос «та ли это группа».
+
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/DeclaredProxy.kt` — `DeclaredProxy`, `DeclaredProxy.matches`;
+`app/src/main/kotlin/ru/wbparser/app/config/EgressGroups.kt` — `ProxyConfig`, `EgressGroups.validateProxy`;
+`wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressProbe.kt` — `EgressProbe.checkStatic`.
+
 ## Статическая проверка прокси
 
 Дешёвый слой: читает у AdsPower прокси каждого профиля (один HTTP-вызов, без браузера) и проверяет, что **внутри** группы все профили за одним прокси и что **между**
 группами прокси разные. Именно она ловит ошибку конфигурации: две группы за одним прокси — это один адрес и один бюджет, а не два. Профиль без прокси — это адрес машины,
 на которой работает краулер; одна такая «прямая» группа допустима, две — нет. Прокси, детали которого AdsPower не отдаёт (`proxy_soft: other` с пустым host), — это
-прокси, а не «прямое подключение»: путать их нельзя.
+прокси, а не «прямое подключение»: путать их нельзя. Третье, что она проверяет: **объявленный** прокси группы совпадает с тем, что AdsPower показывает — иначе группа
+получает бюджет и метрику чужого адреса, и это видно только по цифрам.
 
 **Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressProbe.kt` — `EgressProbe.checkStatic`, `EgressProbe.readConfiguredProxies`,
 `EgressProbe.groupProxyIdentity`; `wbparser/src/main/kotlin/ru/wbparser/infra/http/AdsPowerApi.kt` — `AdsPowerProfileProxy.identity`, `AdsPowerProfileProxy.isDirect`,

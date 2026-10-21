@@ -324,4 +324,161 @@ class EgressProbeTest :
             report.groups.single().egressIp shouldBe null
             report.problems.any { it.contains("could not be determined") } shouldBe true
         }
+
+        // ── The declared proxy against the proxy the browser really uses ────────────
+
+        test("a group whose declared proxy is not the one its profiles use is a mismatch") {
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1")),
+                    mapOf("p1" to "203.0.113.7"),
+                    proxies = listOf(AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "http")),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups =
+                        listOf(
+                            EgressGroup(
+                                "ip-1",
+                                listOf("p1"),
+                                proxy = DeclaredProxy(type = "socks5"),
+                            ),
+                        ),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.proxyMismatch shouldBe true
+            report.problems.any { it.contains("is declared to leave through") } shouldBe true
+        }
+
+        test("a group declared direct whose profiles use a proxy is a mismatch") {
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1")),
+                    mapOf("p1" to "203.0.113.7"),
+                    proxies = listOf(AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "socks5")),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups =
+                        listOf(
+                            EgressGroup(
+                                "ip-1",
+                                listOf("p1"),
+                                proxy = DeclaredProxy(type = DeclaredProxy.DIRECT),
+                            ),
+                        ),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.proxyMismatch shouldBe true
+        }
+
+        test("a group whose declared proxy is the one its profiles use is fine") {
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1")),
+                    mapOf("p1" to "203.0.113.7"),
+                    proxies = listOf(AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "socks5")),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups =
+                        listOf(
+                            EgressGroup(
+                                "ip-1",
+                                listOf("p1"),
+                                proxy = DeclaredProxy(type = "socks5"),
+                            ),
+                        ),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.proxyMismatch shouldBe false
+            report.misconfigured shouldBe false
+        }
+
+        test("a declared address that is not the one AdsPower shows is a mismatch") {
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1")),
+                    mapOf("p1" to "203.0.113.7"),
+                    proxies = listOf(AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "socks5")),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups =
+                        listOf(
+                            EgressGroup(
+                                "ip-1",
+                                listOf("p1"),
+                                proxy =
+                                    DeclaredProxy(
+                                        type = "socks5",
+                                        host = "proxy-b.invalid",
+                                        port = 1080,
+                                    ),
+                            ),
+                        ),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.proxyMismatch shouldBe true
+        }
+
+        test("a declared address that is the one AdsPower shows is fine") {
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1")),
+                    mapOf("p1" to "203.0.113.7"),
+                    proxies = listOf(AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "socks5")),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups =
+                        listOf(
+                            EgressGroup(
+                                "ip-1",
+                                listOf("p1"),
+                                proxy =
+                                    DeclaredProxy(
+                                        type = "socks5",
+                                        host = "proxy-a.invalid",
+                                        port = 1080,
+                                    ),
+                            ),
+                        ),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.proxyMismatch shouldBe false
+        }
+
+        test("a group that declares nothing is not compared with anything") {
+            val (pool, _) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1")),
+                    mapOf("p1" to "203.0.113.7"),
+                    proxies = listOf(AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "http")),
+                )
+
+            val report =
+                EgressProbe(
+                    pool = pool,
+                    groups = listOf(EgressGroup("ip-1", listOf("p1"))),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.proxyMismatch shouldBe false
+        }
     })

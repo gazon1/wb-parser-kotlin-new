@@ -5,6 +5,7 @@ import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import ru.wbparser.app.config.EgressGroups
 import ru.wbparser.infra.db.repositories.countSubjects
 import ru.wbparser.infra.db.repositories.countTargetsWithoutSearchToken
 import javax.sql.DataSource
@@ -17,6 +18,7 @@ import javax.sql.DataSource
 class HealthRoutes(
     private val datasource: DataSource,
     private val meterRegistry: MeterRegistry,
+    private val groups: EgressGroups.Resolved,
 ) {
     @GetMapping("/live")
     fun liveness() = mapOf("status" to "UP")
@@ -73,7 +75,7 @@ class HealthRoutes(
             // The egress state is a third section: which address each group leaves
             // from, and whether it is still answering. Without it the numbers above
             // have nothing to be compared with.
-            "egress" to egressStats(meterRegistry, datasource),
+            "egress" to egressStats(meterRegistry, datasource, groups.groups),
         )
     }
 }

@@ -30,8 +30,8 @@ class EgressGroupsTest :
                     Spider(
                         egressGroups =
                             listOf(
-                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1", "p2")),
-                                EgressGroupConfig(id = "ip-2", profiles = listOf("p3")),
+                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1", "p2"), proxy = ProxyConfig(type = "none")),
+                                EgressGroupConfig(id = "ip-2", profiles = listOf("p3"), proxy = ProxyConfig(type = "none")),
                             ),
                     ),
                 )
@@ -47,8 +47,8 @@ class EgressGroupsTest :
                     Spider(
                         egressGroups =
                             listOf(
-                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1", "p2")),
-                                EgressGroupConfig(id = "ip-2", profiles = listOf("p3")),
+                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1", "p2"), proxy = ProxyConfig(type = "none")),
+                                EgressGroupConfig(id = "ip-2", profiles = listOf("p3"), proxy = ProxyConfig(type = "none")),
                             ),
                     ),
                 )
@@ -63,8 +63,8 @@ class EgressGroupsTest :
                         Spider(
                             egressGroups =
                                 listOf(
-                                    EgressGroupConfig(id = "ip-1", profiles = listOf("p1")),
-                                    EgressGroupConfig(id = "ip-2", profiles = listOf("p1")),
+                                    EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none")),
+                                    EgressGroupConfig(id = "ip-2", profiles = listOf("p1"), proxy = ProxyConfig(type = "none")),
                                 ),
                         ),
                     )
@@ -76,7 +76,9 @@ class EgressGroupsTest :
         test("a group without profiles is refused") {
             shouldThrow<IllegalArgumentException> {
                 EgressGroups.resolve(
-                    Spider(egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = emptyList()))),
+                    Spider(
+                        egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = emptyList(), proxy = ProxyConfig(type = "none"))),
+                    ),
                 )
             }
         }
@@ -84,9 +86,139 @@ class EgressGroupsTest :
         test("the same profile twice in one group is refused") {
             shouldThrow<IllegalArgumentException> {
                 EgressGroups.resolve(
-                    Spider(egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1", "p1")))),
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1", "p1"), proxy = ProxyConfig(type = "none")),
+                            ),
+                    ),
                 )
             }
+        }
+
+        test("a group that does not declare its proxy is refused") {
+            val failure =
+                shouldThrow<IllegalArgumentException> {
+                    EgressGroups.resolve(
+                        Spider(
+                            egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1"))),
+                        ),
+                    )
+                }
+
+            failure.message!!.contains("does not declare its proxy") shouldBe true
+        }
+
+        test("a group declares the kind of the proxy it leaves through") {
+            val resolved =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(
+                                    id = "ip-1",
+                                    profiles = listOf("p1"),
+                                    proxy = ProxyConfig(type = "socks5"),
+                                ),
+                            ),
+                    ),
+                )
+
+            val proxy = resolved.groups.single().proxy
+            proxy.isDeclared shouldBe true
+            proxy.isDirect shouldBe false
+            proxy.type shouldBe "socks5"
+        }
+
+        test("a group may declare the address of its proxy as well") {
+            val resolved =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(
+                                    id = "ip-1",
+                                    profiles = listOf("p1"),
+                                    proxy =
+                                        ProxyConfig(
+                                            type = "socks5",
+                                            host = "proxy-a.invalid",
+                                            port = 1080,
+                                        ),
+                                ),
+                            ),
+                    ),
+                )
+
+            val proxy = resolved.groups.single().proxy
+            proxy.hasAddress shouldBe true
+            proxy.host shouldBe "proxy-a.invalid"
+            proxy.port shouldBe 1080
+        }
+
+        test("a proxy kind nobody knows is refused") {
+            val failure =
+                shouldThrow<IllegalArgumentException> {
+                    EgressGroups.resolve(
+                        Spider(
+                            egressGroups =
+                                listOf(
+                                    EgressGroupConfig(
+                                        id = "ip-1",
+                                        profiles = listOf("p1"),
+                                        proxy = ProxyConfig(type = "carrier-pigeon"),
+                                    ),
+                                ),
+                        ),
+                    )
+                }
+
+            failure.message!!.contains("carrier-pigeon") shouldBe true
+        }
+
+        test("a direct group that also declares an address is refused") {
+            val failure =
+                shouldThrow<IllegalArgumentException> {
+                    EgressGroups.resolve(
+                        Spider(
+                            egressGroups =
+                                listOf(
+                                    EgressGroupConfig(
+                                        id = "ip-1",
+                                        profiles = listOf("p1"),
+                                        proxy =
+                                            ProxyConfig(
+                                                type = "none",
+                                                host = "proxy-a.invalid",
+                                                port = 1080,
+                                            ),
+                                    ),
+                                ),
+                        ),
+                    )
+                }
+
+            failure.message!!.contains("direct connection") shouldBe true
+        }
+
+        test("half an address is refused") {
+            val failure =
+                shouldThrow<IllegalArgumentException> {
+                    EgressGroups.resolve(
+                        Spider(
+                            egressGroups =
+                                listOf(
+                                    EgressGroupConfig(
+                                        id = "ip-1",
+                                        profiles = listOf("p1"),
+                                        proxy = ProxyConfig(type = "socks5", host = "proxy-a.invalid"),
+                                    ),
+                                ),
+                        ),
+                    )
+                }
+
+            failure.message!!.contains("only half an") shouldBe true
         }
 
         test("a group's own pacing overrides the default") {
@@ -100,6 +232,7 @@ class EgressGroupsTest :
                                     id = "ip-1",
                                     profiles = listOf("p1"),
                                     pacing = PacingConfig(minIntervalMs = 7_000L),
+                                    proxy = ProxyConfig(type = "none"),
                                 ),
                             ),
                     ),
@@ -117,7 +250,7 @@ class EgressGroupsTest :
                         browserMinRequestIntervalMs = 3_000L,
                         browserJitterMinMs = 200L,
                         browserJitterMaxMs = 500L,
-                        egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1"))),
+                        egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none"))),
                     ),
                 )
 

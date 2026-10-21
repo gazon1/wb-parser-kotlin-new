@@ -22,6 +22,13 @@ package ru.wbparser.infra.http
  * every few seconds per IP), not by the number of profiles. Two or three profiles buy
  * something else — the group keeps working while one of its profiles rests after an
  * anti-bot answer.
+ *
+ * ## The proxy the group declares
+ *
+ * The proxy lives in AdsPower, and this class records what the configuration says
+ * the group leaves through. The egress probe compares the two; a group that says
+ * one thing and does another gets a budget and a metric of the wrong address, and
+ * nobody notices until the numbers describe it.
  */
 data class EgressGroup(
     /** Identifier of the group. It is also the value of the `egress_group` metric tag. */
@@ -30,6 +37,8 @@ data class EgressGroup(
     val profileIds: List<String>,
     /** How fast this group may talk to WB. */
     val pacing: RequestPacing = RequestPacing(),
+    /** What the configuration says this group leaves through. */
+    val proxy: DeclaredProxy = DeclaredProxy(),
 ) {
     init {
         require(id.isNotBlank()) { "Egress group id must not be blank" }
