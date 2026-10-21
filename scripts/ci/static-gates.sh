@@ -99,6 +99,14 @@ gate blocking "the demo seed is not enabled in production" python3 scripts/ci/ch
 # finds the undecided table belongs to the same change as the table.
 gate blocking "every table is decided about in the catalogue role" python3 scripts/ci/check-catalogue-role-tables.py
 
+# --- the images carry the JDK the build asks for -------------------------------
+# The build names one JDK version and the images are supposed to carry that same
+# version. When they disagree, the build inside the image cannot find the
+# toolchain it asked for, and the image build dies with a message that says
+# nothing about the cause. A base-image bump that breaks the build is a pull
+# request to review — and this gate is what makes the review mean something.
+gate blocking "the images carry the JDK the build asks for" python3 scripts/ci/check-docker-jdk.py
+
 # --- report ------------------------------------------------------------------
 echo
 echo "static gates: ${#PASSED[@]} passed, ${#FAILED[@]} failed, ${#WARNED[@]} advisory-failed"
