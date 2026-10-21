@@ -170,7 +170,7 @@ class CrawlTargetStateTest :
             db.row(
                 """
                 SELECT last_crawled_at, consecutive_failures, egress_failure_count,
-                       next_attempt_at, anomaly_group
+                       next_attempt_at, anomaly_group, lease_owner, lease_until
                   FROM crawl_targets
                  WHERE id = '$targetId'
                 """.trimIndent(),
@@ -205,6 +205,22 @@ class CrawlTargetStateTest :
                 state["egress_failure_count"] shouldBe 0
                 (state["next_attempt_at"] == null) shouldBe true
                 db.rows("SELECT id FROM crawl_jobs").size shouldBe 0
+            }
+        }
+
+        test("a run that refuses to start takes no lease on the targets") {
+            runTest {
+                val id = db.seedTarget("Аренда не взята")
+
+                runnerWith(refused, allDownEgress).run()
+
+                // The lease is a promise to work the target, and this run promised
+                // nothing: it refused before it started. A lease taken anyway would keep
+                // every host away from the target until it expired — for a run that
+                // never served anything.
+                val state = stateOf(id)
+                (state["lease_owner"] == null) shouldBe true
+                (state["lease_until"] == null) shouldBe true
             }
         }
 
