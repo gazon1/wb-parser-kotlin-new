@@ -4,7 +4,8 @@
 PostgreSQL и отдаёт через read-модель каталога. Kotlin, Gradle, Spring Boot,
 Ktor, Exposed, Flyway, PostgreSQL.
 
-Репозиторий публичный.
+Репозиторий публичный, код распространяется по лицензии Apache-2.0 (см.
+раздел «Лицензия»).
 
 ## Что внутри
 
@@ -58,3 +59,12 @@ SKIP_DB=1 ./check.sh    # без Testcontainers (если нет Docker)
 ```bash
 ./scripts/refresh-decisions-digest.sh
 ```
+
+## Лицензия
+
+**Apache License 2.0** — полный текст в файле [`LICENSE`](LICENSE), дословно
+по SPDX. Файла `NOTICE` в проекте нет, и Apache-2.0 требует его только
+тогда, когда такой файл есть.
+
+Почему именно эта лицензия — в
+[`docs/decisions/2026-10-21-the-repository-is-licensed.md`](docs/decisions/2026-10-21-the-repository-is-licensed.md).

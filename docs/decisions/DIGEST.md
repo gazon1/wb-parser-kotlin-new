@@ -273,6 +273,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** перебазировать ветку на свежий `main` перед открытием pull _(from `2026-10-21-one-decision-is-one-pull-request`)
 - **Never** держать в одной ветке больше ~5 коммитов или ~20 файлов: за _(from `2026-10-21-one-decision-is-one-pull-request`)
 - **Never** разрешать конфликт в чужой ветке, не перечитав решение, которое _(from `2026-10-21-one-decision-is-one-pull-request`)
+- **Always** называть лицензию в `README.md` и держать текст `LICENSE` _(from `2026-10-21-the-repository-is-licensed`)
+- **Always** проверять лицензию новой зависимости до того, как она попадает _(from `2026-10-21-the-repository-is-licensed`)
+- **Never** менять лицензию репозитория молча: смена лицензии — это _(from `2026-10-21-the-repository-is-licensed`)
+- **Never** создавать `NOTICE` без причины: Apache-2.0 требует его только _(from `2026-10-21-the-repository-is-licensed`)
 - **Always** объявлять egress-группы единственным списком профилей. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Always** проверять изоляцию статически, до первого запроса к WB. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **MUST** различать «проверка прошла» и «проверка не смогла выполниться»: второй _(from `2026-10-22-egress-groups-are-declared-and-checked`)
@@ -974,6 +978,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — dependencies  build  workflow
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-21-one-decision-is-one-pull-request` — workflow  conventions
+- `2026-10-21-the-repository-is-licensed` — legal  project  governance
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
@@ -1060,6 +1065,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — Версия, которой никто не публиковал, — это не версия
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-21-one-decision-is-one-pull-request` — Одно решение — один pull request, и он перебазирован на свежий main
+- `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна
