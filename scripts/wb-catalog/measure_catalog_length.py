@@ -81,6 +81,7 @@ from catalog_length import (  # noqa: E402
     BOUNDARY_CATALOG_END,
     is_page_refusal,
     plan_limit,
+    read_subject_id,
     read_total,
 )
 from catalog_report import (  # noqa: E402
@@ -225,15 +226,18 @@ async def measure_catalog(
     products = first.get("products") or []
     total = read_total(first)
     page_size = len(products)
+    # The subject the catalog's products carry. It is measured here — the products
+    # were looked at anyway — and it is what the target's `wb_subject_id` holds.
+    subject_id = read_subject_id(products)
 
     if page_size == 0:
         # The catalog is empty: page 1 is the last page.
-        return plan_limit(total, page_size, BOUNDARY_CATALOG_END, 0, page_cap)
+        return plan_limit(total, page_size, BOUNDARY_CATALOG_END, 0, page_cap, subject_id)
 
     if total is None:
         # WB did not say how long the catalog is. Then the only way to know is to
         # read it — which is slow, but honest.
-        return await measure_by_reading(page, query, delay, max_pages, page_cap)
+        return await measure_by_reading(page, query, delay, max_pages, page_cap, subject_id)
 
     async def fetch(number: int) -> Tuple[str, object]:
         return await fetch_page(page, query, number)
@@ -247,7 +251,7 @@ async def measure_catalog(
     if kind == "refused":
         # The cap is lower than the default: find where the pages stop being full.
         pages_available, boundary = await find_last_full_page(fetch, 1, page_cap, delay)
-        return plan_limit(total, page_size, boundary, pages_available, page_cap)
+        return plan_limit(total, page_size, boundary, pages_available, page_cap, subject_id)
 
     if data.get("products"):
         # The last page WB serves is full. One page further tells whether the
@@ -263,14 +267,21 @@ async def measure_catalog(
                 f"for this catalog. Re-run with a larger --page-cap."
             )
         boundary = BOUNDARY_API_CAP if kind_after == "refused" else BOUNDARY_CATALOG_END
-        return plan_limit(total, page_size, boundary, page_cap, page_cap)
+        return plan_limit(total, page_size, boundary, page_cap, page_cap, subject_id)
 
     # The page at the cap came back empty: the catalog ended somewhere before it.
     pages_available, boundary = await find_last_full_page(fetch, 1, page_cap, delay)
-    return plan_limit(total, page_size, boundary, pages_available, page_cap)
+    return plan_limit(total, page_size, boundary, pages_available, page_cap, subject_id)
 
 
-async def measure_by_reading(page, query: str, delay: float, max_pages: int, page_cap: int) -> dict:
+async def measure_by_reading(
+    page,
+    query: str,
+    delay: float,
+    max_pages: int,
+    page_cap: int,
+    subject_id: Optional[int] = None,
+) -> dict:
     """Fallback for a catalog whose length WB does not report: read it page by page."""
     pages_available = 0
     products_seen = 0
@@ -279,14 +290,14 @@ async def measure_by_reading(page, query: str, delay: float, max_pages: int, pag
         if kind == "blocked":
             raise BlockedError(f"WB served a challenge instead of an answer on page {page_num}")
         if kind == "refused":
-            return plan_limit(None, 0, BOUNDARY_API_CAP, pages_available, page_cap)
+            return plan_limit(None, 0, BOUNDARY_API_CAP, pages_available, page_cap, subject_id)
         products = data.get("products") or []
         if not products:
-            return plan_limit(None, products_seen, BOUNDARY_CATALOG_END, pages_available, page_cap)
+            return plan_limit(None, products_seen, BOUNDARY_CATALOG_END, pages_available, page_cap, subject_id)
         pages_available = page_num
         products_seen += len(products)
         await asyncio.sleep(delay)
-    return plan_limit(None, products_seen, BOUNDARY_API_CAP, pages_available, page_cap)
+    return plan_limit(None, products_seen, BOUNDARY_API_CAP, pages_available, page_cap, subject_id)
 
 
 async def measure_one(
