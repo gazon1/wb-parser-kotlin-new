@@ -2,7 +2,24 @@ package ru.wbparser.infra.http
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
-import java.time.Duration
+
+/**
+ * The thresholds of the two chains.
+ *
+ * They travel together because they configure the same thing: what the group does
+ * when it fails, and how long it rests.
+ *
+ * @param circuitConfig the anti-bot circuit's thresholds.
+ * @param transportWindowMs the window over which the transport failures are counted.
+ * @param transportFailureThreshold how many failures in the window rest the group.
+ * @param transportCooldownMs how long the group rests after the last failure.
+ */
+internal data class EgressChainsConfig(
+    val circuitConfig: CircuitBreakerConfig,
+    val transportWindowMs: Long,
+    val transportFailureThreshold: Int,
+    val transportCooldownMs: Long,
+)
 
 /**
  * The two chains of one egress group.
@@ -24,26 +41,20 @@ import java.time.Duration
  * closed an address that was answering perfectly.
  *
  * @param groupId the group the chains belong to.
- * @param circuitConfig the anti-bot circuit's thresholds.
- * @param transportWindowMs the window over which the transport failures are counted.
- * @param transportFailureThreshold how many failures in the window rest the group.
- * @param transportCooldownMs how long the group rests after the last failure.
+ * @param config the thresholds of both chains.
  */
 internal class EgressChains(
     private val groupId: String,
-    circuitConfig: CircuitBreakerConfig,
-    transportWindowMs: Long,
-    transportFailureThreshold: Int,
-    transportCooldownMs: Long,
+    config: EgressChainsConfig,
     now: () -> Long = System::currentTimeMillis,
 ) {
-    private val circuit = GroupCircuit(groupId, circuitConfig)
+    private val circuit = GroupCircuit(groupId, config.circuitConfig)
 
     private val transport =
         GroupTransportBackoff(
-            windowMs = transportWindowMs,
-            threshold = transportFailureThreshold,
-            cooldownMs = transportCooldownMs,
+            windowMs = config.transportWindowMs,
+            threshold = config.transportFailureThreshold,
+            cooldownMs = config.transportCooldownMs,
             now = now,
         )
 

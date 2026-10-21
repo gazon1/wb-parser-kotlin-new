@@ -4,8 +4,8 @@ import io.micrometer.core.instrument.MeterRegistry
 import ru.wbparser.domain.session.SessionSnapshot
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
 import ru.wbparser.infra.db.repositories.fetchEgressGroups
-import ru.wbparser.infra.http.SessionSource
 import ru.wbparser.infra.http.EgressGroup
+import ru.wbparser.infra.http.SessionSource
 import java.util.concurrent.TimeUnit
 import javax.sql.DataSource
 
@@ -134,17 +134,18 @@ private fun sessionStats(pool: SessionSource?): Map<String, Any> {
     return mapOf(
         "live" to pool.liveSessionCount,
         "retired" to pool.retiredSessionCount,
-        "sessions" to sessions.map { session ->
-            mapOf(
-                "profile" to session.profileId,
-                "group" to session.egressGroup,
-                "state" to session.state.name.lowercase(),
-                "requests" to session.requests,
-                "refusals" to session.refusals,
-                "answered" to session.answered,
-                "age_ms" to session.ageMs,
-            )
-        },
+        "sessions" to
+            sessions.map { session ->
+                mapOf(
+                    "profile" to session.profileId,
+                    "group" to session.egressGroup,
+                    "state" to session.state.name.lowercase(),
+                    "requests" to session.requests,
+                    "refusals" to session.refusals,
+                    "answered" to session.answered,
+                    "age_ms" to session.ageMs,
+                )
+            },
     )
 }
 

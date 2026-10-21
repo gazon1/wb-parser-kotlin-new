@@ -216,7 +216,7 @@ class BrowserPool(
         throw BrowserPoolExhaustedException(
             "No browser profile freed within ${adsPower.borrowTimeoutMs}ms " +
                 "(${profileStates.size} configured, group=${groupId ?: "all"}, " +
-                "live sessions=${liveSessionCount})",
+                "live sessions=$liveSessionCount)",
         )
     }
 

@@ -176,7 +176,6 @@ internal class BrowserProfileState(
      */
     fun isRetired(): Boolean = session.shouldRetire()
 
-
     fun getOrCreatePage(): Page {
         if (automation.isConnected) {
             // Defensively ping the browser: a dead Chrome can show isConnected=true

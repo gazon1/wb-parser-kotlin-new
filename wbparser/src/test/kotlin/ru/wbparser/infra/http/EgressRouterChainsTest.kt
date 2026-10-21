@@ -2,9 +2,9 @@ package ru.wbparser.infra.http
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
-import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.mockk
 import ru.wbparser.testing.FakeBrowserAutomation
@@ -161,7 +161,15 @@ class EgressRouterChainsTest :
             router.onOutcome(page, DownloadOutcome.Antibot)
             router.onOutcome(page, DownloadOutcome.Error)
 
-            registry.find("crawl.egress.refusals").tag("kind", "antibot").counter()!!.count() shouldBe 1.0
-            registry.find("crawl.egress.refusals").tag("kind", "transport").counter()!!.count() shouldBe 1.0
+            registry
+                .find("crawl.egress.refusals")
+                .tag("kind", "antibot")
+                .counter()!!
+                .count() shouldBe 1.0
+            registry
+                .find("crawl.egress.refusals")
+                .tag("kind", "transport")
+                .counter()!!
+                .count() shouldBe 1.0
         }
     })

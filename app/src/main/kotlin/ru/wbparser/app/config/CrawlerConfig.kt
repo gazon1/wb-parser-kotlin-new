@@ -1,6 +1,5 @@
 package ru.wbparser.app.config
 
-import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
 import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.context.annotation.Bean

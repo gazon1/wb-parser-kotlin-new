@@ -1,6 +1,5 @@
 package ru.wbparser.infra.http
 
-import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -82,10 +81,13 @@ class EgressRouter(
         pool.egressGroupIds.associateWith { groupId ->
             EgressChains(
                 groupId = groupId,
-                circuitConfig = config.circuitConfigs[groupId] ?: config.circuitConfig,
-                transportWindowMs = config.transportWindowMs,
-                transportFailureThreshold = config.transportFailureThreshold,
-                transportCooldownMs = config.transportCooldownMs,
+                config =
+                    EgressChainsConfig(
+                        circuitConfig = config.circuitConfigs[groupId] ?: config.circuitConfig,
+                        transportWindowMs = config.transportWindowMs,
+                        transportFailureThreshold = config.transportFailureThreshold,
+                        transportCooldownMs = config.transportCooldownMs,
+                    ),
                 now = now,
             )
         }
@@ -133,7 +135,11 @@ class EgressRouter(
                 metrics.recordAllDown()
                 throw AllEgressGroupsUnavailable(
                     "No egress group could serve a request within ${config.maxOpenWaitMs}ms: " +
-                        groups.joinToString { "$it(circuit=${chains.getValue(it).circuitState}, transport=${chains.getValue(it).transportState()})" },
+                        groups.joinToString {
+                            "$it(circuit=${chains.getValue(
+                                it,
+                            ).circuitState}, transport=${chains.getValue(it).transportState()})"
+                        },
                 )
             }
             if (!warned) {
