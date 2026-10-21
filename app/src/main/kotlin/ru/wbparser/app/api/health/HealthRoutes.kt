@@ -6,8 +6,11 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import ru.wbparser.app.config.EgressGroups
+import ru.wbparser.infra.db.repositories.EgressGroupRecord
 import ru.wbparser.infra.db.repositories.countSubjects
 import ru.wbparser.infra.db.repositories.countTargetsWithoutSearchToken
+import ru.wbparser.infra.db.repositories.fetchEgressGroups
+import ru.wbparser.infra.http.EgressGroupStates
 import javax.sql.DataSource
 
 /**
@@ -19,6 +22,7 @@ class HealthRoutes(
     private val datasource: DataSource,
     private val meterRegistry: MeterRegistry,
     private val groups: EgressGroups.Resolved,
+    private val egress: EgressGroupStates,
 ) {
     @GetMapping("/live")
     fun liveness() = mapOf("status" to "UP")
@@ -74,10 +78,22 @@ class HealthRoutes(
             "crawler" to crawlerStats(meterRegistry),
             // The egress state is a third section: which address each group leaves
             // from, and whether it is still answering. Without it the numbers above
-            // have nothing to be compared with.
-            "egress" to egressStats(meterRegistry, datasource, groups.groups),
+            // have nothing to be compared with. The condition of every group comes
+            // from the one source that computes it — the same state the runner judges
+            // by, so the answer and the crawl cannot blame different addresses.
+            "egress" to egressStats(meterRegistry, ledger(), egress.groupStates(), groups.groups),
         )
     }
+
+    /**
+     * The groups as the probe last saw them.
+     *
+     * A ledger that cannot be read is an empty ledger: the readiness endpoint has to
+     * answer even when the database is down — that is when it is most needed.
+     */
+    private fun ledger(): List<EgressGroupRecord> =
+        runCatching { datasource.fetchEgressGroups() }
+            .getOrElse { emptyList() }
 }
 
 /**

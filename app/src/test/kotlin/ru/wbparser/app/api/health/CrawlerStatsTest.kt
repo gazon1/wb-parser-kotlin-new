@@ -23,7 +23,7 @@ class CrawlerStatsTest :
     FunSpec({
 
         test("a registry without crawler counters says the crawl has not run yet") {
-            val readiness = HealthRoutes(workingDataSource(), idleRegistry(), noGroups).readiness()
+            val readiness = HealthRoutes(workingDataSource(), idleRegistry(), noGroups, noStates()).readiness()
 
             val crawler = readiness["crawler"] as Map<*, *>
             crawler["state"] shouldBe "not_started"
@@ -80,7 +80,7 @@ class CrawlerStatsTest :
         }
 
         test("the crawler section does not disturb the checks that were there before") {
-            val readiness = HealthRoutes(catalogDataSource(), idleRegistry(), noGroups).readiness()
+            val readiness = HealthRoutes(catalogDataSource(), idleRegistry(), noGroups, noStates()).readiness()
 
             val checks = readiness["checks"] as Map<*, *>
             checks.keys shouldBe setOf("database", "subject_dictionary", "targets_without_search_token")
@@ -93,6 +93,6 @@ class CrawlerStatsTest :
  * The crawler section of the readiness response.
  */
 private fun crawlerOf(registry: MeterRegistry): Map<*, *> {
-    val readiness = HealthRoutes(workingDataSource(), registry, noGroups).readiness()
+    val readiness = HealthRoutes(workingDataSource(), registry, noGroups, noStates()).readiness()
     return readiness["crawler"] as Map<*, *>
 }

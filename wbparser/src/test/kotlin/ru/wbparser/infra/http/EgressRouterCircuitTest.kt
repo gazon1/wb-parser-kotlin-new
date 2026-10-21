@@ -1,6 +1,5 @@
 package ru.wbparser.infra.http
 
-import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -51,7 +50,7 @@ class EgressRouterCircuitTest :
                     config = EgressRouterConfig(circuitConfig = config()),
                 )
 
-            router.groupState("ip-1").circuitState shouldBe CircuitBreaker.State.CLOSED
+            router.groupState("ip-1").circuitState shouldBe EgressCircuitState.Closed
         }
 
         test("refusals open the circuit of the group that was refused") {
@@ -65,7 +64,7 @@ class EgressRouterCircuitTest :
 
             repeat(3) { router.onOutcome(page, DownloadOutcome.Antibot) }
 
-            router.groupState("ip-1").circuitState shouldBe CircuitBreaker.State.OPEN
+            router.groupState("ip-1").circuitState shouldBe EgressCircuitState.Open
         }
 
         test("a refusal in one group does not touch the circuit of another") {
@@ -79,7 +78,7 @@ class EgressRouterCircuitTest :
 
             repeat(3) { router.onOutcome(page, DownloadOutcome.Antibot) }
 
-            router.groupState("ip-2").circuitState shouldBe CircuitBreaker.State.CLOSED
+            router.groupState("ip-2").circuitState shouldBe EgressCircuitState.Closed
         }
 
         test("a group with an open circuit is not asked for requests") {
@@ -111,7 +110,7 @@ class EgressRouterCircuitTest :
 
             repeat(5) { router.onOutcome(page, DownloadOutcome.Success) }
 
-            router.groupState("ip-1").circuitState shouldBe CircuitBreaker.State.CLOSED
+            router.groupState("ip-1").circuitState shouldBe EgressCircuitState.Closed
             router.groupState("ip-1").requests shouldBe 5
             router.groupState("ip-1").refused shouldBe 0
         }
