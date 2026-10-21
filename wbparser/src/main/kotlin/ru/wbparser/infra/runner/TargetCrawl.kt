@@ -52,6 +52,15 @@ internal data class TargetResult(
      * question about time, and a run that only knows when it ended cannot answer it.
      */
     val startedAt: Instant,
+    /**
+     * How many products WB says the search behind this target holds.
+     *
+     * WB's own count, carried to the report under this name. It is the size of the
+     * *search*, not of the catalog — the catalog's length is measured at the pagination
+     * boundary — so the report shows it next to what was read instead of turning it
+     * into a promise of completeness.
+     */
+    val wbTotal: Int? = null,
 )
 
 /**
@@ -190,11 +199,12 @@ internal class TargetCrawl(
                     error = result.value.error.message ?: "crawl failed",
                     failureClass = result.value.error.failureClass(),
                     startedAt = startedAt,
+                    wbTotal = result.value.wbTotal,
                 )
             }
             is Either.Right -> {
                 val crawled: ru.wbparser.domain.pipeline.Crawled = result.value
-                metrics.record(target, crawled.pagesCrawled, crawled.itemsSaved, crawled.stopReason)
+                metrics.record(target, crawled.pagesCrawled, crawled.itemsSaved, crawled.stopReason, crawled.wbTotal)
                 // WB answered, and what it answered was not the catalog: not a single
                 // product came out of it. A burnt address answers like this too, so it
                 // is a candidate and not a verdict — the runner decides once it knows
@@ -206,6 +216,7 @@ internal class TargetCrawl(
                     error = null,
                     failureClass = if (empty) FailureClass.TargetCandidate else null,
                     startedAt = startedAt,
+                    wbTotal = crawled.wbTotal,
                 )
             }
         }

@@ -280,6 +280,7 @@ HTTP-сервера, не проверяет. Именно его использ
 | `presets_responses` | сумма `crawl.presets.responses` | больше нуля — протухший токен, §8(a). Ноль — токены ещё живы |
 | `retries` | разбивка `crawl.retries` по `reason` | растёт `antibot` — §8(b) |
 | `pages`, `items` | суммы `crawl.pages` и `crawl.items` | `pages` растёт, `items` нет — §8(c) |
+| `wb_total_by_target` | что WB отвечает как `total` — сколько товаров в **выдаче поиска** по каждой цели (не сумма: товар попадает в несколько выдач) | число резко меняется между прогонами — WB пересобрал выдачу; это **не** длина каталога: длина измеряется на границе пагинации (`known_pages_limit`) |
 
 **Прочие эндпоинты:** `GET /actuator/health` (состояние приложения, детали — `when_authorized`),
 `GET /actuator/metrics` (список Micrometer-метрик, §7), `GET /api/admin/targets` (цели,

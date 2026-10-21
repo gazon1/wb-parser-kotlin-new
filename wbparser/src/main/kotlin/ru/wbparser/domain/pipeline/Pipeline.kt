@@ -23,6 +23,14 @@ data class Crawled(
     val itemsSaved: Int,
     val stopReason: Stop,
     val durationMs: Long,
+    /**
+     * How many products WB says the search behind this crawl holds.
+     *
+     * WB's own count, carried to the report under this name. It is the size of the
+     * *search*, not of the catalog: the catalog's length is measured at the pagination
+     * boundary, and the report keeps the two apart.
+     */
+    val wbTotal: Int? = null,
 )
 
 /**
@@ -38,6 +46,15 @@ data class FailedCrawl(
     val error: DomainError,
     val pagesCrawled: Int,
     val itemsSaved: Int,
+    /**
+     * How many products WB says the search behind this crawl holds — when an answer
+     * carried the count before the failure.
+     *
+     * It travels with the failure for the same reason the counters do: the failure is
+     * not the opposite of a crawl, and what WB said about the size of the search is
+     * part of what the crawl learned.
+     */
+    val wbTotal: Int? = null,
 )
 
 /**
@@ -122,6 +139,7 @@ data class Pipeline(
         var pagesCrawled = 0
         var itemsSaved = 0
         var lastPageWasEmpty = false
+        var wbTotal: Int? = null
         val sides = mutableListOf<Side>()
         val pending = tasks.toMutableList()
         var stopped: Stop = Stop.ManualStop
@@ -155,6 +173,9 @@ data class Pipeline(
             // was written to the database.
             itemsSaved += pageResult.itemsSaved
             lastPageWasEmpty = pageResult.lastPageWasEmpty
+            // The first answer that carried a total wins: WB reports the same total for
+            // every page of a catalog, so the count does not change from page to page.
+            wbTotal = wbTotal ?: pageResult.wbTotal
 
             // Propagate first failure as Either.Left.
             // The Left carries all sides accumulated so far — including successful tasks
@@ -166,6 +187,7 @@ data class Pipeline(
                         error = it,
                         pagesCrawled = pagesCrawled,
                         itemsSaved = itemsSaved,
+                        wbTotal = wbTotal,
                     ) to sides.toList(),
                 )
             }
@@ -189,6 +211,7 @@ data class Pipeline(
                             error = ex.toDomainError(),
                             pagesCrawled = pagesCrawled,
                             itemsSaved = itemsSaved,
+                            wbTotal = wbTotal,
                         ) to sides.toList(),
                     )
                 }
@@ -212,7 +235,7 @@ data class Pipeline(
         if (stopped == Stop.ManualStop && lastPageWasEmpty) stopped = Stop.EmptyPage
 
         return Either.Right(
-            Crawled(pagesCrawled, itemsSaved, stopped, durationMs) to sides.toList(),
+            Crawled(pagesCrawled, itemsSaved, stopped, durationMs, wbTotal) to sides.toList(),
         )
     }
 }

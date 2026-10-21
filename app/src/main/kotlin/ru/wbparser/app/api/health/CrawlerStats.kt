@@ -17,6 +17,7 @@ private object CrawlMetric {
     const val PAGES = "crawl.pages"
     const val ITEMS = "crawl.items"
     const val TARGETS_WITHOUT_ITEMS = "crawl.targets.without_items"
+    const val WB_TOTAL = "crawl.wb_total"
 }
 
 /**
@@ -53,8 +54,32 @@ fun crawlerStats(registry: MeterRegistry): Map<String, Any> {
         "pages" to (totals[CrawlMetric.PAGES] ?: 0.0).toLong(),
         "items" to (totals[CrawlMetric.ITEMS] ?: 0.0).toLong(),
         "targets_without_items" to (totals[CrawlMetric.TARGETS_WITHOUT_ITEMS] ?: 0.0).toLong(),
+        // How many products WB says the searches behind the crawled targets hold —
+        // per target, because a sum would mean nothing: one product matches several
+        // queries, so the sum of the totals counts products more than once.
+        //
+        // It is WB's count of the *search*, not of the catalog: the catalog's own
+        // pagination ends at the API cap, and the catalog's length is measured at that
+        // boundary (`known_pages_limit`). So this number and `items` are not two halves
+        // of one whole — reading "read N of M" into them would be a lie.
+        "wb_total_by_target" to wbTotalsByTarget(registry),
     )
 }
+
+/**
+ * What WB said the search behind each target holds, per target.
+ *
+ * A gauge, not a counter: the number is a state of each target, and a state does not
+ * add up over time. A target that has not answered yet is simply not in the map.
+ */
+private fun wbTotalsByTarget(registry: MeterRegistry): Map<String, Long> =
+    registry
+        .find(CrawlMetric.WB_TOTAL)
+        .gauges()
+        .associate { gauge ->
+            val target = gauge.id.getTag("target") ?: "unknown"
+            target to gauge.value().toLong()
+        }
 
 /**
  * The sum of every meter of each crawler counter, or null where the counter is not

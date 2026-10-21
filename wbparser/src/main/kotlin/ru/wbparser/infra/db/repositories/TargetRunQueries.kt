@@ -38,6 +38,14 @@ data class TargetRun(
     val pages: Int,
     val items: Int,
     val startedAt: Instant,
+    /**
+     * How many products WB said the search behind this run holds.
+     *
+     * WB's count of the search, not of the catalog. Null when no answer of the run
+     * carried one — a run that failed before WB answered has no such number, and a
+     * zero would say "the search is empty".
+     */
+    val wbTotal: Int? = null,
 )
 
 /**
@@ -62,8 +70,8 @@ fun DataSource.recordTargetRun(
                 """
                 INSERT INTO crawl_target_runs
                     (id, job_id, target_id, egress_group, egress_ip, session_id, session_requests,
-                     session_refusals, outcome, pages, items, started_at, finished_at)
-                VALUES (?, ?, ?, ?, (SELECT egress_ip FROM crawl_egress_groups WHERE group_id = ?), ?, ?, ?, ?, ?, ?, ?, ?)
+                     session_refusals, outcome, pages, items, wb_total, started_at, finished_at)
+                VALUES (?, ?, ?, ?, (SELECT egress_ip FROM crawl_egress_groups WHERE group_id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.trimIndent(),
             ).use { ps ->
                 ps.setObject(1, UUID.randomUUID())
@@ -77,8 +85,9 @@ fun DataSource.recordTargetRun(
                 ps.setString(9, run.outcome.dbValue)
                 ps.setInt(10, run.pages)
                 ps.setInt(11, run.items)
-                ps.setObject(12, run.startedAt.atOffset(ZoneOffset.UTC))
-                ps.setObject(13, finishedAt.atOffset(ZoneOffset.UTC))
+                if (run.wbTotal == null) ps.setNull(12, java.sql.Types.INTEGER) else ps.setInt(12, run.wbTotal)
+                ps.setObject(13, run.startedAt.atOffset(ZoneOffset.UTC))
+                ps.setObject(14, finishedAt.atOffset(ZoneOffset.UTC))
                 ps.executeUpdate()
             }
     }
@@ -199,4 +208,5 @@ private fun ResultRow.toTargetRun(): TargetRun =
         pages = this[CrawlTargetRunsTable.pages],
         items = this[CrawlTargetRunsTable.items],
         startedAt = this[CrawlTargetRunsTable.startedAt].toInstant(),
+        wbTotal = this[CrawlTargetRunsTable.wbTotal],
     )

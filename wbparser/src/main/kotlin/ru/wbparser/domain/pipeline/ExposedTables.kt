@@ -236,6 +236,14 @@ object CrawlTargetRunsTable : Table("crawl_target_runs") {
     val outcome: Column<String> = varchar("outcome", 32)
     val pages: Column<Int> = integer("pages")
     val items: Column<Int> = integer("items")
+
+    /**
+     * How many products WB said the search behind this run holds.
+     *
+     * Nullable: a run that failed before WB answered, or answered without a count, has
+     * no such number — and inventing a zero would say "the search is empty".
+     */
+    val wbTotal: Column<Int?> = integer("wb_total").nullable()
     val startedAt: Column<OffsetDateTime> = timestampWithTimeZone("started_at")
     val finishedAt: Column<OffsetDateTime> = timestampWithTimeZone("finished_at")
 

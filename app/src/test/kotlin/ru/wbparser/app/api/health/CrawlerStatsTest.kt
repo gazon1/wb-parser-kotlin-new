@@ -79,6 +79,29 @@ class CrawlerStatsTest :
             crawler["retries"] shouldBe mapOf("antibot" to 210L, "server_error" to 3L)
         }
 
+        test("what WB says about the size of the search is reported per target") {
+            val registry = SimpleMeterRegistry()
+            registry.counter("crawl.requests", "target_id", "1").increment(10.0)
+            registry.counter("crawl.items", "target", "9467").increment(6000.0)
+            registry.gauge(
+                "crawl.wb_total",
+                listOf(
+                    io.micrometer.core.instrument.Tag
+                        .of("target", "9467"),
+                ),
+                49404.0,
+            )
+
+            val crawler = crawlerOf(registry)
+
+            // The number is reported per target and not summed: one product matches
+            // several queries, so a sum would count products more than once.
+            crawler["wb_total_by_target"] shouldBe mapOf("9467" to 49404L)
+            // And it is not the size of the catalog — the catalog's own length is
+            // measured at the pagination boundary.
+            crawler["items"] shouldBe 6000L
+        }
+
         test("the crawler section does not disturb the checks that were there before") {
             val readiness = HealthRoutes(catalogDataSource(), idleRegistry(), noGroups, noStates()).readiness()
 
