@@ -317,6 +317,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** добавлять `site-compatibility` в обязательные проверки `main`, пока витрина не _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
 - **Never** открывать второй issue совместимости, пока первый открыт. _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
 - **Never** ронять `main` краулера из-за ответа витрины: красный, отменённый, прерванный _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
+- **Always** держать публичную поверхность `wbparser` узкой: функция не должна протаскивать в _(from `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer`)
+- **Always** называть причину разбора одинаково во всех местах, где читается JSON WB: один _(from `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer`)
+- **Always** проверять диагностику тестом: «называет поле» — это утверждение, которое можно _(from `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer`)
+- **Never** держать диагностику в том файле, который оказался первым: она принадлежит _(from `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer`)
 - **Always** держать `kotlinx-serialization` в версионном каталоге и читать с неё _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Always** логировать путь элемента, который не разобрался, вместе со смещением и _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Always** проверять защиту, которую нельзя вызвать настоящим входом, через шов, _(from `2026-10-21-the-parse-failure-names-the-field`)
@@ -1079,6 +1083,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — crawler  diagnostics  catalog  pipeline
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — architecture  refactoring  maintainability
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — ci  workflow  contract
+- `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — diagnostics  api  architecture
 - `2026-10-21-the-parse-failure-names-the-field` — crawler  diagnostics  catalog  api
 - `2026-10-21-the-read-model-is-not-needed-yet` — catalog  performance  database  measurement
 - `2026-10-21-the-repository-is-licensed` — legal  project  governance
@@ -1181,6 +1186,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — Ответ, который не разобрался, — это сбой, а не конец каталога
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — Запросы каталога живут в решениях, которые они держат, а фасад держит поверхность
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — Кросс-репозиторная совместимость — это отчёт, а не блокирующий гейт
+- `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — Диагностика разбора живёт в одном месте и читает все ответы WB
 - `2026-10-21-the-parse-failure-names-the-field` — Ошибка разбора называет поле, а не страницу
 - `2026-10-21-the-read-model-is-not-needed-yet` — Материализованная read-модель каталога пока не нужна — вот цифры, по которым это решено
 - `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0

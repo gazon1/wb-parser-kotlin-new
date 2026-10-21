@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.db.repositories.countSubjects
 import ru.wbparser.infra.db.repositories.upsertSubjects
+import ru.wbparser.infra.json.describeJsonFailure
 import java.net.URI
 import java.net.http.HttpClient
 import java.net.http.HttpRequest
@@ -65,12 +66,14 @@ class WbSubjectBootstrap(
                 fetchSubjects()
             } catch (e: Exception) {
                 // Not fatal: the crawl still works, the products just have no names.
+                // The reason is the one that names the field — the dictionary is WB's
+                // JSON too, and it breaks the same way when WB changes its shape.
                 log.warn(
                     "Could not download WB's subject dictionary from {} ({}). " +
                         "Products will be stored without category names. " +
                         "Run scripts/wb-catalog/load_subjects.py to fill it.",
                     SUBJECTS_URL,
-                    e.message,
+                    describeJsonFailure(e),
                 )
                 return
             }

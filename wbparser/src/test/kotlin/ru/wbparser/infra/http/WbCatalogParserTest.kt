@@ -17,6 +17,7 @@ import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.parsing.WbCatalogEnvelope
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
+import ru.wbparser.infra.json.describeJsonFailure
 import java.util.UUID
 
 /**
@@ -156,7 +157,7 @@ class WbCatalogParserTest :
             val failure = runCatching { wbJson.decodeFromString<WbCatalogEnvelope>(body) }.exceptionOrNull()
 
             val decoding = failure.shouldBeInstanceOf<JsonDecodingException>()
-            describeParseFailure(decoding) shouldContain "$.products[0].id"
+            describeJsonFailure(decoding) shouldContain "$.products[0].id"
         }
 
         test("the failure of a changed field names the field, not just the answer") {
@@ -171,7 +172,7 @@ class WbCatalogParserTest :
 
             val failure = runCatching { wbJson.decodeFromString<WbCatalogEnvelope>(body) }.exceptionOrNull()
 
-            describeParseFailure(failure!!) shouldContain "$.products[0]"
+            describeJsonFailure(failure!!) shouldContain "$.products[0]"
         }
 
         test("an answer whose shape changed is a failure — an exhausted catalog is not a change of shape") {
