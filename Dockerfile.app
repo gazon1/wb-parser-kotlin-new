@@ -12,7 +12,7 @@
 # and not shipping a compiler is most of why it is smaller.
 
 # ── builder ──────────────────────────────────────────────────────────────────
-FROM eclipse-temurin:22-jdk-alpine AS builder
+FROM eclipse-temurin:25-jdk-alpine AS builder
 WORKDIR /app
 
 # Gradle writes outside /app and the build is not reproducible byte-for-byte
@@ -53,7 +53,7 @@ RUN --mount=type=cache,target=/root/.gradle \
 # Node.js binary linked against glibc/libstdc++, which Alpine's musl libc does
 # not provide. All deps below satisfy both the Node.js runtime and the Chromium
 # browser binary that Playwright downloads.
-FROM eclipse-temurin:22-jre AS runtime
+FROM eclipse-temurin:25-jre AS runtime
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
