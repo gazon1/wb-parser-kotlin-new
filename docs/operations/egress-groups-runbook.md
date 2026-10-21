@@ -142,19 +142,34 @@ SELECT started_at, egress_group, egress_ip, outcome, pages, items
 | Метрика | Что показывает |
 |---|---|
 | `crawl.egress.pages` | успешных страниц/час по группе — **целевая метрика** |
-| `crawl.egress.antibot.responses` / `crawl.egress.requests` | доля отказов по группе |
+| `crawl.egress.refusals{kind}` | отказы по группе: `kind="antibot"` — ответ WB, `kind="transport"` — запрос не дошёл |
+| `crawl.egress.requests` | запросов по группе — знаменатель доли отказов |
 | `crawl.egress.pacer.wait` | группа упирается в rate limit (растёт время ожидания) |
-| `crawl.egress.circuit.state` | 0 closed / 1 half-open / 2 open |
+| `crawl.egress.circuit.state` | 0 closed / 1 half-open / 2 open — антиботная цепь группы |
+| `crawl.egress.transport.suspended` | 1 — транспортная цепь группы отдывает (сеть, а не адрес) |
 | `crawl.egress.isolated` | 1 — группа реально изолирована по IP, 0 — нет |
 | `crawl.egress.ip.changes` | сколько раз IP группы менялся |
 | `crawl.egress.all_down` | все группы были недоступны одновременно |
 
+Два вида отказа — разные счётчики внутри одного, и они разные вещи:
+
+- `kind="antibot"` — WB ответил 498/403/401. Это про **сессию**: запросы считаются у
+  сессии (профиля), и она отдывает.
+- `kind="transport"` — запрос не дошёл или ответ не пришёл. Это про **сеть**: адрес
+  тут ни при чём, и антиботная цепь из-за него не открывается.
+
 Доля отказов по группе в PromQL:
 
 ```promql
-sum by (egress_group) (rate(crawl.egress.antibot.responses[15m]))
+sum by (egress_group) (rate(crawl.egress.refusals{kind="antibot"}[15m]))
 /
 sum by (egress_group) (rate(crawl.egress.requests[15m]))
+```
+
+Транспортные сбои считаются отдельно и **не входят** в этот знаменатель:
+
+```promql
+sum by (egress_group) (rate(crawl.egress.refusals{kind="transport"}[15m]))
 ```
 
 **Целевые значения** (N групп, baseline — один IP):
@@ -188,11 +203,74 @@ sum by (egress_group) (rate(crawl.egress.requests[15m]))
 |---|---|---|---|---|
 | доля отказов за 15 мин | < 5 % | > 10 % | > 25 % | поднять `min-interval-ms` группы; при аварии — сменить прокси |
 | `crawl.egress.circuit.state` | 0 | 2 (open) | 2 дольше 10 мин | адрес не отвечает: сменить прокси, проверить, жив ли он |
+| `crawl.egress.transport.suspended` | 0 | 1 | 1 дольше 5 мин | сеть до адреса лежит: адрес тут ни при чём, чинить надо маршрут |
 | `crawl.egress.isolated` | 1 | 0 | 0 у всех групп | изоляции нет: две группы за одним адресом, бюджет один |
 | `crawl.egress.ip.changes` | 0 | > 0 за час | > 0 за сутки | прокси ротационный: sticky-IP у провайдера, иначе адрес меняется быстрее, чем успевает остыть |
 | `crawl.egress.all_down` | 0 | > 0 | > 0 два раза подряд | все адреса лежат: прогон не начнётся, пока не откроется хотя бы один circuit |
 | `crawl.egress.probe.failed` | 0 | > 0 | > 0 постоянно | эхо-сервис недоступен: адрес неизвестен, изоляция не подтверждена |
 | `crawl.egress.pacer.wait` | ≈ 0 | растёт | растёт линейно | группа упирается в rate limit: поднять `min-interval-ms` |
+
+### Ёмкость считается в сессиях, а не в адресах
+
+Адрес без живой сессии ничего не отправляет, а сессия, которую WB отказала, не
+отправляет тоже. Поэтому ёмкость краулера — это число **живых сессий**, и оно
+показывается рядом с группами:
+
+```bash
+curl -s localhost:8080/api/health/ready | jq .egress.sessions
+```
+
+```json
+{
+  "live": 3,
+  "retired": 1,
+  "sessions": [
+    {"profile": "k18a6j35", "group": "direct", "state": "warm",
+     "requests": 42, "refusals": 2, "answered": 40, "age_ms": 918000}
+  ]
+}
+```
+
+- `live` — сколько сессий ещё могут работать. Это и есть ёмкость.
+- `retired` — сколько сессий вышло из ротации.
+- `requests` / `refusals` — счётчики сессии: сколько запросов она отправила и сколько
+  из них WB отказал. **Это и есть то, что измеряет счётчик WB**: по замеру
+  2026-10-21 порог отказа — порядка 10–15 запросов на сессию, и темп на него не
+  влияет.
+
+> **Ключ счётчика ещё не установлен (2026-11-03).** Замер не развёл «счётчик живёт в
+> профиле» и «счётчик живёт в адресе»: оба объясняют все прогоны репетиции. Поэтому
+> счётчики ведутся **и у сессии, и у группы**, и ledger хранит оба. Пока разведка не
+> сделана, лимиты сессии выключены (`requests-per-session: 0`), и решение «профиль
+> выводится навсегда» не принято.
+
+### Что лежит в ledger'е
+
+Прогон каждой цели оставляет строку — и в ней теперь **и адрес, и сессия**:
+
+```sql
+SELECT started_at, egress_group, egress_ip, session_id,
+       session_requests, session_refusals, outcome
+  FROM crawl_target_runs
+ ORDER BY started_at DESC
+ LIMIT 50;
+```
+
+- `session_id` — профиль, чья сессия обслужила прогон;
+- `session_requests` — сколько запросов эта сессия отправила к моменту прогона;
+- `session_refusals` — сколько из них WB отказал.
+
+Отдельно — «последнее здоровье» адреса:
+
+```sql
+SELECT group_id, egress_ip, probed_at, last_healthy_at
+  FROM crawl_egress_groups;
+```
+
+`last_healthy_at` — момент, когда группа **отвечала нормально**. Без него
+«адрес сменился» и «адрес замолчал» выглядят в таблице одинаково, а это ровно то
+различие, которое показал замер: разброс внутри одного адреса больше разброса между
+адресами. Пишет его краулер (успешный прогон), а `probed_at` — проба (адрес).
 
 ### Health-эндпоинт
 

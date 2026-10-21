@@ -13,13 +13,39 @@
 
 ## Egress-группа (EgressGroup)
 
-Набор профилей AdsPower, которые, как ожидается, выходят с одного egress IP. WB считает источник запроса по IP, поэтому группа, а не профиль, владеет бюджетом запросов,
-своим circuit breaker и своей долей антибот-бюджета. Слово «ожидается» намеренно: прокси живёт в AdsPower, а краулер объявляет только кто с кем делит адрес. Профилей в
-группе лучше один — ради пропускной способности; два-три покупают живучесть, но не скорость.
+Набор профилей AdsPower, которые, как ожидается, выходят с одного egress IP. Группа — это
+**адрес**, и адрес владеет своими книгами: сколько запросов через него ушло, сколько WB
+отказал, сколько вообще не дошло, своим circuit'ом и своей долей антибот-бюджета. Слово
+«ожидается» намеренно: прокси живёт в AdsPower, а краулер объявляет только кто с кем делит
+адрес. Профилей в группе лучше один — ради пропускной способности; два-три покупают живучесть,
+но не скорость.
+
+> **Уточнение (2026-11-03).** Группа владеет **книгами адреса**, но не бюджетом WB. Бюджет
+> WB — это счётчик запросов **сессии**, а сессия живёт в профиле. Замер 2026-10-21 показал,
+> что отказ наступает на 10–15 запросах сессии независимо от темпа, и что два профиля одной
+> группы — это две сессии и два счётчика. Ключ счётчика (профиль или адрес) замер ещё не
+> развёл, поэтому счётчики ведутся **и у сессии, и у группы**, и ledger хранит оба.
 
 **Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressGroup.kt` — `EgressGroup`, `EgressGroup.DEFAULT_ID`;
 `app/src/main/kotlin/ru/wbparser/app/config/EgressGroups.kt` — `EgressGroups.resolve`, `EgressGroupConfig`;
 `app/src/main/kotlin/ru/wbparser/app/config/CrawlProperties.kt` — `Spider.egressGroups` (ключ `crawler.spider.egress-groups` — единственный список профилей).
+
+## Сессия WB (BrowserSession)
+
+Сессия одного профиля: его куки и его отпечаток, то есть то, о чём говорит отказ WB. Сессия
+считает **свои** запросы и **свои** отказы, и её счётчик не обнуляется повторным прогревом:
+замер видел профиль, который отказали, прогрели заново — и он отказал с первого запроса,
+потому что счётчик уже был выбран. Состояния сессии: `cold` (страница WB ещё не грузилась),
+`warm` (отвечает), `flagged` (WB отказал, отдыхает), `retired` (вышел из ротации).
+
+Политика (`SessionPolicy`) — сколько запросов разрешено сессии, сколько она живёт, выводится
+ли из ротации после отказа — по умолчанию **нулевая**: лимиты включаются, когда измерение
+решит, чей это счётчик. Ротация до порога без источника свежих профилей не сохраняет ёмкость,
+а тратит её.
+
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/domain/session/BrowserSession.kt` — `BrowserSession`,
+`SessionPolicy`, `SessionState`, `SessionSnapshot`;
+`wbparser/src/main/kotlin/ru/wbparser/infra/http/BrowserProfileState.kt` — владелец сессии профиля.
 
 ## Профиль браузера (BrowserProfileConfig)
 
@@ -32,15 +58,23 @@
 ## Пул браузеров (BrowserPool)
 
 Пул Playwright-подключений к уже открытым профилям AdsPower. Каждому профилю соответствует свой паузер, то есть свой бюджет запросов на группу. Пул отдаёт профиль в заём
-и умеет сказать, когда у конкретной группы освободится слот (`millisUntilSlot`) и сколько этот слот будет ждать (`awaitRequestSlot`).
+и умеет сказать, когда у конкретной группы освободится слот (`millisUntilSlot`) и сколько этот слот будет ждать (`awaitRequestSlot`). **Ёмкость пула измеряется в живых
+сессиях** (`liveSessionCount`, `retiredSessionCount`, `sessionSnapshots()`), а не в адресах: адрес без живой сессии ничего не отправляет, и сессия, которую WB отказала,
+тоже. Сессия, выведенная из ротации политикой, в заём не выдаётся.
 
 **Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/BrowserPool.kt` — `BrowserPool`, `egressGroupIds`, `awaitRequestSlot`, `millisUntilSlot`, `borrowPage`,
-`tryBorrowPage`; `wbparser/src/main/kotlin/ru/wbparser/infra/http/BrowserProfileState.kt` — состояние профиля (warm, отдых после антибота).
+`tryBorrowPage`, `liveSessionCount`, `sessionSnapshots`; `wbparser/src/main/kotlin/ru/wbparser/infra/http/BrowserProfileState.kt` — состояние профиля (сессия, отдых после антибота).
 
 ## Заимствованная страница (BorrowedPage)
 
-Страница Playwright вместе с id профиля, из которого она взята. Несёт `egressGroup` — адрес, под которым WB её увидит: два профиля одной группы делят IP и потому делят
-бюджет запросов, два профиля разных групп — нет. `markWarm()` и `markAntibot(cooldownMs)` сообщают пулу о состоянии сессии, освобождение — `close()`.
+Страница Playwright вместе с id профиля, из которого она взята. Несёт `egressGroup` — адрес,
+под которым WB её увидит, и `profileId` — сессию, которая её отправит. `markWarm()`,
+`markRequest()`, `markAnswered()` и `markAntibot(cooldownMs)` сообщают пулу о состоянии сессии,
+освобождение — `close()`.
+
+> **Уточнение (2026-11-03).** Раньше здесь было написано, что два профиля одной группы делят
+> бюджет запросов. Замер этого **не подтвердил**: отказ — это счётчик сессии, а не адреса.
+> Теперь страница помнит, кто её отправил, и сколько запросов у него уже было.
 
 **Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/BorrowedPage.kt` — `BorrowedPage`, `BorrowedPageHooks`, `BrowserPoolExhaustedException`.
 
@@ -229,7 +263,9 @@ circuit группы не спрашивается, пока другие отв
 
 Две разные таблицы, и их нельзя смешивать. `crawl_targets` — **агрегат цели**: что цель представляет сейчас (последнее чтение, пауза, счётчики, аномалия).
 `crawl_target_runs` — **прогоны сами по себе**: одна строка на попытку прочитать цель, с адресом, исходом, числом страниц и товаров и временем начала. Адрес в прогоне не
-передаётся: он читается из `crawl_egress_groups` тем же запросом, чтобы факт об адресе жил в одном месте. `targetsLastServedBy(groupId)` отдаёт цели, чей **последний**
+передаётся: он читается из `crawl_egress_groups` тем же запросом, чтобы факт об адресе жил в одном месте. С 2026-11-03 рядом с адресом лежит **сессия**: `session_id` (профиль),
+`session_requests` (сколько запросов она отправила) и `session_refusals` (сколько из них WB отказал) — потому что отказ WB утверждение о сессии, и без её счётчика ответ
+«кто дал 498» мог быть только про адрес. `targetsLastServedBy(groupId)` отдаёт цели, чей **последний**
 прогон обслужила эта группа, а `releaseEgressPenalty(groupId)` снимает наложенное адресом наказание: обнуляет `egress_failure_count` и пересчитывает `next_attempt_at` по
 **собственному** счётчику цели (`consecutive_failures` через `TargetBackoff.targetDelay`) — собственная история цели не трогается.
 
@@ -242,8 +278,8 @@ circuit группы не спрашивается, пока другие отв
 | Таблица | Что это | Миграция |
 |---|---|---|
 | `crawl_targets` | Цели краулера и их состояние: что читать, как глубоко, когда прочитано в последний раз, когда можно пробовать снова | `app/src/main/resources/db/migration/V1__init.sql`, `app/src/main/resources/db/migration/V9__crawl_target_state.sql` |
-| `crawl_target_runs` | Отдельные прогоны цели: адрес, исход, страницы, товары, времена | `app/src/main/resources/db/migration/V10__crawl_target_runs.sql` |
-| `crawl_egress_groups` | Наблюдения пробы: какой адрес у группы, изолирована ли она, сколько раз адрес менялся. Журнал, а не управляющая таблица | `app/src/main/resources/db/migration/V8__crawl_egress_groups.sql` |
+| `crawl_target_runs` | Отдельные прогоны цели: адрес, сессия, исход, страницы, товары, времена | `app/src/main/resources/db/migration/V10__crawl_target_runs.sql`, `app/src/main/resources/db/migration/V13__session_measurement.sql` |
+| `crawl_egress_groups` | Наблюдения пробы: какой адрес у группы, изолирована ли она, сколько раз адрес менялся, когда группа последний раз отвечала нормально. Журнал, а не управляющая таблица | `app/src/main/resources/db/migration/V8__crawl_egress_groups.sql`, `app/src/main/resources/db/migration/V13__session_measurement.sql` |
 | `crawl_jobs` | Прогоны паука как таковые: статус, счётчики запросов, heartbeat | `app/src/main/resources/db/migration/V1__init.sql` |
 | `scraped_items` | Сохранённые товары: одна строка на товар в рамках цели | `app/src/main/resources/db/migration/V1__init.sql`, `app/src/main/resources/db/migration/V2__catalog_columns.sql`, `app/src/main/resources/db/migration/V3__expand_content_hash.sql` |
 | `category_mappings` | Дерево категорий, увиденное при обходе: категория, в которой видели товар, и её родитель | `app/src/main/resources/db/migration/V1__init.sql` |
@@ -260,8 +296,9 @@ circuit группы не спрашивается, пока другие отв
 |---|---|---|
 | `crawl.egress.requests` | counter | Сколько запросов ушло через группу (любой исход) |
 | `crawl.egress.pages` | counter | Сколько из них завершились успехом |
-| `crawl.egress.antibot.responses` | counter | Сколько ответов было антибот-отказами |
-| `crawl.egress.circuit.state` | gauge | Состояние circuit: `0` closed, `1` half-open, `2` open |
+| `crawl.egress.refusals` | counter | Сколько отказов, с тегом `kind`: `antibot` (ответ WB) и `transport` (запрос не дошёл) |
+| `crawl.egress.circuit.state` | gauge | Состояние антиботного circuit: `0` closed, `1` half-open, `2` open |
+| `crawl.egress.transport.suspended` | gauge | `1` — транспортная цепь группы отдывает: сеть лежит, адрес не виноват |
 | `crawl.egress.pacer.wait` | timer | Сколько запрос ждал слот своей группы |
 | `crawl.egress.all_down` | counter | Ни одна группа не смогла обслужить запрос в отведённое время (без тега) |
 | `crawl.egress.isolated` | gauge | Изолирована ли группа по адресу: `1` / `0` |
