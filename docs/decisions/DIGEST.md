@@ -287,6 +287,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** отдавать профиль в две группы. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Never** ронять старт из-за недоступности эхо-сервиса: probe предупреждает, _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Never** считать, что несколько профилей на группе дают скорость: бюджет _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
+- **Always** выносить чтение машины из приватных методов в функцию с аргументами: код, который _(from `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested`)
+- **Always** читать обе формы ответа, когда имя поля зависит от версии сервера: пустой список _(from `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested`)
+- **Never** кэшировать то, что меняется за время краула: набор открытых браузеров — не _(from `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested`)
+- **Never** оставлять ветвь, которая решает, что краул скажет, без теста: «профиль не _(from `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested`)
 - **Always** брать следующий pull request от свежего `main`, а не от _(from `2026-10-21-one-decision-is-one-pull-request`)
 - **Always** держать одно решение в одном pull request'е, а решение, _(from `2026-10-21-one-decision-is-one-pull-request`)
 - **Always** перебазировать ветку на свежий `main` перед открытием pull _(from `2026-10-21-one-decision-is-one-pull-request`)
@@ -1080,6 +1084,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — dependencies  build  workflow
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
+- `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested` — browser  tests  coverage  diagnostics
 - `2026-10-21-one-decision-is-one-pull-request` — workflow  conventions
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — catalog  contract  observability
 - `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — crawler  diagnostics  catalog  pipeline
@@ -1184,6 +1189,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — Версия, которой никто не публиковал, — это не версия
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
+- `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested` — Каждая ветвь браузерного пути, которая говорит краулу «что сломалось», проверена
 - `2026-10-21-one-decision-is-one-pull-request` — Одно решение — один pull request, и он перебазирован на свежий main
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — Ответ говорит, кто ответил и о каком моменте данные
 - `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — Ответ, который не разобрался, — это сбой, а не конец каталога

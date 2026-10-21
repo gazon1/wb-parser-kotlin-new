@@ -45,6 +45,14 @@ class BrowserPool(
      * to inject a [FakeBrowserAutomation] without any real browser I/O.
      */
     private val browserAutomations: List<BrowserAutomation>? = null,
+    /**
+     * How the pool finds the Chrome DevTools endpoints of the profiles that do not name one.
+     *
+     * Defaults to the discovery on this machine: the ports `ss` reports, each of them
+     * probed for a DevTools endpoint. A seam for the tests, and for a deployment that
+     * knows its own endpoints.
+     */
+    private val resolveEndpoints: () -> List<String> = { discoverChromeEndpoints() },
 ) {
     /**
      * The groups this pool serves.
@@ -55,10 +63,6 @@ class BrowserPool(
      * profiles and pages: which browser to lend out, and when.
      */
     val egressGroupIds: Set<String> = profiles.map { it.egressGroup }.distinct().toSet()
-
-    /** Discovered Chrome endpoints, resolved lazily and cached for the pool's lifetime. */
-    @Volatile
-    private var cachedEndpoints: List<String>? = null
 
     /** Number of profiles this pool can serve concurrently. Bounds caller-side concurrency. */
     val profileCount: Int get() = profileStates.size
@@ -100,7 +104,7 @@ class BrowserPool(
                             index = index,
                             profileCount = profiles.size,
                             allProfileIds = allProfileIds,
-                            resolveEndpoints = { discoveredEndpoints() },
+                            resolveEndpoints = { discoveredEndpoints.value },
                             log = log,
                         ),
                 )
@@ -247,22 +251,7 @@ class BrowserPool(
      * of open browsers does not change during a crawl, and a stale answer is recoverable
      * by restarting, whereas re-scanning on every borrow would dominate request latency.
      */
-    private fun discoveredEndpoints(): List<String> =
-        cachedEndpoints ?: synchronized(this) {
-            cachedEndpoints ?: scanEndpoints().also { cachedEndpoints = it }
-        }
-
-    private fun scanEndpoints(): List<String> = probeChromeEndpoints(listeningPorts())
-
-    /** Listening ports above the ephemeral range that are worth probing. */
-    private fun listeningPorts(): List<Int> {
-        val ports = listeningTcpPorts()
-        if (ports.isEmpty()) {
-            log.warn("Could not list listening ports (is 'ss' installed?); falling back to {}", DEFAULT_CDP_PORT)
-            return listOf(DEFAULT_CDP_PORT)
-        }
-        return ports
-    }
+    private val discoveredEndpoints: Lazy<List<String>> = lazy { resolveEndpoints() }
 
     /** Cleanly shuts down all profiles. */
     fun close() {
@@ -354,7 +343,6 @@ class BrowserPool(
         const val DEFAULT_ANTIBOT_COOLDOWN_MS: Long = 180_000L
 
         /** AdsPower's default DevTools port, used when `ss` is unavailable. */
-        private const val DEFAULT_CDP_PORT = 36931
 
         @JvmStatic
         private val jsonMapper =

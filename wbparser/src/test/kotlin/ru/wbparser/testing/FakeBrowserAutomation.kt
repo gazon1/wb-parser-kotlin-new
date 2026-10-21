@@ -14,6 +14,14 @@ class FakeBrowserAutomation(
     private var _isConnected: Boolean = false,
     private var _healthCheckResult: Boolean = true,
     private var _currentPage: Page? = null,
+    /**
+     * Thrown by [connect] — stands for a browser that cannot be opened.
+     *
+     * A profile whose browser does not come up must not take the crawl with it: the pool
+     * closes it and hands out the next one. That path needs a browser that fails to open,
+     * which is what this is.
+     */
+    private val connectFailure: Throwable? = null,
 ) : BrowserAutomation {
     private val _connectCalls = mutableListOf<String>()
     val connectCalls: List<String> get() = _connectCalls.toList()
@@ -34,6 +42,7 @@ class FakeBrowserAutomation(
 
     override fun connect(cdpUrl: String): Page {
         _connectCalls += cdpUrl
+        connectFailure?.let { throw it }
         _isConnected = true
         val page = _currentPage ?: mockk<Page>(relaxed = true)
         _currentPage = page
