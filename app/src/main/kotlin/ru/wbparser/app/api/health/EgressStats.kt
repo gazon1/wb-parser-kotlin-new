@@ -1,9 +1,11 @@
 package ru.wbparser.app.api.health
 
 import io.micrometer.core.instrument.MeterRegistry
+import ru.wbparser.domain.session.SessionSnapshot
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
 import ru.wbparser.infra.http.EgressGroup
 import ru.wbparser.infra.http.EgressGroupState
+import ru.wbparser.infra.http.SessionSource
 import java.util.concurrent.TimeUnit
 
 /**
@@ -48,16 +50,27 @@ private object EgressMetric {
  * address's numbers describe an address that is no longer there. The pacer's wait is
  * the process's own timer and is not part of the state.
  *
+ * ## The capacity is counted in sessions
+ *
+ * The number that says how much the crawler can do is the number of **live sessions**,
+ * not the number of addresses: an address serves nothing without a session to send
+ * through it, and a session that WB has refused serves nothing at all. The sessions
+ * are reported one by one, with their counters, because the measurement has not settled
+ * whether the counter belongs to the session or to the address — and both numbers are
+ * here.
+ *
  * @param registry the meters the crawl writes.
  * @param ledger the groups as the probe last saw them.
  * @param states the state of the groups, as the one source computes it.
  * @param declaredGroups the groups as the configuration declares them.
+ * @param pool the pool whose sessions are reported.
  */
 fun egressStats(
     registry: MeterRegistry,
     ledger: List<EgressGroupRecord>,
     states: List<EgressGroupState>,
     declaredGroups: List<EgressGroup> = emptyList(),
+    pool: SessionSource? = null,
 ): Map<String, Any> {
     val byGroup = states.associateBy { it.groupId }
     val groups =
@@ -79,6 +92,13 @@ fun egressStats(
                 "requests" to state.requests,
                 "pages" to state.pages,
                 "refused" to state.refused,
+                // The transport chain: the requests that never reached WB. They are
+                // counted apart from the refusals — the network is not the address.
+                "transport_failures" to state.counters.transportFailures,
+                "transport_suspended" to state.transportSuspended,
+                // When the address last answered normally. Without it, "the address
+                // changed" and "the address went quiet" look the same.
+                "last_healthy_at" to (record.lastHealthyAt?.toString() ?: "never"),
                 // The pacer's wait, as the process has seen it.
                 "pacer_wait_ms" to (timerTotalMs(registry, EgressMetric.PACER_WAIT, record.groupId) ?: 0L),
             )
@@ -91,6 +111,36 @@ fun egressStats(
         "declared" to declaredGroups.associate { group -> group.id to group.proxy.toString() },
         "all_down" to (counterValue(registry, EgressMetric.ALL_DOWN, null) ?: 0L),
         "probe_failures" to (counterValue(registry, EgressMetric.PROBE_FAILED, null) ?: 0L),
+        // The capacity of the crawler, in the unit it is spent in.
+        "sessions" to sessionStats(pool),
+    )
+}
+
+/**
+ * The sessions of the deployment: how many are live, how many left the rotation, and
+ * what each of them has done.
+ *
+ * A session that is retired is not a failure of the crawler — it is the crawler having
+ * spent it. The two numbers together say how much is left.
+ */
+private fun sessionStats(pool: SessionSource?): Map<String, Any> {
+    if (pool == null) return mapOf("live" to 0, "retired" to 0, "sessions" to emptyList<SessionSnapshot>())
+    val sessions = pool.sessionSnapshots()
+    return mapOf(
+        "live" to pool.liveSessionCount,
+        "retired" to pool.retiredSessionCount,
+        "sessions" to
+            sessions.map { session ->
+                mapOf(
+                    "profile" to session.profileId,
+                    "group" to session.egressGroup,
+                    "state" to session.state.name.lowercase(),
+                    "requests" to session.requests,
+                    "refusals" to session.refusals,
+                    "answered" to session.answered,
+                    "age_ms" to session.ageMs,
+                )
+            },
     )
 }
 

@@ -191,6 +191,15 @@ object CrawlEgressGroupsTable : Table("crawl_egress_groups") {
     val probedAt: Column<OffsetDateTime> = timestampWithTimeZone("probed_at")
     val ipChanges: Column<Int> = integer("ip_changes")
 
+    /**
+     * When the group last answered normally.
+     *
+     * The probe learns the address; the crawl learns whether the address answers. The
+     * two are different facts, and without this one "the address changed" and "the
+     * address went quiet" look the same in the table.
+     */
+    val lastHealthyAt: Column<OffsetDateTime?> = timestampWithTimeZone("last_healthy_at").nullable()
+
     override val primaryKey = PrimaryKey(groupId)
 }
 
@@ -212,6 +221,18 @@ object CrawlTargetRunsTable : Table("crawl_target_runs") {
     val targetId: Column<UUID> = uuid("target_id")
     val egressGroup: Column<String?> = varchar("egress_group", 64).nullable()
     val egressIp: Column<String?> = varchar("egress_ip", 45).nullable()
+
+    /**
+     * The session that served the run: the profile, and how many requests it had sent.
+     *
+     * Next to the address, because WB's refusal is a statement about the session, and
+     * the measurement has not settled whether the counter it keeps belongs to the
+     * session or to the address — so both facts are written down.
+     */
+    val sessionId: Column<String?> = varchar("session_id", 64).nullable()
+    val sessionRequests: Column<Int> = integer("session_requests")
+    val sessionRefusals: Column<Int> = integer("session_refusals")
+
     val outcome: Column<String> = varchar("outcome", 32)
     val pages: Column<Int> = integer("pages")
     val items: Column<Int> = integer("items")

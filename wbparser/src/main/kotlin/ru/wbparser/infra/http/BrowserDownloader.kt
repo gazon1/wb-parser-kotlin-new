@@ -97,6 +97,7 @@ open class BrowserDownloader(
                     result =
                         when (fetchResult) {
                             is FetchResult.Success -> {
+                                borrowedPage.markAnswered()
                                 router.onOutcome(borrowedPage, DownloadOutcome.Success, task.targetId)
                                 Either.Right(
                                     Fetched(
@@ -271,6 +272,10 @@ open class BrowserDownloader(
             val headersJson = objectMapper.writeValueAsString(headersWithCookies)
 
             // Step 4: Call the internal API — the page context + cookies are ready.
+            //
+            // The request is counted before it goes out: the count is what WB counts,
+            // and a request that never left (a JS error above) must not be in it.
+            borrowed.markRequest()
             val fetchScript = WbCatalogFetchScript.FETCH_SCRIPT
             val response: Map<*, *> = page.evaluate(fetchScript, headersJson) as Map<*, *>
 

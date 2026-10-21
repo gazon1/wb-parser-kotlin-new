@@ -5,6 +5,8 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import ru.wbparser.domain.pipeline.CrawlEgressGroupsTable
 import ru.wbparser.infra.db.exposedOnce
+import java.time.Instant
+import java.time.ZoneOffset
 import javax.sql.DataSource
 
 /**
@@ -14,12 +16,14 @@ import javax.sql.DataSource
  *   could not determine it.
  * @param isolated whether the group really has an address of its own.
  * @param ipChanges how many times the group's address changed.
+ * @param lastHealthyAt when the group last answered normally, or null when it never has.
  */
 data class EgressGroupRecord(
     val groupId: String,
     val egressIp: String?,
     val isolated: Boolean,
     val ipChanges: Int,
+    val lastHealthyAt: Instant? = null,
 )
 
 /**
@@ -91,4 +95,40 @@ private fun ResultRow.toEgressGroupRecord(): EgressGroupRecord =
         egressIp = this[CrawlEgressGroupsTable.egressIp],
         isolated = this[CrawlEgressGroupsTable.isolated],
         ipChanges = this[CrawlEgressGroupsTable.ipChanges],
+        lastHealthyAt = this[CrawlEgressGroupsTable.lastHealthyAt]?.toInstant(),
     )
+
+/**
+ * Records that the group answered normally.
+ *
+ * The probe learns the address; the crawl learns whether the address answers. The two
+ * facts live in the same row and are written by different actors, and neither one
+ * touches the other's column.
+ *
+ * The moment only moves forward: a run that started earlier and finished later must
+ * not drag the group's last healthy moment into the past. `GREATEST` does that, and it
+ * does it in the database, where two concurrent runs cannot overwrite each other.
+ *
+ * @param groupId the group that answered.
+ * @param at the moment it answered.
+ */
+fun DataSource.markGroupHealthy(
+    groupId: String,
+    at: Instant = Instant.now(),
+) {
+    connection.use { conn ->
+        conn
+            .prepareStatement(
+                """
+                UPDATE crawl_egress_groups
+                   SET last_healthy_at = GREATEST(COALESCE(last_healthy_at, ?), ?)
+                 WHERE group_id = ?
+                """.trimIndent(),
+            ).use { ps ->
+                ps.setObject(1, at.atOffset(ZoneOffset.UTC))
+                ps.setObject(2, at.atOffset(ZoneOffset.UTC))
+                ps.setString(3, groupId)
+                ps.executeUpdate()
+            }
+    }
+}

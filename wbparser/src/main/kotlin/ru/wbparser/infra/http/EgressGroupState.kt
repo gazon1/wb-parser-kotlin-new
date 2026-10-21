@@ -33,9 +33,23 @@ data class EgressGroupState(
     val groupId: String,
     val counters: EgressGroupCounters = EgressGroupCounters(),
     val refusalRate: Double = 0.0,
-    val refusalThreshold: Double = EgressRouter.DEFAULT_HEALTH_REFUSAL_THRESHOLD,
+    val refusalThreshold: Double = EgressRouterConfig.DEFAULT_HEALTH_REFUSAL_THRESHOLD,
     val circuitState: EgressCircuitState = EgressCircuitState.Closed,
     val millisUntilSlot: Long = 0L,
+    /**
+     * Whether the group's transport chain is resting it.
+     *
+     * The transport chain is the network's, not the address's: the requests of this
+     * group are not reaching WB. The group is not asked while it rests, and the
+     * anti-bot circuit does not open because of it.
+     */
+    val transportSuspended: Boolean = false,
+    /**
+     * When the group last answered normally, in epoch milliseconds; zero when it never has.
+     *
+     * Without it, "the address changed" and "the address went quiet" look the same.
+     */
+    val lastHealthyAtMs: Long = 0L,
 ) {
     /** How many requests the group was asked for, since its address last changed. */
     val requests: Long get() = counters.requests
@@ -50,9 +64,12 @@ data class EgressGroupState(
      * Whether the group may be asked for a request right now.
      *
      * A group whose circuit is open is not asked: the address it stands for is refusing,
-     * and the addresses that still answer must not be silenced with it.
+     * and the addresses that still answer must not be silenced with it. A group whose
+     * transport chain rests it is not asked either — for the other reason, and it comes
+     * back on its own.
      */
-    val available: Boolean get() = circuitState != EgressCircuitState.Open
+    val available: Boolean
+        get() = circuitState != EgressCircuitState.Open && !transportSuspended
 
     /**
      * Whether the group is answering normally.
@@ -102,4 +119,12 @@ data class EgressGroupCounters(
     val requests: Long = 0L,
     val refused: Long = 0L,
     val pages: Long = 0L,
+    /**
+     * How many of them never reached WB.
+     *
+     * A transport failure is the absence of an answer, and it is counted apart: the
+     * address is not to blame for a broken network, and a refusal rate that counted
+     * these would call a working address sick.
+     */
+    val transportFailures: Long = 0L,
 )

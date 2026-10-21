@@ -1,11 +1,8 @@
 package ru.wbparser.infra.http
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
-import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
-import java.time.Duration
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -16,9 +13,14 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * ## What a group is
  *
- * WB counts the source of a request, and the source is the IP. A group of profiles
- * behind one proxy is one source, so the group — not the profile, not the process —
- * owns the request budget, the circuit breaker and the anti-bot cooldown.
+ * A group is an address: a set of profiles that leave through one IP. The group's
+ * books — how many requests it made, how many WB refused, how many never reached WB —
+ * are the address's books.
+ *
+ * The **request budget** is not the group's. WB counts the requests of a *session*,
+ * and a session lives in a profile: two profiles of one group have two sessions and
+ * two counters. The router keeps the address's books, the session keeps its own, and
+ * the two are never added together.
  *
  * ## Which group goes next
  *
@@ -35,15 +37,11 @@ import java.util.concurrent.atomic.AtomicInteger
  * spends a pacer slot on a group that then turns out to have no free profile — the
  * slot is burnt on nothing, and the group's real budget is smaller than it looks.
  *
- * ## Why the circuit is per group
+ * ## Two chains, two failures
  *
- * One circuit for the whole deployment would switch everything off when one address
- * is refused: the addresses that are still answering would be silenced by the address
- * that is not. The circuit belongs to the address, exactly like the budget does.
- *
- * The thresholds are the ones the single global circuit used, unchanged: a group is
- * paced at the same rate the deployment used to be paced at, so it sees the same
- * stream of requests and the same calibration applies.
+ * A refusal and a transport failure are different things, and they are punished apart.
+ * The chains themselves live in [EgressChains]; the router only asks them whether the
+ * group may serve.
  *
  * ## The interface
  *
@@ -63,11 +61,13 @@ import java.util.concurrent.atomic.AtomicInteger
 class EgressRouter(
     private val pool: BrowserPool,
     private val pacers: EgressPacerRegistry,
-    private val meterRegistry: MeterRegistry? = null,
+    meterRegistry: io.micrometer.core.instrument.MeterRegistry? = null,
     private val config: EgressRouterConfig = EgressRouterConfig(),
     private val now: () -> Long = System::currentTimeMillis,
 ) : EgressAttribution {
     private val log = LoggerFactory.getLogger(EgressRouter::class.java)
+
+    private val metrics = EgressMetrics(meterRegistry)
 
     /** Round-robin tie-break between groups whose pacer frees up at the same moment. */
     private val cursor = AtomicInteger(0)
@@ -78,14 +78,29 @@ class EgressRouter(
     /** Which group served which target last — the answer to "who was to blame". */
     private val lastGroupByTarget = ConcurrentHashMap<UUID, String>()
 
+    /** Which session served which target last — the answer to "who was refused". */
+    private val lastSessionByTarget = ConcurrentHashMap<UUID, SessionRef>()
+
     /**
-     * One circuit per group.
+     * The two chains of each group.
      *
      * The state lives in the process: a restart resets it, and a restart resets the
      * session with it.
      */
-    private val circuits: Map<String, GroupCircuit> =
-        pool.egressGroupIds.associateWith { groupId -> GroupCircuit(groupId, config.circuitConfig) }
+    private val chains: Map<String, EgressChains> =
+        pool.egressGroupIds.associateWith { groupId ->
+            EgressChains(
+                groupId = groupId,
+                config =
+                    EgressChainsConfig(
+                        circuitConfig = config.circuitConfigs[groupId] ?: config.circuitConfig,
+                        transportWindowMs = config.transportWindowMs,
+                        transportFailureThreshold = config.transportFailureThreshold,
+                        transportCooldownMs = config.transportCooldownMs,
+                    ),
+                now = now,
+            )
+        }
 
     /**
      * Reserves a profile from the group whose pacer frees up soonest, and holds that
@@ -100,8 +115,10 @@ class EgressRouter(
         var warned = false
 
         while (true) {
-            // A group whose circuit is open is not asked: the address it stands for is
-            // refusing, and the addresses that still answer must not be silenced with it.
+            // A group whose anti-bot chain is resting it is not asked: the address it
+            // stands for is refusing, and the addresses that still answer must not be
+            // silenced with it. A group whose transport chain rests it is not asked
+            // either — but for the other reason, and it comes back on its own.
             val servable = groups.filter { groupState(it).available }
             if (servable.isNotEmpty()) {
                 val ordered = orderBySoonestSlot(servable)
@@ -125,10 +142,14 @@ class EgressRouter(
             }
 
             if (System.nanoTime() >= deadline) {
-                meterRegistry?.counter("crawl.egress.all_down")?.increment()
+                metrics.recordAllDown()
                 throw AllEgressGroupsUnavailable(
                     "No egress group could serve a request within ${config.maxOpenWaitMs}ms: " +
-                        groups.joinToString { "$it(${circuit(it).state})" },
+                        groups.joinToString {
+                            "$it(circuit=${chains.getValue(
+                                it,
+                            ).circuitState}, transport=${chains.getValue(it).transportState()})"
+                        },
                 )
             }
             if (!warned) {
@@ -156,9 +177,33 @@ class EgressRouter(
     ) {
         val groupId = page.egressGroup
         health(groupId).record(now(), outcome)
-        targetId?.let { lastGroupByTarget[it] = groupId }
-        recordCircuit(groupId, outcome)
-        recordMetrics(groupId, outcome)
+        targetId?.let {
+            lastGroupByTarget[it] = groupId
+            lastSessionByTarget[it] = sessionRefOf(page.profileId, groupId)
+        }
+        chains.getValue(groupId).onOutcome(outcome)
+        metrics.record(groupId, outcome)
+        metrics.publishChains(groupId, chains.getValue(groupId))
+    }
+
+    /**
+     * The session that served a request, with its counters as they are now.
+     *
+     * The counters are read at the moment the outcome is reported, which is after the
+     * request: the session is asked how many requests it has sent, and the answer is
+     * the number the ledger writes down.
+     */
+    private fun sessionRefOf(
+        profileId: String,
+        groupId: String,
+    ): SessionRef {
+        val snapshot = pool.sessionSnapshots().firstOrNull { it.profileId == profileId }
+        return SessionRef(
+            profileId = profileId,
+            groupId = groupId,
+            requests = snapshot?.requests ?: 0L,
+            refusals = snapshot?.refusals ?: 0L,
+        )
     }
 
     /**
@@ -171,7 +216,7 @@ class EgressRouter(
      * budget it was promised.
      */
     fun onAddressChanged(groupId: String) {
-        circuits[groupId]?.reset()
+        chains[groupId]?.reset()
         healths.remove(groupId)
         log.warn(
             "Egress group {} changed address — its circuit is closed and its books are cleared. " +
@@ -192,7 +237,7 @@ class EgressRouter(
      */
     override fun groupState(groupId: String): EgressGroupState {
         val health = healths[groupId]
-        val circuit = circuits[groupId]
+        val chains = chains[groupId]
         return EgressGroupState(
             groupId = groupId,
             counters =
@@ -200,11 +245,14 @@ class EgressRouter(
                     requests = health?.requestCount ?: 0L,
                     refused = health?.refusedCount ?: 0L,
                     pages = health?.succeededCount ?: 0L,
+                    transportFailures = health?.transportFailureCount ?: 0L,
                 ),
             refusalRate = health?.refusalRate(now()) ?: 0.0,
             refusalThreshold = config.healthRefusalThreshold,
             circuitState = circuitStateOf(groupId),
-            millisUntilSlot = if (circuit != null) pacers.millisUntilSlot(groupId) else 0L,
+            millisUntilSlot = if (chains != null) pacers.millisUntilSlot(groupId) else 0L,
+            transportSuspended = chains?.transportSuspended ?: false,
+            lastHealthyAtMs = health?.lastHealthyAtMs() ?: 0L,
         )
     }
 
@@ -216,7 +264,7 @@ class EgressRouter(
      * library to ask whether the address may be asked.
      */
     private fun circuitStateOf(groupId: String): EgressCircuitState =
-        when (circuits[groupId]?.state) {
+        when (chains[groupId]?.circuitState) {
             CircuitBreaker.State.HALF_OPEN -> EgressCircuitState.HalfOpen
             CircuitBreaker.State.OPEN, CircuitBreaker.State.FORCED_OPEN -> EgressCircuitState.Open
             else -> EgressCircuitState.Closed
@@ -225,7 +273,7 @@ class EgressRouter(
     /**
      * The state of every group this instance knows.
      */
-    override fun groupStates(): List<EgressGroupState> = circuits.keys.map { groupState(it) }
+    override fun groupStates(): List<EgressGroupState> = chains.keys.map { groupState(it) }
 
     /**
      * Which group served this target last.
@@ -235,6 +283,15 @@ class EgressRouter(
      * different story from a group that is answering fine.
      */
     override fun lastGroupFor(targetId: UUID): String? = lastGroupByTarget[targetId]
+
+    /**
+     * The session that served this target last.
+     *
+     * The runner writes it into the ledger next to the address: the question "who
+     * refused this?" has two possible answers, and the ledger has to hold both until
+     * the measurement says which one it is.
+     */
+    override fun lastSessionFor(targetId: UUID): SessionRef? = lastSessionByTarget[targetId]
 
     /**
      * Groups ordered by when their pacer frees up.
@@ -266,88 +323,16 @@ class EgressRouter(
         val startNs = System.nanoTime()
         pacers.awaitRequestSlot(groupId)
         val waitMs = (System.nanoTime() - startNs) / 1_000_000
-        meterRegistry
-            ?.timer("crawl.egress.pacer.wait", "egress_group", groupId)
-            ?.record(waitMs, TimeUnit.MILLISECONDS)
+        metrics.recordPacerWait(groupId, waitMs)
         return page
     }
-
-    /**
-     * The group's circuit, and what it has to say about the last request.
-     *
-     * A refusal and any other failure both count: the old single circuit counted them
-     * both, and the point of the circuit is to cool an address down, not to classify
-     * why it was busy.
-     */
-    private fun recordCircuit(
-        groupId: String,
-        outcome: DownloadOutcome,
-    ) {
-        val circuit = circuit(groupId)
-        when (outcome) {
-            DownloadOutcome.Success -> circuit.onSuccess()
-            DownloadOutcome.Antibot, DownloadOutcome.Error -> circuit.onFailure()
-        }
-    }
-
-    private fun circuit(groupId: String): GroupCircuit = requireNotNull(circuits[groupId]) { "Unknown egress group '$groupId'" }
 
     /**
      * The health of one group, created on first use.
      */
     private fun health(groupId: String): GroupHealth = healths.computeIfAbsent(groupId) { GroupHealth(config.healthWindowMs) }
 
-    private fun recordMetrics(
-        groupId: String,
-        outcome: DownloadOutcome,
-    ) {
-        val registry = meterRegistry ?: return
-        registry.counter("crawl.egress.requests", "egress_group", groupId).increment()
-        when (outcome) {
-            DownloadOutcome.Success ->
-                registry.counter("crawl.egress.pages", "egress_group", groupId).increment()
-
-            DownloadOutcome.Antibot ->
-                registry.counter("crawl.egress.antibot.responses", "egress_group", groupId).increment()
-
-            DownloadOutcome.Error -> Unit
-        }
-        registry.gauge(
-            "crawl.egress.circuit.state",
-            listOf(
-                io.micrometer.core.instrument.Tag
-                    .of("egress_group", groupId),
-            ),
-        ) { groupState(groupId).circuitCode.toDouble() }
-    }
-
     companion object {
-        /**
-         * The circuit's thresholds — the ones the single global circuit used.
-         *
-         * A group is paced at the rate the deployment used to be paced at, so it sees
-         * the same stream of requests and the same calibration applies.
-         */
-        fun defaultCircuitConfig(): CircuitBreakerConfig =
-            CircuitBreakerConfig
-                .Builder()
-                .failureRateThreshold(50f)
-                .minimumNumberOfCalls(5)
-                .waitDurationInOpenState(Duration.ofSeconds(30))
-                .permittedNumberOfCallsInHalfOpenState(3)
-                .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.COUNT_BASED)
-                .slidingWindowSize(10)
-                .build()
-
-        /** 75 s — comfortably longer than the 30 s open window of the default config. */
-        const val DEFAULT_MAX_OPEN_WAIT_MS: Long = 75_000L
-
-        /** How far back a group's refusal rate is measured. */
-        const val DEFAULT_HEALTH_WINDOW_MS: Long = 600_000L
-
-        /** The refusal rate above which a group is not a reliable witness. */
-        const val DEFAULT_HEALTH_REFUSAL_THRESHOLD: Double = 0.10
-
         /** How often the wait re-checks the circuit state. */
         const val OPEN_WAIT_POLL_MS: Long = 1_000L
     }

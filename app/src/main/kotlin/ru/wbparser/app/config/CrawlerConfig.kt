@@ -4,14 +4,17 @@ import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import ru.wbparser.domain.model.Crawling
+import ru.wbparser.domain.session.SessionPolicy
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.BrowserDownloader
 import ru.wbparser.infra.http.BrowserFetchTiming
 import ru.wbparser.infra.http.BrowserPool
+import ru.wbparser.infra.http.CircuitWindow
 import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressRouter
+import ru.wbparser.infra.http.EgressRouterConfig
 import ru.wbparser.infra.http.KtorDownloader
 import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.runner.CrawlRunner
@@ -57,6 +60,14 @@ class CrawlerConfig {
             // The budget of a group is not the pool's business: it belongs to the
             // pacer registry, and every group already carries its own resolved
             // pacing — its own, or the deployment's default.
+            // The session's limits are the deployment's, and they reach every session
+            // the pool creates. They are zero by default — see [Session] for why.
+            sessionPolicy =
+                SessionPolicy(
+                    requestsPerSession = properties.spider.session.requestsPerSession,
+                    maxAgeMs = properties.spider.session.maxAgeMs,
+                    retireOnRefusal = properties.spider.session.retireOnRefusal,
+                ),
         )
     }
 
@@ -108,7 +119,32 @@ class CrawlerConfig {
         pool: BrowserPool,
         pacers: EgressPacerRegistry,
         meterRegistry: MeterRegistry,
-    ): EgressRouter = EgressRouter(pool = pool, pacers = pacers, meterRegistry = meterRegistry)
+        properties: CrawlProperties,
+    ): EgressRouter =
+        EgressRouter(
+            pool = pool,
+            pacers = pacers,
+            meterRegistry = meterRegistry,
+            config = circuitConfigOf(properties),
+        )
+
+    /**
+     * The anti-bot circuit's thresholds, as the deployment declares them.
+     *
+     * The window is a parameter of the group: an address that fails differently needs a
+     * different window, and a window that is wrong opens the circuit in the middle of a
+     * bad patch and closes it right after.
+     */
+    private fun circuitConfigOf(properties: CrawlProperties): EgressRouterConfig {
+        val declared = properties.spider.egressCircuit
+        return EgressRouterConfig.of(
+            default = CircuitWindow(declared.windowSeconds, declared.openSeconds),
+            perGroup =
+                declared.perGroup.mapValues { (_, own) ->
+                    CircuitWindow(own.windowSeconds, own.openSeconds)
+                },
+        )
+    }
 
     @Bean
     fun browserDownloader(

@@ -160,7 +160,69 @@ data class Spider(
      * it would have created for itself.
      */
     val closeBrowsersOnExit: Boolean = true,
+    /**
+     * The rules that decide how long a profile's session lives and how much it may send.
+     *
+     * Every limit is zero by default, and that is a decision, not an omission: the
+     * measurement established *that* WB counts the requests of a session, but not
+     * *whose* count it keeps — the profile's or the address's. Rotating a session out
+     * before it is refused only pays off when a fresh one can take its place, and there
+     * is no source of fresh profiles yet: rotating early would spend the capacity
+     * instead of preserving it.
+     *
+     * The limits are here so that enabling them is a configuration change and not a
+     * code change.
+     */
+    val session: Session = Session(),
+    /**
+     * The anti-bot circuit's thresholds.
+     *
+     * The window is measured in **time**, not in calls, and it is long: the refusal is a
+     * count of requests in a session, and a window of "the last ten calls" describes a
+     * rate, which is not what WB counts.
+     */
+    val egressCircuit: EgressCircuit = EgressCircuit(),
     val rules: Rules = Rules(),
+)
+
+/**
+ * The limits of one session.
+ *
+ * @param requestsPerSession how many requests a session may send before it leaves the
+ *   rotation. Zero means unlimited.
+ * @param maxAgeMs how long a session may live. Zero means unlimited.
+ * @param retireOnRefusal whether a refusal retires the session for good. Off: the
+ *   measurement has not established that a refusal is permanent.
+ */
+data class Session(
+    val requestsPerSession: Int = 0,
+    val maxAgeMs: Long = 0L,
+    val retireOnRefusal: Boolean = false,
+)
+
+/**
+ * The anti-bot circuit of a group.
+ *
+ * @param windowSeconds how far back the circuit looks, in seconds.
+ * @param openSeconds how long the circuit stays open, in seconds.
+ * @param perGroup the thresholds of the groups that have their own. A group is an
+ *   address, and addresses are not alike.
+ */
+data class EgressCircuit(
+    val windowSeconds: Int = 600,
+    val openSeconds: Long = 600L,
+    val perGroup: Map<String, GroupCircuitWindow> = emptyMap(),
+)
+
+/**
+ * The circuit's thresholds of one group.
+ *
+ * @param windowSeconds how far back the circuit looks, in seconds.
+ * @param openSeconds how long the circuit stays open, in seconds.
+ */
+data class GroupCircuitWindow(
+    val windowSeconds: Int = 600,
+    val openSeconds: Long = 600L,
 )
 
 /**

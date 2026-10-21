@@ -20,12 +20,20 @@ import javax.sql.DataSource
  *
  * @param egressGroup the group that served the target, or null when no group could.
  * @param egressIp the address that group was at, as the probe last saw it.
+ * @param sessionId the profile whose session served the target, or null when no
+ *   session could.
+ * @param sessionRequests how many requests that session had sent when the run
+ *   happened.
+ * @param sessionRefusals how many of them WB had refused.
  * @param outcome how the run ended.
  */
 data class TargetRun(
     val targetId: UUID,
     val egressGroup: String?,
     val egressIp: String?,
+    val sessionId: String? = null,
+    val sessionRequests: Int = 0,
+    val sessionRefusals: Int = 0,
     val outcome: RunOutcome,
     val pages: Int,
     val items: Int,
@@ -38,6 +46,10 @@ data class TargetRun(
  * The address is not passed in: it is read from the ledger of the groups, where the
  * probe wrote what it saw. A run must not carry a second copy of the same fact — two
  * copies of an address are two facts, and they drift.
+ *
+ * The session's counters come from the session itself: the run is told how many
+ * requests that session had sent, because that is the number that says whether the
+ * refusal was the session's or the address's.
  */
 fun DataSource.recordTargetRun(
     jobId: UUID,
@@ -49,8 +61,9 @@ fun DataSource.recordTargetRun(
             .prepareStatement(
                 """
                 INSERT INTO crawl_target_runs
-                    (id, job_id, target_id, egress_group, egress_ip, outcome, pages, items, started_at, finished_at)
-                VALUES (?, ?, ?, ?, (SELECT egress_ip FROM crawl_egress_groups WHERE group_id = ?), ?, ?, ?, ?, ?)
+                    (id, job_id, target_id, egress_group, egress_ip, session_id, session_requests,
+                     session_refusals, outcome, pages, items, started_at, finished_at)
+                VALUES (?, ?, ?, ?, (SELECT egress_ip FROM crawl_egress_groups WHERE group_id = ?), ?, ?, ?, ?, ?, ?, ?, ?)
                 """.trimIndent(),
             ).use { ps ->
                 ps.setObject(1, UUID.randomUUID())
@@ -58,11 +71,14 @@ fun DataSource.recordTargetRun(
                 ps.setObject(3, run.targetId)
                 ps.setString(4, run.egressGroup)
                 ps.setString(5, run.egressGroup)
-                ps.setString(6, run.outcome.dbValue)
-                ps.setInt(7, run.pages)
-                ps.setInt(8, run.items)
-                ps.setObject(9, run.startedAt.atOffset(ZoneOffset.UTC))
-                ps.setObject(10, finishedAt.atOffset(ZoneOffset.UTC))
+                ps.setString(6, run.sessionId)
+                ps.setInt(7, run.sessionRequests)
+                ps.setInt(8, run.sessionRefusals)
+                ps.setString(9, run.outcome.dbValue)
+                ps.setInt(10, run.pages)
+                ps.setInt(11, run.items)
+                ps.setObject(12, run.startedAt.atOffset(ZoneOffset.UTC))
+                ps.setObject(13, finishedAt.atOffset(ZoneOffset.UTC))
                 ps.executeUpdate()
             }
     }
@@ -173,6 +189,9 @@ private fun ResultRow.toTargetRun(): TargetRun =
         targetId = this[CrawlTargetRunsTable.targetId],
         egressGroup = this[CrawlTargetRunsTable.egressGroup],
         egressIp = this[CrawlTargetRunsTable.egressIp],
+        sessionId = this[CrawlTargetRunsTable.sessionId],
+        sessionRequests = this[CrawlTargetRunsTable.sessionRequests],
+        sessionRefusals = this[CrawlTargetRunsTable.sessionRefusals],
         outcome =
             RunOutcome.entries
                 .firstOrNull { it.dbValue == this[CrawlTargetRunsTable.outcome] }

@@ -10,9 +10,9 @@ import com.microsoft.playwright.Page
  * [markWarm] after performing the navigation that establishes the session, so subsequent
  * borrowers of the same profile skip it.
  *
- * [egressGroup] is the group the profile came from. It is the address WB sees: two
- * profiles of one group share an IP and therefore share a request budget, while two
- * profiles of different groups do not.
+ * [egressGroup] is the group the profile came from. It is the address WB sees — but it
+ * is **not** where the request budget lives: the budget is counted against the session
+ * of the profile, and two profiles of one group have two sessions and two counters.
  *
  * Dispose by calling [close].
  */
@@ -24,6 +24,18 @@ class BorrowedPage(
     private val hooks: BorrowedPageHooks,
 ) {
     fun markWarm() = hooks.onWarm()
+
+    /**
+     * Records that a request went out through this page.
+     *
+     * The count is what the measurement is about: WB refuses a session after a number
+     * of requests, so the number of requests a session has sent is a fact about the
+     * session and has to be counted on the session.
+     */
+    fun markRequest() = hooks.onRequest()
+
+    /** Records that WB answered this session. */
+    fun markAnswered() = hooks.onAnswered()
 
     /**
      * Reports that WB answered this profile with an anti-bot status.
@@ -46,6 +58,8 @@ class BorrowedPage(
  */
 class BorrowedPageHooks(
     val onWarm: () -> Unit,
+    val onRequest: () -> Unit = {},
+    val onAnswered: () -> Unit = {},
     val onAntibot: (Long) -> Unit,
     val onClose: () -> Unit,
 )

@@ -2,6 +2,9 @@ package ru.wbparser.infra.http
 
 import com.microsoft.playwright.Page
 import org.slf4j.Logger
+import ru.wbparser.domain.session.BrowserSession
+import ru.wbparser.domain.session.SessionPolicy
+import ru.wbparser.domain.session.SessionState
 import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -42,7 +45,27 @@ internal class BrowserProfileState(
     private val api: AdsPowerApi,
     private val automation: BrowserAutomation,
     private val context: BrowserPoolContext,
+    /**
+     * The rules that decide how long this profile's session lives and how much it may
+     * send. They are the deployment's, not the pool's: the pool asks the session whether
+     * it may work, and the session answers by the policy it was given.
+     */
+    sessionPolicy: SessionPolicy = SessionPolicy(),
 ) {
+    /**
+     * The WB session of this profile.
+     *
+     * The profile owns it, because the profile is what the session lives in: its
+     * cookies, its fingerprint, its age. The pool decides *which* profile to lend out;
+     * the session decides whether that profile may still work.
+     */
+    val session: BrowserSession =
+        BrowserSession(
+            profileId = profileConfig.profileId,
+            egressGroup = profileConfig.egressGroup,
+            policy = sessionPolicy,
+        )
+
     /**
      * The profile's single permit.
      *
@@ -108,8 +131,7 @@ internal class BrowserProfileState(
      * profile is already warm — that navigation plus its challenge wait was ~3.5 s of
      * the ~4 s per page.
      */
-    @Volatile
-    var warm: Boolean = false
+    val warm: Boolean get() = session.currentState == SessionState.Warm
 
     /**
      * Epoch milliseconds until which WB is considered to have flagged this profile.
@@ -140,8 +162,19 @@ internal class BrowserProfileState(
         // Never shorten a cooldown that is already running: two anti-bot responses in a
         // row mean the profile is not going to recover sooner.
         flaggedUntil.accumulateAndGet(until) { current, candidate -> maxOf(current, candidate) }
-        warm = false
+        // The refusal is counted against the session — that is the whole point of
+        // counting it: the session is what WB refused, and the counter is what says
+        // how close it was to the threshold.
+        session.onRefused()
     }
+
+    /**
+     * Whether this profile's session has to leave the rotation.
+     *
+     * The session decides, by the policy it was given: too many requests, too old, or
+     * refused for good.
+     */
+    fun isRetired(): Boolean = session.shouldRetire()
 
     fun getOrCreatePage(): Page {
         if (automation.isConnected) {
@@ -150,7 +183,7 @@ internal class BrowserProfileState(
             if (!automation.healthCheck()) {
                 logForProfile("Browser health check failed — forcing reconnect")
                 automation.close()
-                warm = false
+                session.onCold()
             } else {
                 // Page is still open and healthy.
                 return automation.currentPage!!
@@ -161,7 +194,7 @@ internal class BrowserProfileState(
         automation.close()
         // A fresh CDP connection has no WB session yet: the new page must be warmed up
         // by navigating it to a WB page before the internal API will return products.
-        warm = false
+        session.onCold()
 
         val cdpUrl = resolveCdpUrl()
         logForProfile("Connecting via CDP: {}", cdpUrl)
@@ -265,7 +298,7 @@ internal class BrowserProfileState(
 
     fun close() {
         automation.close()
-        warm = false
+        session.onCold()
     }
 
     /**

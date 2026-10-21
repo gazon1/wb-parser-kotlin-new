@@ -11,6 +11,7 @@ import ru.wbparser.infra.db.repositories.countSubjects
 import ru.wbparser.infra.db.repositories.countTargetsWithoutSearchToken
 import ru.wbparser.infra.db.repositories.fetchEgressGroups
 import ru.wbparser.infra.http.EgressGroupStates
+import ru.wbparser.infra.http.SessionSource
 import javax.sql.DataSource
 
 /**
@@ -23,6 +24,12 @@ class HealthRoutes(
     private val meterRegistry: MeterRegistry,
     private val groups: EgressGroups.Resolved,
     private val egress: EgressGroupStates,
+    /**
+     * The pool whose sessions are reported. It is optional so that a health check
+     * without a browser still answers — a readiness that needs a browser to say
+     * "the browser is not there" is a readiness that fails for the wrong reason.
+     */
+    private val pool: SessionSource? = null,
 ) {
     @GetMapping("/live")
     fun liveness() = mapOf("status" to "UP")
@@ -81,7 +88,7 @@ class HealthRoutes(
             // have nothing to be compared with. The condition of every group comes
             // from the one source that computes it — the same state the runner judges
             // by, so the answer and the crawl cannot blame different addresses.
-            "egress" to egressStats(meterRegistry, ledger(), egress.groupStates(), groups.groups),
+            "egress" to egressStats(meterRegistry, ledger(), egress.groupStates(), groups.groups, pool),
         )
     }
 

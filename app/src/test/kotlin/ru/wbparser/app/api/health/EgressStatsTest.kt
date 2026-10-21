@@ -3,10 +3,13 @@ package ru.wbparser.app.api.health
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import ru.wbparser.domain.session.SessionSnapshot
+import ru.wbparser.domain.session.SessionState
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
 import ru.wbparser.infra.http.EgressGroup
 import ru.wbparser.infra.http.EgressGroupCounters
 import ru.wbparser.infra.http.EgressGroupState
+import ru.wbparser.infra.http.SessionSource
 
 /**
  * The egress section of the readiness response.
@@ -14,6 +17,9 @@ import ru.wbparser.infra.http.EgressGroupState
  * The answer is a projection of the state of the groups — the state the router computes
  * and the runner judges by. A second source would give the operator and the runner two
  * stories about the same address, and this is the test that says there is only one.
+ *
+ * The sessions are reported next to the groups: the capacity of the crawler is counted
+ * in live sessions, not in addresses.
  */
 class EgressStatsTest :
     FunSpec({
@@ -27,6 +33,30 @@ class EgressStatsTest :
                     ipChanges = 3,
                 ),
             )
+
+        /**
+         * The sessions of a deployment, told rather than built: the report is about the
+         * deployment, and its sessions are a fact it can be told.
+         */
+        fun sessionsOf(vararg profiles: String): SessionSource =
+            object : SessionSource {
+                override fun sessionSnapshots(): List<SessionSnapshot> =
+                    profiles.map { profileId ->
+                        SessionSnapshot(
+                            profileId = profileId,
+                            egressGroup = "ip-1",
+                            state = SessionState.Warm,
+                            requests = 12,
+                            refusals = 1,
+                            answered = 11,
+                            ageMs = 60_000,
+                        )
+                    }
+
+                override val liveSessionCount: Int get() = profiles.size
+
+                override val retiredSessionCount: Int get() = 0
+            }
 
         test("the answer reports the verdict of the state, not what the counters add up to") {
             val state =
@@ -97,6 +127,55 @@ class EgressStatsTest :
             group["isolated"] shouldBe true
             group["ip_changes"] shouldBe 3
             (answer["declared"] as Map<*, *>)["ip-1"] shouldBe declared.proxy.toString()
+        }
+
+        test("the transport failures are counted apart from the refusals") {
+            val state =
+                EgressGroupState(
+                    groupId = "ip-1",
+                    counters =
+                        EgressGroupCounters(
+                            requests = 20,
+                            refused = 1,
+                            pages = 17,
+                            transportFailures = 2,
+                        ),
+                    refusalRate = 0.05,
+                    transportSuspended = true,
+                )
+
+            val group = groupOf(egressStats(idleRegistry(), ledger, listOf(state)))
+
+            // A request that never reached WB is not a refusal, and a group the network
+            // is holding is not asked — for that other reason.
+            group["refused"] shouldBe 1L
+            group["transport_failures"] shouldBe 2L
+            group["transport_suspended"] shouldBe true
+            group["available"] shouldBe false
+        }
+
+        test("an address that never answered says so") {
+            val group = groupOf(egressStats(idleRegistry(), ledger, listOf(EgressGroupState(groupId = "ip-1"))))
+
+            group["last_healthy_at"] shouldBe "never"
+        }
+
+        test("the capacity is counted in live sessions") {
+            val answer =
+                egressStats(idleRegistry(), ledger, listOf(EgressGroupState(groupId = "ip-1")), emptyList(), sessionsOf("p1", "p2"))
+
+            val sessions = answer["sessions"] as Map<*, *>
+            sessions["live"] shouldBe 2
+            sessions["retired"] shouldBe 0
+            (sessions["sessions"] as List<*>).size shouldBe 2
+        }
+
+        test("a deployment without a pool still answers") {
+            val answer = egressStats(idleRegistry(), ledger, listOf(EgressGroupState(groupId = "ip-1")))
+
+            val sessions = answer["sessions"] as Map<*, *>
+            sessions["live"] shouldBe 0
+            sessions["retired"] shouldBe 0
         }
     })
 

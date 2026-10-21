@@ -7,13 +7,20 @@ import org.slf4j.LoggerFactory
 import java.util.concurrent.TimeUnit
 
 /**
- * The circuit of one egress group: when its address stops answering.
+ * The anti-bot circuit of one egress group: when its address stops answering.
  *
  * ## What the circuit is for
  *
- * Cooling an address down, not classifying why it was busy. A refusal and any other
- * failure both count — the thresholds are the ones the single deployment-wide circuit
- * used, so a group heals at the same speed the whole deployment used to.
+ * Cooling an address down, because WB is refusing it. Only refusals count: a request
+ * that never reached WB is the network's business and is counted by the transport
+ * chain, which has its own rest and its own clock.
+ *
+ * ## The window is a window of time
+ *
+ * The circuit looks back over minutes, not over the last ten calls. The measurement
+ * showed that WB's refusal is a *count* of requests in a session and that the same
+ * session is refused at the same count at 3 s and at 6 s between requests: a window
+ * measured in calls describes a rate, and the rate is not what WB counts.
  *
  * ## What the circuit is not
  *
@@ -61,7 +68,7 @@ internal class GroupCircuit(
         breaker.onSuccess(0, TimeUnit.MILLISECONDS)
     }
 
-    /** The request was refused, or failed for any other reason. */
+    /** The request was refused by WB. */
     fun onFailure() {
         breaker.onError(0, TimeUnit.MILLISECONDS, EgressRequestFailed(groupId))
     }

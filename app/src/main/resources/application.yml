@@ -151,6 +151,37 @@ crawler:
     # the crawl is entitled to the budget it was promised, and a deployment that
     # loses the proxy must not quietly keep the extra budget in its name.
     require-isolated-egress-groups: true
+    # The limits of one session: how many requests it may send, how long it may live,
+    # and whether a refusal retires it for good.
+    #
+    # All of them are zero/off, and that is a decision, not an omission. The
+    # measurement of 2026-10-21 established THAT WB counts the requests of a session
+    # (the refusal comes at the 10th–15th request, and the rate does not change it),
+    # but not WHOSE count it keeps — the profile's or the address's. Rotating a
+    # session out before it is refused only pays off when a fresh one can take its
+    # place, and there is no source of fresh profiles yet: rotating early would spend
+    # the capacity instead of preserving it.
+    #
+    # The keys are here so that enabling the limits is a configuration change and not a
+    # code change. See ADR 2026-11-04-the-refusal-is-a-count-against-the-session.
+    session:
+      requests-per-session: 0
+      max-age-ms: 0
+      retire-on-refusal: false
+    # The anti-bot circuit of a group.
+    #
+    # The window is measured in TIME, not in calls: the refusal is a count of requests
+    # in a session, and a window of "the last ten calls" describes a rate — which is
+    # not what WB counts. The default is long on purpose: when a group really is
+    # refusing, it stays closed out longer, and the group that is refusing is the one
+    # that pays for it.
+    #
+    # `per-group` overrides the thresholds for the groups that need their own: an
+    # address that fails differently needs a different window.
+    egress-circuit:
+      window-seconds: 600
+      open-seconds: 600
+      per-group: {}
     browser-retry-limit: 3
     # How many crawl targets run at once. Derived from the number of profiles when
     # it is not set: the pool serialises per profile, so more workers queue rather
