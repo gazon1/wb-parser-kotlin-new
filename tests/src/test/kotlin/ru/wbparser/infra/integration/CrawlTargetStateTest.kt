@@ -3,10 +3,12 @@ package ru.wbparser.infra.integration
 import arrow.core.Either
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.test.runTest
 import org.jetbrains.exposed.sql.Database
 import org.testcontainers.containers.PostgreSQLContainer
 import ru.wbparser.domain.error.NetworkError
+import ru.wbparser.domain.error.ParseError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedPage
@@ -56,39 +58,41 @@ class CrawlTargetStateTest :
 
         fun handle() = DatabaseHandle(db.ds, Database.connect(db.ds))
 
-        val emptyParser: (Fetched) -> ParsedPage = { fetched ->
-            ParsedPage(fetched, emptyList(), null, false)
+        val emptyParser: (Fetched) -> Either<ParseError, ParsedPage> = { fetched ->
+            Either.Right(ParsedPage(fetched, emptyList(), null, false))
         }
 
         /**
          * A parser that finds one product, so the crawl has something to store.
          */
-        val parserWithOneItem: (Fetched) -> ParsedPage = { fetched ->
-            ParsedPage(
-                input = fetched,
-                items =
-                    listOf(
-                        ru.wbparser.domain.model.ParsedItem(
-                            productId =
-                                ru.wbparser.domain.value
-                                    .ProductId(1L),
-                            name = "Товар",
-                            priceKopecks = 1000L,
-                            salePriceKopecks = null,
-                            cashbackPercent = null,
-                            cashbackKopecks = null,
-                            brand = null,
-                            category = null,
-                            imageUrl = null,
-                            pageUrl = fetched.task.url,
-                            brandId = null,
-                            subjectId = null,
-                            supplierId = null,
-                            inStock = true,
+        val parserWithOneItem: (Fetched) -> Either<ParseError, ParsedPage> = { fetched ->
+            Either.Right(
+                ParsedPage(
+                    input = fetched,
+                    items =
+                        listOf(
+                            ru.wbparser.domain.model.ParsedItem(
+                                productId =
+                                    ru.wbparser.domain.value
+                                        .ProductId(1L),
+                                name = "Товар",
+                                priceKopecks = 1000L,
+                                salePriceKopecks = null,
+                                cashbackPercent = null,
+                                cashbackKopecks = null,
+                                brand = null,
+                                category = null,
+                                imageUrl = null,
+                                pageUrl = fetched.task.url,
+                                brandId = null,
+                                subjectId = null,
+                                supplierId = null,
+                                inStock = true,
+                            ),
                         ),
-                    ),
-                nextPageUrl = null,
-                isEmptyPage = false,
+                    nextPageUrl = null,
+                    isEmptyPage = false,
+                ),
             )
         }
 
@@ -112,6 +116,19 @@ class CrawlTargetStateTest :
          */
         val refused: suspend (Crawling) -> Either<NetworkError, Fetched> = { task ->
             Either.Left(NetworkError("HTTP 498", null, task.url.toString(), isAntibot = true))
+        }
+
+        /**
+         * A parser that refuses the answer the way a changed WB answer is refused: the
+         * answer does not fit the model, and the failure names the field.
+         */
+        val failingParser: (Fetched) -> Either<ParseError, ParsedPage> = { fetched ->
+            Either.Left(
+                ParseError(
+                    message = "WB's answer does not fit the catalog: path=$.products[0].id",
+                    url = fetched.task.url.toString(),
+                ),
+            )
         }
 
         /**
@@ -153,7 +170,7 @@ class CrawlTargetStateTest :
         fun runnerWith(
             downloader: suspend (Crawling) -> Either<NetworkError, Fetched>,
             egress: EgressAttribution? = null,
-            parser: (Fetched) -> ParsedPage = emptyParser,
+            parser: (Fetched) -> Either<ParseError, ParsedPage> = emptyParser,
         ) = CrawlRunner(
             db = handle(),
             source = CrawlSource(downloader = downloader, parser = parser, egress = egress),
@@ -266,6 +283,30 @@ class CrawlTargetStateTest :
                 // The group that produced the anomaly is remembered, so the same anomaly
                 // from another group can be told apart from it.
                 state["anomaly_group"] shouldBe "ip-1"
+            }
+        }
+
+        test("an answer that does not parse fails the job and puts the target aside") {
+            runTest {
+                val id = db.seedTarget("Не разобралась")
+
+                val result = runnerWith(emptyButSuccessful, healthyEgress, parser = failingParser).run()
+
+                // The job does not report a clean crawl over a catalog it never read:
+                // `crawl_jobs.status` has no Partial value, and a run that lost a target
+                // is Failed.
+                (result is RunResult.Failure) shouldBe true
+                val job = db.row("SELECT status, error_message FROM crawl_jobs")
+                job["status"] shouldBe "Failed"
+                (job["error_message"] as String?) shouldContain "$.products[0].id"
+
+                // And the target is put aside: it is the catalog's fault, not the
+                // address's, so the target's own counter grows.
+                val state = stateOf(id)
+                (state["last_crawled_at"] == null) shouldBe true
+                state["consecutive_failures"] shouldBe 1
+                state["egress_failure_count"] shouldBe 0
+                (state["next_attempt_at"] != null) shouldBe true
             }
         }
 

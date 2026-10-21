@@ -10,6 +10,7 @@ import kotlinx.coroutines.test.runTest
 import org.jetbrains.exposed.sql.Database
 import org.testcontainers.containers.PostgreSQLContainer
 import ru.wbparser.domain.error.NetworkError
+import ru.wbparser.domain.error.ParseError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedPage
@@ -100,8 +101,8 @@ class CrawlRunnerConcurrencyTest :
             fun downloadCount(): Int = calls.get()
         }
 
-        val emptyParser: (Fetched) -> ParsedPage = { fetched ->
-            ParsedPage(fetched, emptyList(), null, false)
+        val emptyParser: (Fetched) -> Either<ParseError, ParsedPage> = { fetched ->
+            Either.Right(ParsedPage(fetched, emptyList(), null, false))
         }
 
         test("targets run in parallel when targetConcurrency allows it") {

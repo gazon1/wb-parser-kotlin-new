@@ -27,7 +27,7 @@ import java.util.UUID
  */
 data class CrawlSource(
     val downloader: suspend (Crawling) -> Either<ru.wbparser.domain.error.NetworkError, Fetched>,
-    val parser: (Fetched) -> ParsedPage,
+    val parser: (Fetched) -> Either<ru.wbparser.domain.error.ParseError, ParsedPage>,
     /**
      * The egress side of the crawl, when there is one.
      *

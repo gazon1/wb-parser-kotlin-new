@@ -102,8 +102,21 @@ class WbCatalogStage(
                     Step.Fail(failure)
                 }
                 is Either.Right -> {
-                    val parsed = parseCatalog(downloadResult.value)
-                    Step.Done(parsed)
+                    // The answer that does not fit the model is a failed stage, not an
+                    // empty page — the same distinction the parse stage of the runner's
+                    // pipeline makes.
+                    parseCatalog(downloadResult.value).fold(
+                        ifLeft = { error ->
+                            Step.Fail(
+                                StageFailure.ParseFailure(
+                                    message = error.message,
+                                    url = error.url ?: task.url.toString(),
+                                    cause = error.cause,
+                                ),
+                            )
+                        },
+                        ifRight = { page -> Step.Done(page) },
+                    )
                 }
             }
         }

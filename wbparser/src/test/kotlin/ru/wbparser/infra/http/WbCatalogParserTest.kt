@@ -2,14 +2,18 @@
 
 package ru.wbparser.infra.http
 
+import arrow.core.Either
+import io.kotest.assertions.fail
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonDecodingException
+import ru.wbparser.domain.error.ParseError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
+import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.parsing.WbCatalogEnvelope
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
@@ -28,7 +32,6 @@ import java.util.UUID
  */
 class WbCatalogParserTest :
     FunSpec({
-
         fun fetched(
             body: String,
             url: String = "https://www.wildberries.ru/catalog/131954/list.aspx?search=menu_v3_131954",
@@ -43,6 +46,16 @@ class WbCatalogParserTest :
             )
         }
 
+        /** The page the parser produced — a refusal is a failure of the test, not a page. */
+        fun page(result: Either<ParseError, ParsedPage>): ParsedPage =
+            result.fold(
+                { error -> fail("the answer was refused: ${error.message}") },
+                { it },
+            )
+
+        /** The reason the parser gave for refusing the answer. */
+        fun reason(result: Either<ParseError, ParsedPage>): String = result.fold({ it.message }, { "" })
+
         test("reads products sent as a top-level array, as the catalog endpoint does") {
             val body =
                 """
@@ -52,7 +65,7 @@ class WbCatalogParserTest :
                 ]}
                 """.trimIndent()
 
-            val page = parseWbCatalog(fetched(body))
+            val page = page(parseWbCatalog(fetched(body)))
 
             page.items.map { it.name } shouldBe listOf("Первый", "Второй")
             page.isEmptyPage shouldBe false
@@ -64,7 +77,7 @@ class WbCatalogParserTest :
                 {"products":[{"id":1,"name":"Товар","sizes":[{"price":{"basic":100000,"product":45000}}]}]}
                 """.trimIndent()
 
-            val item = parseWbCatalog(fetched(body)).items.single()
+            val item = page(parseWbCatalog(fetched(body))).items.single()
 
             item.priceKopecks shouldBe 100000L
             item.salePriceKopecks shouldBe 45000L
@@ -73,7 +86,7 @@ class WbCatalogParserTest :
         test("reads the data.products wrapper used by the storefront endpoint") {
             val body = """{"data":{"products":[{"id":1,"name":"Из data"}]}}"""
 
-            parseWbCatalog(fetched(body)).items.map { it.name } shouldBe listOf("Из data")
+            page(parseWbCatalog(fetched(body))).items.map { it.name } shouldBe listOf("Из data")
         }
 
         test("an explicit nextPage wins over the derived one") {
@@ -83,7 +96,7 @@ class WbCatalogParserTest :
                  "nextPage":"https://www.wildberries.ru/catalog/0/list.aspx?page=2"}}
                 """.trimIndent()
 
-            val page = parseWbCatalog(fetched(body))
+            val page = page(parseWbCatalog(fetched(body)))
 
             page.items.map { it.name } shouldBe listOf("Из payload")
             page.nextPageUrl.toString() shouldBe "https://www.wildberries.ru/catalog/0/list.aspx?page=2"
@@ -92,7 +105,7 @@ class WbCatalogParserTest :
         test("the next page is derived from the crawled URL — the endpoint sends no marker") {
             val body = """{"products":[{"id":1,"name":"Товар"}]}"""
 
-            val page = parseWbCatalog(fetched(body))
+            val page = page(parseWbCatalog(fetched(body)))
 
             page.nextPageUrl.toString() shouldBe
                 "https://www.wildberries.ru/catalog/131954/list.aspx?search=menu_v3_131954&page=2"
@@ -102,10 +115,12 @@ class WbCatalogParserTest :
             val body = """{"products":[{"id":1,"name":"Товар"}]}"""
 
             val page =
-                parseWbCatalog(
-                    fetched(
-                        body,
-                        url = "https://www.wildberries.ru/catalog/131954/list.aspx?search=menu_v3_131954&page=4",
+                page(
+                    parseWbCatalog(
+                        fetched(
+                            body,
+                            url = "https://www.wildberries.ru/catalog/131954/list.aspx?search=menu_v3_131954&page=4",
+                        ),
                     ),
                 )
 
@@ -114,24 +129,25 @@ class WbCatalogParserTest :
         }
 
         test("an empty products array is an empty page and ends the pagination") {
-            val page = parseWbCatalog(fetched("""{"products":[]}"""))
+            val page = page(parseWbCatalog(fetched("""{"products":[]}""")))
 
             page.items shouldBe emptyList()
             page.isEmptyPage shouldBe true
             page.nextPageUrl shouldBe null
         }
 
-        test("a blank body is an empty page") {
-            val page = parseWbCatalog(fetched("   "))
+        test("a blank body is a failure — a response that was cut off is not an empty catalog") {
+            val result = parseWbCatalog(fetched("   "))
 
-            page.items shouldBe emptyList()
+            result.isLeft() shouldBe true
+            reason(result) shouldContain "no body"
         }
 
-        test("malformed JSON degrades to an empty page instead of aborting the crawl") {
-            val page = parseWbCatalog(fetched("{not json at all"))
+        test("malformed JSON is a failure, not an empty page — the crawl says so") {
+            val result = parseWbCatalog(fetched("{not json at all"))
 
-            page.items shouldBe emptyList()
-            page.isEmptyPage shouldBe true
+            result.isLeft() shouldBe true
+            reason(result) shouldContain "does not fit the catalog"
         }
 
         test("a field of the wrong type is named in the failure — the log says what WB changed") {
@@ -143,6 +159,13 @@ class WbCatalogParserTest :
             describeParseFailure(decoding) shouldContain "$.products[0].id"
         }
 
+        test("the failure of a changed field names the field, not just the answer") {
+            val result = parseWbCatalog(fetched("""{"products":[{"id":"не число","name":"Товар"}]}"""))
+
+            result.isLeft() shouldBe true
+            reason(result) shouldContain "$.products[0].id"
+        }
+
         test("a missing required field is reported with the path of the entry that lacks it") {
             val body = """{"products":[{"id":1}]}"""
 
@@ -151,31 +174,34 @@ class WbCatalogParserTest :
             describeParseFailure(failure!!) shouldContain "$.products[0]"
         }
 
-        test("an answer whose shape changed degrades to an empty page, and the reason survives") {
-            val page = parseWbCatalog(fetched("""{"products":[{"id":"не число","name":"Товар"}]}"""))
+        test("an answer whose shape changed is a failure — an exhausted catalog is not a change of shape") {
+            // WB renamed the key the catalog arrives under. The answer decodes, and it holds
+            // no products — which is exactly what an exhausted catalog looks like. Reporting
+            // it as "the catalog is over" is how a crawl stores nothing and looks healthy.
+            val result = parseWbCatalog(fetched("""{"items":[{"id":1,"name":"Товар"}],"total":1}"""))
 
-            page.items shouldBe emptyList()
-            page.isEmptyPage shouldBe true
+            result.isLeft() shouldBe true
+            reason(result) shouldContain "WB changed the shape"
         }
 
-        test("an answer that overflows the stack degrades to an empty page instead of killing the crawl") {
+        test("an answer that overflows the stack is a failure instead of a dead crawl") {
             // A `StackOverflowError` is an `Error`, not an `Exception`: a catch that only
             // knows `Exception` never sees it, and one pathological answer takes the whole
             // crawl down with it. The parser catches it explicitly — and this test is the
             // only way to know that catch is there at all.
-            val page =
+            val result =
                 parseWbCatalog(fetched("""{"products":[]}""")) {
                     throw StackOverflowError()
                 }
 
-            page.items shouldBe emptyList()
-            page.isEmptyPage shouldBe true
+            result.isLeft() shouldBe true
+            reason(result) shouldContain "nests too deeply"
         }
 
         test("a product without an id is skipped rather than poisoning the page") {
             val body = """{"products":[{"name":"Без id"},{"id":0,"name":"Ноль"},{"id":5,"name":"Нормальный"}]}"""
 
-            val page = parseWbCatalog(fetched(body))
+            val page = page(parseWbCatalog(fetched(body)))
 
             page.items.map { it.name } shouldBe listOf("Нормальный")
         }
@@ -187,8 +213,9 @@ class WbCatalogParserTest :
                  "rating":4.8,"sizes":[{"price":{"basic":1000},"wh":123}]}]}
                 """.trimIndent()
 
-            parseWbCatalog(fetched(body)).items.single().name shouldBe "С полями"
+            page(parseWbCatalog(fetched(body))).items.single().name shouldBe "С полями"
         }
+
         test("a popular-list answer is dropped instead of stored under the category") {
             val body =
                 """
@@ -199,7 +226,7 @@ class WbCatalogParserTest :
                  ]}
                 """.trimIndent()
 
-            val page = parseWbCatalog(fetched(body))
+            val page = page(parseWbCatalog(fetched(body)))
 
             // The products are real products — that is what makes the answer
             // dangerous. They are not this category's products, and storing them
@@ -218,7 +245,7 @@ class WbCatalogParserTest :
                  ]}
                 """.trimIndent()
 
-            val page = parseWbCatalog(fetched(body))
+            val page = page(parseWbCatalog(fetched(body)))
 
             page.isPresetResponse shouldBe false
             page.items.map { it.name } shouldBe listOf("Карта памяти")

@@ -7,6 +7,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.test.runTest
 import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.error.NetworkError
+import ru.wbparser.domain.error.ParseError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedPage
@@ -41,8 +42,8 @@ class PipelineVirtualTimeTest :
                 Either.Right(Fetched(it, CrawlHttpStatusCode(200), "<html></html>", emptyMap(), 1))
             },
         ): Pipeline {
-            val parse: (Fetched) -> ParsedPage = { f ->
-                ParsedPage(f, emptyList(), null, false)
+            val parse: (Fetched) -> Either<ParseError, ParsedPage> = { f ->
+                Either.Right(ParsedPage(f, emptyList(), null, false))
             }
             val saveStage: suspend (List<SavedItem>) -> Step<List<SavedItem>, Unit> = { Step.Done(Unit) }
             val clock =

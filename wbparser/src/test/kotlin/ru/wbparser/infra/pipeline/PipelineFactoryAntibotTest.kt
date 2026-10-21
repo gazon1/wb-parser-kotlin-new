@@ -48,7 +48,7 @@ class PipelineFactoryAntibotTest :
             buildParserPipeline(
                 downloader = { Either.Left(error) },
                 parser = { fetched: Fetched ->
-                    ParsedPage(fetched, emptyList<ParsedItem>(), null, isEmptyPage = true)
+                    Either.Right(ParsedPage(fetched, emptyList<ParsedItem>(), null, isEmptyPage = true))
                 },
                 save = { _: List<SavedItem> -> Step.Done(Unit) },
                 targetId = targetId,

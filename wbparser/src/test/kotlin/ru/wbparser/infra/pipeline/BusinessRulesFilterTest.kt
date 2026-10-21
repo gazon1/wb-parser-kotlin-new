@@ -83,7 +83,7 @@ class BusinessRulesFilterTest :
             val pipeline =
                 buildParserPipeline(
                     downloader = { t -> Either.Right(fetched(t)) },
-                    parser = { f -> ParsedPage(f, listOf(parsed), null, false) },
+                    parser = { f -> Either.Right(ParsedPage(f, listOf(parsed), null, false)) },
                     save = { items ->
                         saved += items
                         Step.Done(Unit)
@@ -233,14 +233,16 @@ class BusinessRulesFilterTest :
                     buildParserPipeline(
                         downloader = { t -> Either.Right(fetched(t)) },
                         parser = { f ->
-                            ParsedPage(
-                                f,
-                                listOf(
-                                    item(productId = 1L, priceKopecks = 100_000L),
-                                    item(productId = 2L, priceKopecks = 10L),
+                            Either.Right(
+                                ParsedPage(
+                                    f,
+                                    listOf(
+                                        item(productId = 1L, priceKopecks = 100_000L),
+                                        item(productId = 2L, priceKopecks = 10L),
+                                    ),
+                                    null,
+                                    false,
                                 ),
-                                null,
-                                false,
                             )
                         },
                         save = { Step.Done(Unit) },
