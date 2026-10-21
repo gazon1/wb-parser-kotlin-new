@@ -27,6 +27,7 @@ internal class GroupHealth(
 ) {
     private val requests = AtomicLong(0)
     private val refused = AtomicLong(0)
+    private val succeeded = AtomicLong(0)
     private val window = ConcurrentLinkedQueue<Sample>()
 
     /** How many requests the group was asked for, since the process started. */
@@ -34,6 +35,9 @@ internal class GroupHealth(
 
     /** How many of them were refused, since the process started. */
     val refusedCount: Long get() = refused.get()
+
+    /** How many of them were answered normally, since the process started. */
+    val succeededCount: Long get() = succeeded.get()
 
     /**
      * Records one request's outcome.
@@ -44,6 +48,7 @@ internal class GroupHealth(
     ) {
         requests.incrementAndGet()
         if (outcome == DownloadOutcome.Antibot) refused.incrementAndGet()
+        if (outcome == DownloadOutcome.Success) succeeded.incrementAndGet()
         window.add(Sample(now, outcome == DownloadOutcome.Antibot))
     }
 

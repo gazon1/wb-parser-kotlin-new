@@ -6,6 +6,8 @@ import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.sqlite.SQLiteDataSource
 import ru.wbparser.app.config.EgressGroups
+import ru.wbparser.infra.http.EgressGroupState
+import ru.wbparser.infra.http.EgressGroupStates
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.nio.file.Files
@@ -31,13 +33,13 @@ class HealthRoutesTest :
     FunSpec({
 
         test("liveness reports UP without touching the database") {
-            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry(), noGroups)
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry(), noGroups, noStates())
 
             routes.liveness() shouldBe mapOf("status" to "UP")
         }
 
         test("readiness is UP when the database answers") {
-            val routes = HealthRoutes(workingDataSource(), idleRegistry(), noGroups)
+            val routes = HealthRoutes(workingDataSource(), idleRegistry(), noGroups, noStates())
 
             val readiness = routes.readiness()
 
@@ -47,7 +49,7 @@ class HealthRoutesTest :
         }
 
         test("readiness reports the subject dictionary and the targets without a token") {
-            val routes = HealthRoutes(catalogDataSource(), idleRegistry(), noGroups)
+            val routes = HealthRoutes(catalogDataSource(), idleRegistry(), noGroups, noStates())
 
             val readiness = routes.readiness()
             val checks = readiness["checks"] as Map<*, *>
@@ -64,7 +66,7 @@ class HealthRoutesTest :
         }
 
         test("readiness is DOWN when the database cannot be reached") {
-            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry(), noGroups)
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry(), noGroups, noStates())
 
             val readiness = routes.readiness()
 
@@ -74,7 +76,7 @@ class HealthRoutesTest :
         }
 
         test("the failure message names the exception and its message") {
-            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry(), noGroups)
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry(), noGroups, noStates())
 
             val readiness = routes.readiness()
             val checks = readiness["checks"] as Map<*, *>
@@ -90,6 +92,20 @@ class HealthRoutesTest :
  * once something increments them, and that is the behaviour under test.
  */
 internal fun idleRegistry(): MeterRegistry = SimpleMeterRegistry()
+
+/**
+ * The egress groups this instance knows nothing about.
+ *
+ * A test that does not care about the egress state says so: no groups, no state. The
+ * state is read from the one source that computes it, and a test that has no groups has
+ * nothing to compute.
+ */
+internal fun noStates(): EgressGroupStates =
+    object : EgressGroupStates {
+        override fun groupState(groupId: String): EgressGroupState = EgressGroupState(groupId)
+
+        override fun groupStates(): List<EgressGroupState> = emptyList()
+    }
 
 /**
  * A real, in-process database — SQLite needs no server and no container.

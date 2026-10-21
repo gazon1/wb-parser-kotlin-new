@@ -30,51 +30,20 @@ enum class DownloadOutcome {
 }
 
 /**
- * What a group looks like right now.
- *
- * @param millisUntilSlot how long until this group may send its next request.
- * @param requests how many requests this group has sent since the process started.
- * @param refused how many of them WB refused.
- * @param circuitState the group's circuit: closed, open or half-open.
- */
-data class GroupState(
-    val groupId: String,
-    val millisUntilSlot: Long,
-    val requests: Long,
-    val refused: Long,
-    val circuitState: CircuitBreaker.State,
-)
-
-/**
  * What the runner needs to know about the egress side of a crawl.
  *
  * The runner has to decide whether a failure that looks like the catalog's fault
  * really is: a burnt address answers with a degraded body as well, and punishing
  * the target for that would put a healthy catalog to sleep for a day. The address
- * side knows how its own requests are going, so it answers the question.
+ * side knows how its own requests are going, so it answers the question — with the
+ * state of the group, the same one the health endpoint reports, so the two cannot
+ * tell different stories about the same address.
  */
-interface EgressAttribution {
+interface EgressAttribution : EgressGroupStates {
     /**
      * The group that served this target last, if any.
      */
     fun lastGroupFor(targetId: UUID): String?
-
-    /**
-     * Whether the group is answering normally.
-     *
-     * A group that is refusing most of its requests is not a witness whose word about
-     * a broken catalog can be trusted.
-     */
-    fun isGroupHealthy(groupId: String): Boolean
-
-    /**
-     * Whether any group can serve a request right now.
-     *
-     * The runner asks this before it opens a run: a run that starts when every
-     * address is refusing serves nothing, fails every target at once, and then
-     * looks in the history like a crawl that broke.
-     */
-    fun isAnyGroupAvailable(): Boolean
 }
 
 /**
@@ -129,9 +98,10 @@ data class EgressRouterConfig(
  *
  * ## The interface
  *
- * Four methods, and the rest is inside. The caller asks for a page, reports how the
- * request ended, and — when it needs to know who is to blame for a failure — asks
- * which group served a target. Nothing about groups leaks into the domain.
+ * The caller asks for a page, reports how the request ended, and — when it needs to know
+ * who is to blame for a failure — asks which group served a target. The state of the
+ * groups is asked here too, and it is the same state the router itself reads: one
+ * computation, one answer. Nothing about groups leaks into the domain.
  */
 class EgressRouter(
     private val pool: BrowserPool,
@@ -175,7 +145,7 @@ class EgressRouter(
         while (true) {
             // A group whose circuit is open is not asked: the address it stands for is
             // refusing, and the addresses that still answer must not be silenced with it.
-            val servable = groups.filter { !circuit(it).isOpen }
+            val servable = groups.filter { groupState(it).available }
             if (servable.isNotEmpty()) {
                 val ordered = orderBySoonestSlot(servable)
                 for (groupId in ordered) {
@@ -255,17 +225,50 @@ class EgressRouter(
 
     /**
      * The state of one group.
+     *
+     * This is the one place where the state of a group is computed. The router's own
+     * choice of a group, the health endpoint's answer and the runner's verdict all read
+     * what this method builds, so they cannot disagree about the same address.
+     *
+     * A group this instance does not know has an empty state: there is nothing to ask
+     * it and nothing to blame it for.
      */
-    fun groupState(groupId: String): GroupState {
-        val health = healths[groupId] ?: GroupHealth(config.healthWindowMs)
-        return GroupState(
+    override fun groupState(groupId: String): EgressGroupState {
+        val health = healths[groupId]
+        val circuit = circuits[groupId]
+        return EgressGroupState(
             groupId = groupId,
-            millisUntilSlot = pacers.millisUntilSlot(groupId),
-            requests = health.requestCount,
-            refused = health.refusedCount,
-            circuitState = circuit(groupId).state,
+            counters =
+                EgressGroupCounters(
+                    requests = health?.requestCount ?: 0L,
+                    refused = health?.refusedCount ?: 0L,
+                    pages = health?.succeededCount ?: 0L,
+                ),
+            refusalRate = health?.refusalRate(now()) ?: 0.0,
+            refusalThreshold = config.healthRefusalThreshold,
+            circuitState = circuitStateOf(groupId),
+            millisUntilSlot = if (circuit != null) pacers.millisUntilSlot(groupId) else 0L,
         )
     }
+
+    /**
+     * The circuit's state, in the codebase's words.
+     *
+     * The circuit breaker library keeps its vocabulary to itself: the state of a group
+     * is read outside this module, and a reader of it should not have to know the
+     * library to ask whether the address may be asked.
+     */
+    private fun circuitStateOf(groupId: String): EgressCircuitState =
+        when (circuits[groupId]?.state) {
+            CircuitBreaker.State.HALF_OPEN -> EgressCircuitState.HalfOpen
+            CircuitBreaker.State.OPEN, CircuitBreaker.State.FORCED_OPEN -> EgressCircuitState.Open
+            else -> EgressCircuitState.Closed
+        }
+
+    /**
+     * The state of every group this instance knows.
+     */
+    override fun groupStates(): List<EgressGroupState> = circuits.keys.map { groupState(it) }
 
     /**
      * Which group served this target last.
@@ -275,26 +278,6 @@ class EgressRouter(
      * different story from a group that is answering fine.
      */
     override fun lastGroupFor(targetId: UUID): String? = lastGroupByTarget[targetId]
-
-    /**
-     * Whether any group can serve a request right now.
-     *
-     * A group whose circuit is open is not asked — the address it stands for is
-     * refusing, and the addresses that still answer must not be silenced with it.
-     */
-    override fun isAnyGroupAvailable(): Boolean = circuits.values.any { !it.isOpen }
-
-    /**
-     * Whether the group is answering normally.
-     *
-     * A group with no requests in the window counts as healthy: there is nothing to
-     * blame it for, and the target is the only suspect left.
-     */
-    override fun isGroupHealthy(groupId: String): Boolean {
-        val health = healths[groupId] ?: return true
-        val rate = health.refusalRate(now())
-        return rate < config.healthRefusalThreshold
-    }
 
     /**
      * Groups ordered by when their pacer frees up.
@@ -378,19 +361,8 @@ class EgressRouter(
                 io.micrometer.core.instrument.Tag
                     .of("egress_group", groupId),
             ),
-        ) { circuitStateValue(groupId) }
+        ) { groupState(groupId).circuitCode.toDouble() }
     }
-
-    /**
-     * The circuit's state as a number: closed 0, half-open 1, open 2.
-     */
-    private fun circuitStateValue(groupId: String): Double =
-        when (circuit(groupId).state) {
-            CircuitBreaker.State.CLOSED -> 0.0
-            CircuitBreaker.State.HALF_OPEN -> 1.0
-            CircuitBreaker.State.OPEN -> 2.0
-            else -> 0.0
-        }
 
     companion object {
         /**
