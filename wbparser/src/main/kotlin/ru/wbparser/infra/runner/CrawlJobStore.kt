@@ -64,6 +64,11 @@ internal class CrawlJobStore(
      * Takes the enum rather than a String so the value written is always one of the six the
      * `chk_status` constraint allows — the schema and [JobStatus] enumerate the same six, and
      * a literal here could drift from either without a compile error.
+     *
+     * The error message is bounded before it is written: this is the only place the column
+     * is filled with something the caller supplied, so it is where the column's contract
+     * lives. A run that failed on every target writes one line per target into one cell,
+     * and the row is read whole by the admin API.
      */
     fun closeJob(
         id: UUID,
@@ -81,7 +86,7 @@ internal class CrawlJobStore(
                 it[CrawlJobsTable.completedAt] = OffsetDateTime.now(ZoneOffset.UTC)
                 it[CrawlJobsTable.pagesCrawled] = pagesCrawled
                 it[CrawlJobsTable.itemsSaved] = itemsSaved
-                it[CrawlJobsTable.errorMessage] = errorMessage
+                it[CrawlJobsTable.errorMessage] = errorMessage?.let { boundRunErrorMessage(it) }
             }
         }
     }

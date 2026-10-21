@@ -372,6 +372,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** проверять лицензию новой зависимости до того, как она попадает в `gradle/libs.versions.toml`: Apache-2.0 совместима не со всем, и несовместимая лицензия — это не повод для исключения, а повод решить. _(from `2026-10-21-the-repository-is-licensed`)
 - **Never** менять лицензию репозитория молча: смена лицензии — это отдельное решение с отдельным ADR, и она не должна ехать вместе с функциональным изменением. _(from `2026-10-21-the-repository-is-licensed`)
 - **Never** создавать `NOTICE` без причины: Apache-2.0 требует его только при наличии собственных уведомлений, которых у проекта нет. _(from `2026-10-21-the-repository-is-licensed`)
+- **Always** держать полный текст ошибки в логе, а не только в колонке. _(from `2026-10-21-the-run-message-has-a-length`)
+- **Always** ограничивать сообщение в том месте, которое пишет колонку, а не в вызывающей стороне. _(from `2026-10-21-the-run-message-has-a-length`)
+- **Never** обрезать сообщение молча: обрезанное сообщение обязано говорить, что обрезано. _(from `2026-10-21-the-run-message-has-a-length`)
+- **Never** резать строку посередине символа. _(from `2026-10-21-the-run-message-has-a-length`)
 - **Always** называть в находке и таблицу, и файл, который её читает: находка без имени не годится в работу. _(from `2026-10-21-the-schema-gate-reads-the-package`)
 - **Always** проверять гейт гейтом: фикстура с новой таблицей в части обязана ронять гейт — иначе он ничего не ловит. _(from `2026-10-21-the-schema-gate-reads-the-package`)
 - **Always** читать пакет решений, а не один файл пакета: предмет гейта — то, что читает API, и он лежит в пакете, а не в одном его файле. _(from `2026-10-21-the-schema-gate-reads-the-package`)
@@ -1158,6 +1162,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-profile-id-is-read-too` — adspower  api  tests
 - `2026-10-21-the-read-model-is-not-needed-yet` — catalog  performance  database  measurement
 - `2026-10-21-the-repository-is-licensed` — legal  project  governance
+- `2026-10-21-the-run-message-has-a-length` — crawler  operations  database  error-handling
 - `2026-10-21-the-schema-gate-reads-the-package` — gates  database  architecture
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
@@ -1273,6 +1278,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-profile-id-is-read-too` — Имя поля профиля читается в обеих написаниях
 - `2026-10-21-the-read-model-is-not-needed-yet` — Материализованная read-модель каталога пока не нужна — вот цифры, по которым это решено
 - `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
+- `2026-10-21-the-run-message-has-a-length` — Сообщение прогона в `crawl_jobs.error_message` имеет длину — и говорит, что обрезано
 - `2026-10-21-the-schema-gate-reads-the-package` — Гейт совместимости схемы читает пакет решений каталога, а не один файл
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
