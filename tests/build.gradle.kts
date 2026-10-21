@@ -89,7 +89,7 @@ dependencies {
 // has to stay on the compile classpath.
 configurations.configureEach {
     resolutionStrategy {
-        force("org.hamcrest:hamcrest-core:2.2")
+        force("org.hamcrest:hamcrest-core:3.0")
     }
 }
 
