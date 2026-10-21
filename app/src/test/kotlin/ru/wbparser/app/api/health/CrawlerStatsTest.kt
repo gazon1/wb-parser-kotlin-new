@@ -5,6 +5,12 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import ru.wbparser.app.config.EgressGroups
+
+// The groups the configuration declares. The health endpoint reports them next to
+// what was observed; a test that does not care about them declares none.
+private val noGroups =
+    EgressGroups.Resolved(groups = emptyList(), profiles = emptyList(), targetConcurrency = 0)
 
 /**
  * The crawler counters the readiness endpoint reports.
@@ -17,7 +23,7 @@ class CrawlerStatsTest :
     FunSpec({
 
         test("a registry without crawler counters says the crawl has not run yet") {
-            val readiness = HealthRoutes(workingDataSource(), idleRegistry()).readiness()
+            val readiness = HealthRoutes(workingDataSource(), idleRegistry(), noGroups).readiness()
 
             val crawler = readiness["crawler"] as Map<*, *>
             crawler["state"] shouldBe "not_started"
@@ -74,7 +80,7 @@ class CrawlerStatsTest :
         }
 
         test("the crawler section does not disturb the checks that were there before") {
-            val readiness = HealthRoutes(catalogDataSource(), idleRegistry()).readiness()
+            val readiness = HealthRoutes(catalogDataSource(), idleRegistry(), noGroups).readiness()
 
             val checks = readiness["checks"] as Map<*, *>
             checks.keys shouldBe setOf("database", "subject_dictionary", "targets_without_search_token")
@@ -87,6 +93,6 @@ class CrawlerStatsTest :
  * The crawler section of the readiness response.
  */
 private fun crawlerOf(registry: MeterRegistry): Map<*, *> {
-    val readiness = HealthRoutes(workingDataSource(), registry).readiness()
+    val readiness = HealthRoutes(workingDataSource(), registry, noGroups).readiness()
     return readiness["crawler"] as Map<*, *>
 }

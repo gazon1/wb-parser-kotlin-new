@@ -2,6 +2,7 @@ package ru.wbparser.app.api.health
 
 import io.micrometer.core.instrument.MeterRegistry
 import ru.wbparser.infra.db.repositories.fetchEgressGroups
+import ru.wbparser.infra.http.EgressGroup
 import java.util.concurrent.TimeUnit
 import javax.sql.DataSource
 
@@ -30,10 +31,20 @@ private object EgressMetric {
  * A group that is missing from the ledger has not been probed yet. That is reported
  * as such — a missing group is not a group with an unknown address, and the two say
  * different things about the deployment.
+ *
+ * What the configuration DECLARED is reported next to what was observed. The two
+ * are different facts: the declaration is what the operator meant, the observation
+ * is what the world says, and a deployment where they differ is one the operator
+ * has to look at.
+ *
+ * @param registry the meters the crawl writes.
+ * @param datasource the database the ledger lives in.
+ * @param declaredGroups the groups as the configuration declares them.
  */
 fun egressStats(
     registry: MeterRegistry,
     datasource: DataSource,
+    declaredGroups: List<EgressGroup> = emptyList(),
 ): Map<String, Any> {
     val ledger =
         runCatching { datasource.fetchEgressGroups() }
@@ -55,6 +66,10 @@ fun egressStats(
         }
     return mapOf(
         "groups" to groups,
+        // What each group was declared to leave through, next to what was observed
+        // above. The declaration is the operator's intent; the observation is the
+        // world's answer.
+        "declared" to declaredGroups.associate { group -> group.id to group.proxy.toString() },
         "all_down" to (counterValue(registry, EgressMetric.ALL_DOWN, null) ?: 0L),
         "probe_failures" to (counterValue(registry, EgressMetric.PROBE_FAILED, null) ?: 0L),
     )

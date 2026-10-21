@@ -5,6 +5,7 @@ import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.MeterRegistry
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.sqlite.SQLiteDataSource
+import ru.wbparser.app.config.EgressGroups
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.nio.file.Files
@@ -12,6 +13,11 @@ import java.sql.Connection
 import java.sql.SQLException
 import java.util.logging.Logger
 import javax.sql.DataSource
+
+// The groups the configuration declares. The health endpoint reports them next to
+// what was observed; a test that does not care about them declares none.
+private val noGroups =
+    EgressGroups.Resolved(groups = emptyList(), profiles = emptyList(), targetConcurrency = 0)
 
 /**
  * The readiness probe answers one question: is this instance able to serve traffic?
@@ -25,13 +31,13 @@ class HealthRoutesTest :
     FunSpec({
 
         test("liveness reports UP without touching the database") {
-            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry())
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry(), noGroups)
 
             routes.liveness() shouldBe mapOf("status" to "UP")
         }
 
         test("readiness is UP when the database answers") {
-            val routes = HealthRoutes(workingDataSource(), idleRegistry())
+            val routes = HealthRoutes(workingDataSource(), idleRegistry(), noGroups)
 
             val readiness = routes.readiness()
 
@@ -41,7 +47,7 @@ class HealthRoutesTest :
         }
 
         test("readiness reports the subject dictionary and the targets without a token") {
-            val routes = HealthRoutes(catalogDataSource(), idleRegistry())
+            val routes = HealthRoutes(catalogDataSource(), idleRegistry(), noGroups)
 
             val readiness = routes.readiness()
             val checks = readiness["checks"] as Map<*, *>
@@ -58,7 +64,7 @@ class HealthRoutesTest :
         }
 
         test("readiness is DOWN when the database cannot be reached") {
-            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry())
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry(), noGroups)
 
             val readiness = routes.readiness()
 
@@ -68,7 +74,7 @@ class HealthRoutesTest :
         }
 
         test("the failure message names the exception and its message") {
-            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry())
+            val routes = HealthRoutes(UnreachableDataSource(), idleRegistry(), noGroups)
 
             val readiness = routes.readiness()
             val checks = readiness["checks"] as Map<*, *>

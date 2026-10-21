@@ -9,6 +9,7 @@ import org.jetbrains.exposed.sql.Database
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.EgressGroupConfig
 import ru.wbparser.app.config.EgressGroups
+import ru.wbparser.app.config.ProxyConfig
 import ru.wbparser.app.config.Spider
 import ru.wbparser.app.config.Worker
 import ru.wbparser.infra.db.DatabaseHandle
@@ -123,7 +124,12 @@ class EgressProbeServiceTest :
                     ),
                 groups =
                     EgressGroups.resolve(
-                        Spider(egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1")))),
+                        Spider(
+                            egressGroups =
+                                listOf(
+                                    EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none")),
+                                ),
+                        ),
                     ),
                 database = DatabaseHandle(brokenDatabase, Database.connect(brokenDatabase)),
                 router = router,
