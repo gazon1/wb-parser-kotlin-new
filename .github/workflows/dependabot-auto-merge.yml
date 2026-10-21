@@ -82,8 +82,16 @@ jobs:
             gh api "repos/${{ github.repository }}/pulls/${number}" --jq .body > "$RUNNER_TEMP/description-${number}.md"
           done < "$RUNNER_TEMP/candidates.txt"
 
+      # The table of decisions has to be readable before anything is decided by
+      # it: a table with a typo in it would silently turn every major into
+      # "nobody decided", and the list would grow without anyone noticing.
+      - name: The decisions table is readable
+        run: python3 scripts/dependency_decision.py --check
+
       # The bump is a patch or a minor: those merge themselves. A major is a
-      # decision of a person, and the workflow says so and stops.
+      # decision — but a decision may already have been made and recorded, and
+      # then the question is not open any more. The workflow says which of the
+      # two it is, and the table says why.
       - name: The bumps that may merge themselves
         id: bump
         env:
@@ -94,7 +102,12 @@ jobs:
           while read -r number; do
             [ -n "$number" ] || continue
             bump="$(python3 scripts/dependabot_bump.py "$RUNNER_TEMP/description-${number}.md")" || {
-              echo "::notice::#${number} is not a patch and not a minor — a person decides"
+              decision="$(python3 scripts/dependency_decision.py "$number")"
+              if [ "$decision" != "none" ]; then
+                echo "::notice::#${number}: a decision is recorded — $decision"
+              else
+                echo "::notice::#${number} is not a patch and not a minor, and no decision is recorded — a person decides"
+              fi
               continue
             }
             echo "#${number} is a $bump"
