@@ -1,12 +1,30 @@
 package ru.wbparser.infra.http
 
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonDecodingException
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.parsing.WbCatalogEnvelope
 import ru.wbparser.domain.parsing.toParsedItem
 import ru.wbparser.domain.value.CrawlUrl
+
+/**
+ * The decoder the catalog answer is read with.
+ *
+ * `internal` rather than `private` so that the test can decode with the very same
+ * configuration the parser uses — a test that decodes with a different `Json` proves
+ * something about the test, not about the parser.
+ */
+internal val wbJson: Json =
+    Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
+
+private val log = LoggerFactory.getLogger("ru.wbparser.infra.http.WbCatalogParser")
 
 /**
  * Parses a WB catalog response body into a [ParsedPage].
@@ -27,27 +45,38 @@ import ru.wbparser.domain.value.CrawlUrl
  * an empty answer ends the pagination. Reading `nextPage` from a `payload` that this endpoint
  * never sends is what left the crawler on the first page for every catalog: the run reported
  * "132 pages, 13 200 items" while having fetched exactly one page per category.
+ *
+ * ## A malformed answer
+ *
+ * A malformed answer must not abort the crawl, so the parse degrades to an empty page with
+ * a warning that names the cause — see the overload below for the seam that makes that
+ * failure testable.
  */
-private val wbJson: Json =
-    Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-    }
+fun parseWbCatalog(response: Fetched): ParsedPage = parseWbCatalog(response) { body -> wbJson.decodeFromString(body) }
 
-private val log = LoggerFactory.getLogger("ru.wbparser.infra.http.WbCatalogParser")
-
-// A malformed catalog response must not abort the crawl, so the catch is deliberately
-// broad — deserialization can fail in many ways (JSON shape, charset, truncation) and
-// each one means the same thing here: an empty page plus a warning.
+/**
+ * The parse, with the decoder as a parameter.
+ *
+ * The seam exists so that the two failures this parser must survive — a wrong answer and
+ * an answer that overflows the stack — can be *produced* in a test instead of being
+ * believed. A guard nobody can trigger is a guard nobody knows works.
+ *
+ * The catch around the decode is deliberately broad: deserialization can fail in many ways
+ * (JSON shape, charset, truncation, a field that changed its type) and each one means the
+ * same thing here — an empty page plus a warning that names the cause.
+ */
 @Suppress("TooGenericExceptionCaught")
-fun parseWbCatalog(response: Fetched): ParsedPage {
+internal fun parseWbCatalog(
+    response: Fetched,
+    decode: (String) -> WbCatalogEnvelope,
+): ParsedPage {
     val body = response.body
     if (body.isNullOrBlank()) {
         return emptyPage(response)
     }
 
     return try {
-        val catalogEnvelope = wbJson.decodeFromString<WbCatalogEnvelope>(body)
+        val catalogEnvelope = decode(body)
         val products =
             catalogEnvelope.data?.products
                 ?: catalogEnvelope.payload?.products
@@ -100,10 +129,58 @@ fun parseWbCatalog(response: Fetched): ParsedPage {
     } catch (e: Exception) {
         // A malformed catalog response must not abort the crawl, but turning it into a
         // silent empty page is worse: the run then reports "0 items" with no cause.
-        log.warn("Failed to parse WB catalog response from {}: {}", response.task.url, e.toString(), e)
+        // The cause is the field that failed to decode — that is what says what WB changed.
+        log.warn(
+            "Failed to parse WB catalog response from {}: {}",
+            response.task.url,
+            describeParseFailure(e),
+            e,
+        )
+        emptyPage(response)
+    } catch (e: StackOverflowError) {
+        // A `StackOverflowError` is an `Error`, not an `Exception`: the catch above never
+        // saw it, and one pathological answer took the whole crawl down with it.
+        // kotlinx.serialization caps the nesting depth of a document since 1.12 and reports
+        // the overflow as a decoding error — this catch is the belt to that braces: whatever
+        // else overflows the stack, the crawl survives and says why.
+        log.warn(
+            "Failed to parse WB catalog response from {}: the answer nests too deeply to parse",
+            response.task.url,
+            e,
+        )
         emptyPage(response)
     }
 }
+
+/**
+ * Describes why an answer failed to decode, in terms an operator can act on.
+ *
+ * The failure used to be reported as "failed to parse" and nothing else: the page became
+ * empty, the crawl reported success, and the question that mattered — *which field did WB
+ * change* — had no answer anywhere. `JsonDecodingException` (kotlinx.serialization 1.12)
+ * carries the path of the element that failed, the offset in the input and an excerpt of
+ * the input itself, so the log can name the field.
+ *
+ * A missing required field is a different exception (`MissingFieldException`, a plain
+ * `SerializationException`), and its message carries the path too — so both kinds of
+ * "the answer does not fit the DTO" end up naming the field.
+ */
+@OptIn(ExperimentalSerializationApi::class)
+internal fun describeParseFailure(failure: Throwable): String =
+    when (failure) {
+        is JsonDecodingException ->
+            "path=${failure.path ?: UNKNOWN_PATH}, offset=${failure.offset}, " +
+                "reason=${failure.shortMessage}" +
+                (failure.input?.let { ", input=${it.take(INPUT_EXCERPT_LIMIT)}" } ?: "")
+        is SerializationException -> "reason=${failure.message ?: failure::class.simpleName}"
+        else -> "reason=${failure::class.simpleName}: ${failure.message}"
+    }
+
+/** The path of the failing element, when the decoder could not name it. */
+private const val UNKNOWN_PATH = "<unknown>"
+
+/** How much of the answer is quoted in the log when a decode fails. */
+private const val INPUT_EXCERPT_LIMIT = 300
 
 private fun emptyPage(response: Fetched): ParsedPage =
     ParsedPage(
