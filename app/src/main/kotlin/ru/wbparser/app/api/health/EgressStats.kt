@@ -129,17 +129,18 @@ private fun sessionStats(pool: SessionSource?): Map<String, Any> {
     return mapOf(
         "live" to pool.liveSessionCount,
         "retired" to pool.retiredSessionCount,
-        "sessions" to sessions.map { session ->
-            mapOf(
-                "profile" to session.profileId,
-                "group" to session.egressGroup,
-                "state" to session.state.name.lowercase(),
-                "requests" to session.requests,
-                "refusals" to session.refusals,
-                "answered" to session.answered,
-                "age_ms" to session.ageMs,
-            )
-        },
+        "sessions" to
+            sessions.map { session ->
+                mapOf(
+                    "profile" to session.profileId,
+                    "group" to session.egressGroup,
+                    "state" to session.state.name.lowercase(),
+                    "requests" to session.requests,
+                    "refusals" to session.refusals,
+                    "answered" to session.answered,
+                    "age_ms" to session.ageMs,
+                )
+            },
     )
 }
 

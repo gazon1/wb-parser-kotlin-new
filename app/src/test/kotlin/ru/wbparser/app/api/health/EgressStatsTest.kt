@@ -161,7 +161,8 @@ class EgressStatsTest :
         }
 
         test("the capacity is counted in live sessions") {
-            val answer = egressStats(idleRegistry(), ledger, listOf(EgressGroupState(groupId = "ip-1")), emptyList(), sessionsOf("p1", "p2"))
+            val answer =
+                egressStats(idleRegistry(), ledger, listOf(EgressGroupState(groupId = "ip-1")), emptyList(), sessionsOf("p1", "p2"))
 
             val sessions = answer["sessions"] as Map<*, *>
             sessions["live"] shouldBe 2
