@@ -12,13 +12,13 @@ import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.infra.http.parseWbCatalog
+import ru.wbparser.infra.pipeline.ParserPipelineConfig
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
+import ru.wbparser.testing.DropTestInterpreter
 import ru.wbparser.testing.LogTestInterpreter
 import ru.wbparser.testing.NoRetryKtorDownloader
-import ru.wbparser.testing.SaveBatchTestInterpreter
-import ru.wbparser.testing.ScheduleRetryTestInterpreter
 import ru.wbparser.testing.SqliteTestHandle
 import ru.wbparser.testing.TestSideCollector
 import ru.wbparser.testing.WbFixtureServer
@@ -77,17 +77,19 @@ class WbParserRetryTest :
                     parser = ::parseWbCatalog,
                     save = save,
                     targetId = targetId,
-                    retryPolicy = RetryPolicy(maxAttempts = 2, baseDelayMs = 1, maxDelayMs = 10),
-                    stopAt = stopAt,
-                    clock = fixedClockOf(2026, 9, 8, 12, 0, 0),
-                    idGen = { "task-id" },
+                    config =
+                        ParserPipelineConfig(
+                            retryPolicy = RetryPolicy(maxAttempts = 2, baseDelayMs = 1, maxDelayMs = 10),
+                            stopAt = stopAt,
+                            clock = fixedClockOf(2026, 9, 8, 12, 0, 0),
+                            idGen = { "task-id" },
+                        ),
                 )
 
             val registry =
                 SideInterpreterRegistry(
                     log = LogTestInterpreter(collector),
-                    saveBatch = SaveBatchTestInterpreter(collector),
-                    scheduleRetry = ScheduleRetryTestInterpreter(collector),
+                    drop = DropTestInterpreter(collector),
                 )
             val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 
@@ -101,15 +103,15 @@ class WbParserRetryTest :
             result.isRight() shouldBe true
             val crawled = (result as Either.Right).value
             crawled.pagesCrawled shouldBe 1
-            crawled.itemsSaved shouldBe 5
+            crawled.itemsSaved shouldBe 4
 
             // HTTP: two requests were made (500 then 200)
             // Note: stageWithRetry handles retry via internal delay() — it does not emit
-            // Side.ScheduleRetry, so collector.scheduleRetries stays empty. The retry is
+            // a metric instead. The retry is
             // verified by the two HTTP requests and successful save.
             server.requestCount("/catalog") shouldBe 2
 
             // DB: 5 items persisted
-            db.count("scraped_items") shouldBe 5
+            db.count("scraped_items") shouldBe 4
         }
     })

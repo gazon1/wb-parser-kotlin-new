@@ -72,3 +72,60 @@ load-if-empty:
         --db-name {{DB_NAME}} \
         --db-user {{DB_USER}} \
         --db-password {{DB_PASSWORD}}
+
+[group('catalog')]
+[doc('Backfill root_category_name in the YAML from WBs public category tree')]
+[working-directory(justfile_directory())]
+fill-roots yaml=CATALOG_YAML:
+    #!/bin/bash
+    set -euo pipefail
+    uv run scripts/wb-catalog/fill_root_categories.py {{yaml}}
+
+[group('catalog')]
+[doc('Load WB product-subject names into wb_subjects')]
+[working-directory(justfile_directory())]
+load-subjects backfill="--backfill":
+    #!/bin/bash
+    set -euo pipefail
+    uv run scripts/wb-catalog/load_subjects.py \
+        --db-host {{DB_HOST}} \
+        --db-port {{DB_PORT}} \
+        --db-name {{DB_NAME}} \
+        --db-user {{DB_USER}} \
+        --db-password {{DB_PASSWORD}} \
+        {{backfill}}
+
+# ==============================================================================
+# 📏 MEASURE — how many pages a catalog really has
+# ==============================================================================
+#
+# The measurement writes a report; a separate step applies it. A number that was
+# not measured must not reach the YAML — see
+# docs/decisions/2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary.md
+
+[group('catalog')]
+[doc('Measure the real length of every catalog into a JSON report (needs a live AdsPower)')]
+[working-directory(justfile_directory())]
+measure-limits report="catalog_lengths.json" profiles="k17bnqsi k187fu14 k18a6j35" delay="2.0":
+    #!/bin/bash
+    set -euo pipefail
+    args=()
+    for profile in {{profiles}}; do
+        args+=(--profile "$profile")
+    done
+    uv run scripts/wb-catalog/measure_catalog_length.py \
+        --all --keep-going \
+        "${args[@]}" \
+        --delay {{delay}} \
+        --report {{report}}
+
+[group('catalog')]
+[doc('Write the measured catalog lengths into the YAML (dry-run by default)')]
+[working-directory(justfile_directory())]
+apply-limits report="catalog_lengths.json" yaml=CATALOG_YAML write="--dry-run":
+    #!/bin/bash
+    set -euo pipefail
+    uv run scripts/wb-catalog/apply_measured_limits.py \
+        --report {{report}} \
+        --yaml {{yaml}} \
+        {{write}}

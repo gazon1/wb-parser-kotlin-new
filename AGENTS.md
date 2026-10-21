@@ -25,7 +25,7 @@ wb-parser-kotlin/
 just tests::check      # или: ./check.sh — единственная точка входа
 just t                 # алиас
 
-# ./check.sh — 10 нумерованных шагов. Шаг [1] вызывает scripts/ci/static-gates.sh,
+# ./check.sh — 11 нумерованных шагов. Шаг [1] вызывает scripts/ci/static-gates.sh,
 # тот же реестр, что джоб `static` в ci.yml: один реестр, два вызывающих.
 
 # JDK: версия 22 задана один раз — в root build (`subprojects { }` → `jvmToolchain(22)`).
@@ -49,6 +49,10 @@ just app::run-docker       # docker-compose up
 # Отладка / Debug (локально, VPS не трогаем)
 docker compose -f deploy/docker-compose.debug.yml up   # приложение + БД + JDWP :5005
 
+# Линт / Lint
+just lint::autofix      # применить правки detekt (--auto-correct) и ktlint (ktlintFormat)
+just lf                 # алиас
+
 # Деплой / Deploy → 91.188.212.39
 just deploy                # ./check.sh → Ansible (image already in GHCR from CI)
 just deploy <tag>          # задеплоить уже запушенный тег
@@ -56,8 +60,69 @@ just deploy::build         # one-shot: build + push image (минуя CI)
 just deploy::dry-run <tag> # ansible --check --diff
 
 # Just aliases: b=build, br=run, td=wbparser::test, ti=wbparser::test-verbose,
-#               ld=wbparser::lint, li=wbparser::lint, t=tests::check, d=deploy
+#               ld=wbparser::lint, li=wbparser::lint, lf=lint::autofix,
+#               t=tests::check, d=deploy
 ```
+
+## CI-поверхности / CI surfaces
+
+Четыре workflow'а — не украшение, а часть гарантий репозитория. Их связность
+проверяет гейт `scripts/ci/check-ci-workflows.py` (в реестре
+`scripts/ci/static-gates.sh`), поэтому удаление или «опустошение» любого из них —
+это finding, а не тихая потеря.
+
+| Workflow | Что делает | Когда |
+|---|---|---|
+| `.github/workflows/ci.yml` | пайплайн: gates, сборка, тесты, покрытие, линт, публикация образа. Вызывается как `workflow_call` | push, PR, dispatch, вызов из nightly |
+| `.github/workflows/nightly.yml` | **точка входа** ночного прогона: `schedule: 0 3 * * *` + `workflow_dispatch`, вызывает `ci.yml` с `alert_on_failure: true` | schedule, dispatch |
+| `.github/workflows/watchdog.yml` | **сторож**: раз в неделю проверяет, когда ночной прогон последний раз успешно отработал; если больше 48 часов — issue | schedule, dispatch |
+| `.github/workflows/codeql.yml` | CodeQL: `java-kotlin` (по скомпилированному коду) + `actions` (сами workflow'и) → code scanning | push, PR, еженедельно, dispatch |
+| `.github/workflows/scorecard.yml` | OpenSSF Scorecard → SARIF в code scanning + публикация в Scorecard API | push на main, еженедельно, dispatch |
+| `.github/workflows/lint-autofix.yml` | применяет `scripts/ci/lint-autofix.sh` и **предлагает** правки (ветка `lint-autofix/<run-id>` + PR/комментарий) | push, PR, dispatch |
+
+Правила, которые из этого следуют:
+
+- **Always** определять пайплайн один раз и вызывать его: расписание — это
+  точка входа, а не свойство пайплайна. Расписание внутри пайплайна — копия
+  точки входа, а копия устаревает.
+- **Always** давать каждому джобу пайплайна собственные `permissions`: grant
+  вызывающего — это потолок, и он проверяется **статически**, включая джобы,
+  которые не запустятся. Ночной прогон не пушит образ — право на реестр
+  доходит только до джоба, который его пушил бы.
+- **Always** кэшировать Gradle в CI (`cache: gradle`). Без кэша шесть джобов
+  параллельно тянут весь граф зависимостей с Maven Central: это медленно и
+  падает случайно. Падение CI должно быть о коде, а не о сети.
+- **Never** считать «прогон не запустился» успехом: расписание, которое
+  молча встало, — это отказ, и его ловит сторож.
+- **Never** пушить авто-фикс в ветку, над которой работает человек: правки
+  предлагаются, решение — за человеком.
+- **Never** считать авто-фикс гейтом: `ktlintCheck` и `detekt` остаются гейтом,
+  а находка, которую нельзя исправить автоматически, всё равно валит сборку.
+- **Always** запускать корректор одним Gradle-вызовом на модуль и одной задачей
+  на вызов: опция задачи (`--auto-correct`) достаётся только последней
+  подходящей задаче инвокации.
+- Авто-фикс **никогда** не трогает detekt-baseline: baseline — это долг, а не
+  форматирование (см. `scripts/check-baseline-ratchet.py`).
+- **Always** пинить экшены на коммит, версию оставлять в комментарии. Гейт
+  `scripts/ci/check-ci-workflows.py` падает на тег — Scorecard проверяет
+  это раз в неделю, гейт — на каждом изменении.
+- **Always** проверять, что пин экшена — это **коммит** его репозитория, а не
+  объект аннотированного тега: 40 hex-символов одинаковы у того и другого, а
+  API публикации отвергает объект тега тихо — анализ посчитан и выброшен,
+  шаг зелёный. Проверка живёт в пайплайне (`scripts/ci/check-action-pins.py`),
+  потому что нужен интернет; гейт поверхностей следит, чтобы она осталась на
+  месте (ADR `2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked`).
+- **Always** объявлять top-level `permissions:` в каждом workflow — это пол,
+  а не grant: джоб без собственного объявления наследует права вызывающего.
+- **Always** проверять публикацию по API, а не доверять зелёному шагу: экшен
+  сообщает об отвергнутой публикации как о warning, и прогон остаётся зелёным.
+- **Never** передавать экшену вход, которого у него нет: это предупреждение
+  на каждом прогоне и никакой защиты.
+- `main` защищён: обязательные проверки — гейты пайплайна
+  (`static`, `build`, `coverage`, `lint`, `dependency-health`,
+  `gate-honesty`) и CodeQL. Аппрувы не требуются: репозиторий ведёт один
+  человек (и агенты от его имени) — правило, которое всегда обходят, учит
+  обходить правила.
 
 ## 🤖 Decision log workflow
 
@@ -133,7 +198,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 
 1. **`!!` (force-unwrap) в prod-коде** — используй `require` / `check` с явным `IllegalStateException`, или nullable + let/also
 2. **`delay(-1L)` как sentinel** — `delayMs = -1L` невалидный контракт; используй `null` или `Optional.delayMs`
-3. **Подключать side-эффекты в обход `SideInterpreterRegistry`** — `ScheduleRetryInterpreter` и `SaveBatchInterpreter` **MUST** быть зарегистрированы в каждом `runTarget` (pipeline ADR)
+3. **Подключать side-эффекты в обход `SideInterpreterRegistry`** — каждый вариант `Side` **MUST** иметь интерпретатор в каждом `runTarget`. Реестр тотален по построению: интерпретаторы non-null, `when` исчерпывающий, поэтому «забытый» интерпретатор — ошибка компиляции, а не рантайм-сюрприз (ADR `2026-10-20-the-registry-is-total-by-construction`)
 4. **Игнорировать `Side.Log(ERROR)`** — в save-стадии `else -> {}` молчаливо проглатывает ошибки;StageFailure — тоже logging
 5. **`runCatching` без обработки** — ошибка должна либо попасть в `StageFailure`, либо быть залогирована через `LogInterpreter`
 6. **Мокки / Mockito** — используй Fake* классы (fake over mock convention)
@@ -154,22 +219,35 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 | Файл | О чём |
 |---|---|
 | `docs/decisions/2026-09-08-functional-pipeline-refactor.md` | Stage/Side/Interpreter модель; **Always** регистрировать все интерпретаторы |
+| `docs/decisions/2026-10-20-the-registry-is-total-by-construction.md` | Реестр тотален по построению: интерпретаторы non-null, `when` исчерпывающий; side, который никто не эмитит, — не side |
+| `docs/decisions/2026-10-20-a-pin-is-a-commit-and-a-publication-is-checked.md` | Пин экшена — это коммит, а не объект тега; публикация проверяется по API, а не по зелёному шагу |
 | `docs/decisions/2026-09-08-domain-coverage-pr4.md` | Domain unit tests; **MUST** тестировать `domain/pipeline/**` |
 | `docs/decisions/2026-09-08-conventional-commits-and-cleanup-prs.md` | Commit conventions: `feat:`, `fix:`, `refactor:`, `chore:`, `test:`, `docs:` + `PR N` |
 | `docs/decisions/2026-10-19-dependency-analysis-plugin.md` | DAGP как гейт: baseline = exclude-лист, уменьшающийся по существу (структурные записи неустранимы); `fixDependencies` — только вручную |
 | `docs/decisions/2026-10-19-application-startup-gate.md` | Приложение обязано стартовать, и что-то обязано это доказывать (`@SpringBootTest` + Testcontainers) |
 | `docs/decisions/2026-10-19-explicit-module-boundary.md` | Граница `wbparser → app` объявлена (`java-library`, `api`/`runtimeOnly`), а не подразумевается |
 | `docs/decisions/2026-10-19-jdk-toolchain.md` | Версия JDK — одно число в одном месте; toolchain сам себя обеспечивает |
+| `docs/decisions/2026-10-20-the-coverage-floor-measures-the-code-not-the-module.md` | Floors меряются по merged-отчёту с фильтром по пакетам: отчёт модуля не видит покрытие чужих сьютов |
+| `docs/decisions/2026-10-20-the-big-classes-are-split-by-decision.md` | Крупные классы делятся по решению, которое они держат: `WbCatalogRequest`/`WbCatalogApi`/`WbCatalogFetchScript`, `Pipeline`/`PipelineBatch`/`PipelinePageProcessor`, `CrawlRunner`/`CrawlJobStore`/`TargetCrawl`/`CrawlMetrics`, `BrowserPool`/`BrowserProfileState`/`AdsPowerApi`/`CdpAutomation` |
+| `docs/decisions/2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary.md` | Длина каталога измеряется на границе пагинации; лимит следует за границей и никогда не выше предела API (60 страниц); замер пишет отчёт, YAML меняет отдельный шаг |
+| `docs/decisions/2026-10-20-the-crawler-and-its-browser-share-one-network-namespace.md` | Деплой: репозиторий публикует два образа (краул + рантайм AdsPower), Caddy-vps тянет их по digest; браузер делит сетевую namespace краула — Local API и CDP доступны по 127.0.0.1, наружу не выставлен ни один порт |
+| `docs/decisions/2026-10-20-the-crawl-cadence-follows-the-measured-catalog.md` | Расписание выводится из измеренной длины каталога: тик короче круга, окно свежести длиннее круга, запасной лимит не ниже измеренного минимума |
 
 ---
 
 ## Tech-debt plan (актуальный)
 
-Кластеры из `.zcode/plans/plan-sess_*.md`:
+Кластеры A–G прежнего плана (runtime-баги, purity, мёртвый код, дублирование,
+инфраструктура, покрытие, tooling) **разобраны** — состояние по каждому пункту в файле
+плана. Осталось:
 
-- **A** — runtime bugs: `SideInterpreterRegistry` пустой в `crawl.kt`, `SaveBatchInterpreter` dead code, `delayMs = -1L` spin-loop
-- **B** — purity: `UUID.randomUUID()` и `delay()` внутри `Pipeline.run()`
-- **C** — мёртвый код: `StopReason.kt`, `StageFailure.Stopped`
-- **F** — (?) см. план
+- **BrowserPool** — раздроблен по решению (PR #68); осталось покрыть сам HTTP-клиент
+  AdsPower (`RealAdsPowerApi` 6 %) и CDP-автоматизацию (`CdpAutomation` 21 %)
+- **Браузерный путь fetch** — не покрыт: ошибка там выглядит как «каталог пуст», а не
+  как ошибка
+- **Эксплуатационное**: доля HTTP 498 (все профили на одном egress IP — не код).
+  Пересборка прод-БД сделана (схема v6, 132 цели, 8174 предметов), деплой
+  переведён на два образа по digest, расписание пересчитано под 60 страниц.
+  Осталось: развернуть контур на VPS и указать витрине `DATABASE_URL`
 
 Полный план: `.zcode/plans/plan-sess_871f29cf-f859-4a72-9002-5bbafd737630.md`

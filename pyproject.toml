@@ -7,7 +7,15 @@ dependencies = [
     "httpx>=0.27.0",
     "pyyaml>=6.0",
     "nicegui>=1.4.0",
+    "playwright>=1.49.0",
     "click>=8.1.0",
     "psycopg2-binary>=2.9.9",
     "loguru>=0.7.0",
+]
+
+# Тестовые зависимости: pytest нужен для `uv run pytest scripts/tests/...`.
+# Группа `dev` ставится uv по умолчанию и не попадает в рантайм приложения.
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
 ]

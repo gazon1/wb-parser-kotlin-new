@@ -1,0 +1,335 @@
+name: Site compatibility
+
+# The crawler asks the storefront whether it can still read the catalog.
+#
+# ## Why the crawler asks
+#
+# The two repositories are separate, and the boundary between them is a
+# contract. The crawler's CI builds and publishes an image; the storefront's CI
+# checks the image it can build. Neither of those answers the question that
+# matters on the day of a release: does the storefront that is about to be
+# deployed still understand the crawler that is about to be deployed?
+#
+# So the crawler dispatches the storefront's `contract-compatibility` workflow
+# with the image it published, and then reads the conclusion of that run. The
+# dispatch is the crawler's half of the contract check; the conclusion is the
+# answer.
+#
+# ## How a run is identified
+#
+# Three things together: the crawler's image digest, the site's commit SHA and
+# the id of the run. The dispatch carries a `dispatch_id`, and the storefront
+# prints it and names its artifact after it — so this job can match *this*
+# answer to *its* question instead of to "the last green run", which may have
+# been about another image.
+#
+# A `conclusion` that is not `success` is a failure — including `cancelled`,
+# `timed_out` and `neutral`, and including a run that never appeared at all.
+# "The storefront's run is missing" and "the storefront's run passed" are not
+# the same thing, and only one of them is a compatibility check.
+#
+# ## A missing token fails, loudly
+#
+# The token and the repository name are configuration, and a job that cannot
+# reach the storefront must say so rather than report success. A green run that
+# checked nothing is the failure mode this repository refuses — the same
+# refusal the storefront's own test suite is built on.
+
+on:
+  workflow_dispatch:
+    inputs:
+      site_ref:
+        description: The storefront ref to check.
+        required: false
+        default: main
+        type: string
+      crawler_image:
+        description: >-
+          The crawler image to check against, as a digest. Empty: the image this
+          repository publishes for the current commit.
+        required: false
+        type: string
+  push:
+    branches: [main]
+  # A pull request's image is the one whose contract may have just changed, and
+  # the check has to be visible on the pull request itself — a job in another
+  # workflow would not show up among the pull request's checks.
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  # The image is published by another workflow, so it may not be in the registry
+  # when this workflow starts. The wait is a job of its own because "the image
+  # never appeared" and "the storefront answered badly" are different failures,
+  # and a red `main` that says the second when the truth is the first sends the
+  # reader to the wrong place.
+  #
+  # When the image does not appear, this job fails and the compatibility job is
+  # skipped — and a skipped job does not block a merge. The gate that matters —
+  # "the storefront understands this image" — is the one that has to be green.
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    outputs:
+      # The outputs of *this* job come from its own step. A job cannot read
+      # its own outputs through `needs` — `needs` is what the *next* job reads.
+      image: ${{ steps.image.outputs.image }}
+      digest: ${{ steps.image.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The image is named by its digest, because a tag can be moved and a
+      # digest cannot: the storefront has to check *this* image, not whatever
+      # the tag points at when it pulls it.
+      #
+      # The publishing job runs in another workflow, so the image may not be in
+      # the registry yet when this job starts. The wait is part of the job
+      # rather than a race that silently loses.
+      - name: Resolve the crawler image
+        id: image
+        env:
+          CRAWLER_IMAGE: ${{ inputs.crawler_image }}
+          OWNER: ${{ github.repository_owner }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "$GHCR_TOKEN" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+          image="${CRAWLER_IMAGE:-ghcr.io/${OWNER}/wb-parser:${GITHUB_SHA::7}}"
+
+          deadline=$(( $(date +%s) + 1200 ))
+          while true; do
+            if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+              break
+            fi
+
+            # The image of a commit that is no longer the tip of `main` will
+            # never appear: its own CI run was cancelled when `main` moved on,
+            # and the newer commit publishes an image of its own.
+            #
+            # Waiting out the whole budget and then failing is a red run about
+            # nothing: the commit it names is not the one that will be
+            # deployed, and the run that answers that question is the newer
+            # commit's run. So the wait ends as soon as the commit is
+            # superseded, and says so.
+            if [ -z "${CRAWLER_IMAGE:-}" ]; then
+              tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha' 2>/dev/null || echo "")"
+              if [ -n "$tip" ] && [ "$tip" != "$GITHUB_SHA" ]; then
+                echo "::notice::commit ${GITHUB_SHA::7} is no longer the tip of main (${tip::7}): its image will never be published, and the newer commit's run is the one that answers this question."
+                echo "superseded=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
+
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::the image $image never appeared in the registry"
+              exit 1
+            fi
+            echo "waiting for $image to appear in the registry..."
+            sleep 20
+          done
+
+          digest="$(docker buildx imagetools inspect "$image" --format '{{.Manifest.Digest}}')"
+          echo "image=${image}@${digest}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "digest: ${image}@${digest}"
+
+
+  site-compatibility:
+    needs: image
+    # A superseded commit has no image and no question left to ask: the newer
+    # commit's run answers it. The job says so and ends green.
+    if: needs.image.outputs.superseded != 'true'
+    runs-on: ubuntu-latest
+    # The dispatch, the storefront's own CI (image build plus suite), and the
+    # wait for its conclusion.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: The storefront repository and the token are configured
+        env:
+          SITE_REPO: ${{ vars.SITE_REPO }}
+          SITE_REPO_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SITE_REPO:-}" ]; then
+            echo "::error::vars.SITE_REPO is not set — the crawler does not know which repository to ask."
+            exit 1
+          fi
+          if [ -z "${SITE_REPO_TOKEN:-}" ]; then
+            echo "::error::secrets.SITE_REPO_TOKEN is not set — the crawler cannot ask the storefront to check itself."
+            exit 1
+          fi
+
+      # The tag is what tells the storefront whether this image is a release.
+      #
+      # A pull request's image and the image of the merge that follows it are
+      # two different images with two different digests — the merge rebuilds, and
+      # the rebuild is not bit-for-bit the same bytes. The storefront's pin names
+      # the digest of a *merged* commit's build, so it has to be able to tell
+      # the two apart; the tag is what says which one this is.
+      - name: The tag of this build
+        id: tag
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          EVENT_NAME: ${{ github.event_name }}
+          SHA_SHORT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            tag="pr-${PR_NUMBER}"
+          else
+            tag="${SHA_SHORT}"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "tag: ${tag}"
+
+      # The dispatch id is this job's own attempt at asking. The storefront
+      # prints it and names its artifact after it, which is how the answer is
+      # matched to the question.
+      #
+      # The site's commit is recorded here, *before* the dispatch: the answer is
+      # checked against the commit that existed when the question was asked, not
+      # against wherever the ref points by the time the answer arrives.
+      - name: Compose the dispatch
+        id: dispatch
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}
+          SITE_REF: ${{ inputs.site_ref || 'main' }}
+          GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
+          SITE_REPO: ${{ vars.SITE_REPO }}
+        run: |
+          set -euo pipefail
+          dispatch_id="$(uuidgen 2>/dev/null || cat /proc/sys/kernel/random/uuid)"
+          site_sha="$(gh api "repos/${SITE_REPO}/commits/${SITE_REF}" --jq '.sha')"
+          echo "dispatch_id=${dispatch_id}" >> "$GITHUB_OUTPUT"
+          echo "site_sha=${site_sha}" >> "$GITHUB_OUTPUT"
+          echo "dispatch id: ${dispatch_id}"
+          echo "site commit: ${site_sha}"
+
+      # The storefront is asked about RELEASED images only.
+      #
+      # A pull request's image is not a release: the pin must not move to it
+      # (the storefront's own rule refuses that), and asking the storefront
+      # about it paints a red run on the storefront's `main` — a run that is
+      # about the crawler's pull request, in the storefront's repository, where
+      # somebody reading the storefront's own history would look for the
+      # storefront's fault.
+      #
+      # A red signal has to mean what it says. The storefront's `main` is red
+      # when the storefront is broken; the crawler's pull request is checked by
+      # the crawler's own CI. Who asks whom about which image is a decision, and
+      # this is it: released images are checked across the boundary, pull
+      # requests are checked on their own side.
+      - name: Ask the storefront to check itself against that image
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
+          SITE_REPO: ${{ vars.SITE_REPO }}
+          SITE_REF: ${{ inputs.site_ref || 'main' }}
+          IMAGE: ${{ needs.image.outputs.image }}
+          DIGEST: ${{ needs.image.outputs.digest }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          DISPATCH_ID: ${{ steps.dispatch.outputs.dispatch_id }}
+        run: |
+          set -euo pipefail
+          echo "dispatched_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+          payload="$(printf '{"event_type":"crawler-image-published","client_payload":{"digest":"%s","crawler_image":"%s","tag":"%s","crawler_commit":"%s","dispatch_id":"%s","site_ref":"%s"}}' \
+            "$DIGEST" "$IMAGE" "$TAG" "$GITHUB_SHA" "$DISPATCH_ID" "$SITE_REF")"
+          # A refused dispatch is the common failure here, and the API's own
+          # answer — "Resource not accessible by personal access token" — does
+          # not say what is missing. A fine-grained token needs "Contents: read
+          # and write" on the storefront to create a dispatch event, and
+          # "Actions: read-only" to read the run that event starts; a classic
+          # token needs the `repo` scope. The message says so, because a gate
+          # that fails without saying why is a gate nobody can act on.
+          if ! answer="$(echo "$payload" | gh api --method POST "repos/${SITE_REPO}/dispatches" --input - 2>&1)"; then
+            echo "::error::the dispatch to ${SITE_REPO} was refused: ${answer}"
+            echo "::error::the token needs 'Contents: read and write' on ${SITE_REPO} to create a dispatch event, and 'Actions: read-only' to read the run it starts (a classic token needs the repo scope)."
+            exit 1
+          fi
+          echo "dispatched to ${SITE_REPO}"
+
+      # The dispatch starts a run; the run's conclusion is the answer. The run
+      # is found by its event and by when it was created — the dispatch is the
+      # only thing that can start a `repository_dispatch` run in that window.
+      #
+      # The site's commit is read from the run and compared with the commit the
+      # dispatch asked about: a run against a site commit nobody asked for is
+      # not an answer to this question, however green it is.
+      - name: Wait for the storefront's run to appear
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
+          SITE_REPO: ${{ vars.SITE_REPO }}
+          DISPATCHED_AT: ${{ env.dispatched_at }}
+        run: |
+          set -euo pipefail
+          run_id=""
+          deadline=$(( $(date +%s) + 900 ))
+          while [ -z "$run_id" ]; do
+            run_id="$(
+              gh api "repos/${SITE_REPO}/actions/runs?event=repository_dispatch&per_page=20" \
+                --jq ".workflow_runs[] | select(.created_at >= \"${DISPATCHED_AT}\") | .id" \
+                | head -1
+            )"
+            if [ -z "$run_id" ]; then
+              if [ "$(date +%s)" -ge "$deadline" ]; then
+                echo "::error::the storefront's run never appeared — compatibility is not proven"
+                exit 1
+              fi
+              echo "waiting for the storefront's run to appear..."
+              sleep 15
+            fi
+          done
+          echo "The storefront's run: $run_id"
+          echo "run_id=${run_id}" >> "$GITHUB_ENV"
+
+      - name: The storefront's run is about the commit we asked about
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
+          SITE_REPO: ${{ vars.SITE_REPO }}
+          RUN_ID: ${{ env.run_id }}
+          EXPECTED_SHA: ${{ steps.dispatch.outputs.site_sha }}
+        run: |
+          set -euo pipefail
+          head_sha="$(gh api "repos/${SITE_REPO}/actions/runs/${RUN_ID}" --jq '.head_sha')"
+          echo "the run checked ${head_sha}, the question was about ${EXPECTED_SHA}"
+          if [ "$head_sha" != "$EXPECTED_SHA" ]; then
+            echo "::error::the storefront's run checked a different commit than the one that was asked about"
+            exit 1
+          fi
+
+      # `--exit-status` makes the wait's outcome the step's outcome: a
+      # storefront run that failed must fail this one, and a storefront run that
+      # never finished must not pass silently either.
+      - name: The storefront's conclusion
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
+          SITE_REPO: ${{ vars.SITE_REPO }}
+          RUN_ID: ${{ env.run_id }}
+        run: gh run watch "$RUN_ID" --repo "$SITE_REPO" --exit-status
+
+      # The pull request's case, said out loud.
+      #
+      # A job that quietly does nothing is a job nobody can tell from a job
+      # that did something and found nothing. The summary says which one this
+      # was and why the storefront was not asked.
+      - name: A pull request's image is not asked about
+        if: github.event_name == 'pull_request'
+        run: |
+          {
+            echo "### The storefront was not asked about this image"
+            echo ""
+            echo "- The storefront is asked about **released** images only."
+            echo "- The pin does not move for a pull request's image — that is the rule, not a failure."
+            echo "- This image is checked by the crawler's own CI; a red run here would have been a run in the storefront's repository, about this pull request."
+          } >> "$GITHUB_STEP_SUMMARY"

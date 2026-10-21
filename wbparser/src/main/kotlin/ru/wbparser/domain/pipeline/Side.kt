@@ -1,7 +1,6 @@
 package ru.wbparser.domain.pipeline
 
 import ru.wbparser.domain.model.ParsedItem
-import ru.wbparser.domain.model.SavedItem
 
 /**
  * A side effect to be interpreted by the pipeline runner.
@@ -24,6 +23,10 @@ import ru.wbparser.domain.model.SavedItem
  * 1. Add a variant to this sealed interface.
  * 2. Add the interpretation logic in [infrastructure.pipeline.Interpreters].
  * 3. Add a test interpreter in [testing][testing.InMemoryAdapters].
+ *
+ * A new variant does not compile until the registry knows how to interpret it: the
+ * registry dispatches with an exhaustive `when` over this interface, so a variant
+ * without a branch is a compile error, not a runtime surprise.
  */
 sealed interface Side {
     /** Log a message at [level]. */
@@ -40,45 +43,11 @@ sealed interface Side {
         val tags: Map<String, String> = emptyMap(),
     ) : Side
 
-    /** Persist a batch of items to storage. */
-    data class SaveBatch(
-        val items: List<SavedItem>,
-    ) : Side
-
-    /** Record a job lifecycle event. */
-    data class JobEvent(
-        val operation: JobOp,
-    ) : Side
-
-    /** Schedule a retry for [url] after [afterMs] milliseconds. */
-    data class ScheduleRetry(
-        val url: String,
-        val afterMs: Long,
-        val targetId: java.util.UUID,
-    ) : Side
-
-    /** Record that we attempted to acquire the advisory lock. */
-    data class AcquireAdvisoryLock(
-        val key: Long,
-    ) : Side
-
     /** Record that an item was dropped by the filter stage. */
     data class Drop(
         val reason: Dropped,
-        val item: ru.wbparser.domain.model.ParsedItem,
+        val item: ParsedItem,
     ) : Side
 }
 
 enum class LogLevel { DEBUG, INFO, WARN, ERROR }
-
-/** Job lifecycle operations. */
-sealed interface JobOp {
-    data class Open(
-        val jobId: String,
-    ) : JobOp
-
-    data class Close(
-        val jobId: String,
-        val status: String,
-    ) : JobOp
-}

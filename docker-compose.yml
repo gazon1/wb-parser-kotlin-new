@@ -2,59 +2,22 @@
 # Local development stack: app + postgres, no remote dependencies.
 #
 #   docker compose up --build    # from project root
-#   just app::run-docker        # same thing via just
+#   just app::run-docker         # same thing via just (builds the jar first)
+#
+# This file deliberately contains nothing but an `include`. The stack itself lives
+# in deploy/docker-compose.debug.yml, and a second copy of it here was a trap:
+# the copy could never work — it built the debug image (which does NOT contain a
+# jar; it expects the host-built one mounted in) without mounting one, and it
+# never passed ADMIN_API_KEY, which the app refuses to start without. The two
+# copies also disagreed about the database credentials, so they fought over the
+# same port 5433 with different users.
+#
+# `include` keeps the paths in the included file resolving against *its own*
+# directory (deploy/), which is what the jar mount and the build context expect.
 #
 # Production / VPS: deploy/docker-compose.vps.yml (app only, external DB on
 # 91.188.212.209). That file is what the Ansible role deploys to the VPS.
 # =============================================================================
 
-services:
-  postgres:
-    image: postgres:${POSTGRES_IMAGE_TAG:-17-alpine}
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${DB_NAME:-wbparser}
-      POSTGRES_USER: ${DB_USER:-wbparser}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-wbparser} -d ${DB_NAME:-wbparser}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile.debug
-    container_name: wb-parser
-    restart: unless-stopped
-    environment:
-      SPRING_FLYWAY_ENABLED: "true"
-      DB_HOST: postgres
-      DB_PORT: "5432"
-      DB_NAME: ${DB_NAME:-wbparser}
-      DB_USER: ${DB_USER:-wbparser}
-      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
-      CRAWLER_WORKER_ENABLED: "true"
-      # Fast enough to watch a cycle happen while you step through it.
-      CRAWLER_SCHEDULE_CRON: "*/30 * * * * *"
-      LOGGING_LEVEL_ROOT: DEBUG
-      LOGGING_LEVEL_RU_WBPARSER: DEBUG
-    ports:
-      - "8081:8080"
-      - "5005:5005"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-volumes:
-  postgres_data:
+include:
+  - path: deploy/docker-compose.debug.yml

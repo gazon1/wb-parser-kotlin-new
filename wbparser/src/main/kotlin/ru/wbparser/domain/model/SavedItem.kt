@@ -75,6 +75,7 @@ data class SavedItem(
                 targetId = targetId,
                 brandId = item.brandId,
                 subjectId = item.subjectId,
+                subjectParentId = item.subjectParentId,
                 matchId = item.matchId,
                 supplierId = item.supplierId,
                 seller = item.seller,

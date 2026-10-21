@@ -15,12 +15,12 @@ import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.infra.http.KtorDownloader
 import ru.wbparser.infra.http.parseWbCatalog
+import ru.wbparser.infra.pipeline.ParserPipelineConfig
 import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
+import ru.wbparser.testing.DropTestInterpreter
 import ru.wbparser.testing.LogTestInterpreter
-import ru.wbparser.testing.SaveBatchTestInterpreter
-import ru.wbparser.testing.ScheduleRetryTestInterpreter
 import ru.wbparser.testing.SqliteTestHandle
 import ru.wbparser.testing.TestSideCollector
 import ru.wbparser.testing.WbFixtureServer
@@ -69,17 +69,19 @@ class WbParserEmptyPageTest :
                         parser = ::parseWbCatalog,
                         save = save,
                         targetId = targetId,
-                        retryPolicy = RetryPolicy(maxAttempts = 1),
-                        stopAt = { _, _ -> null },
-                        clock = fixedClockOf(2026, 9, 8, 12, 0, 0),
-                        idGen = { "task-id" },
+                        config =
+                            ParserPipelineConfig(
+                                retryPolicy = RetryPolicy(maxAttempts = 1),
+                                stopAt = { _, _ -> null },
+                                clock = fixedClockOf(2026, 9, 8, 12, 0, 0),
+                                idGen = { "task-id" },
+                            ),
                     )
 
                 val registry =
                     SideInterpreterRegistry(
                         log = LogTestInterpreter(collector),
-                        saveBatch = SaveBatchTestInterpreter(collector),
-                        scheduleRetry = ScheduleRetryTestInterpreter(collector),
+                        drop = DropTestInterpreter(collector),
                     )
                 val runner = PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler())
 

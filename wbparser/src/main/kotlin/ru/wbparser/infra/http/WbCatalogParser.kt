@@ -5,26 +5,34 @@ import org.slf4j.LoggerFactory
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.parsing.WbCatalogEnvelope
-import ru.wbparser.domain.parsing.WbItemDto
 import ru.wbparser.domain.parsing.toParsedItem
-import ru.wbparser.domain.util.WB_BASE_URL
 import ru.wbparser.domain.value.CrawlUrl
 
 /**
  * Parses a WB catalog response body into a [ParsedPage].
  *
  * This lives beside the HTTP client rather than in `app/config` because it is catalog
- * *parsing*, not configuration: it knows the WB response shape and the storefront base URL.
+ * *parsing*, not configuration: it knows the WB response shape and the pagination contract.
  * Its previous home was a file called `PipelineConfig.kt` holding no Spring annotation, so a
  * search for pipeline configuration turned up a parser instead.
+ *
+ * ## Pagination
+ *
+ * The catalog endpoint answers with a bare `products` array and no pagination markers: no
+ * `nextPage`, no page count. The only signals are the request URL and the emptiness of the
+ * answer — WB serves 100 products per page and returns an empty array once the catalog is
+ * exhausted.
+ *
+ * So the next page is derived from the URL that was crawled (`page` incremented by one), and
+ * an empty answer ends the pagination. Reading `nextPage` from a `payload` that this endpoint
+ * never sends is what left the crawler on the first page for every catalog: the run reported
+ * "132 pages, 13 200 items" while having fetched exactly one page per category.
  */
 private val wbJson: Json =
     Json {
         ignoreUnknownKeys = true
         isLenient = true
     }
-
-private const val BASE_PAGE_URL = "$WB_BASE_URL/catalog/"
 
 private val log = LoggerFactory.getLogger("ru.wbparser.infra.http.WbCatalogParser")
 
@@ -35,12 +43,7 @@ private val log = LoggerFactory.getLogger("ru.wbparser.infra.http.WbCatalogParse
 fun parseWbCatalog(response: Fetched): ParsedPage {
     val body = response.body
     if (body.isNullOrBlank()) {
-        return ParsedPage(
-            input = response,
-            items = emptyList(),
-            nextPageUrl = null,
-            isEmptyPage = true,
-        )
+        return emptyPage(response)
     }
 
     return try {
@@ -51,31 +54,107 @@ fun parseWbCatalog(response: Fetched): ParsedPage {
                 ?: catalogEnvelope.products
                 ?: emptyList()
 
+        val catalogType = logCatalogMetadata(response, catalogEnvelope, products.size)
+
         val items =
-            products.mapNotNull { dto: WbItemDto ->
-                dto.toParsedItem(BASE_PAGE_URL).getOrNull()
+            if (catalogType == PRESETS_CATALOG_TYPE) {
+                emptyList()
+            } else {
+                products.mapNotNull { dto ->
+                    dto.toParsedItem().getOrNull()
+                }
             }
 
+        // A `presets` answer is the rotating popular list, not the catalog. Its
+        // products look like products and would be stored under a category they have
+        // nothing to do with — the exact mistake this crawler was rebuilt to stop
+        // making. The page is dropped instead, and the caller is told what it was.
+
+        // An empty answer is the end of the catalog. A page whose items were all dropped
+        // is not: WB still had products there, and the rest of the catalog is still worth
+        // crawling.
         val nextPageUrl: CrawlUrl? =
-            catalogEnvelope.payload?.nextPage?.let { nextPageStr ->
-                CrawlUrl.of(nextPageStr).getOrNull()
+            if (products.isEmpty()) {
+                null
+            } else {
+                // The catalog endpoint sends no pagination marker at all, so the next page
+                // is derived from the URL that was crawled. The storefront's older shape
+                // does send an explicit nextPage, and that one wins when it is present.
+                catalogEnvelope
+                    .payload
+                    ?.nextPage
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { CrawlUrl.of(it).getOrNull() }
+                    ?: WbCatalogRequest
+                        .nextPageUrl(response.task.url.toString())
+                        ?.let { CrawlUrl.of(it).getOrNull() }
             }
 
         ParsedPage(
             input = response,
             items = items,
-            nextPageUrl = nextPageUrl,
+            nextPageUrl = if (catalogType == PRESETS_CATALOG_TYPE) null else nextPageUrl,
             isEmptyPage = items.isEmpty(),
+            isPresetResponse = catalogType == PRESETS_CATALOG_TYPE,
         )
     } catch (e: Exception) {
         // A malformed catalog response must not abort the crawl, but turning it into a
         // silent empty page is worse: the run then reports "0 items" with no cause.
         log.warn("Failed to parse WB catalog response from {}: {}", response.task.url, e.toString(), e)
-        ParsedPage(
-            input = response,
-            items = emptyList(),
-            nextPageUrl = null,
-            isEmptyPage = true,
-        )
+        emptyPage(response)
     }
 }
+
+private fun emptyPage(response: Fetched): ParsedPage =
+    ParsedPage(
+        input = response,
+        items = emptyList(),
+        nextPageUrl = null,
+        isEmptyPage = true,
+    )
+
+/**
+ * Logs what WB thought the request was about.
+ *
+ * WB answers a *catalog* request with `catalog_type = "catalog-merger"` and echoes the token
+ * it was given. It answers with `catalog_type = "presets"` when the request carried no
+ * catalog token — that is the rotating popular list, unrelated to the category being
+ * crawled. Such an answer looks like a perfectly good page of products, so it is called out
+ * explicitly instead of being stored under a category name it has nothing to do with.
+ */
+private fun logCatalogMetadata(
+    response: Fetched,
+    envelope: WbCatalogEnvelope,
+    productCount: Int,
+): String? {
+    val metadata = envelope.metadata
+    val catalogType = metadata?.catalogType
+    if (catalogType == null) {
+        log.debug(
+            "WB catalog page {} answered with {} product(s) and no metadata",
+            response.task.url,
+            productCount,
+        )
+        return null
+    }
+    if (catalogType == PRESETS_CATALOG_TYPE) {
+        log.warn(
+            "WB answered {} with the popular presets instead of the requested catalog " +
+                "(query={}); the stored products do not belong to the target category",
+            response.task.url,
+            metadata.name,
+        )
+        return catalogType
+    }
+    log.debug(
+        "WB catalog page {}: {} product(s), catalog_type={}, total={}",
+        response.task.url,
+        productCount,
+        catalogType,
+        envelope.total,
+    )
+    return catalogType
+}
+
+/** The `catalog_type` WB reports when the request carried no catalog token. */
+private const val PRESETS_CATALOG_TYPE = "presets"

@@ -39,12 +39,28 @@ import java.time.Instant
  * - HTTP 403 → same retryable treatment (also indicates bot detection).
  * - JavaScript errors / page crashes → [NetworkError].
  * - BrowserPool exhaustion → [NetworkError].
+ *
+ * ## Which egress group serves the request
+ *
+ * The downloader does not decide that — the [EgressRouter] does, because the group is
+ * the address WB sees. What the downloader does is report the outcome back, so the
+ * router can keep the per-group books and so that a failure can later be attributed
+ * to the group that served it.
  */
 open class BrowserDownloader(
-    private val pool: BrowserPool,
+    private val router: EgressRouter,
     private val objectMapper: ObjectMapper = DEFAULT_JSON_MAPPER,
     /** Navigation timeout, challenge wait and per-request pacing. See [BrowserFetchTiming]. */
     private val timing: BrowserFetchTiming = BrowserFetchTiming(),
+    /**
+     * How long a profile that answered with an anti-bot status rests before it is used again.
+     *
+     * WB's 498 is a statement about the session that sent the request, not about the whole
+     * IP: the cookies that got flagged belong to one AdsPower profile. Leaving it in the
+     * rotation means every following request of that profile is refused as well, and the
+     * crawl burns its retries on a session that was never going to answer.
+     */
+    private val antibotCooldownMs: Long = BrowserPool.DEFAULT_ANTIBOT_COOLDOWN_MS,
 ) {
     private val log = LoggerFactory.getLogger(BrowserDownloader::class.java)
 
@@ -60,19 +76,28 @@ open class BrowserDownloader(
             val startNs = System.nanoTime()
             var result: Either<NetworkError, Fetched>
             try {
-                val (catalogId, pageNum) = WbCatalogRequest.parseCatalogUrl(task.url.toString())
-                val apiUrl = WbCatalogRequest.buildWbApiUrl(catalogId, pageNum)
+                val catalogPage = WbCatalogRequest.parseCatalogUrl(task.url.toString())
+                val apiUrl = WbCatalogApi.buildWbApiUrl(catalogPage.page, catalogPage.searchQuery)
 
-                log.debug("BrowserDownloader fetching {} (catalog={}, page={})", apiUrl, catalogId, pageNum)
+                log.debug(
+                    "BrowserDownloader fetching {} (catalog={}, page={}, token={})",
+                    apiUrl,
+                    catalogPage.catalogId,
+                    catalogPage.page,
+                    catalogPage.searchQuery,
+                )
 
-                val borrowedPage = pool.borrowPage()
+                // The egress group decides which profile serves the request and holds
+                // that group's rate limit. The downloader only reports the outcome back.
+                val borrowedPage = router.borrow()
                 try {
-                    val fetchResult = fetchViaEvaluate(borrowedPage, apiUrl, catalogId)
+                    val fetchResult = fetchViaEvaluate(borrowedPage, apiUrl, catalogPage.catalogId)
                     val durationMs = (System.nanoTime() - startNs) / 1_000_000
 
                     result =
                         when (fetchResult) {
-                            is FetchResult.Success ->
+                            is FetchResult.Success -> {
+                                router.onOutcome(borrowedPage, DownloadOutcome.Success, task.targetId)
                                 Either.Right(
                                     Fetched(
                                         task = task,
@@ -82,11 +107,13 @@ open class BrowserDownloader(
                                             mapOf(
                                                 "content-type" to listOf("application/json"),
                                                 "x-browser-profile" to listOf(borrowedPage.profileId),
+                                                "x-egress-group" to listOf(borrowedPage.egressGroup),
                                             ),
                                         durationMs = durationMs,
                                         fetchedAt = Instant.now(),
                                     ),
                                 )
+                            }
 
                             is FetchResult.HttpError -> {
                                 val isAntibot = fetchResult.statusCode in listOf(498, 403, 401)
@@ -95,6 +122,18 @@ open class BrowserDownloader(
                                     fetchResult.statusCode,
                                     apiUrl,
                                     isAntibot,
+                                )
+                                if (isAntibot) {
+                                    // WB flagged *this session*. Keeping the profile in the
+                                    // rotation would send the next request through the same
+                                    // blocked cookies; the profile rests for a while and the
+                                    // next borrower gets another one.
+                                    borrowedPage.markAntibot(antibotCooldownMs)
+                                }
+                                router.onOutcome(
+                                    borrowedPage,
+                                    if (isAntibot) DownloadOutcome.Antibot else DownloadOutcome.Error,
+                                    task.targetId,
                                 )
                                 Either.Left(
                                     NetworkError(
@@ -108,6 +147,7 @@ open class BrowserDownloader(
 
                             is FetchResult.JsError -> {
                                 log.error("BrowserDownloader JS error for {}: {}", apiUrl, fetchResult.message)
+                                router.onOutcome(borrowedPage, DownloadOutcome.Error, task.targetId)
                                 Either.Left(
                                     NetworkError(
                                         message = "JS error: ${fetchResult.message}",
@@ -120,6 +160,21 @@ open class BrowserDownloader(
                 } finally {
                     borrowedPage.close()
                 }
+            } catch (e: AllEgressGroupsUnavailable) {
+                // Nobody refused us: there was no group able to send the request. That
+                // is our own capacity, not WB's answer — the same reasoning the pool
+                // exhaustion below follows. It is not an anti-bot ban, so the target is
+                // not blamed for it.
+                log.warn("No egress group could serve {}: {}", task.url, e.message)
+                result =
+                    Either.Left(
+                        NetworkError(
+                            message = "No egress group could serve the request: ${e.message}",
+                            cause = e,
+                            url = task.url.toString(),
+                            isAntibot = false,
+                        ),
+                    )
             } catch (e: BrowserPoolExhaustedException) {
                 log.error("BrowserPool exhausted for {}: {}", task.url, e.message)
                 result =
@@ -179,7 +234,7 @@ open class BrowserDownloader(
     ): FetchResult {
         val page = borrowed.page
         val catalogUrl = WbCatalogRequest.catalogUrlOf(catalogId)
-        val headers: Map<String, String> = WbCatalogRequest.buildWbHeaders(catalogUrl)
+        val headers: Map<String, String> = WbCatalogApi.buildWbHeaders(catalogUrl)
         val headersWithMeta =
             headers +
                 mapOf(
@@ -202,9 +257,9 @@ open class BrowserDownloader(
                 borrowed.markWarm()
             }
 
-            // Step 2: Pace requests. Without this a warm profile fires ~200 requests per
-            // minute from one IP, which is exactly the shape WB's rate limiting looks for.
-            page.waitForTimeout(WbCatalogRequest.jitterMs(timing.jitterMinMs, timing.jitterMaxMs).toDouble())
+            // Step 2: The request rate is not decided here. The egress router has
+            // already waited — it is the one place that knows the rate of the group
+            // that serves the request, because the group is the address WB sees.
 
             // Step 3: Extract cookies from the page context so they can be sent
             // with the API fetch call (credentials: 'include' alone is insufficient
@@ -216,29 +271,46 @@ open class BrowserDownloader(
             val headersJson = objectMapper.writeValueAsString(headersWithCookies)
 
             // Step 4: Call the internal API — the page context + cookies are ready.
-            val fetchScript = WbCatalogRequest.FETCH_SCRIPT
+            val fetchScript = WbCatalogFetchScript.FETCH_SCRIPT
             val response: Map<*, *> = page.evaluate(fetchScript, headersJson) as Map<*, *>
 
             val status = (response["status"] as? Number)?.toInt() ?: 0
-            if (status != 200) {
-                return FetchResult.HttpError(status)
+            val body = response["body"] as? String
+            when {
+                status != 200 -> FetchResult.HttpError(status)
+
+                body == null -> FetchResult.JsError("No body in fetch response")
+
+                // An empty body is not an empty catalog.
+                //
+                // WB answers an exhausted catalog with a JSON envelope whose
+                // `products` array is empty — there is a body, and it says so. A
+                // body with nothing in it is a response that was cut off, and
+                // reporting it as a page with no products is how a failed fetch
+                // becomes a successful crawl of nothing.
+                body.isBlank() -> FetchResult.JsError("Empty body in fetch response")
+
+                else -> {
+                    // The body has to be JSON, and parsing it here is the check:
+                    // WB's anti-bot challenge is HTML, and a page that does not
+                    // parse is a failure, not a catalog. An empty catalog is a
+                    // body with an empty `products` array — that is a page, and
+                    // it is not an error.
+                    objectMapper.readTree(body)
+                    FetchResult.Success(body)
+                }
             }
-
-            val jsonBody =
-                response["body"] as? String
-                    ?: return FetchResult.JsError("No body in fetch response")
-
-            val products = objectMapper.readTree(jsonBody).get("products")
-            if (products == null || products.isEmpty) {
-                // Empty catalog — not an error, just no data
-                return FetchResult.Success(jsonBody)
-            }
-
-            FetchResult.Success(jsonBody)
         } catch (e: com.microsoft.playwright.PlaywrightException) {
             val msg = e.message ?: "Playwright error"
-            // Check for common antibot indicators
-            if (msg.contains("403") || msg.contains("498") || msg.contains("aborted")) {
+            // Check for common antibot indicators.
+            //
+            // The comparison is case-insensitive because Chrome writes them in upper
+            // case: `net::ERR_ABORTED` is not "aborted" as a substring test sees
+            // it, and a case-sensitive check turns every aborted request into a
+            // plain script error — so the anti-bot answer, and the back-off and
+            // the profile cooldown that belong to it, never happen.
+            val lower = msg.lowercase()
+            if (lower.contains("403") || lower.contains("498") || lower.contains("aborted")) {
                 FetchResult.HttpError(403)
             } else {
                 FetchResult.JsError(msg)

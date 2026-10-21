@@ -1,0 +1,111 @@
+name: Nightly watchdog
+
+# The nightly run reports its own failures. This reports its *absence*.
+#
+# A scheduled workflow that fails opens an issue — that is the pipeline's
+# `nightly-alert` job. A scheduled workflow that never runs opens nothing:
+# there was no failure to report, there was no run. GitHub disables scheduled
+# workflows in a repository with no activity for 60 days, delays them in a
+# busy hour, and silently skips a cron whose repository went quiet. The
+# badge stays green, because a workflow that did not run is not a failing
+# workflow.
+#
+# So this workflow asks a different question: when did the nightly last
+# succeed? If the answer is "longer than two days ago", the schedule is not
+# working, and that is a failure too — one that only this workflow can see.
+on:
+  schedule:
+    # Weekly, Monday 09:00 UTC — after the nightly that runs at 03:00, so a
+    # nightly that failed six hours ago is seen as recent rather than as
+    # missing.
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+    # The same question, asked by hand.
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  watchdog:
+    name: The nightly is still running
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: When did the nightly last succeed?
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # The label first: `gh issue list --label` fails on a label that
+          # does not exist, and the check below needs it. `--force` updates
+          # the label when it is already there, so this step is idempotent.
+          gh label create ci-watchdog --color FBCA04 \
+            --description "The nightly run stopped running" --force
+
+          # The last *scheduled* run that succeeded. A manual run does not
+          # count: the question is whether the schedule works, and a person
+          # pressing the button says nothing about that.
+          last_success="$(
+            gh api "repos/$GH_REPO/actions/workflows/nightly.yml/runs?per_page=100" \
+              --jq '[.workflow_runs[] | select(.event == "schedule" and .conclusion == "success")][0].created_at // empty'
+          )"
+
+          # How old the nightly itself is. A schedule that has existed for
+          # less than two days has not had the chance to miss a night, and a
+          # watchdog that reports the first night as a failure teaches people
+          # to ignore it — which is the opposite of what it is for.
+          workflow_created="$(
+            gh api "repos/$GH_REPO/actions/workflows/nightly.yml" --jq .created_at
+          )"
+          workflow_age_hours=$(( ( $(date -u +%s) - $(date -u -d "$workflow_created" +%s) ) / 3600 ))
+
+          if [ -z "$last_success" ]; then
+            if [ "$workflow_age_hours" -le 48 ]; then
+              echo "the nightly is ${workflow_age_hours}h old — it has not had a night to miss yet"
+              exit 0
+            fi
+            reason="the nightly has never completed successfully"
+          else
+            age_hours=$(( ( $(date -u +%s) - $(date -u -d "$last_success" +%s) ) / 3600 ))
+            if [ "$age_hours" -le 48 ]; then
+              echo "the nightly is alive: last success ${age_hours}h ago"
+              exit 0
+            fi
+            reason="the last successful nightly was ${age_hours} hours ago"
+          fi
+
+          # One open issue is enough. A watchdog that opens a new issue every
+          # week about the same thing teaches people to ignore the label.
+          open_issues="$(
+            gh issue list --repo "$GH_REPO" --label ci-watchdog --state open \
+              --json number --jq 'length'
+          )"
+          if [ "$open_issues" != "0" ]; then
+            echo "the watchdog already reported this; ${open_issues} issue(s) open"
+            exit 0
+          fi
+
+          {
+            echo "The nightly run is not running."
+            echo
+            echo "- ${reason}"
+            echo "- expected: a successful run every night at 03:00 UTC"
+            echo "- runs: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/nightly.yml"
+            echo
+            echo "A scheduled workflow that does not run reports nothing: there is no"
+            echo "failure to report, there is no run. GitHub disables scheduled"
+            echo "workflows in a repository with no activity for 60 days, and delays"
+            echo "them in a busy hour."
+            echo
+            echo "<!-- opened by .github/workflows/watchdog.yml -->"
+          } > "$RUNNER_TEMP/watchdog.md"
+
+          gh issue create \
+            --title "The nightly run has stopped" \
+            --label ci-watchdog \
+            --body-file "$RUNNER_TEMP/watchdog.md"

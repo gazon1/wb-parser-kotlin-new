@@ -1,32 +1,43 @@
 package ru.wbparser.domain.parsing
 
-import kotlinx.serialization.KSerializer
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.descriptors.PrimitiveKind
-import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
-import kotlinx.serialization.descriptors.SerialDescriptor
-import kotlinx.serialization.encoding.Decoder
-import kotlinx.serialization.encoding.Encoder
 
 /**
  * WB catalog API response — item fields.
- * WB sends bool-like fields as mixed types (bool or string "false").
+ *
+ * ## Which response shape this describes
+ *
+ * The crawler talks to `__internal/u-search/exactmatch/ru/common/v18/search`, the endpoint the
+ * storefront itself calls for a catalog page. A product looks like this:
+ *
+ * ```json
+ * {
+ *   "id": 832714552,
+ *   "name": "Карта памяти Micro SD 1 ТБ",
+ *   "brand": "Kingston",
+ *   "brandId": 12345,
+ *   "subjectId": 1260,
+ *   "subjectParentId": 6237,
+ *   "matchId": 1045133,
+ *   "supplier": "Russmart",
+ *   "supplierId": 469931,
+ *   "totalQuantity": 38,
+ *   "sizes": [{"price": {"basic": 272000, "product": 54200, "cashback": 0}}]
+ * }
+ * ```
  *
  * ## Units
  *
- * [cashback] is a percentage. WB does not document the unit, so this is an assumption
- * recorded at the boundary: the pipeline stores it as `cashback_percent` and derives
- * the monetary amount from the price. Verify against a live response before trusting
- * the derived figure — this is the one field whose meaning is assumed rather than known.
+ * Prices are **numbers in kopecks**: `basic = 272000` is 2 720 ₽, `product = 54200` is the
+ * price after the discount. The previous endpoint sent them as decimal strings in rubles
+ * (`"2720.00"`), which is why the price fields below are `Long` and not `String`: a string
+ * field cannot decode a JSON number, and the whole page failed to parse when WB switched the
+ * shape.
  *
- * ## Unverified optional fields
- *
- * [matchId] and [seller] are declared because the storefront needs them (top-deals
- * groups by `match_id`; product cards show the seller), but whether the catalog
- * endpoint actually returns them is **unverified**. They default to `null`, and
- * kotlinx.serialization ignores unknown keys, so declaring them is safe either way:
- * if the endpoint sends them they are parsed, if not the columns stay NULL and the
- * storefront must degrade rather than invent values.
+ * [cashback] is a money amount in kopecks as well — WB reports the cashback in money, not as
+ * a percentage, so the percentage is derived from the price. The percentage is recorded here
+ * because it is the unit the storefront sorts by.
  */
 @Serializable
 data class WbItemDto(
@@ -39,27 +50,39 @@ data class WbItemDto(
      */
     val id: Long = 0,
     val name: String,
-    val price: String? = null,
-    val salePrice: String? = null,
-    val cashback: String? = null,
     val brand: String? = null,
-    val category: String? = null,
+    /**
+     * Brand id. WB sends `0` for a product without a brand, which is not a brand — the
+     * mapping turns it into null rather than writing a fake brand id.
+     */
     val brandId: Long? = null,
+    /**
+     * The product's subject (category) in WB's taxonomy, e.g. `1260` for "Карты памяти".
+     *
+     * The name of that subject lives in WB's published subject dictionary, not in this
+     * response — the crawler looks the id up there and never invents a name.
+     */
     val subjectId: Long? = null,
-    val supplierId: Long? = null,
+    /** Parent of [subjectId] in the same taxonomy — the edge that rebuilds the category tree. */
+    val subjectParentId: Long? = null,
+    /**
+     * WB's "match" id — the group a product belongs to when several sellers offer it.
+     * The storefront groups top-deals by it.
+     */
     val matchId: Long? = null,
-    val seller: String? = null,
-    @Serializable(with = FlexibleBoolSerializer::class)
-    val isSold: Boolean = false,
-    @Serializable(with = FlexibleBoolSerializer::class)
-    val isOnCoolDownSale: Boolean = false,
-    @Serializable(with = FlexibleBoolSerializer::class)
-    val isWhPrice: Boolean = false,
-    @Serializable(with = FlexibleBoolSerializer::class)
-    val em: Boolean = false,
-    val imageUrl: String? = null,
-    val pageUrl: String? = null,
-    /** Sizes array — the __internal API nests price inside sizes[0].price.product */
+    /** The seller of the first size, e.g. "Russmart". */
+    val supplier: String? = null,
+    val supplierId: Long? = null,
+    /**
+     * Quantity available across sellers.
+     *
+     * This endpoint does not send the `isSold` / `isOnCoolDownSale` flags the previous one
+     * did, so stock is read from here. Absent means "unknown", which is treated as in stock —
+     * dropping every product of a deployment whose responses lack the field would be worse
+     * than keeping a product that turned out to be sold out.
+     */
+    val totalQuantity: Int? = null,
+    /** Sizes array — the price is nested inside `sizes[0].price`. */
     val sizes: List<WbSizeDto>? = null,
 )
 
@@ -68,29 +91,45 @@ data class WbSizeDto(
     val price: WbPriceDto? = null,
 )
 
+/**
+ * Price block of one size, in kopecks.
+ *
+ * @param basic the price before the discount.
+ * @param product the price after the discount — what WB shows as the current price.
+ * @param logistics the delivery cost.
+ * @param cashback the cashback amount in kopecks.
+ */
 @Serializable
 data class WbPriceDto(
-    /** Price in rubles (decimal string like "2590" or "2590.00") */
-    val basic: String? = null,
-    /** Price after sale in rubles */
-    val product: String? = null,
-    val logistics: String? = null,
-    val cashback: String? = null,
+    val basic: Long? = null,
+    val product: Long? = null,
+    val logistics: Long? = null,
+    val cashback: Long? = null,
 )
 
 /**
- * WB catalog API response wrapper — two variants observed in the wild.
+ * WB catalog API response wrapper.
  *
- * Variant 1 (catalog page, observed): `{"data": {"products": [...]}}`
- * Variant 2 (catalog page, observed): `{"payload": {"products": [...], "nextPage": "..."}}`
- * Variant 3 (__internal API):          `{"products": [...]}`  (top-level array)
+ * The endpoint the crawler uses answers with a **top-level** `products` array plus a
+ * `metadata` block and a `total` count:
+ *
+ * ```json
+ * {"metadata": {"catalog_type": "catalog-merger", "name": "menu_v3_9467 карты памяти"},
+ *  "products": [...], "total": 49619}
+ * ```
+ *
+ * The `data` / `payload` wrappers are the storefront's older shapes and are still read, so a
+ * response in either shape parses instead of failing the whole page.
  */
 @Serializable
 data class WbCatalogEnvelope(
     val data: WbCatalogData? = null,
     val payload: WbCatalogPayload? = null,
-    /** Variant 3: direct top-level products array returned by __internal API */
+    /** Top-level products array — the shape the current endpoint answers with. */
     val products: List<WbItemDto>? = null,
+    /** Total number of products WB holds for this catalog. */
+    val total: Int? = null,
+    val metadata: WbCatalogMetadata? = null,
 )
 
 @Serializable
@@ -102,6 +141,26 @@ data class WbCatalogData(
 data class WbCatalogPayload(
     val products: List<WbItemDto> = emptyList(),
     val nextPage: String? = null,
+)
+
+/**
+ * The metadata block WB echoes back for a catalog request.
+ *
+ * [catalogType] and [name] are the proof that the request was understood as a *catalog*
+ * request and not as a plain search: for the rotating popular list WB answers with
+ * `catalog_type = "presets"`, for a real catalog with `"catalog-merger"` and the token it was
+ * given. It is worth logging — it is the difference between "the crawl returned something"
+ * and "the crawl returned *that category*".
+ */
+@Serializable
+data class WbCatalogMetadata(
+    /** WB sends `catalog_type` — the snake_case name has to be mapped explicitly. */
+    @SerialName("catalog_type")
+    val catalogType: String? = null,
+    @SerialName("catalog_value")
+    val catalogValue: String? = null,
+    val name: String? = null,
+    val normquery: String? = null,
 )
 
 /**
@@ -117,28 +176,3 @@ fun WbCatalogEnvelope.toProductsPage(): WbProductsPage {
     val nextPage = payload?.nextPage
     return WbProductsPage(items, nextPage)
 }
-
-/**
- * Handles WB's mixed bool/string representation (e.g. `"true"`, `"1"`, `true`).
- */
-object FlexibleBoolSerializer : KSerializer<Boolean> {
-    override val descriptor: SerialDescriptor = PrimitiveSerialDescriptor("FlexibleBool", PrimitiveKind.BOOLEAN)
-
-    override fun deserialize(decoder: Decoder): Boolean {
-        val jsonDecoder =
-            decoder as? kotlinx.serialization.json.JsonDecoder
-                ?: return decoder.decodeString().let { parseFlexibleBool(it) }
-        val el = jsonDecoder.decodeJsonElement()
-        val str = el.toString().removeSurrounding("\"").lowercase()
-        return parseFlexibleBool(str)
-    }
-
-    override fun serialize(
-        encoder: Encoder,
-        value: Boolean,
-    ) {
-        encoder.encodeBoolean(value)
-    }
-}
-
-private fun parseFlexibleBool(value: String): Boolean = value == "true" || value == "1"

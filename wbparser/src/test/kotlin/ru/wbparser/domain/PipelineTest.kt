@@ -18,6 +18,7 @@ import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.ProductId
+import ru.wbparser.testing.NoopWaiter
 import ru.wbparser.testing.fixedClockOf
 import java.util.UUID
 
@@ -90,6 +91,7 @@ class PipelineTest :
                 save = save,
                 stopAt = stopAt,
                 clock = clock,
+                waiter = NoopWaiter,
             )
 
         test("run returns Left when download fails") {

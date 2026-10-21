@@ -73,6 +73,7 @@ FLOOR_FILE = _GATE.FLOOR_FILE
 REPORT_FILES = _GATE.REPORT_FILES
 line_coverage = _GATE.line_coverage
 parse_floor_file = _GATE.parse_floor_file
+module_coverage = _GATE.module_coverage
 
 HEADER = [
     "# Minimum line coverage percentage, one per module: `<module> <percent>`.",
@@ -90,6 +91,14 @@ HEADER = [
     "#   each a percentage point below what the tests reach: `app` 24% against",
     "#   25.0% (65 of 260 lines), `wbparser` 49% against 50.05% (935 of 1868).",
     "#   The headroom is what keeps an unrelated edit from tripping the gate.",
+    "# - 70% / 25% — after the crawl-runner coverage work: `wbparser` 70% against",
+    "#   71.3% (CrawlRunner now covered against a real PostgreSQL, 0/153 → 117/151),",
+    "#   `app` 25% against 26.5%.",
+    "# - 71% / 32% / 75% — after the repository-wide report: `merged` 75% against",
+    "#   76.8%. The root project is the merging module, so this row counts what every",
+    "#   suite actually exercised, including the integration module's. Without it the",
+    "#   integration suites were invisible to the gate: a module's own report holds",
+    "#   only that module's classes.",
 ]
 
 
@@ -111,12 +120,15 @@ def main() -> int:
 
     measured: dict[str, float] = {}
     for module in floors:
-        report = ROOT / REPORT_FILES[module]
-        if not report.is_file():
+        report = ROOT / _GATE.module_report(module)
+        if report is None or not Path(report).is_file():
             print(f"❌ {module}: {report} does not exist — run the coverage task first", file=sys.stderr)
             return 2
         try:
-            measured[module] = line_coverage(report)
+            # The same measurement the gate uses: every row is measured on the merged
+            # report over the packages that row is about. A ratchet that measured
+            # something else would move the floor away from what the gate checks.
+            measured[module] = module_coverage(module)
         except ValueError as exc:
             print(f"❌ {exc}", file=sys.stderr)
             return 2

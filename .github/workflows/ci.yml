@@ -1,14 +1,56 @@
 name: CI
 
+# The pipeline. One definition, two entry points: a pull request (or a push
+# to main) triggers it directly, and .github/workflows/nightly.yml *calls* it
+# on a schedule. The same arrangement this repository already uses for the
+# gates (one registry, two callers) and for the lint corrector (one script,
+# two callers).
+#
+# A schedule that is one more trigger inside the pipeline's own file is a
+# schedule that is invisible as an entry point: the question "what runs
+# overnight, and who reads it" has no answer in the tree. As a separate
+# file, it does.
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    # The same pipeline, started by hand — for a repository that wants to
+    # check the state of the world before a release, or right after a
+    # dependency bump that has been sitting unverified.
+  workflow_call:
+    # The inputs the callers may set. The nightly sets one of them; a
+    # pull request does not, and gets the defaults.
+    inputs:
+      alert_on_failure:
+        description: >-
+          Open a GitHub issue when a run of this pipeline fails. The nightly
+          sets it; a pull request does not — somebody is watching a pull
+          request, and an issue about a pull request is noise.
+        type: boolean
+        default: false
 
 concurrency:
-  group: ci-${{ github.ref }}
+  # The event name is part of the group, so a push does not cancel the nightly
+  # run and the nightly run does not delay a push: they are different runs.
+  #
+  # In a called workflow the `github` context belongs to the caller, so a
+  # nightly call lands in the group `ci-<ref>-schedule` — its own group,
+  # separate from every push.
+  group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
   cancel-in-progress: true
+
+# The top level declares what a job gets *unless it says otherwise*. Every job
+# below declares its own permissions, so this is the floor and not the grant:
+# a job added later without a declaration gets read-only access rather than
+# everything the caller has.
+#
+# It also ends the "no topLevel permission defined" finding the Scorecard
+# reports: a workflow that says nothing about permissions leaves the grant
+# to the repository's default, which is a decision nobody made.
+permissions:
+  contents: read
 
 jobs:
   # Fast gate first: no JVM, no build output, a few seconds. The Gradle job below
@@ -24,10 +66,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
 
@@ -36,19 +84,49 @@ jobs:
           chmod +x scripts/ci/static-gates.sh scripts/*.sh
           bash scripts/ci/static-gates.sh
 
+      # A 40-character SHA is the identifier of *some* git object, and an
+      # annotated tag is a git object too. Pinning an action to the SHA of a
+      # tag object looks like the strongest form of pinning and is not: the
+      # action runs, and the Scorecard publication API refuses the result
+      # because the SHA is not a commit of the action's repository. The run is
+      # green and no score appears — which is exactly what happened here.
+      #
+      # The question cannot be answered from the shape of the SHA, so it is
+      # asked of the upstream repository. That needs the network, which is why
+      # this check runs here and not in the static registry: the local cycle
+      # must not fail because a network call did. The gate that guards these
+      # surfaces (scripts/ci/check-ci-workflows.py) checks that this step
+      # exists, so it cannot be deleted unnoticed.
+      - name: Every action is pinned to a commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 scripts/ci/check-action-pins.py
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: static
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up JDK 22
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "22"
+          # The Gradle cache: without it every job starts with a cold
+          # cache, and six jobs in parallel pull the whole dependency
+          # graph from Maven Central at the same moment. That is slow,
+          # and it fails at random when the registry answers with a
+          # 404 — a CI failure that is about the network, not about the code.
+          cache: gradle
 
       - name: Configure Gradle
         run: |
@@ -83,7 +161,7 @@ jobs:
       # produced and compares it with the committed floor — it runs AFTER the
       # tests, never before, and `--max-age` is strict here because in CI every
       # task really runs.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
 
@@ -95,14 +173,26 @@ jobs:
     timeout-minutes: 20
     needs: static
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up JDK 22
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "22"
+          # The Gradle cache: without it every job starts with a cold
+          # cache, and six jobs in parallel pull the whole dependency
+          # graph from Maven Central at the same moment. That is slow,
+          # and it fails at random when the registry answers with a
+          # 404 — a CI failure that is about the network, not about the code.
+          cache: gradle
 
       - name: Configure Gradle
         run: |
@@ -122,7 +212,7 @@ jobs:
         run: python3 scripts/check-coverage.py
 
       - name: Upload coverage report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: kover-report
           path: |
@@ -134,14 +224,26 @@ jobs:
     timeout-minutes: 15
     needs: static
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up JDK 22
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "22"
+          # The Gradle cache: without it every job starts with a cold
+          # cache, and six jobs in parallel pull the whole dependency
+          # graph from Maven Central at the same moment. That is slow,
+          # and it fails at random when the registry answers with a
+          # 404 — a CI failure that is about the network, not about the code.
+          cache: gradle
 
       # `ktlintCheck` and `detekt` are applied to every module by the root
       # build's `subprojects { }` block. Before that they were declared in the
@@ -169,14 +271,26 @@ jobs:
     timeout-minutes: 20
     needs: static
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up JDK 22
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "22"
+          # The Gradle cache: without it every job starts with a cold
+          # cache, and six jobs in parallel pull the whole dependency
+          # graph from Maven Central at the same moment. That is slow,
+          # and it fails at random when the registry answers with a
+          # 404 — a CI failure that is about the network, not about the code.
+          cache: gradle
 
       - name: Configure Gradle
         run: |
@@ -190,7 +304,7 @@ jobs:
 
       - name: Upload dependency report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dependency-health-report
           path: build/reports/dependency-analysis/
@@ -204,18 +318,30 @@ jobs:
     timeout-minutes: 20
     needs: static
 
+    # The caller's grant is a ceiling, not a gift: without a
+    # declaration of its own, this job would inherit every
+    # permission the caller has — including the registry write that
+    # only the image job needs.
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
 
       - name: Set up JDK 22
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: "22"
+          # The Gradle cache: without it every job starts with a cold
+          # cache, and six jobs in parallel pull the whole dependency
+          # graph from Maven Central at the same moment. That is slow,
+          # and it fails at random when the registry answers with a
+          # 404 — a CI failure that is about the network, not about the code.
+          cache: gradle
 
       - name: Every Gradle task a gate names actually exists
         run: python3 scripts/check-gate-wiring.py --tasks-exist
@@ -227,22 +353,34 @@ jobs:
   publish-image:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    # Only after the gates, and only for main: a PR image is useful, an image
-    # from a failing branch is not.
+    # Only after the gates: an image from a failing branch is not worth pushing.
+    #
+    # PRs are included on purpose. The plan's cross-repository check answers the
+    # question "does the storefront still understand this crawler?", and the
+    # crawler of a pull request is the one whose contract may have just changed.
+    # The PR image is tagged `pr-<n>` and is immutable: the image built after the
+    # merge is a *different* digest, and only the digest that was checked may be
+    # promoted.
     needs: [build, lint, coverage, gate-honesty]
-    if: github.event_name == 'push'
+    # A scheduled run is a health check, not a release. It builds the same
+    # pipeline to find out whether the repository is still healthy, and
+    # pushing an image to the registry at 03:00 answers a question nobody
+    # asked. The comparison is spelled out instead of negated because
+    # GitHub's expressions treat a null input as false, and `!= false` would
+    # skip this job exactly when it must not.
+    if: ${{ github.event_name != 'schedule' }}
     permissions:
       packages: write
       contents: read
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -250,11 +388,12 @@ jobs:
 
       - name: Extract metadata (tags + labels)
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
         with:
           images: ghcr.io/${{ github.repository_owner }}/wb-parser
           tags: |
             type=ref,event=branch
+            type=ref,event=pr
             type=sha,prefix=,format=short
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -264,13 +403,46 @@ jobs:
       # keeps previous build output out of the context.
       - name: Build and push
         id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
         with:
           context: .
           file: Dockerfile.app
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The browser runtime is a second image, not a part of the crawler image.
+      #
+      # The crawler cannot fetch a Wildberries page without a real browser, and the
+      # browser is an AdsPower runtime: a virtual display, the AdsPower CLI and the
+      # Chrome kernel it downloads. Keeping it out of the crawler image means the
+      # crawler image stays small, and it means the browser can be replaced
+      # (a new kernel, a new CLI) without rebuilding the application.
+      #
+      # The tags are the same as the crawler's: both images are built from the same
+      # commit, and the deploy names that commit once.
+      - name: Extract browser metadata (tags + labels)
+        id: meta-browser
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/wb-parser-adspower
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push the browser runtime
+        id: build-browser
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: docker.adspower
+          file: docker.adspower/Dockerfile
+          push: true
+          tags: ${{ steps.meta-browser.outputs.tags }}
+          labels: ${{ steps.meta-browser.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -282,4 +454,88 @@ jobs:
             echo ""
             echo "- Tags: \`${{ steps.meta.outputs.tags }}\`"
             echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
+            echo ""
+            echo "### Browser runtime image"
+            echo ""
+            echo "- Tags: \`${{ steps.meta-browser.outputs.tags }}\`"
+            echo "- Digest: \`${{ steps.build-browser.outputs.digest }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Nobody reads a red cron run.
+  #
+  # A scheduled run fails at 03:00, nobody is looking, and the badge stays
+  # red until the next push — which is also the next time the failure is
+  # noticed. The issue is where the failure lands instead: it is in the list
+  # of things to do, and it carries the link to the run.
+  #
+  # `failure()`, not `always()`: this job reports a failure. A green run has
+  # nothing to report, and an issue that says "the nightly run passed" every
+  # night is noise that teaches people to ignore the label.
+  #
+  # The switch is the input, not the event: the nightly calls this pipeline
+  # with `alert_on_failure: true`, and a pull request does not. `inputs` is
+  # empty for a direct trigger, and GitHub's expressions treat an absent
+  # value as false — which is the right answer here: nobody is watching a
+  # pull request, and an issue about one is noise.
+  nightly-alert:
+    name: Nightly failure becomes an issue
+    if: ${{ failure() && inputs.alert_on_failure == true }}
+    # The wait list: which jobs must be finished before the report is made.
+    # It is checked against the real job list by
+    # scripts/ci/check-ci-workflows.py, because a wait list that has gone
+    # stale reports a run that is not over as one that is.
+    needs: [static, build, coverage, lint, dependency-health, gate-honesty, publish-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      # Reading the run's own jobs: the report is the API's answer, not a
+      # list written by hand.
+      actions: read
+
+    steps:
+      - name: Open an issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GH_RUN_ID: ${{ github.run_id }}
+        run: |
+          # The report comes from the run's own API, not from the `needs` list
+          # above. That list says which jobs to *wait* for; it is a mirror of
+          # the pipeline, and a mirror goes stale the moment a job is added —
+          # at which point the issue says "nothing failed" while something
+          # did. The API is the run itself, and it cannot be stale.
+          #
+          # Every job is listed with its conclusion, not only the failed ones:
+          # if the wait list above is stale, a job that is still running shows
+          # up as such, and the issue is honest about what it does not know.
+          jobs="$(
+            gh api "repos/$GH_REPO/actions/runs/$GH_RUN_ID/jobs" --paginate \
+              --jq '.jobs[] | "\(.name)=\(.conclusion // "in progress")"'
+          )"
+          failed="$(echo "$jobs" | grep '=failure' | cut -d= -f1 | paste -sd, -)"
+          if [[ -z "$failed" ]]; then
+            failed="none reported"
+          fi
+          echo "failed jobs: $failed"
+          {
+            echo "The nightly CI run failed."
+            echo
+            echo "- run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "- failed jobs: $failed"
+            echo
+            echo "Every job of the run:"
+            echo '```'
+            echo "$jobs"
+            echo '```'
+            echo
+            echo "<!-- opened by .github/workflows/ci.yml (nightly-alert) -->"
+          } > "$RUNNER_TEMP/nightly-failure.md"
+          # The label makes the failures findable. `--force` updates it when
+          # it is already there, so this step is idempotent.
+          gh label create ci-failure --color B60205 \
+            --description "The nightly CI run failed" --force
+          gh issue create \
+            --title "Nightly CI failed ($(date -u +%F))" \
+            --label ci-failure \
+            --body-file "$RUNNER_TEMP/nightly-failure.md"

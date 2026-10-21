@@ -7,14 +7,6 @@ plugins {
     id("org.jetbrains.kotlinx.kover")
 }
 
-kotlin {
-    // The JDK version is set once, in the root build's `subprojects { }` block.
-    compilerOptions {
-        allWarningsAsErrors.set(true)
-        freeCompilerArgs.add("-Xjsr305=strict")
-    }
-}
-
 // ==============================================================================
 // The module boundary
 // ==============================================================================
@@ -80,7 +72,6 @@ dependencies {
     implementation(libs.hikaricp)
 
     // Resilience
-    implementation(libs.resilience4j.kotlin)
     implementation(libs.resilience4j.core)
     api(libs.resilience4j.circuitbreaker)
 
@@ -110,10 +101,19 @@ dependencies {
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.kotlin.coroutines.test)
     testImplementation(libs.mockk)
+    // The suite reads the registry's constructor by reflection to assert that it
+    // holds one non-null interpreter per `Side` variant. The artifact already
+    // reaches this module through `implementation` above; it is declared here
+    // because a test source set that names a type declares the dependency that
+    // carries it.
+    testImplementation(libs.kotlin.reflect)
     // The suite builds a DataSource against the Testcontainers instance, so it
     // needs the driver at compile time.
     testImplementation(libs.postgresql)
-    testRuntimeOnly(libs.testcontainers.postgresql)
+    // The container API, not just its runtime: the job and subject repositories are
+    // exercised against a real PostgreSQL, because their statements are written for
+    // PostgreSQL (TIMESTAMPTZ, uuid) and a stand-in would prove nothing about them.
+    testImplementation(libs.testcontainers.postgresql)
 }
 
 tasks.test {

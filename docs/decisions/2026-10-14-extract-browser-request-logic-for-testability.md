@@ -61,6 +61,8 @@ that fails quietly instead of loudly:
 - `jitterMs(-50, -10)` returned a **negative** delay, because `ThreadLocalRandom.nextLong`
   accepts negative bounds. That delay went straight into `waitForTimeout`, so a mistyped
   `browser-jitter-min-ms` would have thrown mid-request. Both bounds are now clamped at zero.
+  (Since 2026-10-20 the function lives in `RequestPacer`: the request builder does not decide
+  when a request may go out.)
 - `WbItemDto.id` was a required field, so a single product missing `id` threw inside
   `decodeFromString`, the catch-all turned the whole response into an empty page, and the crawl
   reported success while storing nothing. The pre-existing `id <= 0` guard in `toParsedItem`
@@ -69,9 +71,11 @@ that fails quietly instead of loudly:
 
 ## Consequences
 
-- **Always** keep request construction in `WbCatalogRequest`, not back inside the adapter. A
-  wrong `dest` or page number answers HTTP 200 with an empty `products` array, so the only
-  defence is a test on the value that gets built.
+- **Always** keep request construction in the `infra/http` request objects, not back inside the
+  adapter. A wrong `dest` or page number answers HTTP 200 with an empty `products` array, so the
+  only defence is a test on the value that gets built. (Since 2026-10-20 those objects are
+  `WbCatalogRequest` — the crawl URL, `WbCatalogApi` — the internal API call, and
+  `WbCatalogFetchScript` — the script; see the ADR on splitting by decision.)
 - **Never** solve a coverage drop on untestable adapters by excluding them. Extract the logic
   that deserves testing and leave the rest measured.
 - **Never** give a Kover-exercised DTO a required field that a single malformed API entry can

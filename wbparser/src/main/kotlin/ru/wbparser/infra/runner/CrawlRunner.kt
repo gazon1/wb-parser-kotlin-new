@@ -1,9 +1,7 @@
 package ru.wbparser.infra.runner
 
 import arrow.core.Either
-import arrow.core.getOrElse
 import io.micrometer.core.instrument.MeterRegistry
-import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -11,121 +9,86 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.transactions.transaction
-import org.jetbrains.exposed.sql.update
 import org.slf4j.LoggerFactory
-import ru.wbparser.domain.coroutines.loggingBackgroundFailureHandler
-import ru.wbparser.domain.model.Crawling
-import ru.wbparser.domain.model.Fetched
-import ru.wbparser.domain.model.SavedItem
-import ru.wbparser.domain.pipeline.BusinessRules
-import ru.wbparser.domain.pipeline.CrawlJobsTable
-import ru.wbparser.domain.pipeline.Retry
-import ru.wbparser.domain.pipeline.RetryPolicy
-import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
+import ru.wbparser.domain.scheduling.FailureClass
+import ru.wbparser.domain.scheduling.RunOutcome
 import ru.wbparser.domain.scheduling.Target
-import ru.wbparser.domain.time.Clock
-import ru.wbparser.domain.time.SystemClock
-import ru.wbparser.domain.util.WB_BASE_URL
-import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.infra.advisory.LockUnavailable
 import ru.wbparser.infra.advisory.PostgresAdvisoryLock
 import ru.wbparser.infra.advisory.withLock
 import ru.wbparser.infra.db.DatabaseHandle
-import ru.wbparser.infra.db.exposedOnce
-import ru.wbparser.infra.db.repositories.fetchActiveTargets
-import ru.wbparser.infra.db.repositories.upsertSavedItems
-import ru.wbparser.infra.pipeline.PipelineRunner
-import ru.wbparser.infra.pipeline.SideInterpreterRegistry
-import ru.wbparser.infra.pipeline.buildParserPipeline
-import ru.wbparser.infra.scheduler.Freshness
-import ru.wbparser.infra.scheduler.FreshnessPolicy
-import ru.wbparser.infra.scheduler.markCrawled
-import ru.wbparser.infra.scheduler.targetsDue
-import java.time.OffsetDateTime
-import java.time.ZoneOffset
+import ru.wbparser.infra.db.repositories.TargetRun
+import ru.wbparser.infra.db.repositories.claimDueTargets
+import ru.wbparser.infra.db.repositories.fetchTargetsByIds
+import ru.wbparser.infra.db.repositories.markTargetCrawled
+import ru.wbparser.infra.db.repositories.markTargetFailed
+import ru.wbparser.infra.db.repositories.markTargetRequeued
+import ru.wbparser.infra.db.repositories.recordTargetRun
+import ru.wbparser.infra.db.repositories.releaseTargetLeases
+import java.time.Instant
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
-import ru.wbparser.domain.pipeline.Pipeline as DomainPipeline
 
 /**
  * CrawlRunner — imperative shell that coordinates advisory lock → load targets →
- * run pure domain [DomainPipeline] → interpret [Side][ru.wbparser.domain.pipeline.Side] effects →
- * write job row.
+ * run pure domain pipeline → interpret side effects → write job row.
  *
  * ## Architecture
  *
- * - [DomainPipeline] (domain) is pure — no side effects.
- * - [SideInterpreterRegistry] interprets all side effects emitted by the pipeline.
- * - [PipelineRunner] is the bridge: runs the pipeline and delegates side interpretation.
+ * - The domain pipeline is pure — no side effects.
+ * - `SideInterpreterRegistry` interprets all side effects emitted by the pipeline.
+ * - `PipelineRunner` is the bridge: runs the pipeline and delegates side interpretation.
  * - This class handles only imperative concerns: advisory locking, target selection,
  *   freshness tracking, and job-row CRUD.
+ *
+ * ## What it delegates
+ *
+ * The class used to do five jobs in one file — the lock, the target list, the job row, the
+ * per-target pipeline and its counters, and the run loop. The parts that were not the run
+ * loop now live next door:
+ *
+ * - [CrawlJobStore] owns the `crawl_jobs` row: opening it, closing it, and the heartbeat
+ *   that makes a crashed crawl detectable.
+ * - [TargetCrawl] owns one target: its pipeline, its start URL, and what it produced.
+ * - [CrawlMetrics] owns the counters, including the ones for the limits and for the
+ *   products that came back without a category name.
+ * - [CrawlRunnerConfig] and [CrawlHooks] hold the knobs and the callbacks, so the
+ *   constructor stays a list of what the runner *is* rather than a list of what it *does*.
  */
-@Suppress("LongParameterList")
 class CrawlRunner(
     private val db: DatabaseHandle,
-    private val downloader: suspend (Crawling) -> Either<ru.wbparser.domain.error.NetworkError, Fetched>,
-    private val parser: (Fetched) -> ru.wbparser.domain.model.ParsedPage,
-    private val maxPagesPerCatalog: Int = 10,
-    private val maxDepth: Int = 2,
-    private val rules: BusinessRules = BusinessRules(),
-    private val clock: Clock = SystemClock,
-    private val concurrency: Int = 1,
-    /**
-     * How many targets run at once. Defaults to 1, which is the sequential behaviour this class
-     * had before targets were parallelised.
-     *
-     * Set it to the number of browser profiles: the pool serialises per profile, so a larger
-     * value queues instead of parallelising, and a smaller one leaves profiles idle. Values
-     * above the pool size are safe, just not faster.
-     */
-    private val targetConcurrency: Int = 1,
-    private val lockTimeoutMs: Long = 600_000,
-    /** Called once when the crawl job starts, before any target is processed. */
-    private val onCrawlStart: suspend (CrawlContext) -> Unit = {},
-    /** Called once when the crawl job ends (success, failure, or cancellation). */
-    private val onCrawlEnd: suspend (CrawlContext, Stop) -> Unit = { _, _ -> },
-    /**
-     * Required exception handler for unhandled background coroutine failures in this crawl.
-     * **Must be provided explicitly** — a scope with no handler lets exceptions escape to the
-     * JVM's default uncaught-exception handler, which kills the process.
-     */
-    private val failureHandler: CoroutineExceptionHandler = loggingBackgroundFailureHandler(),
+    private val source: CrawlSource,
+    private val config: CrawlRunnerConfig = CrawlRunnerConfig(),
+    private val hooks: CrawlHooks = CrawlHooks(),
     /**
      * Micrometer registry for recording crawl metrics (pages, items, errors, retries, drops).
-     * When null, a [NoOpMetricInterpreter] is used instead.
+     * When null, the counters are computed but reported nowhere.
      */
     private val meterRegistry: MeterRegistry? = null,
-) {
-    /**
-     * Context for a crawl job — passed to [onCrawlStart] and [onCrawlEnd] hooks.
-     *
-     * @param jobId unique identifier for this crawl job
-     * @param startedAt wall-clock time when the job began
-     * @param targetIds IDs of targets selected for this crawl
-     */
-    data class CrawlContext(
-        val jobId: UUID,
-        val startedAt: java.time.Instant,
-        val targetIds: List<UUID>,
-    )
-
-    private val advisoryLock = PostgresAdvisoryLock(db.ds, lockTimeoutMs)
-    private val freshnessPolicy = FreshnessPolicy()
-    private var freshnessState = Freshness()
-
+) : CrawlRun {
     private val log = LoggerFactory.getLogger(CrawlRunner::class.java)
 
-    private val retryPolicy = RetryPolicy()
+    private val jobStore = CrawlJobStore(db, log)
+
+    private val metrics = CrawlMetrics(meterRegistry, log)
+
+    private val targetCrawl =
+        TargetCrawl(
+            db = db,
+            source = source,
+            config = config,
+            metrics = metrics,
+            failureHandler = config.failureHandler,
+        )
+
+    private val advisoryLock = PostgresAdvisoryLock(db.ds, config.lockTimeoutMs, config.lockKey)
 
     /**
      * Runs the crawler: acquires advisory lock, crawls all due targets, closes lock.
      */
-    suspend fun run(): RunResult =
+    override suspend fun run(): RunResult =
         withContext(Dispatchers.IO) {
             val lockResult: Either<LockUnavailable, RunResult> = advisoryLock.withLock { runUnsafe() }
             lockResult.fold(
@@ -139,20 +102,44 @@ class CrawlRunner(
 
     private suspend fun runUnsafe(): RunResult {
         val startedAt = java.time.Instant.now()
-        val targets = db.ds.fetchActiveTargets()
-        val due = freshnessState.targetsDue(targets, freshnessPolicy)
+
+        // The address is asked *before* the work is taken.
+        //
+        // The claim leases the targets it hands out, and a lease keeps every host away
+        // from them until it expires. A run that refuses to start because no address can
+        // serve must not hold those targets: it would keep the whole deployment from
+        // working them for the whole lease duration, for a run that served nothing.
+        val egress = source.egress
+        if (egress != null && !egress.isAnyGroupAvailable()) {
+            log.warn("No egress group can serve a request right now — the crawl is not started.")
+            return RunResult.NoEgressAvailable
+        }
+
+        // The targets are claimed, not read: the claim leases them, so another host
+        // working on the same database takes other targets and never the same one.
+        val claimed =
+            db.ds.claimDueTargets(
+                owner = config.instanceId,
+                now = startedAt,
+                freshness = config.freshness,
+                limit = config.claimLimit,
+                leaseFor = config.leaseDuration,
+            )
 
         // Nothing to crawl — no job row is opened, which also keeps crawl_jobs.target_id
-        // (NOT NULL, foreign key) satisfiable.
-        if (due.isEmpty()) return RunResult.Success(0, 0)
+        // (NOT NULL, foreign key) satisfiable. Nothing was claimed either, so nothing
+        // is leased.
+        if (claimed.isEmpty()) return RunResult.NothingDue
+
+        val due = db.ds.fetchTargetsByIds(claimed)
 
         var jobId: UUID? = null
-        try {
-            jobId = openJob(due.first().id)
+        return try {
+            jobId = jobStore.openJob(due.first().id)
             val ctx = CrawlContext(jobId, startedAt, due.map { it.id })
 
             try {
-                onCrawlStart(ctx)
+                hooks.onCrawlStart(ctx)
             } catch (_: Throwable) {
                 // hooks must not crash the crawl
             }
@@ -161,7 +148,7 @@ class CrawlRunner(
             var totalItems = 0
             val failures = mutableListOf<String>()
 
-            val results = runTargets(due)
+            val results = jobStore.withHeartbeat(jobId) { runTargets(due) }
 
             // Aggregated after the fact, from the returned values. Accumulating into shared
             // counters inside the concurrent region would be a data race, and the shape of the
@@ -174,60 +161,156 @@ class CrawlRunner(
                     failures += "${target.name}: ${result.error}"
                     log.error("Target {} failed: {}", target.name, result.error)
                 }
-                freshnessState = freshnessState.markCrawled(target.id)
+                recordOutcome(jobId, target, result)
             }
 
             // crawl_jobs.status has no Partial value (CHECK constraint), so a run that lost
             // even one target is Failed. Reporting Completed here is what let a fully failed
             // crawl look like a clean one to anyone reading the table.
             if (failures.isEmpty()) {
-                closeJob(
+                jobStore.closeJob(
                     jobId,
                     JobStatus.Completed,
                     pagesCrawled = totalPages,
                     itemsSaved = totalItems,
                 )
                 try {
-                    onCrawlEnd(ctx, Stop.ManualStop)
+                    hooks.onCrawlEnd(ctx, Stop.ManualStop)
                 } catch (_: Throwable) {
                     // hooks must not crash
                 }
-                return RunResult.Success(totalPages, totalItems)
+                RunResult.Success(totalPages, totalItems)
+            } else {
+                val message = failures.joinToString("; ")
+                jobStore.closeJob(
+                    jobId,
+                    JobStatus.Failed,
+                    pagesCrawled = totalPages,
+                    itemsSaved = totalItems,
+                    errorMessage = message,
+                )
+                try {
+                    hooks.onCrawlEnd(ctx, Stop.ManualStop)
+                } catch (_: Throwable) {
+                    // hooks must not crash
+                }
+                RunResult.Failure(message)
             }
-
-            val message = failures.joinToString("; ")
-            closeJob(
-                jobId,
-                JobStatus.Failed,
-                pagesCrawled = totalPages,
-                itemsSaved = totalItems,
-                errorMessage = message,
-            )
-            try {
-                onCrawlEnd(ctx, Stop.ManualStop)
-            } catch (_: Throwable) {
-                // hooks must not crash
-            }
-            return RunResult.Failure(message)
         } catch (e: CancellationException) {
             // A cancelled crawl must not be reported as a failed one — the job row records
             // the distinction that "gave up" is not the same as "broke".
             jobId?.let { id ->
-                runCatching { closeJob(id, JobStatus.Cancelled) }
+                runCatching { jobStore.closeJob(id, JobStatus.Cancelled) }
             }
             log.info("Crawl cancelled: {}", e.message)
             throw e
         } catch (t: Throwable) {
             jobId?.let { id ->
-                runCatching { closeJob(id, JobStatus.Failed, errorMessage = t.message) }
+                runCatching { jobStore.closeJob(id, JobStatus.Failed, errorMessage = t.message) }
             }
-            return RunResult.Failure(t.message ?: "Unknown error")
+            RunResult.Failure(t.message ?: "Unknown error")
+        } finally {
+            // The leases are given back as soon as the run is over, so the next host can
+            // take the targets right away. A lease that is not released expires on its
+            // own — this is about not making the other host wait for the expiry.
+            runCatching { db.ds.releaseTargetLeases(config.instanceId) }
+                .onFailure { log.warn("Could not release the target leases: {}", it.message) }
         }
     }
 
     /**
-     * Runs every due target, at most [targetConcurrency] at a time, and returns their results in
-     * the same order as [due].
+     * Records what happened to a target.
+     *
+     * The freshness window moves only for a target that was actually read. A target
+     * that failed is put aside — either for its own reasons, with a back-off that grows
+     * to a day, or for the address's, with a back-off of minutes: the target is innocent
+     * there, and the only thing to do is let the addresses cool down.
+     *
+     * The difficult case is a failure that looks like the catalog's: WB answered with
+     * something that is not the catalog. A burnt address answers like that too, so the
+     * anomaly is only the target's fault when the address is healthy, or when another
+     * address has seen the same thing.
+     */
+    private fun recordOutcome(
+        jobId: UUID,
+        target: Target,
+        result: TargetResult,
+    ) {
+        val failureClass = result.failureClass
+        val egress = source.egress
+        val group = egress?.lastGroupFor(target.id)
+
+        // The run leaves a row: which group served the target, from which address, and
+        // how it went. Without it the question "which address gave the refusal?" is
+        // answerable only from the logs, and the logs do not last.
+        runCatching {
+            db.ds.recordTargetRun(
+                jobId = jobId,
+                run =
+                    TargetRun(
+                        targetId = target.id,
+                        egressGroup = group,
+                        // The address is not written from here: the ledger of the groups
+                        // holds the one the probe saw, and one fact has one place.
+                        egressIp = null,
+                        outcome =
+                            RunOutcome.of(
+                                // A target that answered with something that is not the
+                                // catalog failed without an error message: the failure is
+                                // the class, and the class is what the run is judged by.
+                                failed = result.error != null || failureClass != null,
+                                failureClass = failureClass,
+                            ),
+                        pages = result.pages,
+                        items = result.items,
+                        startedAt = result.startedAt,
+                    ),
+                finishedAt = Instant.now(),
+            )
+        }.onFailure { log.warn("Could not record the run of target {}: {}", target.name, it.message) }
+
+        if (failureClass == null) {
+            db.ds.markTargetCrawled(target.id)
+            return
+        }
+
+        if (failureClass == FailureClass.Egress) {
+            val delay = db.ds.markTargetRequeued(target.id)
+            log.warn(
+                "Target {} could not be read because the address failed — trying again in {}",
+                target.name,
+                delay,
+            )
+            return
+        }
+
+        // No address involved, or an address that is answering normally: the anomaly
+        // is the catalog's. The same anomaly seen from another address says the same
+        // thing, and a sick address says nothing at all.
+        val healthy = egress == null || group == null || egress.isGroupHealthy(group)
+        val seenElsewhere = target.anomalyGroup != null && target.anomalyGroup != group
+        if (healthy || seenElsewhere) {
+            val delay = db.ds.markTargetFailed(target.id)
+            log.error(
+                "Target {} answered with something that was not the catalog — put aside for {}",
+                target.name,
+                delay,
+            )
+        } else {
+            val delay = db.ds.markTargetRequeued(target.id, anomalyGroup = group)
+            log.warn(
+                "Target {} answered with something that was not the catalog, but group {} is " +
+                    "refusing as well — treating it as the address's problem, trying again in {}",
+                target.name,
+                group,
+                delay,
+            )
+        }
+    }
+
+    /**
+     * Runs every due target, at most [config.targetConcurrency] at a time, and returns their
+     * results in the same order as [due].
      *
      * ## Why the limit is here and not only in the browser pool
      *
@@ -246,229 +329,18 @@ class CrawlRunner(
      * bug in one catalog into a silently shorter crawl.
      */
     private suspend fun runTargets(due: List<Target>): List<TargetResult> {
-        if (due.size == 1 || targetConcurrency <= 1) {
-            return due.map { runTarget(it) }
+        if (due.size == 1 || config.targetConcurrency <= 1) {
+            return due.map { targetCrawl.run(it) }
         }
-        val limit = minOf(targetConcurrency, due.size)
+        val limit = minOf(config.targetConcurrency, due.size)
         return coroutineScope {
             val semaphore = Semaphore(limit)
             due
                 .map { target ->
                     async {
-                        semaphore.withPermit { runTarget(target) }
+                        semaphore.withPermit { targetCrawl.run(target) }
                     }
                 }.awaitAll()
         }
     }
-
-    /**
-     * Runs crawling for a single target.
-     *
-     * Constructs a per-target [DomainPipeline] so that [targetId] is correctly
-     * captured in the enrich stage closure.
-     *
-     * @param startTaskIdGen ID generator for the initial [Crawling] task.
-     *                        Defaults to [UUID.randomUUID] — override in tests for determinism.
-     */
-
-    private suspend fun runTarget(
-        target: Target,
-        startTaskIdGen: () -> String = { UUID.randomUUID().toString() },
-    ): TargetResult {
-        val targetId = target.id
-
-        val pipeline: DomainPipeline =
-            buildParserPipeline(
-                downloader = downloader,
-                parser = parser,
-                save = { items: List<SavedItem> ->
-                    when {
-                        items.isEmpty() -> Step.Done(Unit)
-                        else ->
-                            try {
-                                // The real crawl_targets.id — scraped_items.target_id is a foreign key,
-                                // so a generated UUID would reject every row.
-                                db.ds.upsertSavedItems(items, targetId)
-                                Step.Done(Unit)
-                            } catch (_: java.sql.SQLException) {
-                                // Transient storage failure. Hand it to the save-stage retry loop:
-                                // previously the exception escaped and took the whole page with it.
-                                Step.Retry(Retry.Database())
-                            }
-                    }
-                },
-                targetId = targetId,
-                rules = rules,
-                retryPolicy = retryPolicy,
-                stopAt = { pages, depth ->
-                    when {
-                        pages >= maxPagesPerCatalog -> Stop.MaxPagesReached
-                        depth >= maxDepth -> Stop.MaxDepthReached(maxDepth, depth)
-                        else -> null
-                    }
-                },
-                clock = clock,
-                idGen = startTaskIdGen,
-            )
-
-        val registry =
-            SideInterpreterRegistry(
-                log =
-                    ru.wbparser.infra.pipeline
-                        .LogInterpreter(),
-                metric =
-                    meterRegistry?.let {
-                        ru.wbparser.infra.pipeline
-                            .MicrometerMetricInterpreter(it)
-                    }
-                        ?: ru.wbparser.infra.pipeline
-                            .NoOpMetricInterpreter(),
-                saveBatch =
-                    ru.wbparser.infra.pipeline
-                        .NoOpSaveBatchInterpreter(),
-                jobEvent =
-                    ru.wbparser.infra.pipeline
-                        .JobEventInterpreter(),
-                scheduleRetry =
-                    ru.wbparser.infra.pipeline
-                        .NoOpScheduleRetryInterpreter(),
-                acquireAdvisoryLock =
-                    ru.wbparser.infra.pipeline
-                        .NoOpAdvisoryLockInterpreter(),
-                drop =
-                    ru.wbparser.infra.pipeline
-                        .LogDropInterpreter(),
-            )
-        val runner = PipelineRunner(pipeline, registry, failureHandler)
-
-        // A target configured with a WB catalog ID is served through the internal catalog API,
-// whose entry point is the catalog page URL. Falling back to target.url keeps targets that
-// carry a plain start URL working unchanged.
-        val startUrlString = target.wbCatalogId?.let { "$WB_BASE_URL/catalog/$it/list.aspx" } ?: target.url
-        val startUrl: CrawlUrl =
-            CrawlUrl.of(startUrlString).getOrElse {
-                throw IllegalArgumentException("Invalid target URL: $startUrlString")
-            }
-
-        val startTask =
-            Crawling(
-                id = startTaskIdGen(),
-                url = startUrl,
-                depth = 0,
-                targetId = targetId,
-            )
-
-        val result = runner.run(listOf(startTask), concurrency = concurrency)
-
-        return when (result) {
-            // The DomainError used to be dropped here, which let runUnsafe close the job
-            // as "Completed" with a NULL error_message. A failed crawl has to say so.
-            is Either.Left -> {
-                @Suppress("USELESS_ELVIS") // DomainError.message can be null; fallback is a safety net
-                TargetResult(0, 0, error = result.value.message ?: "crawl failed")
-            }
-            is Either.Right -> {
-                val crawled: ru.wbparser.domain.pipeline.Crawled = result.value
-                TargetResult(crawled.pagesCrawled, crawled.itemsSaved)
-            }
-        }
-    }
-
-    private fun openJob(targetId: UUID): UUID {
-        val id = UUID.randomUUID()
-        val now = OffsetDateTime.now(ZoneOffset.UTC)
-        db.ds.exposedOnce()
-        transaction {
-            CrawlJobsTable.insert {
-                it[CrawlJobsTable.id] = id
-                it[CrawlJobsTable.targetId] = targetId
-                it[CrawlJobsTable.status] = JobStatus.Running.name
-                it[CrawlJobsTable.startedAt] = now
-                it[CrawlJobsTable.createdAt] = now
-            }
-        }
-        return id
-    }
-
-    /**
-     * Closes a job row with a [JobStatus].
-     *
-     * Takes the enum rather than a String so the value written is always one of the six the
-     * `chk_status` constraint allows — the schema and [JobStatus] enumerate the same six, and
-     * a literal here could drift from either without a compile error.
-     */
-    private fun closeJob(
-        id: UUID,
-        status: JobStatus,
-        pagesCrawled: Int = 0,
-        itemsSaved: Int = 0,
-        errorMessage: String? = null,
-    ) {
-        db.ds.exposedOnce()
-        transaction {
-            CrawlJobsTable.update({
-                CrawlJobsTable.id eq id
-            }) {
-                it[CrawlJobsTable.status] = status.name
-                it[CrawlJobsTable.completedAt] = OffsetDateTime.now(ZoneOffset.UTC)
-                it[CrawlJobsTable.pagesCrawled] = pagesCrawled
-                it[CrawlJobsTable.itemsSaved] = itemsSaved
-                it[CrawlJobsTable.errorMessage] = errorMessage
-            }
-        }
-    }
-
-    sealed class RunResult {
-        data class Success(
-            val pagesCrawled: Int,
-            val itemsSaved: Int,
-        ) : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_SUCCESS
-        }
-
-        data class Failure(
-            val message: String,
-        ) : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_FAILURE
-        }
-
-        /**
-         * The crawl was not started: the advisory lock was not taken.
-         *
-         * [reason] says why — another instance holds the lock, or the wait for it
-         * timed out.
-         */
-        data class AlreadyRunning(
-            val reason: String,
-        ) : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_LOCKED
-        }
-    }
-
-    companion object {
-        /** Exit code: crawl ran and succeeded. */
-        const val EXIT_CODE_SUCCESS = 0
-
-        /** Exit code: crawl ran and failed. */
-        const val EXIT_CODE_FAILURE = 1
-
-        /** Exit code: crawl was not started — advisory lock held by another instance. */
-        const val EXIT_CODE_LOCKED = 2
-
-        /** Exit code: crawl was cancelled. */
-        const val EXIT_CODE_CANCELLED = 3
-    }
-
-    /**
-     * Outcome of crawling **one** target — not of the whole run.
-     *
-     * [error] is non-null when this target's pipeline returned a [ru.wbparser.domain.error.DomainError].
-     * A run aggregates the per-target errors into a single job status; keeping the error here
-     * rather than throwing it is what lets one failing catalog not abort the others.
-     */
-    private data class TargetResult(
-        val pages: Int,
-        val items: Int,
-        val error: String? = null,
-    )
 }

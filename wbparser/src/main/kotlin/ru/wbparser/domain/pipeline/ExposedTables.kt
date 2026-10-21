@@ -90,9 +90,169 @@ object CrawlTargetsTable : Table("crawl_targets") {
     val wbParentCatalogId: Column<String?> = varchar("wb_parent_catalog_id", 100).nullable()
     val rootCategoryName: Column<String?> = varchar("root_category_name", 255).nullable()
 
+    /**
+     * WB's own catalog search token, e.g. `menu_v3_9467 карты памяти`.
+     *
+     * This is what selects the category in WB's internal API. The catalog id is not a
+     * parameter of that call — without this token the request returns WB's rotating
+     * popular list instead of the category.
+     */
+    val wbSearchQuery: Column<String?> = text("wb_search_query").nullable()
+
+    /**
+     * When the target was last read.
+     *
+     * It moves only for a target that was actually read. A target that failed keeps
+     * its old value and stays due.
+     */
+    val lastCrawledAt: Column<OffsetDateTime?> = timestampWithTimeZone("last_crawled_at").nullable()
+
+    /**
+     * How many times in a row the target failed for its own reasons.
+     *
+     * Grows into a back-off of up to a day. A failure that belongs to the address is
+     * counted in [egressFailureCount] instead.
+     */
+    val consecutiveFailures: Column<Int> = integer("consecutive_failures").default(0)
+
+    /**
+     * When the target may be read again.
+     *
+     * Null means "as soon as the freshness window allows it".
+     */
+    val nextAttemptAt: Column<OffsetDateTime?> = timestampWithTimeZone("next_attempt_at").nullable()
+
+    /**
+     * How many times in a row the target failed because the address did.
+     */
+    val egressFailureCount: Column<Int> = integer("egress_failure_count").default(0)
+
+    /**
+     * The egress group that last answered this target with something that was not the
+     * catalog.
+     *
+     * The same anomaly seen from another group is the target's fault; the same anomaly
+     * seen from the same group is more likely the address's.
+     */
+    val anomalyGroup: Column<String?> = varchar("anomaly_group", 64).nullable()
+
+    // V12: the measurement metadata of `knownPagesLimit`. The limit is a number
+    // about a catalog, and these four are the evidence behind it — when it was measured, where
+    // the pagination ended, where the number came from, and which WB subject the
+    // catalog's products carry. Without them the limit is an assertion nobody can
+    // check, and `catalog_end` (the catalog ended by itself) cannot be told apart from
+    // `api_cap` (WB refused the next page — the crawl stores a slice, and the
+    // truncation counter fires honestly about it).
+    //
+    // All four are nullable: a target whose limit was never measured says so with
+    // NULL, which is a statement a NOT NULL column cannot make.
+    val knownPagesLimitMeasuredAt: Column<OffsetDateTime?> =
+        timestampWithTimeZone("known_pages_limit_measured_at").nullable()
+    val knownPagesLimitBoundary: Column<String?> = text("known_pages_limit_boundary").nullable()
+    val knownPagesLimitSource: Column<String?> = text("known_pages_limit_source").nullable()
+
+    /**
+     * The WB subject id the products of this target carry.
+     *
+     * It is measured, not guessed: the products of a catalog carry a single
+     * `subjectId`. It is not a foreign key to `wb_subjects` — that table is a
+     * dictionary WB publishes and the crawler loads on demand.
+     */
+    val wbSubjectId: Column<Long?> = long("wb_subject_id").nullable()
+
+    /**
+     * Who holds the lease of this target, and until when.
+     *
+     * The lease is not the freshness: [lastCrawledAt] says when the target was read,
+     * [nextAttemptAt] says when it may be tried again, and the lease says who is
+     * reading it right now. An expired lease is a free lease, so a host that dies
+     * does not hold its targets.
+     */
+    val leaseOwner: Column<String?> = varchar("lease_owner", 128).nullable()
+    val leaseUntil: Column<OffsetDateTime?> = timestampWithTimeZone("lease_until").nullable()
+
     // TIMESTAMPTZ, and the database fills both with now().
     val createdAt: Column<OffsetDateTime> = timestampWithTimeZone("created_at")
     val updatedAt: Column<OffsetDateTime> = timestampWithTimeZone("updated_at")
+}
+
+/**
+ * The egress groups of this deployment: which profiles are expected to share one IP,
+ * and which IP the probe actually saw.
+ *
+ * The table is a ledger, not a control table — the crawler reads the groups from its
+ * configuration, and writes here what it observed. The rows are what an operator
+ * looks at when the metrics say a group is not isolated.
+ */
+object CrawlEgressGroupsTable : Table("crawl_egress_groups") {
+    val groupId: Column<String> = varchar("group_id", 64)
+    val egressIp: Column<String?> = varchar("egress_ip", 45).nullable()
+    val isolated: Column<Boolean> = bool("isolated")
+    val probedAt: Column<OffsetDateTime> = timestampWithTimeZone("probed_at")
+    val ipChanges: Column<Int> = integer("ip_changes")
+
+    override val primaryKey = PrimaryKey(groupId)
+}
+
+/**
+ * The runs of the targets: which egress group served which target, from which
+ * address, and how it went.
+ *
+ * `crawl_targets` holds the aggregate of a target — when it was read, how many times
+ * in a row it failed — and this table holds the runs themselves. The aggregate says
+ * "when"; this table says "by whom" and "how".
+ *
+ * The `outcome` column carries `CHECK (outcome IN ('ok', 'antibot',
+ * 'target_candidate', 'error'))` — the same four values as
+ * [ru.wbparser.domain.scheduling.RunOutcome], which is what the write path sends.
+ */
+object CrawlTargetRunsTable : Table("crawl_target_runs") {
+    val id: Column<UUID> = uuid("id")
+    val jobId: Column<UUID> = uuid("job_id")
+    val targetId: Column<UUID> = uuid("target_id")
+    val egressGroup: Column<String?> = varchar("egress_group", 64).nullable()
+    val egressIp: Column<String?> = varchar("egress_ip", 45).nullable()
+    val outcome: Column<String> = varchar("outcome", 32)
+    val pages: Column<Int> = integer("pages")
+    val items: Column<Int> = integer("items")
+    val startedAt: Column<OffsetDateTime> = timestampWithTimeZone("started_at")
+    val finishedAt: Column<OffsetDateTime> = timestampWithTimeZone("finished_at")
+
+    override val primaryKey = PrimaryKey(id)
+}
+
+/**
+ * The category tree observed while crawling.
+ *
+ * One row per (target, category): the category a product was seen in, the name WB
+ * publishes for it, and the id of its parent. The row *is* the product's own subject
+ * (`level` 0) and the parent is referenced, not materialised — the catalog API sends
+ * exactly two ids per product.
+ */
+object CategoryMappingsTable : Table("category_mappings") {
+    val id: Column<UUID> = uuid("id")
+    val targetId: Column<UUID> = uuid("target_id")
+    val catalogId: Column<String?> = varchar("catalog_id", 100).nullable()
+    val catalogName: Column<String?> = varchar("catalog_name", 255).nullable()
+    val nodeName: Column<String?> = varchar("node_name", 255).nullable()
+    val parentNodeId: Column<String?> = varchar("parent_node_id", 100).nullable()
+    val level: Column<Int> = integer("level").default(0)
+
+    // V1: UNIQUE(target_id, catalog_id)
+    val uxTargetCatalog = uniqueIndex("uq_category_mappings_target_catalog", targetId, catalogId)
+}
+
+/**
+ * WB's product-subject dictionary: the id the catalog API sends as `subjectId`
+ * and `subjectParentId`, and the name that id stands for.
+ *
+ * The API sends ids only. The names come from a dictionary WB publishes
+ * separately and that the crawler does not have to guess: the write path looks
+ * a subject id up here instead of writing a null name next to a real id.
+ */
+object WbSubjectsTable : Table("wb_subjects") {
+    val id: Column<Long> = long("id")
+    val name: Column<String> = text("name")
 }
 
 /**

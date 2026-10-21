@@ -1,0 +1,171 @@
+name: Dependabot auto-merge
+
+# The workflow merges a pull request. It needs exactly that, and nothing else.
+#
+# `pull_request_target` is the only trigger that can do this: a pull request
+# opened with a token runs with a read-only token of its own, and the token
+# that runs here is the repository's. The cost of that power is that the
+# workflow must not run code from the pull request, and it does not: the
+# checkout below is the base branch, and the only thing read from the pull
+# request is its description.
+#
+# The schedule exists because the event alone is not enough. A pull request
+# opened while the bump parser was broken was read as "not a patch and not a
+# minor" and nobody looked at it again — the workflow only ran on the event,
+# and the event had already been. #103 (a group of 36 updates) hung that way.
+#
+# A window that opens once must not close the door for good: the schedule
+# looks for the pull requests that are still waiting for a decision they were
+# eligible for.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+  schedule:
+    # Hourly, at a minute that is not a round number: every workflow that
+    # fires on the hour fires at the same moment, and a repository that runs
+    # several of them should not send them all to the same runner.
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge:
+    # Only Dependabot's own pull requests. A pull request from anyone else
+    # must not be able to ask this workflow for a merge.
+    #
+    # The author of the pull request, not the actor of the event: a pull
+    # request Dependabot opened stays Dependabot's when somebody reopens it
+    # or when Dependabot pushes to it again. The actor would change and the
+    # fact would not — and the fact is the one that decides.
+    if: >-
+      github.event_name != 'pull_request_target' ||
+      github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The base branch, never the pull request's head: this workflow runs
+          # the base branch's code, and the base branch's code is what decides
+          # whether the bump is mergeable.
+          ref: ${{ github.event.pull_request.base.ref || 'main' }}
+
+      # The pull requests this run is about. On the event there is exactly
+      # one — the one that was opened. On the schedule there are as many as
+      # are open and eligible, and the ones that are not are left alone.
+      - name: The pull requests to consider
+        id: candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if [ -n "${EVENT_PR:-}" ]; then
+            echo "$EVENT_PR" > "$RUNNER_TEMP/candidates.txt"
+          else
+            gh api "repos/${{ github.repository }}/pulls?state=open&per_page=100" \
+              --jq '.[] | select(.user.login == "dependabot[bot]") | .number' \
+              > "$RUNNER_TEMP/candidates.txt"
+          fi
+          echo "candidates: $(tr '\n' ' ' < "$RUNNER_TEMP/candidates.txt")"
+          echo "count=$(wc -l < "$RUNNER_TEMP/candidates.txt")" >> "$GITHUB_OUTPUT"
+
+      - name: The pull request's own description
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          while read -r number; do
+            [ -n "$number" ] || continue
+            gh api "repos/${{ github.repository }}/pulls/${number}" --jq .body > "$RUNNER_TEMP/description-${number}.md"
+          done < "$RUNNER_TEMP/candidates.txt"
+
+      # The bump is a patch or a minor: those merge themselves. A major is a
+      # decision of a person, and the workflow says so and stops.
+      - name: The bumps that may merge themselves
+        id: bump
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          : > "$RUNNER_TEMP/mergeable.txt"
+          while read -r number; do
+            [ -n "$number" ] || continue
+            bump="$(python3 scripts/dependabot_bump.py "$RUNNER_TEMP/description-${number}.md")" || {
+              echo "::notice::#${number} is not a patch and not a minor — a person decides"
+              continue
+            }
+            echo "#${number} is a $bump"
+            echo "$number" >> "$RUNNER_TEMP/mergeable.txt"
+          done < "$RUNNER_TEMP/candidates.txt"
+          echo "mergeable: $(tr '\n' ' ' < "$RUNNER_TEMP/mergeable.txt")"
+          echo "count=$(wc -l < "$RUNNER_TEMP/mergeable.txt")" >> "$GITHUB_OUTPUT"
+
+      # The branch protection has the last word, and it is asked, not assumed:
+      # `mergeable_state` is GitHub's own answer to "may this pull request be
+      # merged now?", and it is `clean` only when the required checks are
+      # green.
+      #
+      # The merge is then made directly rather than queued through the
+      # auto-merge API: the token of a workflow cannot enable auto-merge in
+      # this repository, and the question the auto-merge answers — "may this
+      # be merged now?" — is the question this step asks first and answers
+      # with GitHub's own words.
+      - name: The required checks are green
+        id: checks
+        if: steps.bump.outputs.count != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 1800 ))
+          while true; do
+            waiting=0
+            while read -r number; do
+              [ -n "$number" ] || continue
+              # `mergeable_state` is the REST name of the answer; the GraphQL
+              # name is `mergeStateStatus` and the REST API does not have it.
+              # The values are lower case here.
+              state="$(gh api "repos/${{ github.repository }}/pulls/${number}" --jq '.mergeable_state // "unknown"')"
+              case "$state" in
+                clean|unstable)
+                  # `clean` — everything the branch protection asks for is
+                  # green. `unstable` — a check that is not required failed;
+                  # GitHub still says the pull request may be merged.
+                  echo "#${number}: the branch protection is satisfied ('$state')"
+                  ;;
+                blocked|unknown|behind)
+                  # `blocked` — a required check is not green yet. `unknown` —
+                  # GitHub has not computed it yet. `behind` — the branch is
+                  # behind the base branch.
+                  echo "#${number}: the pull request is '$state' — waiting"
+                  waiting=1
+                  ;;
+                *)
+                  echo "::error::#${number} is '$state' — it cannot be merged"
+                  ;;
+              esac
+            done < "$RUNNER_TEMP/mergeable.txt"
+            if [ "$waiting" -eq 0 ]; then
+              exit 0
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::the checks did not become green in time"
+              exit 1
+            fi
+            sleep 20
+          done
+
+      - name: Merge it
+        if: steps.bump.outputs.count != '0' && steps.checks.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          while read -r number; do
+            [ -n "$number" ] || continue
+            gh pr merge "$number" --squash --delete-branch
+            echo "#${number} is merged"
+          done < "$RUNNER_TEMP/mergeable.txt"

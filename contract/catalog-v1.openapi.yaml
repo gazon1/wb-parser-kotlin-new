@@ -1,0 +1,811 @@
+# ==============================================================================
+# The catalog read API — the ONE contract document.
+#
+# This file is the single source of truth for the boundary between the crawler
+# (which owns the database) and the storefront (which owns the user interface).
+# It is hand-written on purpose: it is a *contract*, not a dump of the code, and
+# a generated document describes the implementation rather than the promise.
+#
+# There is deliberately no JSON Schema next to this file. Two documents that
+# describe the same shapes are two sources of truth, and the one nobody reads
+# is the one that quietly licenses the next drift.
+#
+# How the two sides are kept honest:
+#
+#   - The crawler's tests compare these schemas against the real Kotlin DTOs
+#     (type, required, nullable, format, enum) and against the real responses.
+#   - The storefront's tests fetch this document from
+#     `GET /api/catalog/v1/contract` and validate the live responses against it.
+#
+# The storefront mirrors the shapes in TypeScript by hand. The mirror is checked
+# by a test, so it cannot drift silently.
+#
+# UNITS ARE PART OF THE CONTRACT
+#
+# Prices are kopecks (`priceKopecks`, `salePriceKopecks`) because that is what
+# the database stores and what the crawler writes. `cashbackRubles` is rubles —
+# the crawler's writer already converts kopecks to rubles before storing them,
+# so the API passes the stored value through unchanged. `cashbackPercent` is a
+# percent. `minPrice`/`maxPrice` query parameters are **rubles**; the API
+# converts them to kopecks exactly once, when it builds the query.
+# ==============================================================================
+
+openapi: 3.1.0
+
+info:
+  title: WB Catalog Read API
+  version: "1.0.0"
+  description: |
+    Read-only access to the crawled product catalog.
+
+    The crawler owns the database and is the only writer of it. This API is the
+    only way to read the catalog, and it serves the storefront over the
+    internal container network under a service-to-service key.
+
+    The storefront does not connect to PostgreSQL: it has no database
+    credentials, no SQL and no copy of the schema.
+
+    EVERY ANSWER NAMES ITS AUTHOR AND ITS MOMENT
+
+    Every response that carries catalog data says two things about itself:
+
+    - `instanceId` — the process instance that answered. The catalog's cache and
+      its rate limit live in the process, so a second instance would answer
+      with different numbers, and nothing else would say so. It is the same
+      value the readiness check reports as `checks.instance`.
+
+    - `dataAsOf` — the moment the data itself is about: the newest observation
+      the answer carries. This is not the moment the answer was computed.
+
+    The second field is a different axis from `asOf`, and the two are not
+    interchangeable. `asOf` is the moment an aggregate was computed — for the
+    aggregates it is the moment the cached value was read, and it moves on every
+    recomputation while the data stands still. `dataAsOf` is the moment the
+    data was observed, and it does not move until the crawler observes
+    something newer. A number whose age is unknown is a number nobody can
+    vouch for, and a client that shows "1 234 товара" needs to know which of
+    the two it is looking at.
+  license:
+    name: Proprietary
+
+servers:
+  - url: /api/catalog/v1
+    description: Same-origin prefix; the API is served by the crawler itself.
+
+security:
+  - CatalogKey: []
+
+tags:
+  - name: catalog
+    description: Product listings, targets and aggregate statistics.
+  - name: operational
+    description: Liveness, readiness and the contract document itself.
+
+# The paging bounds, in one place, and in a form a program can read.
+#
+# The `page` parameter below is bounded by the *offset* it produces, not by a
+# page index of its own: the database walks every row before the page, so the
+# work is measured in rows, not in pages. A page of sixty rows and a page of
+# one row cannot be bounded by the same index.
+#
+# This block is the single source of that number. The crawler's code reads it,
+# the storefront's code reads it, and both clamp to the same bound — a
+# storefront that clamped to a different page than the API serves would show
+# a page the API never sent.
+#
+# `maxOffset` is the largest number of rows the offset may reach. The largest
+# page index that fits is therefore `floor(maxOffset / pageSize)`: 41 666 with
+# the default page size of 24, 16 666 with the largest one of 60.
+x-catalog-paging:
+  maxOffset: 1000000
+
+paths:
+  /targets:
+    get:
+      tags: [catalog]
+      operationId: listTargets
+      summary: Every crawl target with its item count.
+      description: |
+        A full pass over the read model — the current observation of each product —
+        grouped per target. It is the one aggregate that does not scale for free, so
+        the API caches it for ten minutes rather than recomputing it per request,
+        and the answer says when it was computed (`asOf`) and when the data behind
+        the counts was observed (`dataAsOf`).
+      responses:
+        "200":
+          description: The targets.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, asOf, instanceId]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/TargetSummary"
+                  asOf:
+                    type: string
+                    format: date-time
+                    description: >
+                      The moment the counts were computed — the moment the aggregate was
+                      read from the cache. The aggregate is cached for ten minutes, so a
+                      count without a moment is a count of unknown age. It is not the
+                      moment of the data: that is `dataAsOf`.
+                  instanceId:
+                    type: string
+                    description: |
+                      The id of the process instance that answered. The catalog's cache
+                      and its rate limit live in the process, so a second instance would
+                      answer with different numbers — and nothing else would say so. It
+                      is the same value the readiness check reports as `checks.instance`.
+                  dataAsOf:
+                    type: [string, "null"]
+                    format: date-time
+                    description: >
+                      The moment the data behind the counts is about: the newest
+                      observation among the products the targets hold. It is a different
+                      axis from `asOf`, which says when the counts were computed. Null
+                      when the catalog holds nothing yet.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /items:
+    get:
+      tags: [catalog]
+      operationId: listItems
+      summary: A filtered, sorted, paginated page of product cards.
+      description: |
+        The list is a list of **products**: the crawler stores one row per
+        (target, product, price) — a price change writes a new row and keeps the old
+        one, because the price history is made of those rows — and this endpoint
+        answers with the current observation of each product. A product that changed
+        price is one card, with the price it has now, not two cards with two prices.
+
+        The price filters read that current price: a product that was cheap last week
+        and is expensive today is not found by "up to N".
+
+        `totalCount` counts the products that match, not the price observations
+        behind them.
+      parameters:
+        - name: targetId
+          in: query
+          required: false
+          description: Restrict to one crawl target.
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          required: false
+          description: |
+            Literal substring search over title, brand and seller. `%` and `_`
+            are literal characters, not wildcards.
+          schema:
+            type: string
+        - name: minPrice
+          in: query
+          required: false
+          description: Minimum price **in rubles**. Converted to kopecks exactly once, by the API.
+          schema:
+            type: number
+            minimum: 0
+        - name: maxPrice
+          in: query
+          required: false
+          description: Maximum price **in rubles**. Converted to kopecks exactly once, by the API.
+          schema:
+            type: number
+            minimum: 0
+        - name: minCashback
+          in: query
+          required: false
+          description: Minimum cashback **in percent**.
+          schema:
+            type: number
+        - name: inStock
+          in: query
+          required: false
+          description: Only items currently in stock.
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          required: false
+          description: |
+            Sort order. Every order is total: rows with equal sort keys are
+            ordered by their id, so a page boundary never repeats or drops a row.
+          schema:
+            type: string
+            enum:
+              - DateDesc
+              - DateAsc
+              - PriceAsc
+              - PriceDesc
+              - CashbackPercentDesc
+              - CashbackPercentAsc
+              - TitleAsc
+              - TitleDesc
+            default: DateDesc
+        - name: page
+          in: query
+          required: false
+          description: |
+            Zero-based page index. A value outside the range is clamped into it
+            rather than rejected: a hostile page number is a mistake in a URL, and
+            the first page is a better answer than an error.
+
+            The bound is on the *offset* — `page x pageSize` — and not on the page
+            index, because the offset is what the database pays for: it walks every
+            row before the page. The offset never exceeds 1 000 000 rows, so the
+            largest page depends on the page size (1 000 000 with the default page
+            size of 24, 16 666 with the largest one of 60). A request beyond that
+            is answered with the last page that fits, not with an error.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: pageSize
+          in: query
+          required: false
+          description: |
+            Rows per page. A value outside the range is clamped into it rather
+            than rejected.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 60
+            default: 24
+      responses:
+        "200":
+          description: One page of product cards.
+          headers:
+            X-Total-Count:
+              description: The total number of matching rows, ignoring paging.
+              schema:
+                type: integer
+            X-Page-Count:
+              description: The number of pages the result set is split into.
+              schema:
+                type: integer
+            X-Request-Id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedProductCard"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /items/{id}:
+    get:
+      tags: [catalog]
+      operationId: getItem
+      summary: One product card plus its price history.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The id of a single scraped item.
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: The product and its history.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductDetail"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /top-deals:
+    get:
+      tags: [catalog]
+      operationId: listTopDeals
+      summary: The highest cashback across all targets, one row per matched product.
+      description: |
+        Products that appear in several targets are collapsed to their best
+        observation. Rows without a match id are excluded: without a stable
+        grouping key the "best deal" list would deduplicate arbitrarily and show
+        the same product twice.
+      parameters:
+        - name: minCashback
+          in: query
+          required: false
+          description: Minimum cashback **in percent**.
+          schema:
+            type: number
+        - name: page
+          in: query
+          required: false
+          description: |
+            Zero-based page index. A value outside the range is clamped into it
+            rather than rejected: a hostile page number is a mistake in a URL, and
+            the first page is a better answer than an error.
+
+            The bound is on the *offset* — `page x pageSize` — and not on the page
+            index, because the offset is what the database pays for: it walks every
+            row before the page. The offset never exceeds 1 000 000 rows, so the
+            largest page depends on the page size (1 000 000 with the default page
+            size of 24, 16 666 with the largest one of 60). A request beyond that
+            is answered with the last page that fits, not with an error.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: pageSize
+          in: query
+          required: false
+          description: |
+            Rows per page. A value outside the range is clamped into it rather
+            than rejected.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 60
+            default: 24
+      responses:
+        "200":
+          description: One page of product cards.
+          headers:
+            X-Total-Count:
+              description: The total number of deduplicated rows, ignoring paging.
+              schema:
+                type: integer
+            X-Page-Count:
+              description: The number of pages the result set is split into.
+              schema:
+                type: integer
+            X-Request-Id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PagedProductCard"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /stats:
+    get:
+      tags: [catalog]
+      operationId: getStats
+      summary: Aggregate counters for the whole catalog.
+      description: |
+        The counters come in two pairs, because the crawler stores price *observations*
+        and the storefront shows *products*. `totalItems` and `withCashback` count the
+        observations; `totalProducts` and `productsWithCashback` count the products.
+
+        The aggregate is cached for ten minutes, so the answer carries `asOf` — the
+        moment the counters were computed.
+
+        It also carries `dataAsOf` — the moment the data behind the counters is
+        about — and `instanceId` — the instance that answered. The two moments are
+        different axes: the counters are recomputed every ten minutes while the
+        data stands still until the crawler observes something newer.
+      responses:
+        "200":
+          description: The counters.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /contract:
+    get:
+      tags: [operational]
+      operationId: getContract
+      summary: This document.
+      description: |
+        Served so that a consumer can validate the responses it receives
+        against the same contract the provider was built from, instead of
+        against a copy that nobody keeps in sync.
+      responses:
+        "200":
+          description: The OpenAPI document.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/yaml:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /health:
+    get:
+      tags: [operational]
+      operationId: getHealth
+      summary: Liveness — the process is up.
+      description: |
+        Deliberately does not touch the database. A liveness probe that fails on
+        a database blip would restart a crawler that is working fine and would
+        interrupt a crawl in progress.
+      responses:
+        "200":
+          description: The process is alive.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [UP]
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /ready:
+    get:
+      tags: [operational]
+      operationId: getReady
+      summary: Readiness — the catalog can be served.
+      description: |
+        Checks that the catalog's own database pool can execute a statement and
+        that the columns the catalog reads are present.
+
+        The schema check is what turns "the database is reachable" into "the
+        catalog can be served": a missing column is not a null result, it is a
+        failed query, and a readiness probe that only asks the first question
+        reports a healthy service that cannot answer anything.
+
+        It stays cheap on purpose — no counts over the scraped items, no full
+        catalog query — because the deploy gate, the container health check and
+        the storefront all call it.
+      responses:
+        "200":
+          description: The catalog can be served.
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/X-Request-Id"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [UP]
+                  checks:
+                    type: object
+                    additionalProperties:
+                      type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+components:
+  securitySchemes:
+    CatalogKey:
+      type: apiKey
+      in: header
+      name: X-Api-Key
+      description: |
+        Service-to-service key. The crawler accepts a comma-separated list so
+        that a key can be rotated without downtime: the new key is added first,
+        the consumer is switched over, and only then is the old key removed.
+
+  headers:
+    X-Request-Id:
+      description: |
+        The identifier of the request. A caller may send one in the same header;
+        the API answers with the one it used, and every log line the request
+        produces carries it. A value that cannot be trusted is replaced with a
+        generated identifier rather than refused.
+      schema:
+        type: string
+
+  responses:
+    Unauthorized:
+      description: The key is missing or does not match.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: |
+        A parameter cannot be interpreted: an id that is not a UUID, a sort order
+        that is not in the list, a number that is not a number. A paging value
+        outside its range is not one of these — it is clamped, not rejected.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: No such product.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unavailable:
+      description: The catalog cannot be served right now.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: |
+        The caller made more requests in the window than the limit allows. The
+        limit is counted per key and is a second line of defence behind the key:
+        the key says who may read, this says how much.
+      headers:
+        Retry-After:
+          description: The seconds to wait before the next request.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: A short, human-readable reason. Never contains a secret.
+
+    ProductCard:
+      type: object
+      description: |
+        One crawled product. The field names are the storefront's own — the
+        translation from the crawler's column names happens here, once, and the
+        storefront sees one vocabulary.
+      required:
+        - id
+        - targetId
+        - targetName
+        - title
+        - productUrl
+        - scrapedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The id of this scraped observation.
+        targetId:
+          type: string
+          format: uuid
+        targetName:
+          type: string
+        title:
+          type: string
+          description: |
+            Never empty. A crawled item may have no title, and a card without
+            one cannot be rendered as a link, so the API substitutes a
+            placeholder built from the id.
+        priceKopecks:
+          type: [integer, "null"]
+          description: Price in kopecks. Null when the crawler could not parse one.
+        salePriceKopecks:
+          type: [integer, "null"]
+          description: Discounted price in kopecks. Null when there is no discount.
+        brand:
+          type: [string, "null"]
+        seller:
+          type: [string, "null"]
+        cashbackPercent:
+          type: [number, "null"]
+          description: Cashback in percent.
+        cashbackRubles:
+          type: [number, "null"]
+          description: |
+            Cashback in **rubles**. The crawler stores it in rubles already —
+            it converts kopecks to rubles before writing — so the value passes
+            through unchanged. Dividing it by 100 again would be wrong.
+        inStock:
+          type: [boolean, "null"]
+        imageUrl:
+          type: [string, "null"]
+          format: uri
+        productUrl:
+          type: string
+          format: uri
+        scrapedAt:
+          type: string
+          format: date-time
+          description: When this observation was made. UTC, with a `Z` suffix.
+
+    ProductDetail:
+      description: A product card plus the price history of the product.
+      allOf:
+        - $ref: "#/components/schemas/ProductCard"
+        - type: object
+          required: [history, instanceId]
+          properties:
+            history:
+              type: array
+              description: |
+                The observations of this product inside its own target, newest
+                first. Observations of other targets are not mixed in: a history
+                that crosses targets is not the history of a product.
+              items:
+                $ref: "#/components/schemas/PricePoint"
+            instanceId:
+              type: string
+              description: |
+                The id of the process instance that answered. The catalog's cache and
+                its rate limit live in the process, so a second instance would answer
+                with different numbers — and nothing else would say so. It is the same
+                value the readiness check reports as `checks.instance`.
+            dataAsOf:
+              type: [string, "null"]
+              format: date-time
+              description: >
+                The moment the data in this answer is about: the newest observation it
+                carries — the row itself or the newest row of its history. It is not the
+                moment the answer was read.
+
+    PricePoint:
+      type: object
+      required: [scrapedAt]
+      properties:
+        scrapedAt:
+          type: string
+          format: date-time
+        priceKopecks:
+          type: [integer, "null"]
+        cashbackPercent:
+          type: [number, "null"]
+        cashbackRubles:
+          type: [number, "null"]
+
+    TargetSummary:
+      type: object
+      required: [id, name, isActive, itemCount]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        rootCategoryName:
+          type: [string, "null"]
+        isActive:
+          type: boolean
+        itemCount:
+          type: integer
+          description: >
+            How many products this target holds right now — the current observation of
+            each product in it. Zero for a configured but empty target. It is not the
+            number of price observations the target has produced: a product that changed
+            price twice is one product and two observations.
+        newestScrapedAt:
+          type: [string, "null"]
+          format: date-time
+
+    PagedProductCard:
+      type: object
+      required: [items, totalCount, page, pageSize, totalPages, hasNextPage, hasPrevPage, instanceId]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProductCard"
+        totalCount:
+          type: integer
+          description: The number of matching rows, ignoring paging.
+        page:
+          type: integer
+          description: The zero-based index of the returned page.
+        pageSize:
+          type: integer
+        totalPages:
+          type: integer
+        hasNextPage:
+          type: boolean
+        hasPrevPage:
+          type: boolean
+        instanceId:
+          type: string
+          description: |
+            The id of the process instance that answered. The catalog's cache and its
+            rate limit live in the process, so a second instance would answer with
+            different numbers — and nothing else would say so. It is the same value the
+            readiness check reports as `checks.instance`.
+        dataAsOf:
+          type: [string, "null"]
+          format: date-time
+          description: >
+            The moment the data on this page is about: the newest observation among the
+            products the page returns. The list is read live, so there is no cached
+            moment to report — the moment of the data is the only moment there is. Null
+            when the page is empty.
+
+    SiteStats:
+      type: object
+      required: [totalItems, totalProducts, totalTargets, withCashback, productsWithCashback, asOf, instanceId]
+      properties:
+        totalItems:
+          type: integer
+          description: >
+            How many price observations the catalog holds. The crawler stores one row per
+            (target, product, price) — a price change writes a new row and keeps the old
+            one, because the price history is made of those rows. This is the number of
+            those rows, not the number of products.
+        totalProducts:
+          type: integer
+          description: >
+            How many products the catalog holds — the number a visitor means by "how many
+            products are there". It is the number of distinct products, each counted once,
+            with the price it has now.
+        totalTargets:
+          type: integer
+        newestScrapedAt:
+          type: [string, "null"]
+          format: date-time
+        withCashback:
+          type: integer
+          description: How many observations carry a cashback percentage.
+        productsWithCashback:
+          type: integer
+          description: How many products carry a cashback percentage now.
+        asOf:
+          type: string
+          format: date-time
+          description: >
+            The moment the counters were computed — the moment the aggregate was read
+            from the cache. The aggregate is cached for ten minutes, so a counter without
+            a moment is a counter of unknown age. It is not the moment of the data: that
+            is `dataAsOf`.
+        instanceId:
+          type: string
+          description: |
+            The id of the process instance that answered. The catalog's cache and its
+            rate limit live in the process, so a second instance would answer with
+            different numbers — and nothing else would say so. It is the same value the
+            readiness check reports as `checks.instance`.
+        dataAsOf:
+          type: [string, "null"]
+          format: date-time
+          description: >
+            The moment the data behind the counters is about: the newest observation
+            among the products the counters counted. It is a different axis from `asOf`,
+            which says when the counters were computed — for this aggregate the two are
+            the same instant, and they are named apart, because a counter and an axis of
+            the answer are different things. Null when the catalog holds nothing yet.

@@ -68,11 +68,12 @@ class RetryPolicyTest :
             delay shouldBe 30_000L
         }
 
-        test("retryDelayMs Antibot falls back to exponential backoff when no explicit delay") {
+        test("retryDelayMs Antibot falls back to exponential backoff from the anti-bot base") {
             val policy = RetryPolicy(jitterPercent = 0.0, baseDelayMs = 1_000L)
             val signal = Retry.Antibot(delayMs = null)
             val delay = retryDelayMs(2, signal, policy, Random(42))
-            delay shouldBe 4_000L // 1000 * 2^2
+            // 10 000 (the anti-bot base) * 2^2 — not the generic 1 000 * 2^2.
+            delay shouldBe 40_000L
         }
 
         test("retryDelayMs StaleContext uses explicit delayMs when provided") {
@@ -94,5 +95,11 @@ class RetryPolicyTest :
             val policy = RetryPolicy(baseDelayMs = 1_000L, maxDelayMs = 5_000L)
             val delay = retryDelayMs(10, signal, policy, Random(42))
             delay shouldBe 5_000L
+        }
+
+        test("the anti-bot base is configurable and independent of the generic one") {
+            val policy = RetryPolicy(jitterPercent = 0.0, baseDelayMs = 1_000L, antibotBaseDelayMs = 3_000L)
+            retryDelayMs(0, Retry.Antibot(), policy, Random(42)) shouldBe 3_000L
+            retryDelayMs(0, Retry.ServerError(0), policy, Random(42)) shouldBe 1_000L
         }
     })
