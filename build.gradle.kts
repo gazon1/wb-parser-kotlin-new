@@ -9,7 +9,7 @@ plugins {
     id("io.gitlab.arturbosch.detekt") version "1.23.8" apply false
     // The Gradle plugin's own version is independent of the ktlint CLI version pinned in
     // the version catalogue (`ktlint = "1.3.0"`), which the ktlint extension below reuses.
-    id("org.jlleitschuh.gradle.ktlint") version "12.1.1" apply false
+    id("org.jlleitschuh.gradle.ktlint") version "14.2.0" apply false
     // One version for the coverage plugin: it is applied in more than one module,
     // and two versions of the same plugin do not share a report.
     id("org.jetbrains.kotlinx.kover") version "0.9.11"
