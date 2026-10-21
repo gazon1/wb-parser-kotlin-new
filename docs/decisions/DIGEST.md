@@ -392,6 +392,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** множить краулер, чтобы получить больше адресов: адрес — это то, за что считает WB, и его можно получить без второй машины. _(from `2026-11-01-one-crawler-many-addresses`)
 - **Never** считать адрес группы известным, если он не объявлен и не наблюдался: «не знаю» и «прямой выход» — разные вещи, и вторая не должна получаться молча. _(from `2026-11-01-one-crawler-many-addresses`)
 - **Never** хранить пароль прокси в репозитории: пароль на каждый эндпоинт свой, приходит из секрета, а ротация — сознательное действие, после которого надо убедиться, что AdsPower узнал новый пароль, а не старый. _(from `2026-11-01-one-crawler-many-addresses`)
+- **Always** выполнять блок протокола скриптом `scripts/measure_egress.py`, а не вручную: порядок, пауза и время старта должны быть в данных, иначе их нечем проверять. _(from `2026-11-02-the-protocol-runs-from-the-repository`)
+- **Always** писать в отчёте «нет», когда правило не выполнено: честное «нет» гейт принимает, и это единственное, что делает блок пригодным для следующего решения. _(from `2026-11-02-the-protocol-runs-from-the-repository`)
+- **Always** читать вердикт блока как вывод о **пригодности блока**, а не как вывод о мире: блок, не прошедший гейт, не авторизует адрес (ADR `2026-10-27-the-measurement-does-not-authorize-a-second-address`). _(from `2026-11-02-the-protocol-runs-from-the-repository`)
+- **MUST** коммитить сырые JSON вместе с отчётом: отчёт без сырых данных — это утверждение, а не измерение. _(from `2026-11-02-the-protocol-runs-from-the-repository`)
+- **Never** править числа в отчёте блока рукой: отчёт пишется из данных, и правка расходится с JSON рядом — гейт это находит. _(from `2026-11-02-the-protocol-runs-from-the-repository`)
+- **Never** считать правило выполненным, если его нельзя проверить по данным: гейт пишет «не решается из данных», и это честнее «да». _(from `2026-11-02-the-protocol-runs-from-the-repository`)
 
 ## Per-tag
 
@@ -1075,6 +1081,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-30-an-empty-observation-changes-nothing` — infrastructure  antibot  operations  database
 - `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk` — infrastructure  build  operations
 - `2026-11-01-one-crawler-many-addresses` — architecture  egress  operations  antibot
+- `2026-11-02-the-protocol-runs-from-the-repository` — operations  measurement  antibot
 
 ## Active entries
 
@@ -1174,3 +1181,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-30-an-empty-observation-changes-nothing` — Пустое наблюдение не меняет строку леджера
 - `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk` — Образ и сборка просят одну и ту же версию JDK
 - `2026-11-01-one-crawler-many-addresses` — Один краулер — много адресов
+- `2026-11-02-the-protocol-runs-from-the-repository` — Правило протокола живёт в репозитории, а не в памяти оператора
