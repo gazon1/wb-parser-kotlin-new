@@ -335,6 +335,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** добавлять `site-compatibility` в обязательные проверки `main`, пока витрина не меняется из краулера и догоняет краулер после него. _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
 - **Never** открывать второй issue совместимости, пока первый открыт. _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
 - **Never** ронять `main` краулера из-за ответа витрины: красный, отменённый, прерванный по таймауту и отсутствующий ответ — это отчёт, а не отказ релизной проверки. _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
+- **Always** давать одному факту одну формулировку: два текста про одну неспособность обслужить запрос читаются как два разных отказа. _(from `2026-10-21-the-dead-branch-is-deleted`)
+- **Always** проверять, достижима ли страховка, и доказывать это тестом — мёртвая ветка пряталась за правдоподобным названием. _(from `2026-10-21-the-dead-branch-is-deleted`)
+- **Never** оставлять в загрузчике ветку для исключения, которое выбрасывает слой ниже: страховка должна быть там, где исключение действительно возникает. _(from `2026-10-21-the-dead-branch-is-deleted`)
 - **Always** держать публичную поверхность `wbparser` узкой: функция не должна протаскивать в вызывающий модуль типы своей зависимости. _(from `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer`)
 - **Always** называть причину разбора одинаково во всех местах, где читается JSON WB: один текст, одно место. _(from `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer`)
 - **Always** проверять диагностику тестом: «называет поле» — это утверждение, которое можно потерять при переносе и не заметить. _(from `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer`)
@@ -1146,6 +1149,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — crawler  diagnostics  catalog  pipeline
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — architecture  refactoring  maintainability
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — ci  workflow  contract
+- `2026-10-21-the-dead-branch-is-deleted` — crawler  browser  error-handling  dead-code
 - `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — diagnostics  api  architecture
 - `2026-10-21-the-digest-keeps-the-whole-rule` — documentation  workflow
 - `2026-10-21-the-failure-keeps-what-was-read` — crawler  pipeline  observability
@@ -1260,6 +1264,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — Ответ, который не разобрался, — это сбой, а не конец каталога
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — Запросы каталога живут в решениях, которые они держат, а фасад держит поверхность
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — Кросс-репозиторная совместимость — это отчёт, а не блокирующий гейт
+- `2026-10-21-the-dead-branch-is-deleted` — Мёртвая ветка удалена: исчерпание пула принадлежит роутеру
 - `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — Диагностика разбора живёт в одном месте и читает все ответы WB
 - `2026-10-21-the-digest-keeps-the-whole-rule` — Правило попадает в digest целиком, а не по первой строке
 - `2026-10-21-the-failure-keeps-what-was-read` — Отказ не выбрасывает прочитанное
