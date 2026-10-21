@@ -303,12 +303,21 @@ class TargetRunQueriesTest :
         test("a group remembers when it last answered normally") {
             world()
 
-            db.ds.fetchEgressGroups().single().lastHealthyAt shouldBe null
+            db.ds
+                .fetchEgressGroups()
+                .single()
+                .lastHealthyAt shouldBe null
 
             val moment = Instant.now().minusSeconds(60)
             db.ds.markGroupHealthy("ip-1", moment)
 
-            sameMoment(moment, db.ds.fetchEgressGroups().single().lastHealthyAt)
+            sameMoment(
+                moment,
+                db.ds
+                    .fetchEgressGroups()
+                    .single()
+                    .lastHealthyAt,
+            )
         }
 
         test("the last healthy moment only moves forward") {
@@ -321,6 +330,12 @@ class TargetRunQueriesTest :
 
             // A run that started earlier and finished later must not drag the group's
             // last healthy moment into the past.
-            sameMoment(later, db.ds.fetchEgressGroups().single().lastHealthyAt)
+            sameMoment(
+                later,
+                db.ds
+                    .fetchEgressGroups()
+                    .single()
+                    .lastHealthyAt,
+            )
         }
     })
