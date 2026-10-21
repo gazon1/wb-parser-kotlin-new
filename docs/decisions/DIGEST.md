@@ -292,6 +292,18 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** перебазировать ветку на свежий `main` перед открытием pull _(from `2026-10-21-one-decision-is-one-pull-request`)
 - **Never** держать в одной ветке больше ~5 коммитов или ~20 файлов: за _(from `2026-10-21-one-decision-is-one-pull-request`)
 - **Never** разрешать конфликт в чужой ветке, не перечитав решение, которое _(from `2026-10-21-one-decision-is-one-pull-request`)
+- **Always** брать идентификатор инстанса из одной константы _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** называть момент по тому, что он измеряет: `dataAsOf` — момент данных, _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** описывать ось поля там, где имя её не выражает, — в контракте и в ADR. _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** считать момент данных по тем строкам, которые ответ читает _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Never** давать двум осям одно имя и **Never** переиспользовать `asOf` для момента _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Never** переименовывать существующее поле контракта, чтобы снять двусмысленность _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** давать каждой новой части собственный тест — о её решении, а не о переносе _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Always** делить класс по решению, которое он держит, и давать каждой части имя _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Always** держать публичную поверхность неизменной при разбиении: фасад делегирует, _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Always** называть в фасаде таблицы, которые читает API: гейт совместимости читает _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Never** собирать SQL в фасаде: фасад держит решения, а не текст запросов. _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Never** тестировать решение о тексте SQL только через базу: где фильтр уехал и _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
 - **Always** называть лицензию в `README.md` и держать текст `LICENSE` _(from `2026-10-21-the-repository-is-licensed`)
 - **Always** проверять лицензию новой зависимости до того, как она попадает _(from `2026-10-21-the-repository-is-licensed`)
 - **Never** менять лицензию репозитория молча: смена лицензии — это _(from `2026-10-21-the-repository-is-licensed`)
@@ -340,6 +352,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** глотать отмену в планировщике: `CancellationException` пробрасывается. _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
 - **Never** отдавать планировщику конкретного исполнителя, если у исполнителя есть _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
 - **Never** прятать исход прогона внутри класса, который его производит: производитель _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **Always** спрашивать то, что не зависит от работы, **до** того, как работа взята. _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
+- **MUST** иметь тест, который доказывает: отказавшийся прогон не оставляет аренды на _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
+- **Never** брать аренду (или любое эксклюзивное право на работу) для того, что не _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
+- **Never** полагаться на `finally` для освобождения того, что взято ранним выходом: _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
 
 ## Per-tag
 
@@ -1000,6 +1016,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — dependencies  build  workflow
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-21-one-decision-is-one-pull-request` — workflow  conventions
+- `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — catalog  contract  observability
+- `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — architecture  refactoring  maintainability
 - `2026-10-21-the-repository-is-licensed` — legal  project  governance
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
@@ -1008,6 +1026,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-26-the-catalog-reads-from-a-replica` — architecture  database  operations  catalog
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — antibot  operations  infrastructure  measurement
 - `2026-10-28-the-scheduler-asks-the-crawl-one-question` — architecture  testing  scheduling
+- `2026-10-29-the-address-is-asked-before-the-work-is-taken` — architecture  concurrency  antibot  database
 
 ## Active entries
 
@@ -1090,6 +1109,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — Версия, которой никто не публиковал, — это не версия
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-21-one-decision-is-one-pull-request` — Одно решение — один pull request, и он перебазирован на свежий main
+- `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — Ответ говорит, кто ответил и о каком моменте данные
+- `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — Запросы каталога живут в решениях, которые они держат, а фасад держит поверхность
 - `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
@@ -1098,3 +1119,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-26-the-catalog-reads-from-a-replica` — Каталог читает с реплики, краулер пишет в primary
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — Измерение не даёт оснований покупать второй адрес
 - `2026-10-28-the-scheduler-asks-the-crawl-one-question` — Планировщик спрашивает обход об одном и говорит, как он прошёл
+- `2026-10-29-the-address-is-asked-before-the-work-is-taken` — Адрес спрашивают раньше, чем берут работу

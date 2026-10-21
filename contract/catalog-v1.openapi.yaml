@@ -44,6 +44,27 @@ info:
 
     The storefront does not connect to PostgreSQL: it has no database
     credentials, no SQL and no copy of the schema.
+
+    EVERY ANSWER NAMES ITS AUTHOR AND ITS MOMENT
+
+    Every response that carries catalog data says two things about itself:
+
+    - `instanceId` — the process instance that answered. The catalog's cache and
+      its rate limit live in the process, so a second instance would answer
+      with different numbers, and nothing else would say so. It is the same
+      value the readiness check reports as `checks.instance`.
+
+    - `dataAsOf` — the moment the data itself is about: the newest observation
+      the answer carries. This is not the moment the answer was computed.
+
+    The second field is a different axis from `asOf`, and the two are not
+    interchangeable. `asOf` is the moment an aggregate was computed — for the
+    aggregates it is the moment the cached value was read, and it moves on every
+    recomputation while the data stands still. `dataAsOf` is the moment the
+    data was observed, and it does not move until the crawler observes
+    something newer. A number whose age is unknown is a number nobody can
+    vouch for, and a client that shows "1 234 товара" needs to know which of
+    the two it is looking at.
   license:
     name: Proprietary
 
@@ -88,7 +109,8 @@ paths:
         A full pass over the read model — the current observation of each product —
         grouped per target. It is the one aggregate that does not scale for free, so
         the API caches it for ten minutes rather than recomputing it per request,
-        and the answer says when it was computed.
+        and the answer says when it was computed (`asOf`) and when the data behind
+        the counts was observed (`dataAsOf`).
       responses:
         "200":
           description: The targets.
@@ -99,7 +121,7 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items, asOf]
+                required: [items, asOf, instanceId]
                 properties:
                   items:
                     type: array
@@ -109,8 +131,25 @@ paths:
                     type: string
                     format: date-time
                     description: >
-                      The moment the counts were computed. The aggregate is cached for ten
-                      minutes, so a count without a moment is a count of unknown age.
+                      The moment the counts were computed — the moment the aggregate was
+                      read from the cache. The aggregate is cached for ten minutes, so a
+                      count without a moment is a count of unknown age. It is not the
+                      moment of the data: that is `dataAsOf`.
+                  instanceId:
+                    type: string
+                    description: |
+                      The id of the process instance that answered. The catalog's cache
+                      and its rate limit live in the process, so a second instance would
+                      answer with different numbers — and nothing else would say so. It
+                      is the same value the readiness check reports as `checks.instance`.
+                  dataAsOf:
+                    type: [string, "null"]
+                    format: date-time
+                    description: >
+                      The moment the data behind the counts is about: the newest
+                      observation among the products the targets hold. It is a different
+                      axis from `asOf`, which says when the counts were computed. Null
+                      when the catalog holds nothing yet.
         "401":
           $ref: "#/components/responses/Unauthorized"
         "429":
@@ -362,6 +401,11 @@ paths:
 
         The aggregate is cached for ten minutes, so the answer carries `asOf` — the
         moment the counters were computed.
+
+        It also carries `dataAsOf` — the moment the data behind the counters is
+        about — and `instanceId` — the instance that answered. The two moments are
+        different axes: the counters are recomputed every ten minutes while the
+        data stands still until the crawler observes something newer.
       responses:
         "200":
           description: The counters.
@@ -612,7 +656,7 @@ components:
       allOf:
         - $ref: "#/components/schemas/ProductCard"
         - type: object
-          required: [history]
+          required: [history, instanceId]
           properties:
             history:
               type: array
@@ -622,6 +666,20 @@ components:
                 that crosses targets is not the history of a product.
               items:
                 $ref: "#/components/schemas/PricePoint"
+            instanceId:
+              type: string
+              description: |
+                The id of the process instance that answered. The catalog's cache and
+                its rate limit live in the process, so a second instance would answer
+                with different numbers — and nothing else would say so. It is the same
+                value the readiness check reports as `checks.instance`.
+            dataAsOf:
+              type: [string, "null"]
+              format: date-time
+              description: >
+                The moment the data in this answer is about: the newest observation it
+                carries — the row itself or the newest row of its history. It is not the
+                moment the answer was read.
 
     PricePoint:
       type: object
@@ -663,7 +721,7 @@ components:
 
     PagedProductCard:
       type: object
-      required: [items, totalCount, page, pageSize, totalPages, hasNextPage, hasPrevPage]
+      required: [items, totalCount, page, pageSize, totalPages, hasNextPage, hasPrevPage, instanceId]
       properties:
         items:
           type: array
@@ -683,10 +741,25 @@ components:
           type: boolean
         hasPrevPage:
           type: boolean
+        instanceId:
+          type: string
+          description: |
+            The id of the process instance that answered. The catalog's cache and its
+            rate limit live in the process, so a second instance would answer with
+            different numbers — and nothing else would say so. It is the same value the
+            readiness check reports as `checks.instance`.
+        dataAsOf:
+          type: [string, "null"]
+          format: date-time
+          description: >
+            The moment the data on this page is about: the newest observation among the
+            products the page returns. The list is read live, so there is no cached
+            moment to report — the moment of the data is the only moment there is. Null
+            when the page is empty.
 
     SiteStats:
       type: object
-      required: [totalItems, totalProducts, totalTargets, withCashback, productsWithCashback, asOf]
+      required: [totalItems, totalProducts, totalTargets, withCashback, productsWithCashback, asOf, instanceId]
       properties:
         totalItems:
           type: integer
@@ -716,5 +789,23 @@ components:
           type: string
           format: date-time
           description: >
-            The moment the counters were computed. The aggregate is cached for ten
-            minutes, so a counter without a moment is a counter of unknown age.
+            The moment the counters were computed — the moment the aggregate was read
+            from the cache. The aggregate is cached for ten minutes, so a counter without
+            a moment is a counter of unknown age. It is not the moment of the data: that
+            is `dataAsOf`.
+        instanceId:
+          type: string
+          description: |
+            The id of the process instance that answered. The catalog's cache and its
+            rate limit live in the process, so a second instance would answer with
+            different numbers — and nothing else would say so. It is the same value the
+            readiness check reports as `checks.instance`.
+        dataAsOf:
+          type: [string, "null"]
+          format: date-time
+          description: >
+            The moment the data behind the counters is about: the newest observation
+            among the products the counters counted. It is a different axis from `asOf`,
+            which says when the counters were computed — for this aggregate the two are
+            the same instant, and they are named apart, because a counter and an axis of
+            the answer are different things. Null when the catalog holds nothing yet.
