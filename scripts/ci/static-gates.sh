@@ -85,6 +85,15 @@ gate blocking "domain purity: no infra imports in domain" bash scripts/ci/check-
 # is exactly what this gate exists to catch, and it costs one file comparison.
 gate blocking "the catalog YAML agrees with the measurement artifact" python3 scripts/check-measurements.py
 
+# --- the egress measurement blocks --------------------------------------------
+# The report of a measurement block is what a decision rests on, and a report is prose:
+# a number in a table can be edited and a rule can be written as met without anything
+# behind it. The first block broke four rules of the protocol and nobody could have
+# known — nothing held the report to the raw JSON next to it. This gate does: the
+# numbers must be the data's, a claim of "yes" must be backed by the data, and the
+# verdict must agree with the rules.
+gate blocking "the measurement blocks' reports agree with their raw data" python3 scripts/check-egress-block.py
+
 # --- the demo seed ------------------------------------------------------------
 # The demo seed writes synthetic rows into the table the crawler writes into. Its
 # five run-time barriers are the last line of defence; this gate is the first one,
