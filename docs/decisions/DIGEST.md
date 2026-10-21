@@ -311,6 +311,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** добавлять `site-compatibility` в обязательные проверки `main`, пока витрина не _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
 - **Never** открывать второй issue совместимости, пока первый открыт. _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
 - **Never** ронять `main` краулера из-за ответа витрины: красный, отменённый, прерванный _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
+- **Always** измерять модель тем же скриптом и тем же набором данных, что и предыдущий _(from `2026-10-21-the-read-model-is-not-needed-yet`)
+- **Always** пересматривать это решение на замере `scripts/load-catalog.sh --rows N`, где N _(from `2026-10-21-the-read-model-is-not-needed-yet`)
+- **Always** чинить путь записи (#147–#155) раньше, чем считать, что данных «не хватает» _(from `2026-10-21-the-read-model-is-not-needed-yet`)
+- **Never** выводить объём таблицы из замера отказов: 7 успешных запросов из 40 в плохом _(from `2026-10-21-the-read-model-is-not-needed-yet`)
+- **Never** материализовать read-модель каталога, пока p50 модели на продовом объёме не _(from `2026-10-21-the-read-model-is-not-needed-yet`)
+- **Never** обещать витрине, что материализация уберёт её таймаут: потолок задаёт пул из _(from `2026-10-21-the-read-model-is-not-needed-yet`)
 - **Always** называть лицензию в `README.md` и держать текст `LICENSE` _(from `2026-10-21-the-repository-is-licensed`)
 - **Always** проверять лицензию новой зависимости до того, как она попадает _(from `2026-10-21-the-repository-is-licensed`)
 - **Never** менять лицензию репозитория молча: смена лицензии — это _(from `2026-10-21-the-repository-is-licensed`)
@@ -1048,6 +1054,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — catalog  contract  observability
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — architecture  refactoring  maintainability
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — ci  workflow  contract
+- `2026-10-21-the-read-model-is-not-needed-yet` — catalog  performance  database  measurement
 - `2026-10-21-the-repository-is-licensed` — legal  project  governance
 - `2026-10-21-the-schema-gate-reads-the-package` — gates  database  architecture
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
@@ -1145,6 +1152,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — Ответ говорит, кто ответил и о каком моменте данные
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — Запросы каталога живут в решениях, которые они держат, а фасад держит поверхность
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — Кросс-репозиторная совместимость — это отчёт, а не блокирующий гейт
+- `2026-10-21-the-read-model-is-not-needed-yet` — Материализованная read-модель каталога пока не нужна — вот цифры, по которым это решено
 - `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
 - `2026-10-21-the-schema-gate-reads-the-package` — Гейт совместимости схемы читает пакет решений каталога, а не один файл
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
