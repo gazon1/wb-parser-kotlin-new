@@ -22,6 +22,22 @@
 #
 # Every sort below therefore pins LC_ALL=C, which orders by code point and is
 # available everywhere.
+#
+# ## A rule is one line
+#
+# A bullet in `## Consequences` may be wrapped over several source lines: the
+# first line carries the marker (`- **Always** …`), the rest are indented
+# continuations of the same sentence. The generator used to keep only the
+# first line, so a wrapped rule reached DIGEST.md cut in half — «… в любом»,
+# with no ending. The agent reads DIGEST.md before every non-trivial task, so a
+# rule cut in half is a rule that reads as a different (wrong) rule.
+#
+# A continuation therefore joins its bullet, and the joined bullet is emitted
+# as ONE line: the continuations are glued with a single space. The property
+# the Critical section relies on — one rule, one line, so it can be read and
+# grepped as a whole — stays true. The source file keeps its wrapping, which
+# is what a human reads and what the repo's markdown width asks for; the digest
+# is a one-line-per-rule list.
 
 set -euo pipefail
 
@@ -93,17 +109,42 @@ for entry in "${ENTRIES[@]}"; do
     # Emit bullets as TSV rows: TAG\tBULLET\tSLUG (TAG="_untagged_" if no tags).
     # Awk prints only bullets (skipping fenced code blocks); the shell loop
     # fans them out across tags.
+    #
+    # A bullet wrapped over several lines is emitted as one line: the indented
+    # continuation lines are glued to the first line with a single space. A
+    # rule that reaches the digest half-written is a rule that reads as a
+    # different rule (ADR `2026-10-21-the-digest-keeps-the-whole-rule`).
     awk '
-        BEGIN { in_code = 0; in_c = 0 }
-        /^```/ { in_code = !in_code; next }
-        in_code { next }
-        /^## Consequences/ { in_c = 1; next }
-        in_c && /^## / { in_c = 0; next }
-        in_c && /^[[:space:]]*[-*][[:space:]]+/ {
-            sub(/^[[:space:]]*[-*][[:space:]]+/, "")
-            sub(/^[[:space:]]*\[[ xX]\][[:space:]]+/, "")
-            if (NF > 0) print
+        function trim(s) {
+            sub(/^[ \t]+/, "", s)
+            sub(/[ \t]+$/, "", s)
+            return s
         }
+        function flush() {
+            if (has_bullet) print bullet
+            bullet = ""
+            has_bullet = 0
+        }
+        BEGIN { in_code = 0; in_c = 0; has_bullet = 0; bullet = "" }
+        /^```/ { in_code = !in_code; flush(); next }
+        in_code { next }
+        /^## Consequences/ { in_c = 1; flush(); next }
+        in_c && /^## / { in_c = 0; flush(); next }
+        in_c && /^[[:space:]]*[-*][[:space:]]+/ {
+            flush()
+            line = $0
+            sub(/^[[:space:]]*[-*][[:space:]]+/, "", line)
+            sub(/^[[:space:]]*\[[ xX]\][[:space:]]+/, "", line)
+            line = trim(line)
+            if (line != "") { bullet = line; has_bullet = 1 }
+            next
+        }
+        in_c && has_bullet && /^[ \t]/ && NF > 0 {
+            bullet = bullet " " trim($0)
+            next
+        }
+        in_c { flush(); next }
+        END { flush() }
     ' "$entry" | while IFS= read -r stripped; do
         [[ -z "$stripped" ]] && continue
 
