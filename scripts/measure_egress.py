@@ -163,6 +163,16 @@ def instrument_argv(part: dict, plan: dict, label: str) -> list[str]:
     ]
     if plan.get("query"):
         argv += ["--query", plan["query"]]
+    # The warmup is part of the protocol: the same for every run, and long enough
+    # that the session is warm before the first measured request. A cold session
+    # is refused by WB, and a measurement of a cold session measures the
+    # challenge, not the address.
+    argv += [
+        "--warmup-delay",
+        str(plan.get("warmup_delay", 15.0)),
+        "--warmup-attempts",
+        str(plan.get("warmup_attempts", 3)),
+    ]
     return argv
 
 
@@ -326,11 +336,34 @@ def evaluate(records: list[dict], plan: dict, orders: list[list[str]]) -> list[d
 
     classes = sorted({record.get("proxy_class", "unknown") for record in records})
     combat = plan.get("combat_class")
+    # The combat configuration may use SEVERAL classes — the deployment has one
+    # residential address and one datacenter one. The rule is not "the test
+    # proxy must be residential": it is that a conclusion about one class does
+    # not carry over to another. So the block must cover exactly the classes the
+    # deployment uses.
+    combat_classes = sorted(
+        [combat] if isinstance(combat, str) else list(combat or [])
+    )
     findings.append(
         {
             "rule": "прокси того же класса, что и боевой",
-            "ok": bool(combat) and classes == [combat],
-            "detail": f"боевой класс — {combat or 'не указан'}; прогоны использовали {classes}",
+            "ok": bool(combat_classes) and classes == combat_classes,
+            "detail": f"боевые классы — {combat_classes or 'не указаны'}; прогоны использовали {classes}",
+        }
+    )
+
+    # The session has to be warm in every run. A run whose session was cold
+    # measures the anti-bot challenge, not the address — and its refusals say
+    # more about the challenge than about the address.
+    warmed = all(bool(record.get("warmup_ok")) for record in records)
+    findings.append(
+        {
+            "rule": "сессия была прогрета в каждом прогоне",
+            "ok": warmed,
+            "detail": (
+                f"{sum(1 for record in records if record.get('warmup_ok'))} из "
+                f"{len(records)} прогонов с прогретой сессией"
+            ),
         }
     )
 

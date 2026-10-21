@@ -68,6 +68,8 @@ def a_record(label: str, address: str = "IP1", **extra) -> dict:
         "errored": 0,
         "succeeded": 39,
         "refusal_ratio": 0.025,
+        "warmup_ok": True,
+        "warmup_attempts": 1,
         "repeat": 1,
         "started_at": "2026-10-21T10:00:00Z",
         "finished_at": "2026-10-21T10:02:00Z",
@@ -223,6 +225,15 @@ class TheEvaluationTest(unittest.TestCase):
         findings = runner.evaluate(records, self.plan, [["A1"]])
         window = next(finding for finding in findings if finding["rule"] == "одно и то же окно суток")
         self.assertFalse(window["ok"])
+
+    def test_a_run_with_a_cold_session_is_not_a_measurement(self):
+        """A cold session is refused by WB — the run measures the challenge, not the address."""
+        records = [a_record("A1", warmup_ok=False)]
+        findings = runner.evaluate(records, self.plan, [["A1"]])
+        warmup = next(
+            finding for finding in findings if finding["rule"].startswith("сессия была прогрета")
+        )
+        self.assertFalse(warmup["ok"])
 
     def test_a_class_that_is_not_the_combat_one_fails_the_class_rule(self):
         records = [a_record("A1", proxy_class="datacenter")]

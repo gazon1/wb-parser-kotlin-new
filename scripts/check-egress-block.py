@@ -63,6 +63,7 @@ RULE_KEYS = {
     "window": ("окно суток",),
     "class": ("класс",),
     "separation": ("антибот", "транспорт"),
+    "warmup": ("прогрет", "прогрев"),
 }
 
 # The verdict of a block, as the runner writes it. The markers are exact, because
@@ -208,11 +209,17 @@ def decidable_from_data(records: list[dict], meta: dict | None) -> dict[str, boo
 
         combat = (meta.get("plan") or {}).get("combat_class")
         classes = {record.get("proxy_class") for record in records if record.get("proxy_class")}
-        verdicts["class"] = bool(combat) and classes == {combat}
+        combat_classes = {combat} if isinstance(combat, str) else set(combat or [])
+        verdicts["class"] = bool(combat_classes) and classes == combat_classes
 
     verdicts["separation"] = bool(records) and all(
         "refused" in record and "errored" in record and "succeeded" in record for record in records
     )
+
+    # The session has to be warm in every run: a run whose session was cold
+    # measures the anti-bot challenge, not the address.
+    if records and all("warmup_ok" in record for record in records):
+        verdicts["warmup"] = all(bool(record.get("warmup_ok")) for record in records)
     return verdicts
 
 
