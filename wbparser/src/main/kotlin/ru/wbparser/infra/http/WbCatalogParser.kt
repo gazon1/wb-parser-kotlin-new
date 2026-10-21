@@ -10,6 +10,7 @@ import ru.wbparser.domain.error.ParseError
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.parsing.WbCatalogEnvelope
+import ru.wbparser.domain.parsing.carriesProducts
 import ru.wbparser.domain.parsing.toParsedItem
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.infra.json.describeJsonFailure
@@ -87,18 +88,21 @@ internal fun parseWbCatalog(
         val catalogEnvelope = decode(body)
 
         // The shape of the answer is asked before the emptiness of it. An answer that holds
-        // no products under any name we know is not an exhausted catalog — it is a catalog
-        // whose shape WB has changed, and reporting it as "the catalog is over" is how a
-        // crawl stores nothing and looks healthy.
-        if (catalogEnvelope.data == null && catalogEnvelope.payload == null && catalogEnvelope.products == null) {
+        // no products list under any name we know is not an exhausted catalog — it is a
+        // catalog whose shape WB has changed, and reporting it as "the catalog is over" is
+        // how a crawl stores nothing and looks healthy.
+        //
+        // The question is asked of the *model*, not of the raw keys: the wrappers' lists are
+        // nullable exactly so that "there is no list here" and "the list is empty" are two
+        // different answers. A rename inside a wrapper (`data.items` instead of
+        // `data.products`) used to pass this check untouched.
+        if (!catalogEnvelope.carriesProducts()) {
             val keys = answerKeys(body)
-            if (keys.none { it in CATALOG_KEYS }) {
-                return parseFailure(
-                    response,
-                    "the answer carries none of ${CATALOG_KEYS.joinToString(", ")} " +
-                        "(it carries: ${keys.joinToString(", ")}) — WB changed the shape",
-                ).left()
-            }
+            return parseFailure(
+                response,
+                "the answer carries no products list under any known name " +
+                    "(it carries: ${keys.joinToString(", ")}) — WB changed the shape",
+            ).left()
         }
 
         val products =
@@ -210,9 +214,6 @@ private fun answerKeys(body: String): Set<String> =
         // there are no keys to name, and that is the answer to the question.
         emptySet()
     }
-
-/** The names under which the catalog can arrive. */
-private val CATALOG_KEYS = setOf("products", "data", "payload")
 
 /**
  * Logs what WB thought the request was about.

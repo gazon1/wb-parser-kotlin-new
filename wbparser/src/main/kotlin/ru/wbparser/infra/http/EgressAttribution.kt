@@ -34,6 +34,12 @@ data class SessionRef(
  * side knows how its own requests are going, so it answers the question — with the
  * state of the group, the same one the health endpoint reports, so the two cannot
  * tell different stories about the same address.
+ *
+ * ## The decision this file holds
+ *
+ * What the runner is allowed to ask the address side, and nothing else: which group
+ * served a target last, and what state that group is in. The questions live here; the
+ * answers are computed by the router, which is the only thing that keeps the books.
  */
 interface EgressAttribution : EgressGroupStates {
     /**

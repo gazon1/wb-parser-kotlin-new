@@ -182,10 +182,13 @@ internal class TargetCrawl(
             is Either.Left -> {
                 @Suppress("USELESS_ELVIS") // DomainError.message can be null; fallback is a safety net
                 TargetResult(
-                    pages = 0,
-                    items = 0,
-                    error = result.value.message ?: "crawl failed",
-                    failureClass = result.value.failureClass(),
+                    // The failure carries what the crawl managed to read: a target that read
+                    // thirty pages and then hit an answer that does not fit has read thirty
+                    // pages, and reporting "0 pages" makes the run lie about the work.
+                    pages = result.value.pagesCrawled,
+                    items = result.value.itemsSaved,
+                    error = result.value.error.message ?: "crawl failed",
+                    failureClass = result.value.error.failureClass(),
                     startedAt = startedAt,
                 )
             }

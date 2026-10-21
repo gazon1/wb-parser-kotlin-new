@@ -185,6 +185,26 @@ class WbCatalogParserTest :
             reason(result) shouldContain "WB changed the shape"
         }
 
+        test("a renamed key inside a wrapper is a failure, not an exhausted catalog") {
+            // The rename is *inside* the wrapper: the envelope still holds a known key, so
+            // the shape check that only looked at the top level passed it — and the answer
+            // looked like a catalog that had run out.
+            val body = """{"data":{"metadata":{"catalog_type":"catalog-merger"},"items":[{"id":1}]}}"""
+
+            val result = parseWbCatalog(fetched(body))
+
+            result.isLeft() shouldBe true
+            reason(result) shouldContain "WB changed the shape"
+        }
+
+        test("an exhausted catalog in a wrapper is still an empty page") {
+            val page = page(parseWbCatalog(fetched("""{"data":{"products":[]}}""")))
+
+            page.items shouldBe emptyList()
+            page.isEmptyPage shouldBe true
+            page.nextPageUrl shouldBe null
+        }
+
         test("an answer that overflows the stack is a failure instead of a dead crawl") {
             // A `StackOverflowError` is an `Error`, not an `Exception`: a catch that only
             // knows `Exception` never sees it, and one pathological answer takes the whole

@@ -3,8 +3,8 @@ package ru.wbparser.infra.pipeline
 import arrow.core.Either
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.withContext
-import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.model.Crawling
+import ru.wbparser.domain.pipeline.FailedCrawl
 import ru.wbparser.domain.pipeline.Pipeline
 import ru.wbparser.domain.pipeline.Pipeline as DomainPipeline
 
@@ -42,15 +42,15 @@ class PipelineRunner(
     suspend fun run(
         tasks: List<Crawling>,
         concurrency: Int = 1,
-    ): Either<DomainError, ru.wbparser.domain.pipeline.Crawled> =
+    ): Either<FailedCrawl, ru.wbparser.domain.pipeline.Crawled> =
         withContext(failureHandler) {
             pipeline.run(tasks, concurrency = concurrency).fold(
-                ifLeft = { (error, sides) ->
+                ifLeft = { (failed, sides) ->
                     // Interpret sides even on failure — this is where the diagnostics for
                     // successful tasks in the failed batch live. Without this, every hard
                     // failure silently erased the evidence of how far the batch got.
                     interpreterRegistry.interpretAll(sides)
-                    Either.Left(error)
+                    Either.Left(failed)
                 },
                 ifRight = { (crawled, sides) ->
                     interpreterRegistry.interpretAll(sides)

@@ -273,6 +273,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** применять `scripts/wb-catalog/enrich_catalog_queries.py` к YAML перед загрузкой в БД. _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
 - **Never** считать, что глубина ограничивает число страниц: `max_depth` — это глубина по дереву категорий, а не лимит страниц (см. ADR про глубину пагинации). _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
 - **Never** читать `nextPage` из `payload` как единственный источник пагинации: у v18 его нет, страница выводится из URL. _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
+- **Always** держать nullable там, где «нет» и «пусто» — разные факты. _(from `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too`)
+- **Always** спрашивать модель тот вопрос, ради которого проверка и затевалась: «есть ли список товаров», а не «есть ли известный ключ». _(from `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too`)
+- **Never** путать отсутствие поля и пустое значение, если различие меняет диагноз: каталог кончился и WB переименовал поле — это разные вещи, и обе выглядят как «0 товаров». _(from `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too`)
+- **Never** разбирать тело в дерево ради редкого случая, если модель может ответить сама. _(from `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too`)
 - **Always** держать артефакты с разными линиями версий в разных группах Dependabot: один красный бамп не должен держать остальные обновления. _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
 - **Always** помнить, что версия из BOM и версия из каталога могут быть строгими: `jackson-bom` 2.22.4 требует `jackson-annotations` ровно `2.22`, и «подойдёт и 2.22.4» здесь неверно. _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
 - **Always** проверять, что версия, которую предлагает Dependabot, есть на Maven Central для **каждого** артефакта, который на неё ссылается, — иначе красная сборка вместо обновления. _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
@@ -334,6 +338,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **MUST** держать правило в digest одной строкой: Critical-раздел рассчитан на то, что правило читается и ищется целиком. _(from `2026-10-21-the-digest-keeps-the-whole-rule`)
 - **Never** обрезать правило по первой строке: агент читает digest перед задачей, и правило, обрезанное на полуслове, читается как другое правило. _(from `2026-10-21-the-digest-keeps-the-whole-rule`)
 - **Never** переносить правило в ADR только ради генератора: перенос — это ширина исходника, а digest собирает правило сам. _(from `2026-10-21-the-digest-keeps-the-whole-rule`)
+- **Always** носить прочитанное вместе с отказом: «0 страниц» о цели, которая прочитала страницы, — это ложь в отчёте. _(from `2026-10-21-the-failure-keeps-what-was-read`)
+- **Always** сохранять то, что уже прочитано, прежде чем объявлять отказ. _(from `2026-10-21-the-failure-keeps-what-was-read`)
+- **Never** отменять разобранные страницы пакета из-за одной сломанной: соседние страницы не связаны с ней. _(from `2026-10-21-the-failure-keeps-what-was-read`)
+- **Never** продолжать пагинацию после отказа: отказ останавливает краул этой цели. _(from `2026-10-21-the-failure-keeps-what-was-read`)
 - **Always** держать `kotlinx-serialization` в версионном каталоге и читать с неё DTO: исключение декодирования пришло сюда из библиотеки, а не из кода краула. _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Always** логировать путь элемента, который не разобрался, вместе со смещением и выдержкой входа: путь — это ответ на вопрос «что WB поменял». _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Always** проверять защиту, которую нельзя вызвать настоящим входом, через шов, который позволяет её вызвать: непроверяемая защита — это вера, а не гарантия. _(from `2026-10-21-the-parse-failure-names-the-field`)
@@ -443,6 +451,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** включать лимиты сессии (число запросов, срок жизни, вывод из ротации) до решающего прогона: без источника свежих профилей ротация тратит ёмкость, а не сохраняет её. _(from `2026-11-04-the-refusal-is-a-count-against-the-session`)
 - **Never** открывать circuit антибота по транспортному сбою: у обрыва сети своя цепь, и адрес за чужую неполомку не отвечает. _(from `2026-11-04-the-refusal-is-a-count-against-the-session`)
 - **Never** считать ёмкость краулера в адресах: измеряется она в живых сессиях, и это верно при любом ключе счётчика. _(from `2026-11-04-the-refusal-is-a-count-against-the-session`)
+- **Always** держать в файле роутера только маршрутизацию: выбор группы, её книги и перевод состояния circuit'а в словарь кодовой базы. _(from `2026-11-05-the-router-file-holds-the-routing`)
+- **Always** писать в KDoc типа, какое решение он держит: файл без этого ответа повторяет ту же проблему в меньшем масштабе. _(from `2026-11-05-the-router-file-holds-the-routing`)
+- **Never** менять поведение вместе с переносом: перенос решения не должен двигать значения по умолчанию, подписи и границы. _(from `2026-11-05-the-router-file-holds-the-routing`)
+- **Never** объявлять в файле роутера типы состояния (`DownloadOutcome`, `EgressAttribution`, `EgressRouterConfig` и подобные): у каждого типа — свой файл, названный по типу. _(from `2026-11-05-the-router-file-holds-the-routing`)
 
 ## Per-tag
 
@@ -1113,6 +1125,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
+- `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too` — crawler  diagnostics  catalog  parsing
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — dependencies  build  workflow
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested` — browser  tests  coverage  diagnostics
@@ -1124,6 +1137,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — ci  workflow  contract
 - `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — diagnostics  api  architecture
 - `2026-10-21-the-digest-keeps-the-whole-rule` — documentation  workflow
+- `2026-10-21-the-failure-keeps-what-was-read` — crawler  pipeline  observability
 - `2026-10-21-the-parse-failure-names-the-field` — crawler  diagnostics  catalog  api
 - `2026-10-21-the-profile-id-is-read-too` — adspower  api  tests
 - `2026-10-21-the-read-model-is-not-needed-yet` — catalog  performance  database  measurement
@@ -1143,6 +1157,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-02-the-protocol-runs-from-the-repository` — operations  measurement  antibot
 - `2026-11-03-the-decision-belongs-to-the-dependency` — workflow  dependencies  conventions
 - `2026-11-04-the-refusal-is-a-count-against-the-session` — antibot  egress  architecture  measurement
+- `2026-11-05-the-router-file-holds-the-routing` — architecture  refactoring  infrastructure
 
 ## Active entries
 
@@ -1222,6 +1237,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню
+- `2026-10-21-a-rename-inside-a-wrapper-is-a-change-of-shape-too` — Переименование ключа внутри обёртки — тоже изменение формы
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — Версия, которой никто не публиковал, — это не версия
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested` — Каждая ветвь браузерного пути, которая говорит краулу «что сломалось», проверена
@@ -1233,6 +1249,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — Кросс-репозиторная совместимость — это отчёт, а не блокирующий гейт
 - `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — Диагностика разбора живёт в одном месте и читает все ответы WB
 - `2026-10-21-the-digest-keeps-the-whole-rule` — Правило попадает в digest целиком, а не по первой строке
+- `2026-10-21-the-failure-keeps-what-was-read` — Отказ не выбрасывает прочитанное
 - `2026-10-21-the-parse-failure-names-the-field` — Ошибка разбора называет поле, а не страницу
 - `2026-10-21-the-profile-id-is-read-too` — Имя поля профиля читается в обеих написаниях
 - `2026-10-21-the-read-model-is-not-needed-yet` — Материализованная read-модель каталога пока не нужна — вот цифры, по которым это решено
@@ -1252,3 +1269,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-02-the-protocol-runs-from-the-repository` — Правило протокола живёт в репозитории, а не в памяти оператора
 - `2026-11-03-the-decision-belongs-to-the-dependency` — Решение принадлежит зависимости, а не номеру pull request'а
 - `2026-11-04-the-refusal-is-a-count-against-the-session` — Отказ — это счётчик, и код считает его по сессии
+- `2026-11-05-the-router-file-holds-the-routing` — Файл роутера содержит только маршрутизацию, а типы состояния живут по одному на файл

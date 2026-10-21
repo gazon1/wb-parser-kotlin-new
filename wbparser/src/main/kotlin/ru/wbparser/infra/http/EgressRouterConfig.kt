@@ -25,6 +25,13 @@ data class CircuitWindow(
 /**
  * The tunables of the router.
  *
+ * ## The decision this file holds
+ *
+ * The numbers the router is given, and only those: how long a burnt address may cool
+ * down, how wide the window of the refusal rate is, where the line between a witness
+ * and a suspect lies. They are read in one place, so a deployment states them once
+ * instead of every caller remembering its own defaults.
+ *
  * @param circuitConfig the anti-bot circuit's thresholds — the ones every group uses
  *   unless it says otherwise.
  * @param circuitConfigs the thresholds of the groups that have their own. A group is

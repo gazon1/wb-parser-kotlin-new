@@ -49,6 +49,14 @@ import java.util.concurrent.atomic.AtomicInteger
  * who is to blame for a failure — asks which group served a target. The state of the
  * groups is asked here too, and it is the same state the router itself reads: one
  * computation, one answer. Nothing about groups leaks into the domain.
+ *
+ * ## What this file holds
+ *
+ * Only the routing: which group serves the next request, and what the group did with it.
+ * The types that describe the state live in their own files — [EgressAttribution] (what
+ * the runner asks the address side), [DownloadOutcome] (how a request ended) and
+ * [EgressRouterConfig] (the tunables) — so that each decision can be read without
+ * reading the router.
  */
 class EgressRouter(
     private val pool: BrowserPool,
