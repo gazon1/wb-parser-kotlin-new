@@ -2,6 +2,7 @@ package ru.wbparser.infra.pipeline
 
 import arrow.core.Either
 import ru.wbparser.domain.error.NetworkError
+import ru.wbparser.domain.error.ParseError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedItem
@@ -13,6 +14,7 @@ import ru.wbparser.domain.pipeline.Retry
 import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Side
 import ru.wbparser.domain.pipeline.Stage
+import ru.wbparser.domain.pipeline.StageFailure
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.pipeline.Waiter
@@ -66,7 +68,8 @@ data class ParserPipelineConfig(
  * integration tests use it to avoid duplicating stage wiring.
  *
  * @param downloader suspend function that fetches a page and returns [Either.Left] on network failure.
- * @param parser    function that converts a [Fetched] response to a [ParsedPage].
+ * @param parser    function that converts a [Fetched] response to a [ParsedPage], or says why it
+ *                  could not — an answer that does not fit the model is a failed stage.
  * @param save      suspend function that persists items to storage.
  *                  For production, pass a function that calls [ru.wbparser.infra.db.repositories.upsertSavedItems].
  *                  For tests, pass a custom implementation targeting an in-memory DB.
@@ -76,7 +79,7 @@ data class ParserPipelineConfig(
  */
 fun buildParserPipeline(
     downloader: suspend (Crawling) -> Either<NetworkError, Fetched>,
-    parser: (Fetched) -> ParsedPage,
+    parser: (Fetched) -> Either<ParseError, ParsedPage>,
     save: suspend (List<SavedItem>) -> Step<List<SavedItem>, Unit>,
     targetId: UUID,
     config: ParserPipelineConfig = ParserPipelineConfig(),
@@ -110,7 +113,16 @@ fun buildParserPipeline(
             },
         parse =
             Stage<Fetched, ParsedPage> { fetched: Fetched ->
-                Step.Done(parser(fetched))
+                parser(fetched).fold(
+                    ifLeft = { error ->
+                        // An answer that does not fit the model is a failed stage, not an
+                        // empty page. An empty page is the end of the catalog, and a failed
+                        // stage ends the crawl of this target as a failure — the run says so,
+                        // and the target is put aside instead of being reported as crawled.
+                        Step.Fail(StageFailure.ParseFailure(error.message, error.url, error.cause))
+                    },
+                    ifRight = { page -> Step.Done(page) },
+                )
             },
         filter =
             Stage<ParsedItem, ParsedItem?> { item: ParsedItem ->

@@ -1,10 +1,15 @@
 package ru.wbparser.infra.http
 
+import arrow.core.Either
+import arrow.core.left
+import arrow.core.right
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonDecodingException
+import kotlinx.serialization.json.JsonObject
 import org.slf4j.LoggerFactory
+import ru.wbparser.domain.error.ParseError
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.parsing.WbCatalogEnvelope
@@ -46,13 +51,16 @@ private val log = LoggerFactory.getLogger("ru.wbparser.infra.http.WbCatalogParse
  * never sends is what left the crawler on the first page for every catalog: the run reported
  * "132 pages, 13 200 items" while having fetched exactly one page per category.
  *
- * ## A malformed answer
+ * ## An answer that does not fit
  *
- * A malformed answer must not abort the crawl, so the parse degrades to an empty page with
- * a warning that names the cause — see the overload below for the seam that makes that
- * failure testable.
+ * An answer that does not fit the model is a **failure**, not an empty page: it is returned
+ * as a [ParseError], which the pipeline turns into a failed stage. It used to be an empty
+ * page, and an empty page is the end of the catalog — so one broken answer ended the catalog
+ * silently, the page was counted as crawled, and the run reported success over an empty
+ * catalog. The distinction is the whole point of the failure: "WB changed the shape" and "the
+ * catalog is over" are different facts, and only one of them is a reason to stop.
  */
-fun parseWbCatalog(response: Fetched): ParsedPage = parseWbCatalog(response) { body -> wbJson.decodeFromString(body) }
+fun parseWbCatalog(response: Fetched): Either<ParseError, ParsedPage> = parseWbCatalog(response) { body -> wbJson.decodeFromString(body) }
 
 /**
  * The parse, with the decoder as a parameter.
@@ -63,20 +71,38 @@ fun parseWbCatalog(response: Fetched): ParsedPage = parseWbCatalog(response) { b
  *
  * The catch around the decode is deliberately broad: deserialization can fail in many ways
  * (JSON shape, charset, truncation, a field that changed its type) and each one means the
- * same thing here — an empty page plus a warning that names the cause.
+ * same thing here — a failure that names the cause.
  */
 @Suppress("TooGenericExceptionCaught")
 internal fun parseWbCatalog(
     response: Fetched,
     decode: (String) -> WbCatalogEnvelope,
-): ParsedPage {
+): Either<ParseError, ParsedPage> {
     val body = response.body
     if (body.isNullOrBlank()) {
-        return emptyPage(response)
+        // A body with nothing in it is a response that was cut off, not an exhausted
+        // catalog: WB answers an exhausted catalog with an envelope that says so.
+        return parseFailure(response, "the answer has no body at all — the response was cut off").left()
     }
 
     return try {
         val catalogEnvelope = decode(body)
+
+        // The shape of the answer is asked before the emptiness of it. An answer that holds
+        // no products under any name we know is not an exhausted catalog — it is a catalog
+        // whose shape WB has changed, and reporting it as "the catalog is over" is how a
+        // crawl stores nothing and looks healthy.
+        if (catalogEnvelope.data == null && catalogEnvelope.payload == null && catalogEnvelope.products == null) {
+            val keys = answerKeys(body)
+            if (keys.none { it in CATALOG_KEYS }) {
+                return parseFailure(
+                    response,
+                    "the answer carries none of ${CATALOG_KEYS.joinToString(", ")} " +
+                        "(it carries: ${keys.joinToString(", ")}) — WB changed the shape",
+                ).left()
+            }
+        }
+
         val products =
             catalogEnvelope.data?.products
                 ?: catalogEnvelope.payload?.products
@@ -125,7 +151,7 @@ internal fun parseWbCatalog(
             nextPageUrl = if (catalogType == PRESETS_CATALOG_TYPE) null else nextPageUrl,
             isEmptyPage = items.isEmpty(),
             isPresetResponse = catalogType == PRESETS_CATALOG_TYPE,
-        )
+        ).right()
     } catch (e: Exception) {
         // A malformed catalog response must not abort the crawl, but turning it into a
         // silent empty page is worse: the run then reports "0 items" with no cause.
@@ -136,7 +162,7 @@ internal fun parseWbCatalog(
             describeParseFailure(e),
             e,
         )
-        emptyPage(response)
+        parseFailure(response, describeParseFailure(e), e).left()
     } catch (e: StackOverflowError) {
         // A `StackOverflowError` is an `Error`, not an `Exception`: the catch above never
         // saw it, and one pathological answer took the whole crawl down with it.
@@ -148,9 +174,47 @@ internal fun parseWbCatalog(
             response.task.url,
             e,
         )
-        emptyPage(response)
+        parseFailure(response, "the answer nests too deeply to parse", e).left()
     }
 }
+
+/**
+ * The failure of a catalog answer that does not fit the model.
+ *
+ * The wording is the operator's: the message is what ends up in the job row and in the
+ * log, and it has to say *which* field stopped fitting — the whole point of naming the
+ * path is that the answer to "what did WB change" is in the failure, not in a guess.
+ */
+private fun parseFailure(
+    response: Fetched,
+    reason: String,
+    cause: Throwable? = null,
+): ParseError =
+    ParseError(
+        message = "WB's answer does not fit the catalog: $reason",
+        cause = cause,
+        url = response.task.url.toString(),
+    )
+
+/**
+ * The keys the answer carries at its top level.
+ *
+ * The answer is read a second time here — as a tree, not as the model — because the model
+ * cannot tell "the key is absent" from "the key is there and holds nothing". The question
+ * is only asked when the model holds nothing at all, and only to tell an exhausted catalog
+ * from a catalog whose shape WB has changed.
+ */
+private fun answerKeys(body: String): Set<String> =
+    try {
+        (wbJson.parseToJsonElement(body) as? JsonObject)?.keys ?: emptySet()
+    } catch (e: Exception) {
+        // The answer has already been decoded, so it is valid JSON; if it is not an object
+        // there are no keys to name, and that is the answer to the question.
+        emptySet()
+    }
+
+/** The names under which the catalog can arrive. */
+private val CATALOG_KEYS = setOf("products", "data", "payload")
 
 /**
  * Describes why an answer failed to decode, in terms an operator can act on.
@@ -181,14 +245,6 @@ private const val UNKNOWN_PATH = "<unknown>"
 
 /** How much of the answer is quoted in the log when a decode fails. */
 private const val INPUT_EXCERPT_LIMIT = 300
-
-private fun emptyPage(response: Fetched): ParsedPage =
-    ParsedPage(
-        input = response,
-        items = emptyList(),
-        nextPageUrl = null,
-        isEmptyPage = true,
-    )
 
 /**
  * Logs what WB thought the request was about.

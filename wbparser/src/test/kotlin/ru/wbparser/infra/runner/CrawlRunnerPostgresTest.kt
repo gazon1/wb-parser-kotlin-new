@@ -136,7 +136,7 @@ class CrawlRunnerPostgresTest :
                                 )
                             },
                             parser = { fetched: Fetched ->
-                                ParsedPage(fetched, listOf(parsedItem()), null, isEmptyPage = false)
+                                Either.Right(ParsedPage(fetched, listOf(parsedItem()), null, isEmptyPage = false))
                             },
                         ),
                     config =
@@ -181,7 +181,9 @@ class CrawlRunnerPostgresTest :
                                     ),
                                 )
                             },
-                            parser = { fetched: Fetched -> ParsedPage(fetched, emptyList(), null, isEmptyPage = true) },
+                            parser = { fetched: Fetched ->
+                                Either.Right(ParsedPage(fetched, emptyList(), null, isEmptyPage = true))
+                            },
                         ),
                     config =
                         CrawlRunnerConfig(
@@ -226,14 +228,16 @@ class CrawlRunnerPostgresTest :
                             // The catalog keeps going: every page has a successor, so the crawl
                             // stops because of the limit, not because the category ended.
                             parser = { fetched: Fetched ->
-                                ParsedPage(
-                                    fetched,
-                                    listOf(parsedItem()),
-                                    nextPageUrl =
-                                        CrawlUrl
-                                            .of("https://www.wildberries.ru/catalog/0/search.aspx?search=menu_v3_9467&page=2")
-                                            .getOrElse { throw IllegalArgumentException(it.message) },
-                                    isEmptyPage = false,
+                                Either.Right(
+                                    ParsedPage(
+                                        fetched,
+                                        listOf(parsedItem()),
+                                        nextPageUrl =
+                                            CrawlUrl
+                                                .of("https://www.wildberries.ru/catalog/0/search.aspx?search=menu_v3_9467&page=2")
+                                                .getOrElse { throw IllegalArgumentException(it.message) },
+                                        isEmptyPage = false,
+                                    ),
                                 )
                             },
                         ),
@@ -272,7 +276,9 @@ class CrawlRunnerPostgresTest :
                                 )
                             },
                             // An empty page without a successor is the end of the catalog.
-                            parser = { fetched: Fetched -> ParsedPage(fetched, emptyList(), null, isEmptyPage = true) },
+                            parser = { fetched: Fetched ->
+                                Either.Right(ParsedPage(fetched, emptyList(), null, isEmptyPage = true))
+                            },
                         ),
                     config =
                         CrawlRunnerConfig(
@@ -307,7 +313,7 @@ class CrawlRunnerPostgresTest :
                                 )
                             },
                             parser = { fetched: Fetched ->
-                                ParsedPage(fetched, listOf(parsedItem()), null, isEmptyPage = false)
+                                Either.Right(ParsedPage(fetched, listOf(parsedItem()), null, isEmptyPage = false))
                             },
                         ),
                     config =

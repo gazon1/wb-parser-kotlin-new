@@ -298,6 +298,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** считать момент данных по тем строкам, которые ответ читает _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
 - **Never** давать двум осям одно имя и **Never** переиспользовать `asOf` для момента _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
 - **Never** переименовывать существующее поле контракта, чтобы снять двусмысленность _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** держать форму ответа под присмотром: изменение формы — самая вероятная причина _(from `2026-10-21-the-answer-that-does-not-parse-is-a-failure`)
+- **Always** называть в сообщении о сбое поле, которое не разобралось: это ответ на вопрос _(from `2026-10-21-the-answer-that-does-not-parse-is-a-failure`)
+- **Always** спрашивать, разобрался ли ответ, раньше, чем пуст ли он: пустой каталог и _(from `2026-10-21-the-answer-that-does-not-parse-is-a-failure`)
+- **Never** повторять сбой разбора внутри прогона: форма ответа не меняется между запросами. _(from `2026-10-21-the-answer-that-does-not-parse-is-a-failure`)
+- **Never** превращать неразобранный ответ в пустую страницу: пустая страница означает «конец _(from `2026-10-21-the-answer-that-does-not-parse-is-a-failure`)
+- **Never** считать пустое тело исчерпанным каталогом: это оборванный ответ. _(from `2026-10-21-the-answer-that-does-not-parse-is-a-failure`)
 - **Always** давать каждой новой части собственный тест — о её решении, а не о переносе _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
 - **Always** делить класс по решению, которое он держит, и давать каждой части имя _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
 - **Always** держать публичную поверхность неизменной при разбиении: фасад делегирует, _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
@@ -1070,6 +1076,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-21-one-decision-is-one-pull-request` — workflow  conventions
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — catalog  contract  observability
+- `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — crawler  diagnostics  catalog  pipeline
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — architecture  refactoring  maintainability
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — ci  workflow  contract
 - `2026-10-21-the-parse-failure-names-the-field` — crawler  diagnostics  catalog  api
@@ -1171,6 +1178,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-21-one-decision-is-one-pull-request` — Одно решение — один pull request, и он перебазирован на свежий main
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — Ответ говорит, кто ответил и о каком моменте данные
+- `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — Ответ, который не разобрался, — это сбой, а не конец каталога
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — Запросы каталога живут в решениях, которые они держат, а фасад держит поверхность
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — Кросс-репозиторная совместимость — это отчёт, а не блокирующий гейт
 - `2026-10-21-the-parse-failure-names-the-field` — Ошибка разбора называет поле, а не страницу
