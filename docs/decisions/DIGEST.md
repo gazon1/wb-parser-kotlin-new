@@ -302,6 +302,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** объявлять лимит WB rate-based по одному блоку: гейт протокола требует _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 - **Never** откатывать мульти-egress на основании одного замера: конструкция держится _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
 - **Never** покупать второй адрес, опираясь на блок 2026-10-20: гейт не пройден, а _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Always** отделять «нечего делать» от «сломалось» в любом исходе, который _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **MUST** держать тест на каждый исход планировщика: исходов шесть, и «ничего не _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **Never** глотать отмену в планировщике: `CancellationException` пробрасывается. _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **Never** отдавать планировщику конкретного исполнителя, если у исполнителя есть _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **Never** прятать исход прогона внутри класса, который его производит: производитель _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
 
 ## Per-tag
 
@@ -963,6 +968,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — architecture  database  concurrency  antibot
 - `2026-10-26-the-catalog-reads-from-a-replica` — architecture  database  operations  catalog
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — antibot  operations  infrastructure  measurement
+- `2026-10-28-the-scheduler-asks-the-crawl-one-question` — architecture  testing  scheduling
 
 ## Active entries
 
@@ -1046,3 +1052,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — Работа и бюджет живут там, где про них известно
 - `2026-10-26-the-catalog-reads-from-a-replica` — Каталог читает с реплики, краулер пишет в primary
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — Измерение не даёт оснований покупать второй адрес
+- `2026-10-28-the-scheduler-asks-the-crawl-one-question` — Планировщик спрашивает обход об одном и говорит, как он прошёл
