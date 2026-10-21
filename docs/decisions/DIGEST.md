@@ -356,6 +356,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **MUST** иметь тест, который доказывает: отказавшийся прогон не оставляет аренды на _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
 - **Never** брать аренду (или любое эксклюзивное право на работу) для того, что не _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
 - **Never** полагаться на `finally` для освобождения того, что взято ранним выходом: _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
+- **Always** говорить в лог о группе, чей адрес не удалось узнать: молчание и «всё _(from `2026-10-30-an-empty-observation-changes-nothing`)
+- **Always** отличать «неизвестно» от «изменилось», когда мир задаёт вопрос, на который _(from `2026-10-30-an-empty-observation-changes-nothing`)
+- **MUST** хранить время последнего настоящего наблюдения, чтобы устаревший ответ был _(from `2026-10-30-an-empty-observation-changes-nothing`)
+- **Never** записывать наблюдение, которого не было: неизвестный адрес не стирает _(from `2026-10-30-an-empty-observation-changes-nothing`)
+- **Never** позволять счётчику настоящих изменений расти на шум. _(from `2026-10-30-an-empty-observation-changes-nothing`)
 
 ## Per-tag
 
@@ -1027,6 +1032,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — antibot  operations  infrastructure  measurement
 - `2026-10-28-the-scheduler-asks-the-crawl-one-question` — architecture  testing  scheduling
 - `2026-10-29-the-address-is-asked-before-the-work-is-taken` — architecture  concurrency  antibot  database
+- `2026-10-30-an-empty-observation-changes-nothing` — infrastructure  antibot  operations  database
 
 ## Active entries
 
@@ -1120,3 +1126,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — Измерение не даёт оснований покупать второй адрес
 - `2026-10-28-the-scheduler-asks-the-crawl-one-question` — Планировщик спрашивает обход об одном и говорит, как он прошёл
 - `2026-10-29-the-address-is-asked-before-the-work-is-taken` — Адрес спрашивают раньше, чем берут работу
+- `2026-10-30-an-empty-observation-changes-nothing` — Пустое наблюдение не меняет строку леджера
