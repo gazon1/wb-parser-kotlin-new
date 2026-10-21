@@ -7,7 +7,8 @@ import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.ExitCodeGenerator
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
-import ru.wbparser.infra.runner.CrawlRunner
+import ru.wbparser.infra.runner.CrawlRun
+import ru.wbparser.infra.runner.RunResult
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -35,23 +36,23 @@ import kotlin.coroutines.cancellation.CancellationException
 @Component
 @Profile("once")
 class OneShotCrawl(
-    private val crawler: CrawlRunner,
+    private val crawler: CrawlRun,
 ) : ApplicationRunner,
     ExitCodeGenerator {
     private val log = LoggerFactory.getLogger(OneShotCrawl::class.java)
 
-    private var exitCode: Int = CrawlRunner.EXIT_CODE_FAILURE
+    private var exitCode: Int = RunResult.EXIT_CODE_FAILURE
 
     override fun run(args: ApplicationArguments) {
         // runBlocking bridges Spring's synchronous ApplicationRunner contract to the
-        // suspend CrawlRunner. This is a single one-shot call, so a dedicated coroutine
+        // suspend crawl. This is a single one-shot call, so a dedicated coroutine
         // runtime would be more machinery than the job needs.
         exitCode =
             try {
                 runBlocking { runOnce() }
             } catch (e: CancellationException) {
                 log.info("One-shot crawl cancelled: ${e.message}")
-                CrawlRunner.EXIT_CODE_CANCELLED
+                RunResult.EXIT_CODE_CANCELLED
             }
 
         log.info("One-shot crawl finished with exit code $exitCode")
@@ -60,20 +61,24 @@ class OneShotCrawl(
     private suspend fun runOnce(): Int {
         val result = crawler.run()
         return when (result) {
-            is CrawlRunner.RunResult.Success -> {
+            is RunResult.Success -> {
                 log.info("Crawl completed: {} pages, {} items", result.pagesCrawled, result.itemsSaved)
                 result.exitCode()
             }
-            is CrawlRunner.RunResult.Failure -> {
+            is RunResult.Failure -> {
                 log.error("Crawl failed: {}", result.message)
                 result.exitCode()
             }
-            is CrawlRunner.RunResult.AlreadyRunning -> {
+            is RunResult.AlreadyRunning -> {
                 log.warn("Crawl not started: {}", result.reason)
                 result.exitCode()
             }
-            is CrawlRunner.RunResult.NothingDue -> {
+            is RunResult.NothingDue -> {
                 log.warn("Crawl had nothing to do: no active target is due")
+                result.exitCode()
+            }
+            is RunResult.NoEgressAvailable -> {
+                log.warn("Crawl not started: no egress group can serve a request right now")
                 result.exitCode()
             }
         }

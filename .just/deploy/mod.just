@@ -18,6 +18,10 @@
 IMAGE_OWNER := env_var_or_default("IMAGE_OWNER", "gazon1")
 REGISTRY := "ghcr.io"
 IMAGE := REGISTRY + "/" + IMAGE_OWNER + "/wb-parser"
+# The browser runtime is a second image: the crawler cannot fetch a page without a
+# real browser, and the browser is what AdsPower provides. Both are built from the
+# same commit and deployed under the same tag — the deploy names the commit once.
+BROWSER_IMAGE := REGISTRY + "/" + IMAGE_OWNER + "/wb-parser-adspower"
 
 # Where the Ansible playbooks live. The deploy contract is deliberately split:
 # this repository owns the image and the compose file, Caddy-vps owns the host.
@@ -75,9 +79,13 @@ build:
 
     TAG="$(git rev-parse --short HEAD)"
     TARGET="{{ IMAGE }}:$TAG"
+    BROWSER_TARGET="{{ BROWSER_IMAGE }}:$TAG"
     echo "🐳 Building $TARGET…"
     docker build -f Dockerfile.app -t "$TARGET" .
     echo "✅ Built $TARGET"
+    echo "🐳 Building $BROWSER_TARGET…"
+    docker build -f docker.adspower/Dockerfile -t "$BROWSER_TARGET" docker.adspower
+    echo "✅ Built $BROWSER_TARGET"
 
 [group('deploy')]
 [doc('Push the current HEAD tag to GHCR (run manually or from CI)')]
@@ -90,10 +98,14 @@ push tag="":
       TAG="$(git rev-parse --short HEAD)"
     fi
     TARGET="{{ IMAGE }}:$TAG"
+    BROWSER_TARGET="{{ BROWSER_IMAGE }}:$TAG"
 
     echo "📤 Pushing $TARGET…"
     docker push "$TARGET"
     echo "✅ Pushed $TARGET"
+    echo "📤 Pushing $BROWSER_TARGET…"
+    docker push "$BROWSER_TARGET"
+    echo "✅ Pushed $BROWSER_TARGET"
 
 [group('deploy')]
 [doc('Dry-run Ansible with --check --diff')]

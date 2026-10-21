@@ -44,13 +44,23 @@ class EgressRouterCircuitTest :
                 .build()
 
         test("a group starts with a closed circuit") {
-            val router = EgressRouter(poolOf("ip-1" to listOf("p1")), config = EgressRouterConfig(circuitConfig = config()))
+            val router =
+                EgressRouter(
+                    poolOf("ip-1" to listOf("p1")),
+                    EgressPacerRegistry(groups = listOf("ip-1")),
+                    config = EgressRouterConfig(circuitConfig = config()),
+                )
 
             router.groupState("ip-1").circuitState shouldBe CircuitBreaker.State.CLOSED
         }
 
         test("refusals open the circuit of the group that was refused") {
-            val router = EgressRouter(poolOf("ip-1" to listOf("p1")), config = EgressRouterConfig(circuitConfig = config()))
+            val router =
+                EgressRouter(
+                    poolOf("ip-1" to listOf("p1")),
+                    EgressPacerRegistry(groups = listOf("ip-1")),
+                    config = EgressRouterConfig(circuitConfig = config()),
+                )
             val page = router.borrow()
 
             repeat(3) { router.onOutcome(page, DownloadOutcome.Antibot) }
@@ -62,6 +72,7 @@ class EgressRouterCircuitTest :
             val router =
                 EgressRouter(
                     poolOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
+                    EgressPacerRegistry(groups = listOf("ip-1", "ip-2")),
                     config = EgressRouterConfig(circuitConfig = config()),
                 )
             val page = router.borrow()
@@ -75,6 +86,7 @@ class EgressRouterCircuitTest :
             val router =
                 EgressRouter(
                     poolOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
+                    EgressPacerRegistry(groups = listOf("ip-1", "ip-2")),
                     config = EgressRouterConfig(circuitConfig = config(), maxOpenWaitMs = 1_000L),
                 )
             val first = router.borrow()
@@ -89,7 +101,12 @@ class EgressRouterCircuitTest :
         }
 
         test("successes keep the circuit closed") {
-            val router = EgressRouter(poolOf("ip-1" to listOf("p1")), config = EgressRouterConfig(circuitConfig = config()))
+            val router =
+                EgressRouter(
+                    poolOf("ip-1" to listOf("p1")),
+                    EgressPacerRegistry(groups = listOf("ip-1")),
+                    config = EgressRouterConfig(circuitConfig = config()),
+                )
             val page = router.borrow()
 
             repeat(5) { router.onOutcome(page, DownloadOutcome.Success) }

@@ -10,9 +10,9 @@ import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.BrowserDownloader
 import ru.wbparser.infra.http.BrowserFetchTiming
 import ru.wbparser.infra.http.BrowserPool
+import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressRouter
 import ru.wbparser.infra.http.KtorDownloader
-import ru.wbparser.infra.http.RequestPacing
 import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.runner.CrawlRunner
 import ru.wbparser.infra.runner.CrawlRunnerConfig
@@ -54,18 +54,51 @@ class CrawlerConfig {
         // CDP-over-WebSocket connection is accepted.
         return BrowserPool(
             profiles = groups.profiles,
-            // The jitter belongs to the pacing: it is the one place that decides when the
-            // next request may go out. The browser used to add a second, hidden delay.
-            pacing =
-                RequestPacing(
-                    minIntervalMs = properties.spider.browserMinRequestIntervalMs,
-                    jitterMinMs = properties.spider.browserJitterMinMs,
-                    jitterMaxMs = properties.spider.browserJitterMaxMs,
-                ),
-            // A group that names its own pacing overrides the default above.
-            groupPacings = groups.groups.associate { it.id to it.pacing },
+            // The budget of a group is not the pool's business: it belongs to the
+            // pacer registry, and every group already carries its own resolved
+            // pacing — its own, or the deployment's default.
         )
     }
+
+    /**
+     * The key the crawl's advisory lock is taken under.
+     *
+     * The deployment-wide key makes the lock cover the whole database: one crawl at a
+     * time. A host that shares its work with other hosts takes a key of its own, so
+     * that the hosts work together instead of taking turns — the targets are divided
+     * by the lease, and the lock only keeps one host from doing the same work twice.
+     *
+     * The host's identity is its name: a machine that is renamed is a machine that
+     * takes a different lock, and the lease is what protects the targets meanwhile.
+     */
+    private fun lockKeyOf(scope: String): Long {
+        if (!scope.equals("host", ignoreCase = true)) {
+            return ru.wbparser.infra.advisory.DEPLOYMENT_LOCK_KEY
+        }
+        val hostName =
+            runCatching {
+                java.net.InetAddress
+                    .getLocalHost()
+                    .hostName
+            }.getOrDefault("unknown-host")
+        // A different key per host, from the same key: the two never collide, and the
+        // key stays recognisable in pg_locks.
+        return ru.wbparser.infra.advisory.DEPLOYMENT_LOCK_KEY xor (hostName.hashCode().toLong() and 0xFFFFL)
+    }
+
+    /**
+     * The request budget of each egress group.
+     *
+     * The budget belongs to the group, not to the pool: a group that shares one egress
+     * IP shares one rate, and the rate is what WB counts. See [EgressPacerRegistry] and
+     * `docs/decisions/2026-10-21-egress-groups-are-the-unit-of-rate-limiting.md`.
+     */
+    @Bean
+    fun egressPacerRegistry(groups: EgressGroups.Resolved): EgressPacerRegistry =
+        EgressPacerRegistry(
+            groups = groups.groups.map { it.id },
+            pacings = groups.groups.associate { it.id to it.pacing },
+        )
 
     /**
      * Decides which egress group serves the next request.
@@ -73,8 +106,9 @@ class CrawlerConfig {
     @Bean
     fun egressRouter(
         pool: BrowserPool,
+        pacers: EgressPacerRegistry,
         meterRegistry: MeterRegistry,
-    ): EgressRouter = EgressRouter(pool = pool, meterRegistry = meterRegistry)
+    ): EgressRouter = EgressRouter(pool = pool, pacers = pacers, meterRegistry = meterRegistry)
 
     @Bean
     fun browserDownloader(
@@ -152,6 +186,11 @@ class CrawlerConfig {
                     rules = properties.spider.rules.toBusinessRules(),
                     clock = clock,
                     concurrency = properties.spider.concurrency,
+                    // The lock's scope: the whole database, or this host. Several hosts
+                    // that share the work take a key of their own, and the targets are
+                    // divided by the lease instead.
+                    lockKey = lockKeyOf(properties.lock.scope),
+                    leaseDuration = java.time.Duration.ofMinutes(properties.lock.leaseMinutes),
                     // Derived from the profiles that exist, unless the operator says otherwise.
                     targetConcurrency =
                         properties.spider.targetConcurrency.takeIf { it > 0 } ?: deps.groups.targetConcurrency,

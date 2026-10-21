@@ -7,14 +7,6 @@ plugins {
     id("org.jetbrains.kotlinx.kover")
 }
 
-kotlin {
-    // The JDK version is set once, in the root build's `subprojects { }` block.
-    compilerOptions {
-        allWarningsAsErrors.set(true)
-        freeCompilerArgs.add("-Xjsr305=strict")
-    }
-}
-
 // ==============================================================================
 // The module boundary
 // ==============================================================================

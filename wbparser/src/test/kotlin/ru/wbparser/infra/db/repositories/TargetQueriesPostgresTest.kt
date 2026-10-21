@@ -189,4 +189,47 @@ class TargetQueriesPostgresTest :
             target.wbSearchQuery shouldBe "menu_v3_9467 карты памяти"
             target.knownPagesLimit shouldBe 5
         }
+
+        test("the measurement metadata of the limit travels with the target") {
+            // The limit is a number about a catalog; the metadata is the evidence behind
+            // it — when it was measured, where the pagination ended, where the number
+            // came from, and which WB subject the catalog's products carry. A target
+            // whose limit nobody checked has to say so: null, not a date nobody observed.
+            val measuredAt = OffsetDateTime.parse("2026-10-20T13:34:31Z")
+            transaction {
+                CrawlTargetsTable.insert {
+                    it[CrawlTargetsTable.id] = UUID.randomUUID()
+                    it[CrawlTargetsTable.name] = "Карты памяти"
+                    it[CrawlTargetsTable.startUrl] = "https://example.invalid/Карты памяти"
+                    it[CrawlTargetsTable.isActive] = true
+                    it[CrawlTargetsTable.knownPagesLimit] = 60
+                    it[CrawlTargetsTable.knownPagesLimitMeasuredAt] = measuredAt
+                    it[CrawlTargetsTable.knownPagesLimitBoundary] = "api_cap"
+                    it[CrawlTargetsTable.knownPagesLimitSource] = "measurement"
+                    it[CrawlTargetsTable.wbSubjectId] = 1260L
+                    it[CrawlTargetsTable.createdAt] = OffsetDateTime.now(ZoneOffset.UTC)
+                    it[CrawlTargetsTable.updatedAt] = OffsetDateTime.now(ZoneOffset.UTC)
+                }
+            }
+
+            val target = database.dataSource.fetchActiveTargets().single()
+
+            target.knownPagesLimit shouldBe 60
+            target.knownPagesLimitMeasuredAt shouldBe measuredAt.toInstant()
+            target.knownPagesLimitBoundary shouldBe "api_cap"
+            target.knownPagesLimitSource shouldBe "measurement"
+            target.wbSubjectId shouldBe 1260L
+        }
+
+        test("a target that was never measured carries no measurement metadata") {
+            seedTarget("Без измерения")
+
+            val target = database.dataSource.fetchActiveTargets().single()
+
+            target.knownPagesLimit shouldBe null
+            target.knownPagesLimitMeasuredAt shouldBe null
+            target.knownPagesLimitBoundary shouldBe null
+            target.knownPagesLimitSource shouldBe null
+            target.wbSubjectId shouldBe null
+        }
     })

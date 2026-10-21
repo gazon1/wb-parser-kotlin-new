@@ -1,18 +1,12 @@
 package ru.wbparser.app.scheduling
 
-import kotlinx.coroutines.runBlocking
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.stereotype.Component
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.EgressGroups
-import ru.wbparser.infra.db.DatabaseHandle
-import ru.wbparser.infra.db.repositories.fetchEgressGroups
-import ru.wbparser.infra.db.repositories.upsertEgressGroup
 import ru.wbparser.infra.http.AdsPowerPreflight
-import ru.wbparser.infra.http.EgressProbe
-import ru.wbparser.infra.http.EgressProbeConfig
 import ru.wbparser.infra.http.ProfileHealth
 
 /**
@@ -40,7 +34,7 @@ class AdsPowerPreflightRunner(
     private val browserPool: ru.wbparser.infra.http.BrowserPool,
     private val properties: ru.wbparser.app.config.CrawlProperties,
     private val groups: EgressGroups.Resolved,
-    private val database: DatabaseHandle,
+    private val probeService: EgressProbeService,
 ) : ApplicationRunner {
     private val log = LoggerFactory.getLogger(AdsPowerPreflightRunner::class.java)
 
@@ -90,56 +84,14 @@ class AdsPowerPreflightRunner(
 
     /**
      * Asks the network what address each group is seen at.
+     *
+     * The same service runs on a schedule: this call is the one that can refuse to
+     * start the crawler, and the scheduled one is the one that notices that the
+     * world changed while the crawler was running.
      */
     private fun probeEgressGroups() {
         val spider = properties.spider
-        val probe =
-            EgressProbe(
-                pool = browserPool,
-                groups = groups.groups,
-                config =
-                    EgressProbeConfig(
-                        echoUrls = spider.egressProbeUrls,
-                        timeoutMs = spider.egressProbeTimeoutMs,
-                    ),
-            )
-        val report =
-            runCatching {
-                runBlocking {
-                    val previous = runCatching { database.ds.fetchEgressGroups() }.getOrDefault(emptyList())
-                    probe.probe(previous)
-                }
-            }.getOrElse {
-                log.warn("The egress probe could not run: {}", it.message)
-                return
-            }
-
-        for (problem in report.problems) {
-            log.warn("Egress probe: {}", problem)
-        }
-        for (group in report.groups) {
-            log.info(
-                "Egress group {}: address={}, isolated={}, proxy={}",
-                group.groupId,
-                group.egressIp ?: "unknown",
-                group.isolated,
-                group.proxyIdentity ?: "unknown",
-            )
-            if (group.ipChanged) {
-                log.warn(
-                    "Egress group {} changed address — the cookies of its profiles are bound " +
-                        "to the old one, and the new address has its own budget.",
-                    group.groupId,
-                )
-            }
-            runCatching {
-                database.ds.upsertEgressGroup(
-                    groupId = group.groupId,
-                    egressIp = group.egressIp,
-                    isolated = group.isolated,
-                )
-            }.onFailure { log.warn("Could not record the egress group {}: {}", group.groupId, it.message) }
-        }
+        val report = probeService.probeAndRecord() ?: return
 
         val strict = spider.requireIsolatedEgressGroups
 

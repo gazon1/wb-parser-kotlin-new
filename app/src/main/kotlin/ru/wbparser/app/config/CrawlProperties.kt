@@ -24,28 +24,48 @@ data class Schedule(
      *
      * This is a **tick**, not a cadence: it decides how often the crawler checks which
      * targets are due. The cadence itself is [freshnessMinutes] — how long a target
-     * rests after it was crawled. With the defaults the crawler looks every four hours
-     * and re-crawls a target every four hours, which is the same thing; but a tick of
-     * 30 seconds next to a 4-hour freshness window means 480 empty ticks per crawl,
+     * rests after it was crawled. The tick is deliberately shorter than a round: a
+     * tick that finds work starts a round and holds the advisory lock for as long as
+     * that round runs, and the ticks in between are no-ops. A tick of 30 seconds next
+     * to a multi-hour freshness window would mean hundreds of empty ticks per crawl,
      * which is how the schedule became confusing in the first place.
      */
-    val cron: String = "0 0 */4 * * *",
+    val cron: String = "0 0 */2 * * *",
     /**
      * How many minutes a target rests after it was crawled.
      *
-     * The single knob for the crawl cadence. Defaults to four hours.
+     * The single knob for the crawl cadence. It has to be longer than a round over
+     * all the targets — a window shorter than that asks for a second visit before
+     * the first one finished, and the window stops meaning anything.
      */
-    val freshnessMinutes: Long = 240L,
+    val freshnessMinutes: Long = 360L,
 )
 
 data class Lock(
     /** Advisory lock acquisition timeout, in minutes. 0 means no timeout (wait forever). */
     val timeoutMinutes: Long = 10,
+    /**
+     * What the lock's scope is: `database` or `host`.
+     *
+     * `database` means one crawl at a time in the whole database — the crawler is
+     * alone, and a second instance waits. `host` means one crawl at a time on this
+     * host: several hosts may crawl at the same time, and they divide the work by
+     * leasing the targets. The work is divided either way; what changes is whether
+     * the hosts take turns or work together.
+     */
+    val scope: String = "database",
+    /**
+     * How long a target's lease holds, in minutes.
+     *
+     * It has to outlive the crawl of the target and expire on its own: a host that
+     * dies must not hold its targets until somebody notices.
+     */
+    val leaseMinutes: Long = 120,
 )
 
 data class Spider(
     val maxDepth: Int = 2,
-    val maxPagesPerCatalog: Int = 10,
+    val maxPagesPerCatalog: Int = 60,
     val concurrency: Int = 3,
     val useBrowserForAuth: Boolean = true,
     val useBrowserFetch: Boolean = false,
@@ -75,6 +95,14 @@ data class Spider(
      * How long one probe service may take before the next one is tried.
      */
     val egressProbeTimeoutMs: Long = 5_000L,
+    /**
+     * How often the crawler asks the network which address it leaves from.
+     *
+     * The address belongs to the world outside the process: a proxy may rotate it,
+     * lose it, or be replaced while the crawler runs. A probe that only ran at
+     * startup would keep pacing an address that no longer exists.
+     */
+    val egressProbeIntervalMs: Long = 900_000L,
     /**
      * How long a profile that answered with an anti-bot status rests before it is used again.
      */

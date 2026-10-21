@@ -23,6 +23,20 @@ request называется по группе, а не по бампам, и в
     unknown — в теле нет ни одной разбираемой пары версий
 
 Код возврата 0 только для `patch` и `minor`: всё остальное — «не сливать».
+
+Версия, которой нет на Maven Central
+-----------------------------------
+Есть версии, которых не существует: `jackson-annotations` публикует строку
+`2.22`, а `jackson-databind` — только `2.22.0`…`2.22.4`, и версии `2.22` у
+него нет. Если один ключ версии держал оба артефакта, предложение «2.22» было
+действительно для одного из них — и недействительно для другого, и сборка
+падала на релизе, которого никто не публиковал.
+
+Скрипт не ходит в сеть и не может узнать, опубликован ли релиз. Но он может
+заметить, что предложение *точнее* не стало, а наоборот — стало грубее:
+`2.19.1 → 2.22` — это не релиз «2.22.0», а линия версий, и что именно она
+означает, скрипт не знает. Решение «не знаю» и решение «не опасно» — не одно
+и то же, поэтому такой бамп не сливается автоматически.
 """
 
 from __future__ import annotations
@@ -70,11 +84,48 @@ def _numbers(version: str) -> tuple[int, int, int] | None:
     return int(major), int(minor or 0), int(patch or 0)
 
 
+def _components(version: str) -> int:
+    """Сколько чисел в версии: 3 — `2.22.4`, 2 — `2.22`, 1 — `2`.
+
+    Ноль — если это не версия вовсе. Число компонентов — это точность имени:
+    `2.22` — линия версий, `2.22.4` — конкретный релиз.
+    """
+    match = VERSION.match(version.strip())
+    if not match:
+        return 0
+    major, minor, patch = match.groups()
+    if patch is not None:
+        return 3
+    if minor is not None:
+        return 2
+    return 1
+
+
+def _looks_like_a_version(text: str) -> bool:
+    """Есть ли в строке цифры — признак того, что это версия, а не слово.
+
+    Тело pull request'а — это не только список обновлений: там есть таблицы,
+    примечания к выпускам и проза, и в ней встречаются слова «from» и «to»
+    без всяких версий. Такие пары не являются бампом и не должны решать его.
+
+    А вот `22-jre → 24-jre` — версия, которую этот скрипт разобрать не может.
+    Она обязана остановить автослияние: решение «не знаю» и решение «не
+    опасно» — не одно и то же.
+    """
+    return any(char.isdigit() for char in text)
+
+
 def bump_of(old: str, new: str) -> str:
     """Бамп между двумя версиями: major, minor, patch или mixed."""
     before = _numbers(old)
     after = _numbers(new)
     if before is None or after is None:
+        return MIXED
+    if _components(new) < _components(old):
+        # Предложение точнее не стало, а стало грубее: `2.19.1 → 2.22` — это
+        # линия версий, а не релиз, и какой релиз за ней стоит, скрипт не
+        # знает. Он знает только, что такого релиза может и не быть вовсе —
+        # а решение «не знаю» и решение «не опасно» — не одно и то же.
         return MIXED
     if after[0] != before[0]:
         return MAJOR
@@ -99,7 +150,17 @@ def classify(text: str) -> str:
     found = pairs(text)
     if not found:
         return UNKNOWN
-    bumps = {bump_of(old, new) for old, new in found}
+
+    bumps: set[str] = set()
+    for old, new in found:
+        if not _looks_like_a_version(old) and not _looks_like_a_version(new):
+            # Проза, а не обновление: в теле pull request'а полно таблиц и
+            # примечаний, и в них «from» и «to» встречаются без версий.
+            continue
+        bumps.add(bump_of(old, new))
+
+    if not bumps:
+        return UNKNOWN
     if MAJOR in bumps:
         return MAJOR
     if MIXED in bumps or UNKNOWN in bumps:

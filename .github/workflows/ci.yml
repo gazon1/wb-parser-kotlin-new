@@ -413,6 +413,39 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # The browser runtime is a second image, not a part of the crawler image.
+      #
+      # The crawler cannot fetch a Wildberries page without a real browser, and the
+      # browser is an AdsPower runtime: a virtual display, the AdsPower CLI and the
+      # Chrome kernel it downloads. Keeping it out of the crawler image means the
+      # crawler image stays small, and it means the browser can be replaced
+      # (a new kernel, a new CLI) without rebuilding the application.
+      #
+      # The tags are the same as the crawler's: both images are built from the same
+      # commit, and the deploy names that commit once.
+      - name: Extract browser metadata (tags + labels)
+        id: meta-browser
+        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/wb-parser-adspower
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=,format=short
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push the browser runtime
+        id: build-browser
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: docker.adspower
+          file: docker.adspower/Dockerfile
+          push: true
+          tags: ${{ steps.meta-browser.outputs.tags }}
+          labels: ${{ steps.meta-browser.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Summary
         if: always()
         run: |
@@ -421,6 +454,11 @@ jobs:
             echo ""
             echo "- Tags: \`${{ steps.meta.outputs.tags }}\`"
             echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
+            echo ""
+            echo "### Browser runtime image"
+            echo ""
+            echo "- Tags: \`${{ steps.meta-browser.outputs.tags }}\`"
+            echo "- Digest: \`${{ steps.build-browser.outputs.digest }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Nobody reads a red cron run.

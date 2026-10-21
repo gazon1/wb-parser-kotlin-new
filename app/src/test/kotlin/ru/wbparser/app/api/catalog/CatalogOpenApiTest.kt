@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.SerializationFeature
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import ru.wbparser.app.security.CatalogApiKeyFilter
@@ -151,6 +152,49 @@ class CatalogOpenApiTest :
             }
         }
 
+        test("the inline schema of /targets agrees with the Kotlin response") {
+            // Список целей — единственный ответ, схема которого написана прямо в
+            // документе, поэтому обход `components.schemas` её не видит. Он проверяется
+            // здесь: ответ, у которого контракт и класс данных расходятся, витрина
+            // отвергает.
+            val schema = responseSchemaOf("/targets", "get")
+            val properties = schema["properties"] as Map<String, Any?>
+            val kotlinProperties = TargetsResponse::class.memberProperties.associateBy { it.name }
+
+            properties.keys shouldBe kotlinProperties.keys
+
+            val requiredInKotlin =
+                TargetsResponse::class
+                    .memberProperties
+                    .filterNot { it.returnType.isMarkedNullable }
+                    .map { it.name }
+                    .toSet()
+            (schema["required"] as List<*>).toSet() shouldBe requiredInKotlin
+
+            properties.forEach { (propertyName, propertySchema) ->
+                val property = kotlinProperties.getValue(propertyName)
+                val nullableInKotlin = property.returnType.isMarkedNullable
+                val declared = openApiTypes(propertySchema as Map<String, Any?>)
+                declared.contains("null") shouldBe nullableInKotlin
+                if (!nullableInKotlin) {
+                    declared shouldBe setOf(shapeOf(property.returnType).type)
+                }
+            }
+        }
+
+        test("every answer that carries data names the instance and the moment of the data") {
+            // Два поля — это оси самого ответа: кто ответил и о каком моменте данные.
+            // Ответ, который несёт данные и молчит о них, витрина не может ни датировать,
+            // ни приписать.
+            val schemaNames = listOf("PagedProductCard", "SiteStats", "ProductDetail")
+            schemaNames.forEach { name ->
+                val properties = resolveSchema(CatalogContract.schemas.getValue(name)).properties
+                properties.keys shouldContainAll listOf("instanceId", "dataAsOf")
+            }
+            val targets = responseSchemaOf("/targets", "get")
+            (targets["properties"] as Map<String, Any?>).keys shouldContainAll listOf("instanceId", "dataAsOf")
+        }
+
         test("the sort order of the contract is the sort order of the code") {
             val sortParameter =
                 parametersOf("/items", "get")
@@ -283,6 +327,26 @@ private fun parametersOf(
     return (operation["parameters"] as? List<*>).orEmpty().map { it as Map<String, Any?> }
 }
 
+/**
+ * The schema of an operation's `200` response body.
+ *
+ * Схемы из `components` сравнивает обход выше; ответ, схема которого написана прямо в
+ * документе (список целей — единственный такой), берётся отсюда.
+ */
+private fun responseSchemaOf(
+    path: String,
+    method: String,
+): Map<String, Any?> {
+    val paths = CatalogContract.parsed["paths"] as Map<String, Any?>
+    val item = paths[path] as Map<String, Any?>
+    val operation = item[method] as Map<String, Any?>
+    val responses = operation["responses"] as Map<String, Any?>
+    val ok = responses["200"] as Map<String, Any?>
+    val content = ok["content"] as Map<String, Any?>
+    val json = content["application/json"] as Map<String, Any?>
+    return json["schema"] as Map<String, Any?>
+}
+
 // ── The Kotlin side ───────────────────────────────────────────────────────────
 
 // The formats a Kotlin type determines on its own.
@@ -348,6 +412,7 @@ private val mapper: ObjectMapper =
         .build()
 
 private const val SAMPLE_UUID = "6f1c3f4e-2b5a-4c7d-8e9f-0a1b2c3d4e5f"
+private const val SAMPLE_INSTANCE = "b2d4f6a8-1c3e-4f5a-9b7c-0d1e2f3a4b5c"
 private const val SAMPLE_INSTANT = "2026-01-02T03:04:05Z"
 
 /**
@@ -422,6 +487,8 @@ private fun samplesFor(name: String): List<Any> {
                     productUrl = card.productUrl,
                     scrapedAt = card.scrapedAt,
                     history = listOf(point),
+                    instanceId = SAMPLE_INSTANCE,
+                    dataAsOf = Instant.parse(SAMPLE_INSTANT),
                 ),
                 ProductDetail(
                     id = card.id,
@@ -439,6 +506,8 @@ private fun samplesFor(name: String): List<Any> {
                     productUrl = card.productUrl,
                     scrapedAt = card.scrapedAt,
                     history = listOf(emptyPoint),
+                    instanceId = SAMPLE_INSTANCE,
+                    dataAsOf = null,
                 ),
             )
         "PricePoint" -> listOf(point, emptyPoint)
@@ -453,6 +522,8 @@ private fun samplesFor(name: String): List<Any> {
                     totalPages = 1,
                     hasNextPage = false,
                     hasPrevPage = false,
+                    instanceId = SAMPLE_INSTANCE,
+                    dataAsOf = Instant.parse(SAMPLE_INSTANT),
                 ),
                 Paged(
                     items = listOf(emptyCard),
@@ -462,6 +533,8 @@ private fun samplesFor(name: String): List<Any> {
                     totalPages = 0,
                     hasNextPage = false,
                     hasPrevPage = false,
+                    instanceId = SAMPLE_INSTANCE,
+                    dataAsOf = null,
                 ),
             )
         "SiteStats" ->
@@ -474,6 +547,8 @@ private fun samplesFor(name: String): List<Any> {
                     withCashback = 2,
                     productsWithCashback = 1,
                     asOf = Instant.parse(SAMPLE_INSTANT),
+                    instanceId = SAMPLE_INSTANCE,
+                    dataAsOf = Instant.parse(SAMPLE_INSTANT),
                 ),
                 SiteStats(
                     totalItems = 0,
@@ -483,6 +558,8 @@ private fun samplesFor(name: String): List<Any> {
                     withCashback = 0,
                     productsWithCashback = 0,
                     asOf = Instant.parse(SAMPLE_INSTANT),
+                    instanceId = SAMPLE_INSTANCE,
+                    dataAsOf = null,
                 ),
             )
         "Error" -> listOf(ErrorResponse("something went wrong"), ErrorResponse("something went wrong"))

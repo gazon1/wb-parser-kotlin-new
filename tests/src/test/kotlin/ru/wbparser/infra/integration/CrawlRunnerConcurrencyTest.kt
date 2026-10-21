@@ -18,6 +18,7 @@ import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.runner.CrawlRunner
 import ru.wbparser.infra.runner.CrawlRunnerConfig
 import ru.wbparser.infra.runner.CrawlSource
+import ru.wbparser.infra.runner.RunResult
 import ru.wbparser.testing.PostgresFixture
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -124,7 +125,7 @@ class CrawlRunnerConcurrencyTest :
 
                 val result = runner.run()
 
-                (result is CrawlRunner.RunResult.Success) shouldBe true
+                (result is RunResult.Success) shouldBe true
                 // Greater than 1: otherwise the assertion below would pass on a runner that
                 // silently ignored targetConcurrency and ran everything one at a time.
                 probe.peakConcurrency() shouldBeGreaterThan 1
@@ -230,7 +231,7 @@ class CrawlRunnerConcurrencyTest :
 
                 val result = runner.run()
 
-                (result is CrawlRunner.RunResult.Success) shouldBe true
+                (result is RunResult.Success) shouldBe true
                 probe.downloadCount() shouldBe 2
             }
         }
