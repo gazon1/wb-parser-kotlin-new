@@ -352,6 +352,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** глотать отмену в планировщике: `CancellationException` пробрасывается. _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
 - **Never** отдавать планировщику конкретного исполнителя, если у исполнителя есть _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
 - **Never** прятать исход прогона внутри класса, который его производит: производитель _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **Always** спрашивать то, что не зависит от работы, **до** того, как работа взята. _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
+- **MUST** иметь тест, который доказывает: отказавшийся прогон не оставляет аренды на _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
+- **Never** брать аренду (или любое эксклюзивное право на работу) для того, что не _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
+- **Never** полагаться на `finally` для освобождения того, что взято ранним выходом: _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
 
 ## Per-tag
 
@@ -1022,6 +1026,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-26-the-catalog-reads-from-a-replica` — architecture  database  operations  catalog
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — antibot  operations  infrastructure  measurement
 - `2026-10-28-the-scheduler-asks-the-crawl-one-question` — architecture  testing  scheduling
+- `2026-10-29-the-address-is-asked-before-the-work-is-taken` — architecture  concurrency  antibot  database
 
 ## Active entries
 
@@ -1114,3 +1119,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-26-the-catalog-reads-from-a-replica` — Каталог читает с реплики, краулер пишет в primary
 - `2026-10-27-the-measurement-does-not-authorize-a-second-address` — Измерение не даёт оснований покупать второй адрес
 - `2026-10-28-the-scheduler-asks-the-crawl-one-question` — Планировщик спрашивает обход об одном и говорит, как он прошёл
+- `2026-10-29-the-address-is-asked-before-the-work-is-taken` — Адрес спрашивают раньше, чем берут работу
