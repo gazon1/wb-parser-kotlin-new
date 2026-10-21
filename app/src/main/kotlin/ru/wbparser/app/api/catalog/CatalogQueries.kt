@@ -81,7 +81,10 @@ class CatalogQueries(
                         }
                     }
             }
-        return paged(rows, totalCount, params.page, params.pageSize)
+        // Момент, о котором данные страницы: самое свежее наблюдение среди товаров,
+        // которые вернула страница. Это не момент чтения страницы — список читается
+        // напрямую, и момент данных — единственный момент, который у него есть.
+        return paged(rows, totalCount, params.page, params.pageSize, rows.maxOfOrNull { it.scrapedAt })
     }
 
     /**
@@ -197,6 +200,12 @@ class CatalogQueries(
                 productUrl = card.productUrl,
                 scrapedAt = card.scrapedAt,
                 history = history,
+                // Отвечает тот же инстанс, который читает: та же константа, которую
+                // публикует проверка готовности.
+                instanceId = CatalogReadiness.INSTANCE_ID,
+                // Момент, о котором данные ответа: самое свежее наблюдение, которое ответ
+                // несёт, — своя строка или самая свежая строка истории.
+                dataAsOf = history.firstOrNull()?.scrapedAt?.coerceAtLeast(card.scrapedAt) ?: card.scrapedAt,
             )
         }
 
@@ -282,7 +291,10 @@ class CatalogQueries(
                         }
                     }
             }
-        return paged(rows, totalCount, params.page, params.pageSize)
+        // Момент, о котором данные страницы: самое свежее наблюдение среди товаров,
+        // которые вернула страница. Это не момент чтения страницы — список читается
+        // напрямую, и момент данных — единственный момент, который у него есть.
+        return paged(rows, totalCount, params.page, params.pageSize, rows.maxOfOrNull { it.scrapedAt })
     }
 
     /**
@@ -291,6 +303,11 @@ class CatalogQueries(
      * The counters come in two pairs, because the crawler stores price *observations* and
      * the storefront shows *products*: `totalItems` and `withCashback` count the
      * observations, `totalProducts` and `productsWithCashback` count the products.
+     *
+     * Запрос называет два момента намеренно, потому что это две разные оси:
+     * `newest_scraped_at` — счётчик о данных, а `data_as_of` — момент, о котором данные
+     * ответа. Для этого агрегата они совпадают (самое свежее наблюдение — оно же самое
+     * свежее в модели), но названы по-разному: счётчик и ось ответа — разные вещи.
      */
     fun siteStats(): SiteStats =
         dataSource.read { connection ->
@@ -303,6 +320,7 @@ class CatalogQueries(
                     SELECT (SELECT COUNT(*) FROM scraped_items)                    AS total_items,
                            (SELECT COUNT(*) FROM crawl_targets)                   AS total_targets,
                            (SELECT MAX(scraped_at) FROM scraped_items)           AS newest_scraped_at,
+                           (SELECT MAX(scraped_at) FROM i)                       AS data_as_of,
                            (SELECT COUNT(*) FROM scraped_items WHERE cashback_percent IS NOT NULL) AS with_cashback,
                            (SELECT COUNT(*) FROM i)                              AS total_products,
                            (SELECT COUNT(*) FROM i WHERE cashback_percent IS NOT NULL) AS products_with_cashback
@@ -318,6 +336,10 @@ class CatalogQueries(
                             withCashback = resultSet.getInt("with_cashback"),
                             productsWithCashback = resultSet.getInt("products_with_cashback"),
                             asOf = Instant.now(),
+                            // Отвечает тот же инстанс, который читает: та же константа,
+                            // которую публикует проверка готовности.
+                            instanceId = CatalogReadiness.INSTANCE_ID,
+                            dataAsOf = resultSet.getInstant("data_as_of"),
                         )
                     }
                 }
@@ -596,12 +618,17 @@ private fun buildFilters(params: CatalogQueryParams): Filters {
  *
  * `hasPrevPage` follows the storefront's rule: there is no previous page of an empty
  * result set, however high the page index is.
+ *
+ * [dataAsOf] — момент, о котором возвращённые строки: самое свежее наблюдение среди
+ * них. Он передаётся, а не считается здесь: конверт обобщённый, а момент принадлежит
+ * строкам, которые умеет читать вызывающий.
  */
 private fun <T> paged(
     items: List<T>,
     totalCount: Int,
     page: Int,
     pageSize: Int,
+    dataAsOf: Instant?,
 ): Paged<T> {
     val totalPages = Math.ceil(totalCount.toDouble() / pageSize).toInt()
     return Paged(
@@ -612,6 +639,10 @@ private fun <T> paged(
         totalPages = totalPages,
         hasNextPage = page + 1 < totalPages,
         hasPrevPage = page > 0 && totalCount > 0,
+        // Отвечает тот же инстанс, который читает: та же константа, которую публикует
+        // проверка готовности, — разойтись они не могут.
+        instanceId = CatalogReadiness.INSTANCE_ID,
+        dataAsOf = dataAsOf,
     )
 }
 

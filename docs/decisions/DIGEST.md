@@ -292,6 +292,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** перебазировать ветку на свежий `main` перед открытием pull _(from `2026-10-21-one-decision-is-one-pull-request`)
 - **Never** держать в одной ветке больше ~5 коммитов или ~20 файлов: за _(from `2026-10-21-one-decision-is-one-pull-request`)
 - **Never** разрешать конфликт в чужой ветке, не перечитав решение, которое _(from `2026-10-21-one-decision-is-one-pull-request`)
+- **Always** брать идентификатор инстанса из одной константы _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** называть момент по тому, что он измеряет: `dataAsOf` — момент данных, _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** описывать ось поля там, где имя её не выражает, — в контракте и в ADR. _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** считать момент данных по тем строкам, которые ответ читает _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Never** давать двум осям одно имя и **Never** переиспользовать `asOf` для момента _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Never** переименовывать существующее поле контракта, чтобы снять двусмысленность _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
 - **Always** называть лицензию в `README.md` и держать текст `LICENSE` _(from `2026-10-21-the-repository-is-licensed`)
 - **Always** проверять лицензию новой зависимости до того, как она попадает _(from `2026-10-21-the-repository-is-licensed`)
 - **Never** менять лицензию репозитория молча: смена лицензии — это _(from `2026-10-21-the-repository-is-licensed`)
@@ -1000,6 +1006,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — dependencies  build  workflow
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-21-one-decision-is-one-pull-request` — workflow  conventions
+- `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — catalog  contract  observability
 - `2026-10-21-the-repository-is-licensed` — legal  project  governance
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
@@ -1090,6 +1097,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-a-version-nobody-published-is-not-a-version` — Версия, которой никто не публиковал, — это не версия
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-21-one-decision-is-one-pull-request` — Одно решение — один pull request, и он перебазирован на свежий main
+- `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — Ответ говорит, кто ответил и о каком моменте данные
 - `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след

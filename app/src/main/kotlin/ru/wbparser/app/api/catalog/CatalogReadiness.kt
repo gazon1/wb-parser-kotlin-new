@@ -76,6 +76,10 @@ class CatalogReadiness(
         // process, so a second instance would answer with different numbers and a
         // doubled limit — and nothing else would say so. The id does not prevent a
         // second instance; it makes one visible.
+        //
+        // Тот же id едет с каждым ответом, который несёт данные (`instanceId` в
+        // ответах), поэтому клиент различает два инстанса, не спрашивая готовность
+        // отдельно.
         checks["instance"] = INSTANCE_ID
 
         // Where the numbers come from. The catalog may read a replica, and a replica
