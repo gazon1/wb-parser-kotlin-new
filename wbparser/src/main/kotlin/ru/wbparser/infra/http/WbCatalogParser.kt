@@ -3,10 +3,7 @@ package ru.wbparser.infra.http
 import arrow.core.Either
 import arrow.core.left
 import arrow.core.right
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonDecodingException
 import kotlinx.serialization.json.JsonObject
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.error.ParseError
@@ -15,6 +12,7 @@ import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.parsing.WbCatalogEnvelope
 import ru.wbparser.domain.parsing.toParsedItem
 import ru.wbparser.domain.value.CrawlUrl
+import ru.wbparser.infra.json.describeJsonFailure
 
 /**
  * The decoder the catalog answer is read with.
@@ -159,10 +157,10 @@ internal fun parseWbCatalog(
         log.warn(
             "Failed to parse WB catalog response from {}: {}",
             response.task.url,
-            describeParseFailure(e),
+            describeJsonFailure(e),
             e,
         )
-        parseFailure(response, describeParseFailure(e), e).left()
+        parseFailure(response, describeJsonFailure(e), e).left()
     } catch (e: StackOverflowError) {
         // A `StackOverflowError` is an `Error`, not an `Exception`: the catch above never
         // saw it, and one pathological answer took the whole crawl down with it.
@@ -215,36 +213,6 @@ private fun answerKeys(body: String): Set<String> =
 
 /** The names under which the catalog can arrive. */
 private val CATALOG_KEYS = setOf("products", "data", "payload")
-
-/**
- * Describes why an answer failed to decode, in terms an operator can act on.
- *
- * The failure used to be reported as "failed to parse" and nothing else: the page became
- * empty, the crawl reported success, and the question that mattered — *which field did WB
- * change* — had no answer anywhere. `JsonDecodingException` (kotlinx.serialization 1.12)
- * carries the path of the element that failed, the offset in the input and an excerpt of
- * the input itself, so the log can name the field.
- *
- * A missing required field is a different exception (`MissingFieldException`, a plain
- * `SerializationException`), and its message carries the path too — so both kinds of
- * "the answer does not fit the DTO" end up naming the field.
- */
-@OptIn(ExperimentalSerializationApi::class)
-internal fun describeParseFailure(failure: Throwable): String =
-    when (failure) {
-        is JsonDecodingException ->
-            "path=${failure.path ?: UNKNOWN_PATH}, offset=${failure.offset}, " +
-                "reason=${failure.shortMessage}" +
-                (failure.input?.let { ", input=${it.take(INPUT_EXCERPT_LIMIT)}" } ?: "")
-        is SerializationException -> "reason=${failure.message ?: failure::class.simpleName}"
-        else -> "reason=${failure::class.simpleName}: ${failure.message}"
-    }
-
-/** The path of the failing element, when the decoder could not name it. */
-private const val UNKNOWN_PATH = "<unknown>"
-
-/** How much of the answer is quoted in the log when a decode fails. */
-private const val INPUT_EXCERPT_LIMIT = 300
 
 /**
  * Logs what WB thought the request was about.
