@@ -276,6 +276,7 @@ async def fetch_catalog(
     delay_between_pages: float = 2.0,
     warmup_url: str | None = None,
     warmup_delay: float = DEFAULT_WARMUP_DELAY,
+    warmup_attempts: int = 1,
     headers: dict | None = None,
     count: int | None = None,
 ) -> dict:
@@ -309,13 +310,43 @@ async def fetch_catalog(
 
         try:
             target = warmup_url or default_warmup_url(query)
+            # The warmup is a CHECK, not a pause.
+            #
+            # A cold session is refused by WB, and a measurement of a cold session
+            # measures the CHALLENGE, not the address: the numbers say more about
+            # how long the anti-bot took than about who the caller is. So the
+            # warmup verifies that the session answers, and repeats until it does.
+            # A run that could not warm up says so — and the protocol does not
+            # count it as a measurement.
+            warmup_ok = False
+            warmup_attempts = 0
             print(f"Прогрев WB-сессии: {target}", file=sys.stderr)
-            try:
-                await page.goto(target, timeout=30000)
-            except Exception as e:
-                print(f"  Прогрев не удался ({e}), продолжаю", file=sys.stderr)
-            # Wait for anti-bot challenge to resolve
-            await asyncio.sleep(warmup_delay)
+            for attempt in range(1, max(1, warmup_attempts) + 1):
+                warmup_attempts = attempt
+                try:
+                    await page.goto(target, timeout=30000)
+                except Exception as e:
+                    print(f"  Прогрев не удался ({e}), пробую ещё раз", file=sys.stderr)
+                # Wait for the anti-bot challenge to resolve.
+                await asyncio.sleep(warmup_delay)
+                try:
+                    status, _ = await fetch_page_with_status(page, query, 1, headers)
+                except Exception as e:
+                    print(f"  Проверка прогорева не удалась ({e}), пробую ещё раз", file=sys.stderr)
+                    continue
+                if status and status not in REFUSAL_STATUSES:
+                    warmup_ok = True
+                    print(f"  Сессия прогрета (HTTP {status}), попыток: {warmup_attempts}", file=sys.stderr)
+                    break
+                print(
+                    f"  Сессия ещё холодная (HTTP {status}), прогреваю ещё раз",
+                    file=sys.stderr,
+                )
+            if not warmup_ok:
+                print(
+                    "  ⚠️  Сессию не удалось прогреть — измеряется вызов, а не адрес",
+                    file=sys.stderr,
+                )
 
             total_requests = count if count is not None else pages
             for attempt in range(total_requests):
@@ -414,6 +445,8 @@ async def fetch_catalog(
         "exhausted": exhausted,
         "catalog_total": catalog_total,
         "outcomes": outcomes,
+        "warmup_ok": warmup_ok,
+        "warmup_attempts": warmup_attempts,
     }
 
 
@@ -447,6 +480,11 @@ def measurement_of(outcomes: list[dict], label: str | None) -> dict:
         "succeeded": succeeded,
         "refusal_ratio": round(refused / requests, 4) if requests else None,
         "statuses": sorted({o.get("status", 0) for o in outcomes}),
+        # The sequence of statuses, request by request. The share says HOW OFTEN
+        # the address was refused; the sequence says WHERE the refusals started —
+        # and that is the difference between "this address is refused" and "this
+        # session was refused after the Nth request in a burst".
+        "status_sequence": [o.get("status", 0) for o in outcomes],
     }
 
 
@@ -517,6 +555,12 @@ async def main():
     parser.add_argument("--delay", type=float, default=2.0, help="Delay between pages (seconds)")
     parser.add_argument("--warmup-url", help="URL used to warm the WB session")
     parser.add_argument(
+        "--warmup-attempts",
+        type=int,
+        default=3,
+        help="How many times to warm the session up until it answers (the warmup is a check)",
+    )
+    parser.add_argument(
         "--warmup-delay",
         type=float,
         default=DEFAULT_WARMUP_DELAY,
@@ -557,6 +601,7 @@ async def main():
         delay_between_pages=args.delay,
         warmup_url=args.warmup_url or default_warmup_url(query, menu_node),
         warmup_delay=args.warmup_delay,
+        warmup_attempts=args.warmup_attempts,
         count=args.count,
     )
 
@@ -565,6 +610,8 @@ async def main():
         prod['catalog_id'] = args.catalog
 
     measurement = measurement_of(result["outcomes"], args.label)
+    measurement["warmup_ok"] = bool(result.get("warmup_ok"))
+    measurement["warmup_attempts"] = int(result.get("warmup_attempts") or 0)
     summary = {
         "total": len(products),
         "page_counts": result["page_counts"],
