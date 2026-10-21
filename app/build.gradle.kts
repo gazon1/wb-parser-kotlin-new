@@ -4,7 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
     id("org.jetbrains.kotlin.plugin.spring")
     id("org.jetbrains.kotlin.plugin.serialization")
-    id("org.springframework.boot") version "3.4.1"
+    id("org.springframework.boot") version "4.1.1"
     // The coverage plugin, applied here as well: the application module is where
     // the wiring lives, and wiring is exactly what nothing measures.
     id("org.jetbrains.kotlinx.kover")
