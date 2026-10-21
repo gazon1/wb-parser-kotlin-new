@@ -140,6 +140,10 @@ internal fun parseWbCatalog(
             nextPageUrl = if (catalogType == PRESETS_CATALOG_TYPE) null else nextPageUrl,
             isEmptyPage = items.isEmpty(),
             isPresetResponse = catalogType == PRESETS_CATALOG_TYPE,
+            // WB's own count of the products behind this query. It travels to the report
+            // as `wb_total`: it is the size of the *search*, not of the catalog, and the
+            // report says so where it shows the number.
+            wbTotal = catalogEnvelope.total,
         ).right()
     } catch (e: Exception) {
         // A malformed catalog response must not abort the crawl, but turning it into a

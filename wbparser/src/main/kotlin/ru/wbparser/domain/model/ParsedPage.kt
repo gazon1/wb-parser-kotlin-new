@@ -22,6 +22,20 @@ data class ParsedPage(
      * rebuilt to stop making, so the page is dropped instead of saved.
      */
     val isPresetResponse: Boolean = false,
+    /**
+     * How many products WB says the search behind this page holds — the `total` of the
+     * answer.
+     *
+     * It is **not** the length of the catalog: WB counts everything that matches the
+     * query across the marketplace, while the catalog's own pagination ends at the API
+     * cap. The catalog's length is measured at the pagination boundary and lives in
+     * `known_pages_limit` (see the ADR on measuring the catalog length).
+     *
+     * The number travels to the report under this name so that nobody reads it as a
+     * promise of completeness: "read N of M" would be a lie when M is the size of the
+     * search and N is the size of the catalog.
+     */
+    val wbTotal: Int? = null,
 )
 
 /**

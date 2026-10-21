@@ -101,6 +101,59 @@ class TargetRunQueriesTest :
             run.pages shouldBe 3
         }
 
+        test("a run records what WB said about the size of the search") {
+            val (targetId, jobId, group) = world()
+
+            db.ds.recordTargetRun(
+                jobId = jobId,
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = group,
+                        egressIp = null,
+                        outcome = RunOutcome.Ok,
+                        pages = 60,
+                        items = 6000,
+                        startedAt = Instant.now(),
+                        wbTotal = 49404,
+                    ),
+                finishedAt = Instant.now(),
+            )
+
+            // The number WB reports is written down next to what was read: a run row
+            // that holds only "60 pages, 6000 items" cannot show the operator the scale
+            // WB claims.
+            db.ds
+                .fetchTargetRuns()
+                .single()
+                .wbTotal shouldBe 49404
+        }
+
+        test("a run whose answers carried no count has no number") {
+            val (targetId, jobId, group) = world()
+
+            db.ds.recordTargetRun(
+                jobId = jobId,
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = group,
+                        egressIp = null,
+                        outcome = RunOutcome.Ok,
+                        pages = 1,
+                        items = 100,
+                        startedAt = Instant.now(),
+                    ),
+                finishedAt = Instant.now(),
+            )
+
+            // Null and not zero: "WB did not say" is not "the search is empty".
+            db.ds
+                .fetchTargetRuns()
+                .single()
+                .wbTotal shouldBe null
+        }
+
         test("a run that never reached a group is recorded without one") {
             val (targetId, jobId, _) = world()
 

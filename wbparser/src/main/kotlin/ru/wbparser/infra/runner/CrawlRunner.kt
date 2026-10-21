@@ -273,6 +273,10 @@ class CrawlRunner(
                         pages = result.pages,
                         items = result.items,
                         startedAt = result.startedAt,
+                        // What WB said about the size of the search, written down next to
+                        // what was read: a run row that holds only "60 pages, 6000 items"
+                        // cannot show the operator the scale WB claims.
+                        wbTotal = result.wbTotal,
                     ),
                 finishedAt = Instant.now(),
             )

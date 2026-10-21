@@ -347,6 +347,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** сохранять то, что уже прочитано, прежде чем объявлять отказ. _(from `2026-10-21-the-failure-keeps-what-was-read`)
 - **Never** отменять разобранные страницы пакета из-за одной сломанной: соседние страницы не связаны с ней. _(from `2026-10-21-the-failure-keeps-what-was-read`)
 - **Never** продолжать пагинацию после отказа: отказ останавливает краул этой цели. _(from `2026-10-21-the-failure-keeps-what-was-read`)
+- **Always** называть число `total` от WB как `wb_total` — в коде, в базе, в метриках и в отчёте. _(from `2026-10-21-the-number-wb-reports-reaches-the-report`)
+- **Always** оставлять полноту каталога за измерением на границе пагинации. _(from `2026-10-21-the-number-wb-reports-reaches-the-report`)
+- **Always** отличать «WB не сказал» (`null`) от «выдача пуста» (`0`). _(from `2026-10-21-the-number-wb-reports-reaches-the-report`)
+- **Never** делить прочитанное на `wb_total` и называть результат полнотой. _(from `2026-10-21-the-number-wb-reports-reaches-the-report`)
+- **Never** суммировать `wb_total` по целям: товар попадает в несколько выдач. _(from `2026-10-21-the-number-wb-reports-reaches-the-report`)
 - **Always** держать `kotlinx-serialization` в версионном каталоге и читать с неё DTO: исключение декодирования пришло сюда из библиотеки, а не из кода краула. _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Always** логировать путь элемента, который не разобрался, вместе со смещением и выдержкой входа: путь — это ответ на вопрос «что WB поменял». _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Always** проверять защиту, которую нельзя вызвать настоящим входом, через шов, который позволяет её вызвать: непроверяемая защита — это вера, а не гарантия. _(from `2026-10-21-the-parse-failure-names-the-field`)
@@ -1144,6 +1149,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — diagnostics  api  architecture
 - `2026-10-21-the-digest-keeps-the-whole-rule` — documentation  workflow
 - `2026-10-21-the-failure-keeps-what-was-read` — crawler  pipeline  observability
+- `2026-10-21-the-number-wb-reports-reaches-the-report` — crawler  reporting  catalog  data-quality
 - `2026-10-21-the-parse-failure-names-the-field` — crawler  diagnostics  catalog  api
 - `2026-10-21-the-profile-id-is-read-too` — adspower  api  tests
 - `2026-10-21-the-read-model-is-not-needed-yet` — catalog  performance  database  measurement
@@ -1257,6 +1263,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — Диагностика разбора живёт в одном месте и читает все ответы WB
 - `2026-10-21-the-digest-keeps-the-whole-rule` — Правило попадает в digest целиком, а не по первой строке
 - `2026-10-21-the-failure-keeps-what-was-read` — Отказ не выбрасывает прочитанное
+- `2026-10-21-the-number-wb-reports-reaches-the-report` — Число, которое называет WB, доходит до отчёта — под своим именем и без приписки полноты
 - `2026-10-21-the-parse-failure-names-the-field` — Ошибка разбора называет поле, а не страницу
 - `2026-10-21-the-profile-id-is-read-too` — Имя поля профиля читается в обеих написаниях
 - `2026-10-21-the-read-model-is-not-needed-yet` — Материализованная read-модель каталога пока не нужна — вот цифры, по которым это решено

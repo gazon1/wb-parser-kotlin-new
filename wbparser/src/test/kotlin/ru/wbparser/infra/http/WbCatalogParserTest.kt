@@ -301,4 +301,31 @@ class WbCatalogParserTest :
             page.isPresetResponse shouldBe false
             page.items.map { it.name } shouldBe listOf("Карта памяти")
         }
+
+        test("the number WB reports about the search is read") {
+            val body =
+                """
+                {"metadata":{"catalog_type":"catalog-merger","name":"menu_v3_9467 карты памяти"},
+                 "products":[
+                   {"id":1,"name":"Карта памяти","sizes":[{"price":{"basic":10000,"product":5000}}]}
+                 ],
+                 "total":49404}
+                """.trimIndent()
+
+            // WB's count of the search — the number the report shows next to what was
+            // read. It is not the length of the catalog, and the parser does not pretend
+            // it is: it carries the number, it does not interpret it.
+            page(parseWbCatalog(fetched(body))).wbTotal shouldBe 49404
+        }
+
+        test("an answer without a count leaves the number unknown") {
+            val body =
+                """
+                {"products":[{"id":1,"name":"Первый","sizes":[{"price":{"basic":10000,"product":5000}}]}]}
+                """.trimIndent()
+
+            // Null, not zero: "WB did not say" and "the search is empty" are two
+            // different answers, and a zero would claim the second one.
+            page(parseWbCatalog(fetched(body))).wbTotal shouldBe null
+        }
     })

@@ -1,6 +1,7 @@
 package ru.wbparser.infra.runner
 
 import io.micrometer.core.instrument.MeterRegistry
+import io.micrometer.core.instrument.Tag
 import org.slf4j.Logger
 import ru.wbparser.domain.pipeline.Side
 import ru.wbparser.domain.pipeline.Stop
@@ -8,6 +9,8 @@ import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.infra.pipeline.Interpreter
 import ru.wbparser.infra.pipeline.MicrometerMetricInterpreter
 import ru.wbparser.infra.pipeline.NoOpMetricInterpreter
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * What one crawl says about itself.
@@ -19,6 +22,16 @@ internal class CrawlMetrics(
     private val meterRegistry: MeterRegistry?,
     private val log: Logger,
 ) {
+    /**
+     * The last number WB reported for each target.
+     *
+     * The number is a *state* — "how many products WB says this search holds" — not an
+     * event, so it is a gauge and not a counter. Micrometer keeps only a weak reference
+     * to what a gauge watches, so the holders live here: without them the gauge would
+     * watch a collected object and read as zero.
+     */
+    private val wbTotals = ConcurrentHashMap<String, AtomicLong>()
+
     /**
      * The metric interpreter of this crawl.
      *
@@ -41,6 +54,7 @@ internal class CrawlMetrics(
         pages: Int,
         items: Int,
         stopReason: Stop,
+        wbTotal: Int? = null,
     ) {
         val registry = meterRegistry ?: return
         val tag = target.wbCatalogId ?: target.name
@@ -49,7 +63,32 @@ internal class CrawlMetrics(
         if (pages > 0 && items == 0) {
             registry.counter("crawl.targets.without_items", "target", tag).increment()
         }
+        recordWbTotal(tag, wbTotal)
         recordTruncation(target, pages, stopReason)
+    }
+
+    /**
+     * Records how many products WB says the search behind this target holds.
+     *
+     * The number is WB's own count of the *search*, not of the catalog: the catalog's
+     * length is measured at the pagination boundary and lives in `known_pages_limit`. It
+     * is recorded under the name `wb_total` so that a reader of the metrics cannot take
+     * it for the size of the catalog and read "read N of M" into a pair of numbers that
+     * are not fractions of one another.
+     */
+    private fun recordWbTotal(
+        tag: String,
+        wbTotal: Int?,
+    ) {
+        val registry = meterRegistry ?: return
+        if (wbTotal == null) return
+        val holder = wbTotals.computeIfAbsent(tag) { AtomicLong() }
+        holder.set(wbTotal.toLong())
+        registry.gauge(
+            "crawl.wb_total",
+            listOf(Tag.of("target", tag)),
+            holder,
+        ) { it.get().toDouble() }
     }
 
     /**

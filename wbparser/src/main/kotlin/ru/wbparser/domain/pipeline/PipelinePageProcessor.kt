@@ -37,6 +37,15 @@ internal class PipelinePageProcessor(
         val itemsSaved: Int,
         val lastPageWasEmpty: Boolean,
         val stopped: Stop?,
+        /**
+         * How many products WB says the search holds — the `total` of the first answer
+         * that carried one.
+         *
+         * Null when no answer of this batch carried a total. It is WB's count of the
+         * search, not of the catalog: the catalog's own length is measured at the
+         * pagination boundary.
+         */
+        val wbTotal: Int? = null,
     )
 
     /**
@@ -56,6 +65,7 @@ internal class PipelinePageProcessor(
         var itemsSaved = 0
         var lastPageWasEmpty = false
         var stopped: Stop? = null
+        var wbTotal: Int? = null
 
         for (done in donePages) {
             val stopNow = pipeline.stopAt(pagesCrawled, done.task.depth)
@@ -92,6 +102,14 @@ internal class PipelinePageProcessor(
             pagesCrawled++
             itemsSaved += processItems(done.page, sides)
 
+            // The first answer that carried a total wins: WB reports the same total for
+            // every page of a catalog, and the first one is the count the crawl started
+            // from. A popular-list answer never gets here — its total is the size of the
+            // rotating list, not of the catalog.
+            if (wbTotal == null) {
+                wbTotal = done.page.wbTotal
+            }
+
             val nextUrl = done.page.nextPageUrl
             if (nextUrl != null) {
                 // The successor of a page is the *next page of the same catalog*, not a
@@ -122,7 +140,7 @@ internal class PipelinePageProcessor(
             }
         }
 
-        return PageResult(pagesCrawled, itemsSaved, lastPageWasEmpty, stopped)
+        return PageResult(pagesCrawled, itemsSaved, lastPageWasEmpty, stopped, wbTotal)
     }
 
     /**
