@@ -326,6 +326,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** проверять защиту, которую нельзя вызвать настоящим входом, через шов, _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Never** ловить `Error` широким `catch (e: Exception)`: `StackOverflowError` требует _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Never** превращать ошибку разбора в пустую страницу без предупреждения: отчёт «0 _(from `2026-10-21-the-parse-failure-names-the-field`)
+- **Always** читать оба написания поля, когда имя зависит от версии сервера, и проверять оба. _(from `2026-10-21-the-profile-id-is-read-too`)
+- **Never** считать пустой список ответов доказательством того, что данных нет: список может _(from `2026-10-21-the-profile-id-is-read-too`)
 - **Always** измерять модель тем же скриптом и тем же набором данных, что и предыдущий _(from `2026-10-21-the-read-model-is-not-needed-yet`)
 - **Always** пересматривать это решение на замере `scripts/load-catalog.sh --rows N`, где N _(from `2026-10-21-the-read-model-is-not-needed-yet`)
 - **Always** чинить путь записи (#147–#155) раньше, чем считать, что данных «не хватает» _(from `2026-10-21-the-read-model-is-not-needed-yet`)
@@ -1085,6 +1087,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — ci  workflow  contract
 - `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — diagnostics  api  architecture
 - `2026-10-21-the-parse-failure-names-the-field` — crawler  diagnostics  catalog  api
+- `2026-10-21-the-profile-id-is-read-too` — adspower  api  tests
 - `2026-10-21-the-read-model-is-not-needed-yet` — catalog  performance  database  measurement
 - `2026-10-21-the-repository-is-licensed` — legal  project  governance
 - `2026-10-21-the-schema-gate-reads-the-package` — gates  database  architecture
@@ -1188,6 +1191,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — Кросс-репозиторная совместимость — это отчёт, а не блокирующий гейт
 - `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — Диагностика разбора живёт в одном месте и читает все ответы WB
 - `2026-10-21-the-parse-failure-names-the-field` — Ошибка разбора называет поле, а не страницу
+- `2026-10-21-the-profile-id-is-read-too` — Имя поля профиля читается в обеих написаниях
 - `2026-10-21-the-read-model-is-not-needed-yet` — Материализованная read-модель каталога пока не нужна — вот цифры, по которым это решено
 - `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
 - `2026-10-21-the-schema-gate-reads-the-package` — Гейт совместимости схемы читает пакет решений каталога, а не один файл

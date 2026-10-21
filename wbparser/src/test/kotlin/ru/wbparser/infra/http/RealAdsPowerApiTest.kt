@@ -221,6 +221,27 @@ class RealAdsPowerApiTest :
             proxies.last().identity shouldBe "socks5://203.0.113.9:1080"
         }
 
+        test("a runtime that names the profile `profile_id` is read the same way") {
+            // Which of the two names a build serves is not ours to decide: the list calls
+            // the profile's id `user_id`, the newer endpoint calls it `profile_id`. A
+            // client that reads only one of them sees an empty list — and the check that
+            // consumes it then passes because there is nothing to compare.
+            server.route(
+                "/api/v1/user/list",
+                body =
+                    """
+                    {"code":0,"msg":"Success","data":{"list":[
+                      {"profile_id":"p1","user_proxy_config":{"proxy_soft":"no_proxy"}}
+                    ],"page":1,"page_size":100}}
+                    """.trimIndent(),
+            )
+
+            val proxies = api.listProfileProxies()
+
+            proxies.map { it.profileId } shouldBe listOf("p1")
+            proxies.first().isDirect shouldBe true
+        }
+
         test("a profile whose proxy is not described is not a direct connection") {
             server.route(
                 "/api/v1/user/list",
