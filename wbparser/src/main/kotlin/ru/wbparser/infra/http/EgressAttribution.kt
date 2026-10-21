@@ -31,9 +31,11 @@ data class SessionRef(
  * The runner has to decide whether a failure that looks like the catalog's fault
  * really is: a burnt address answers with a degraded body as well, and punishing
  * the target for that would put a healthy catalog to sleep for a day. The address
- * side knows how its own requests are going, so it answers the question.
+ * side knows how its own requests are going, so it answers the question — with the
+ * state of the group, the same one the health endpoint reports, so the two cannot
+ * tell different stories about the same address.
  */
-interface EgressAttribution {
+interface EgressAttribution : EgressGroupStates {
     /**
      * The group that served this target last, if any.
      */
@@ -45,21 +47,4 @@ interface EgressAttribution {
      * Null when the target was never served — there was nobody to serve it.
      */
     fun lastSessionFor(targetId: UUID): SessionRef? = null
-
-    /**
-     * Whether the group is answering normally.
-     *
-     * A group that is refusing most of its requests is not a witness whose word about
-     * a broken catalog can be trusted.
-     */
-    fun isGroupHealthy(groupId: String): Boolean
-
-    /**
-     * Whether any group can serve a request right now.
-     *
-     * The runner asks this before it opens a run: a run that starts when every
-     * address is refusing serves nothing, fails every target at once, and then
-     * looks in the history like a crawl that broke.
-     */
-    fun isAnyGroupAvailable(): Boolean
 }

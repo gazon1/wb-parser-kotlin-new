@@ -1,5 +1,6 @@
 package ru.wbparser.infra.http
 
+import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
 import java.util.UUID
@@ -44,9 +45,10 @@ import java.util.concurrent.atomic.AtomicInteger
  *
  * ## The interface
  *
- * Four methods, and the rest is inside. The caller asks for a page, reports how the
- * request ended, and — when it needs to know who is to blame for a failure — asks
- * which group served a target. Nothing about groups leaks into the domain.
+ * The caller asks for a page, reports how the request ended, and — when it needs to know
+ * who is to blame for a failure — asks which group served a target. The state of the
+ * groups is asked here too, and it is the same state the router itself reads: one
+ * computation, one answer. Nothing about groups leaks into the domain.
  */
 class EgressRouter(
     private val pool: BrowserPool,
@@ -109,7 +111,7 @@ class EgressRouter(
             // stands for is refusing, and the addresses that still answer must not be
             // silenced with it. A group whose transport chain rests it is not asked
             // either — but for the other reason, and it comes back on its own.
-            val servable = groups.filter { chains.getValue(it).isServable() }
+            val servable = groups.filter { groupState(it).available }
             if (servable.isNotEmpty()) {
                 val ordered = orderBySoonestSlot(servable)
                 for (groupId in ordered) {
@@ -217,21 +219,53 @@ class EgressRouter(
 
     /**
      * The state of one group.
+     *
+     * This is the one place where the state of a group is computed. The router's own
+     * choice of a group, the health endpoint's answer and the runner's verdict all read
+     * what this method builds, so they cannot disagree about the same address.
+     *
+     * A group this instance does not know has an empty state: there is nothing to ask
+     * it and nothing to blame it for.
      */
-    fun groupState(groupId: String): GroupState {
-        val health = healths[groupId] ?: GroupHealth(config.healthWindowMs)
-        val chains = chains.getValue(groupId)
-        return GroupState(
+    override fun groupState(groupId: String): EgressGroupState {
+        val health = healths[groupId]
+        val chains = chains[groupId]
+        return EgressGroupState(
             groupId = groupId,
-            millisUntilSlot = pacers.millisUntilSlot(groupId),
-            requests = health.requestCount,
-            refused = health.refusedCount,
-            transportFailures = health.transportFailureCount,
-            circuitState = chains.circuitState,
-            transportSuspended = chains.transportSuspended,
-            lastHealthyAtMs = health.lastHealthyAtMs(),
+            counters =
+                EgressGroupCounters(
+                    requests = health?.requestCount ?: 0L,
+                    refused = health?.refusedCount ?: 0L,
+                    pages = health?.succeededCount ?: 0L,
+                    transportFailures = health?.transportFailureCount ?: 0L,
+                ),
+            refusalRate = health?.refusalRate(now()) ?: 0.0,
+            refusalThreshold = config.healthRefusalThreshold,
+            circuitState = circuitStateOf(groupId),
+            millisUntilSlot = if (chains != null) pacers.millisUntilSlot(groupId) else 0L,
+            transportSuspended = chains?.transportSuspended ?: false,
+            lastHealthyAtMs = health?.lastHealthyAtMs() ?: 0L,
         )
     }
+
+    /**
+     * The circuit's state, in the codebase's words.
+     *
+     * The circuit breaker library keeps its vocabulary to itself: the state of a group
+     * is read outside this module, and a reader of it should not have to know the
+     * library to ask whether the address may be asked.
+     */
+    private fun circuitStateOf(groupId: String): EgressCircuitState =
+        when (chains[groupId]?.circuitState) {
+            CircuitBreaker.State.HALF_OPEN -> EgressCircuitState.HalfOpen
+            CircuitBreaker.State.OPEN, CircuitBreaker.State.FORCED_OPEN -> EgressCircuitState.Open
+            else -> EgressCircuitState.Closed
+        }
+
+    /**
+     * The state of every group this instance knows.
+     */
+    override fun groupStates(): List<EgressGroupState> = chains.keys.map { groupState(it) }
 
     /**
      * Which group served this target last.
@@ -250,28 +284,6 @@ class EgressRouter(
      * the measurement says which one it is.
      */
     override fun lastSessionFor(targetId: UUID): SessionRef? = lastSessionByTarget[targetId]
-
-    /**
-     * Whether any group can serve a request right now.
-     *
-     * A group whose anti-bot chain is resting it is not asked — the address it stands
-     * for is refusing, and the addresses that still answer must not be silenced with
-     * it. A group whose transport chain rests it is not asked either: the network is
-     * failing, and a request through it would fail for the same reason.
-     */
-    override fun isAnyGroupAvailable(): Boolean = pool.egressGroupIds.any { chains.getValue(it).isServable() }
-
-    /**
-     * Whether the group is answering normally.
-     *
-     * A group with no requests in the window counts as healthy: there is nothing to
-     * blame it for, and the target is the only suspect left.
-     */
-    override fun isGroupHealthy(groupId: String): Boolean {
-        val health = healths[groupId] ?: return true
-        val rate = health.refusalRate(now())
-        return rate < config.healthRefusalThreshold
-    }
 
     /**
      * Groups ordered by when their pacer frees up.

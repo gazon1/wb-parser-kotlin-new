@@ -98,22 +98,29 @@ circuit группы не спрашивается, пока другие отв
 **Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `EgressRouter`, `EgressRouter.borrow`, `EgressRouter.onOutcome`, `EgressRouterConfig`,
 `EgressRouter.defaultCircuitConfig`.
 
-## Состояние группы (GroupState)
+## Состояние группы (EgressGroupState)
 
-Снимок того, как группа выглядит сейчас: сколько миллисекунд до следующего слота, сколько запросов группа отправила с момента старта процесса, сколько из них WB отказал,
-и в каком состоянии circuit (`CLOSED` / `HALF_OPEN` / `OPEN`). Счётчики накопительные за процесс, а окно здоровья — скользящее.
+Снимок того, как группа выглядит сейчас: сколько миллисекунд до следующего слота, что группа надела с момента последней смены адреса (запросы, отказы, страницы), доля отказов
+**в окне** и в каком состоянии circuit (`Closed` / `HalfOpen` / `Open`). Из этих чисел выводятся два вердикта: `available` (об этом адресе сейчас не спрашивают — circuit открыт, адрес
+остывает) и `healthy` (адрес отвечает нормально — надёжный свидетель в споре о сломанном каталоге). Это два разных вопроса, и совпадать они не обязаны.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `GroupState`, `EgressRouter.groupState`, `EgressRouter.GroupBook`.
+Состояние группы — **один ответ на один вопрос**. Считает его единственное место — `EgressRouter.groupState` — и читают все, кому он нужен: роутер (выбор группы), health-эндпоинт (что
+видит оператор) и раннер (чей адрес виноват). Отдельного ответа у health-эндпоинта больше нет: картинка из метрик расходилась с тем, во что верит раннер.
+
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressGroupState.kt` — `EgressGroupState`, `EgressGroupCounters`;
+`wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressCircuitState.kt` — `EgressCircuitState`;
+`wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressGroupStates.kt` — `EgressGroupStates`;
+`wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `EgressRouter.groupState`, `EgressRouter.groupStates`.
 
 ## Окно здоровья и атрибуция (EgressAttribution)
 
-Два вопроса, которые роутер умеет отвечать. Первый: какая группа обслужила эту цель последней (`lastGroupFor`) — ответ на «чей адрес виноват». Второй: отвечает ли группа
-нормально (`isGroupHealthy`) — группа, отказывающая в большинстве запросов, не является надёжным свидетелем в споре о сломанном каталоге. Здоровье измеряется долей
-отказов **за окно** (по умолчанию 10 минут), а не за всё время: группа, отказывавшая час назад и отвечающая сейчас, здорова; группа без запросов в окне — тоже.
+Вопросы, которые роутер умеет отвечать. Первый: какая группа обслужила эту цель последней (`lastGroupFor`) — ответ на «чей адрес виноват». Второй: каково состояние группы
+(`groupState`) и какой из него вердикт `healthy` — группа, отказывающая в большинстве запросов, не является надёжным свидетелем в споре о сломанном каталоге. Здоровье
+измеряется долей отказов **за окно** (по умолчанию 10 минут), а не за всё время: группа, отказывавшая час назад и отвечающая сейчас, здорова; группа без запросов в окне — тоже.
+Раннер спрашивает то же состояние, которое показывает health-эндпоинт, поэтому оператор и краулер не могут обвинить в одном и том же разные адреса.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `EgressAttribution`, `EgressRouter.isGroupHealthy`,
-`EgressRouter.DEFAULT_HEALTH_WINDOW_MS`, `EgressRouter.DEFAULT_HEALTH_REFUSAL_THRESHOLD`; `wbparser/src/main/kotlin/ru/wbparser/infra/runner/CrawlRunner.kt` —
-`CrawlRunner.recordOutcome` (решение «адрес или каталог»).
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressRouter.kt` — `EgressAttribution`, `EgressRouter.DEFAULT_HEALTH_WINDOW_MS`,
+`EgressRouter.DEFAULT_HEALTH_REFUSAL_THRESHOLD`; `wbparser/src/main/kotlin/ru/wbparser/infra/runner/CrawlRunner.kt` — `CrawlRunner.recordOutcome` (решение «адрес или каталог»).
 
 ## Исчерпание групп выхода (AllEgressGroupsUnavailable)
 

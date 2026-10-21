@@ -2,24 +2,37 @@ package ru.wbparser.app.api.health
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import io.micrometer.core.instrument.Gauge
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import ru.wbparser.domain.session.SessionSnapshot
 import ru.wbparser.domain.session.SessionState
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
+import ru.wbparser.infra.http.EgressGroup
+import ru.wbparser.infra.http.EgressGroupCounters
+import ru.wbparser.infra.http.EgressGroupState
 import ru.wbparser.infra.http.SessionSource
-import java.time.Instant
 
 /**
- * What the readiness endpoint says about the egress side.
+ * The egress section of the readiness response.
  *
- * Two facts are reported here, and they are the two the operator needs: how the
- * **address** is doing, and how many **live sessions** the crawler has. The second is
- * the capacity: an address without a session sends nothing, and a session that WB
- * refused sends nothing either.
+ * The answer is a projection of the state of the groups — the state the router computes
+ * and the runner judges by. A second source would give the operator and the runner two
+ * stories about the same address, and this is the test that says there is only one.
+ *
+ * The sessions are reported next to the groups: the capacity of the crawler is counted
+ * in live sessions, not in addresses.
  */
 class EgressStatsTest :
     FunSpec({
+        /** The groups as the probe last saw them. */
+        val ledger =
+            listOf(
+                EgressGroupRecord(
+                    groupId = "ip-1",
+                    egressIp = "203.0.113.7",
+                    isolated = true,
+                    ipChanges = 3,
+                ),
+            )
 
         /**
          * The sessions of a deployment, told rather than built: the report is about the
@@ -45,115 +58,130 @@ class EgressStatsTest :
                 override val retiredSessionCount: Int get() = 0
             }
 
-        fun ledger(
-            groupId: String = "ip-1",
-            lastHealthyAt: Instant? = null,
-        ): List<EgressGroupRecord> =
-            listOf(
-                EgressGroupRecord(
-                    groupId = groupId,
-                    egressIp = "203.0.113.7",
-                    isolated = true,
-                    ipChanges = 2,
-                    lastHealthyAt = lastHealthyAt,
-                ),
-            )
+        test("the answer reports the verdict of the state, not what the counters add up to") {
+            val state =
+                EgressGroupState(
+                    groupId = "ip-1",
+                    counters = EgressGroupCounters(requests = 20, refused = 1, pages = 19),
+                    refusalRate = 1.0,
+                )
 
-        test("a group is reported with what was observed about it") {
+            val group = groupOf(egressStats(idleRegistry(), ledger, listOf(state)))
+
+            // The totals add up to 5 %: by them the group looks fine.
+            group["requests"] shouldBe 20L
+            group["refused"] shouldBe 1L
+            group["pages"] shouldBe 19L
+            // The window is full of refusals, and that is the number the verdict is made
+            // of — the same one the runner judges the address by.
+            group["refusal_rate"] shouldBe 1.0
+            group["healthy"] shouldBe false
+            // The circuit is still closed: the address is not asked right now for
+            // another reason, and the two verdicts are not the same thing.
+            group["available"] shouldBe true
+            group["circuit"] shouldBe 0
+        }
+
+        test("the books of the group are the state's, not the meters'") {
             val registry = SimpleMeterRegistry()
-            registry.counter("crawl.egress.requests", "egress_group", "ip-1").increment(5.0)
-            registry.counter("crawl.egress.pages", "egress_group", "ip-1").increment(4.0)
+            registry.counter("crawl.egress.requests", "egress_group", "ip-1").increment(100.0)
+            registry.counter("crawl.egress.antibot.responses", "egress_group", "ip-1").increment(40.0)
+            val state =
+                EgressGroupState(
+                    groupId = "ip-1",
+                    counters = EgressGroupCounters(requests = 20, refused = 1, pages = 19),
+                    refusalRate = 0.05,
+                )
 
-            val stats = egressStatsOf(ledger(), registry)
+            val group = groupOf(egressStats(registry, ledger, listOf(state)))
 
-            val group = (stats["groups"] as List<*>).single() as Map<*, *>
+            // The meters count the whole life of the process; the books count the address
+            // the group has now. The answer describes the latter.
+            group["requests"] shouldBe 20L
+            group["refused"] shouldBe 1L
+            group["healthy"] shouldBe true
+        }
+
+        test("a group this instance does not serve is reported as closed and healthy") {
+            val group = groupOf(egressStats(idleRegistry(), ledger, emptyList()))
+
+            // There is nothing to ask it and nothing to blame it for.
+            group["circuit"] shouldBe 0
+            group["available"] shouldBe true
+            group["healthy"] shouldBe true
+            group["refusal_rate"] shouldBe 0.0
+            group["requests"] shouldBe 0L
+        }
+
+        test("the answer keeps what the ledger and the declaration say") {
+            val state = EgressGroupState(groupId = "ip-1")
+            val declared = EgressGroup(id = "ip-1", profileIds = listOf("p1"))
+
+            val answer = egressStats(idleRegistry(), ledger, listOf(state), listOf(declared))
+            val group = groupOf(answer)
+
+            // The address comes from the ledger, not from the state: the state knows how
+            // the group is doing, not where it leaves from.
             group["group"] shouldBe "ip-1"
             group["address"] shouldBe "203.0.113.7"
             group["isolated"] shouldBe true
-            group["ip_changes"] shouldBe 2
-            group["requests"] shouldBe 5L
-            group["pages"] shouldBe 4L
+            group["ip_changes"] shouldBe 3
+            (answer["declared"] as Map<*, *>)["ip-1"] shouldBe declared.proxy.toString()
         }
 
-        test("the two kinds of failure are counted apart") {
-            val registry = SimpleMeterRegistry()
-            registry.counter("crawl.egress.refusals", "egress_group", "ip-1", "kind", "antibot").increment(3.0)
-            registry.counter("crawl.egress.refusals", "egress_group", "ip-1", "kind", "transport").increment(1.0)
+        test("the transport failures are counted apart from the refusals") {
+            val state =
+                EgressGroupState(
+                    groupId = "ip-1",
+                    counters =
+                        EgressGroupCounters(
+                            requests = 20,
+                            refused = 1,
+                            pages = 17,
+                            transportFailures = 2,
+                        ),
+                    refusalRate = 0.05,
+                    transportSuspended = true,
+                )
 
-            val stats = egressStatsOf(ledger(), registry)
+            val group = groupOf(egressStats(idleRegistry(), ledger, listOf(state)))
 
-            val group = (stats["groups"] as List<*>).single() as Map<*, *>
-            group["refused"] shouldBe 3L
-            group["transport_failures"] shouldBe 1L
-        }
-
-        test("the state of the chains is reported") {
-            val registry = SimpleMeterRegistry()
-            Gauge
-                .builder("crawl.egress.circuit.state", 2.0) { it }
-                .tag("egress_group", "ip-1")
-                .register(registry)
-            Gauge
-                .builder("crawl.egress.transport.suspended", 1.0) { it }
-                .tag("egress_group", "ip-1")
-                .register(registry)
-
-            val stats = egressStatsOf(ledger(), registry)
-
-            val group = (stats["groups"] as List<*>).single() as Map<*, *>
-            group["circuit"] shouldBe 2
+            // A request that never reached WB is not a refusal, and a group the network
+            // is holding is not asked — for that other reason.
+            group["refused"] shouldBe 1L
+            group["transport_failures"] shouldBe 2L
             group["transport_suspended"] shouldBe true
-        }
-
-        test("the last healthy moment of the address is reported") {
-            val registry = SimpleMeterRegistry()
-            val moment = Instant.parse("2026-11-03T10:00:00Z")
-
-            val stats = egressStatsOf(ledger(lastHealthyAt = moment), registry)
-
-            val group = (stats["groups"] as List<*>).single() as Map<*, *>
-            group["last_healthy_at"] shouldBe moment.toString()
+            group["available"] shouldBe false
         }
 
         test("an address that never answered says so") {
-            val registry = SimpleMeterRegistry()
+            val group = groupOf(egressStats(idleRegistry(), ledger, listOf(EgressGroupState(groupId = "ip-1"))))
 
-            val stats = egressStatsOf(ledger(), registry)
-
-            val group = (stats["groups"] as List<*>).single() as Map<*, *>
             group["last_healthy_at"] shouldBe "never"
         }
 
         test("the capacity is counted in live sessions") {
-            val registry = SimpleMeterRegistry()
-            val pool = sessionsOf("p1", "p2")
+            val answer = egressStats(idleRegistry(), ledger, listOf(EgressGroupState(groupId = "ip-1")), emptyList(), sessionsOf("p1", "p2"))
 
-            val stats = egressStatsOf(ledger(), registry, emptyList(), pool)
-
-            val sessions = stats["sessions"] as Map<*, *>
+            val sessions = answer["sessions"] as Map<*, *>
             sessions["live"] shouldBe 2
             sessions["retired"] shouldBe 0
             (sessions["sessions"] as List<*>).size shouldBe 2
         }
 
         test("a deployment without a pool still answers") {
-            val registry = SimpleMeterRegistry()
+            val answer = egressStats(idleRegistry(), ledger, listOf(EgressGroupState(groupId = "ip-1")))
 
-            val stats = egressStatsOf(ledger(), registry)
-
-            val sessions = stats["sessions"] as Map<*, *>
+            val sessions = answer["sessions"] as Map<*, *>
             sessions["live"] shouldBe 0
             sessions["retired"] shouldBe 0
         }
-
-        test("the counters of the deployment are reported next to the groups") {
-            val registry = SimpleMeterRegistry()
-            registry.counter("crawl.egress.all_down").increment(2.0)
-            registry.counter("crawl.egress.probe.failed").increment(1.0)
-
-            val stats = egressStatsOf(ledger(), registry)
-
-            stats["all_down"] shouldBe 2L
-            stats["probe_failures"] shouldBe 1L
-        }
     })
+
+/**
+ * The one group the answer reports.
+ */
+private fun groupOf(answer: Map<String, Any>): Map<*, *> {
+    val groups = answer["groups"] as List<*>
+    return groups.single() as Map<*, *>
+}

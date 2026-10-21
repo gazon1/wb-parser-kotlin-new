@@ -111,7 +111,7 @@ class CrawlRunner(
         // serve must not hold those targets: it would keep the whole deployment from
         // working them for the whole lease duration, for a run that served nothing.
         val egress = source.egress
-        if (egress != null && !egress.isAnyGroupAvailable()) {
+        if (egress != null && egress.groupStates().none { it.available }) {
             log.warn("No egress group can serve a request right now — the crawl is not started.")
             return RunResult.NoEgressAvailable
         }
@@ -303,7 +303,11 @@ class CrawlRunner(
         // No address involved, or an address that is answering normally: the anomaly
         // is the catalog's. The same anomaly seen from another address says the same
         // thing, and a sick address says nothing at all.
-        val healthy = egress == null || group == null || egress.isGroupHealthy(group)
+        //
+        // The address is judged by its state — the same state the health endpoint
+        // reports. One answer, so the operator and the runner cannot blame different
+        // addresses for the same failure.
+        val healthy = egress == null || group == null || egress.groupState(group).healthy
         val seenElsewhere = target.anomalyGroup != null && target.anomalyGroup != group
         if (healthy || seenElsewhere) {
             val delay = db.ds.markTargetFailed(target.id)

@@ -296,6 +296,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** перебазировать ветку на свежий `main` перед открытием pull request'а, а не после: перебазировать то, что уже прочитали, дороже. _(from `2026-10-21-one-decision-is-one-pull-request`)
 - **Never** держать в одной ветке больше ~5 коммитов или ~20 файлов: за этой границей решение перестаёт читаться, а конфликт перестаёт быть конфликтом. _(from `2026-10-21-one-decision-is-one-pull-request`)
 - **Never** разрешать конфликт в чужой ветке, не перечитав решение, которое в ней лежит: разрешение — это пересборка, и пересборка без чтения выглядит какmerge, а меняет смысл. _(from `2026-10-21-one-decision-is-one-pull-request`)
+- **Always** различать `available` (не спрашивать сейчас) и `healthy` (отвечает нормально): это разные вопросы, и health-эндпоинт показывает оба. _(from `2026-10-21-one-state-for-the-egress-group`)
+- **Always** считать состояние группы в одном месте (`EgressRouter.groupState`) и читать его оттуда — роутеру, health-эндпоинту и раннеру. _(from `2026-10-21-one-state-for-the-egress-group`)
+- **Never** показывать в health-ответе счётчики процесса как счётчики группы: после смены адреса они описывают адрес, которого больше нет. _(from `2026-10-21-one-state-for-the-egress-group`)
+- **Never** решать «доступен ли адрес» в вызывающем коде: у состояния один вердикт, и взять его можно только оттуда. _(from `2026-10-21-one-state-for-the-egress-group`)
+- **Never** собирать состояние группы из метрик: у процесса — накопительные счётчики, у адреса — окно; это разные числа. _(from `2026-10-21-one-state-for-the-egress-group`)
 - **Always** брать идентификатор инстанса из одной константы (`CatalogReadiness.INSTANCE_ID`), чтобы `/ready` и ответы с данными не могли разойтись. _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
 - **Always** называть момент по тому, что он измеряет: `dataAsOf` — момент данных, `asOf` — момент вычисления агрегата. _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
 - **Always** описывать ось поля там, где имя её не выражает, — в контракте и в ADR. _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
@@ -1112,6 +1117,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
 - `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested` — browser  tests  coverage  diagnostics
 - `2026-10-21-one-decision-is-one-pull-request` — workflow  conventions
+- `2026-10-21-one-state-for-the-egress-group` — infrastructure  antibot  operations
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — catalog  contract  observability
 - `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — crawler  diagnostics  catalog  pipeline
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — architecture  refactoring  maintainability
@@ -1220,6 +1226,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
 - `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested` — Каждая ветвь браузерного пути, которая говорит краулу «что сломалось», проверена
 - `2026-10-21-one-decision-is-one-pull-request` — Одно решение — один pull request, и он перебазирован на свежий main
+- `2026-10-21-one-state-for-the-egress-group` — Состояние egress-группы — один ответ, а не три
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — Ответ говорит, кто ответил и о каком моменте данные
 - `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — Ответ, который не разобрался, — это сбой, а не конец каталога
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — Запросы каталога живут в решениях, которые они держат, а фасад держит поверхность

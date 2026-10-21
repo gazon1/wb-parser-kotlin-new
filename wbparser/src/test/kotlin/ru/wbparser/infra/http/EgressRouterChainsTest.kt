@@ -66,7 +66,7 @@ class EgressRouterChainsTest :
 
             val state = router.groupState("ip-1")
             state.refused shouldBe 1
-            state.transportFailures shouldBe 2
+            state.counters.transportFailures shouldBe 2
             state.requests shouldBe 3
         }
 

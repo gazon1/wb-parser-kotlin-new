@@ -16,6 +16,7 @@ import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.EgressAttribution
+import ru.wbparser.infra.http.EgressGroupState
 import ru.wbparser.infra.runner.CrawlRunner
 import ru.wbparser.infra.runner.CrawlRunnerConfig
 import ru.wbparser.infra.runner.CrawlSource
@@ -132,15 +133,33 @@ class CrawlTargetStateTest :
         }
 
         /**
+         * The state of an address that answers normally.
+         */
+        fun answering(groupId: String = "ip-1"): EgressGroupState = EgressGroupState(groupId = groupId)
+
+        /**
+         * The state of an address that refuses everything.
+         *
+         * The refusal rate is what the verdict is made of: a full window of refusals
+         * makes the address a witness that cannot be trusted.
+         */
+        fun refusing(groupId: String = "ip-1"): EgressGroupState = EgressGroupState(groupId = groupId, refusalRate = 1.0)
+
+        /**
+         * The state of an address that refuses everything and is not to be asked at all.
+         */
+        fun burnt(groupId: String = "ip-1"): EgressGroupState = EgressGroupState.open(groupId).copy(refusalRate = 1.0)
+
+        /**
          * An egress side that says the address is fine.
          */
         val healthyEgress =
             object : EgressAttribution {
                 override fun lastGroupFor(targetId: UUID): String? = "ip-1"
 
-                override fun isGroupHealthy(groupId: String): Boolean = true
+                override fun groupState(groupId: String): EgressGroupState = answering(groupId)
 
-                override fun isAnyGroupAvailable(): Boolean = true
+                override fun groupStates(): List<EgressGroupState> = listOf(answering())
             }
 
         /**
@@ -150,9 +169,9 @@ class CrawlTargetStateTest :
             object : EgressAttribution {
                 override fun lastGroupFor(targetId: UUID): String? = "ip-1"
 
-                override fun isGroupHealthy(groupId: String): Boolean = false
+                override fun groupState(groupId: String): EgressGroupState = refusing(groupId)
 
-                override fun isAnyGroupAvailable(): Boolean = true
+                override fun groupStates(): List<EgressGroupState> = listOf(refusing())
             }
 
         /**
@@ -162,9 +181,9 @@ class CrawlTargetStateTest :
             object : EgressAttribution {
                 override fun lastGroupFor(targetId: UUID): String? = "ip-1"
 
-                override fun isGroupHealthy(groupId: String): Boolean = false
+                override fun groupState(groupId: String): EgressGroupState = burnt(groupId)
 
-                override fun isAnyGroupAvailable(): Boolean = false
+                override fun groupStates(): List<EgressGroupState> = listOf(burnt())
             }
 
         fun runnerWith(

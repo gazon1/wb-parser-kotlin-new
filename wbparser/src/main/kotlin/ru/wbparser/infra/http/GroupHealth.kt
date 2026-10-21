@@ -35,6 +35,7 @@ internal class GroupHealth(
 ) {
     private val requests = AtomicLong(0)
     private val refused = AtomicLong(0)
+    private val succeeded = AtomicLong(0)
     private val transportFailures = AtomicLong(0)
     private val lastHealthyAt = AtomicLong(0L)
     private val window = ConcurrentLinkedQueue<Sample>()
@@ -44,6 +45,9 @@ internal class GroupHealth(
 
     /** How many of them WB refused, since the process started. */
     val refusedCount: Long get() = refused.get()
+
+    /** How many of them were answered normally, since the process started. */
+    val succeededCount: Long get() = succeeded.get()
 
     /** How many of them never reached WB, since the process started. */
     val transportFailureCount: Long get() = transportFailures.get()
@@ -66,7 +70,11 @@ internal class GroupHealth(
     ) {
         requests.incrementAndGet()
         when (outcome) {
-            DownloadOutcome.Success -> lastHealthyAt.set(now)
+            DownloadOutcome.Success -> {
+                succeeded.incrementAndGet()
+                lastHealthyAt.set(now)
+            }
+
             DownloadOutcome.Antibot -> refused.incrementAndGet()
             DownloadOutcome.Error -> transportFailures.incrementAndGet()
         }
