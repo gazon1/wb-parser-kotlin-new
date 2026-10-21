@@ -38,7 +38,9 @@ import java.time.Instant
  *   signal and will typically switch to a different AdsPower profile.
  * - HTTP 403 → same retryable treatment (also indicates bot detection).
  * - JavaScript errors / page crashes → [NetworkError].
- * - BrowserPool exhaustion → [NetworkError].
+ * - The pool has no free profile → the [EgressRouter] turns it into
+ *   `AllEgressGroupsUnavailable`, and that becomes a [NetworkError] here. There is no
+ *   separate branch for the pool's own exception: the downloader never sees it.
  *
  * ## Which egress group serves the request
  *
@@ -163,25 +165,20 @@ open class BrowserDownloader(
                 }
             } catch (e: AllEgressGroupsUnavailable) {
                 // Nobody refused us: there was no group able to send the request. That
-                // is our own capacity, not WB's answer — the same reasoning the pool
-                // exhaustion below follows. It is not an anti-bot ban, so the target is
-                // not blamed for it.
+                // is our own capacity, not WB's answer. It is not an anti-bot ban, so
+                // the target is not blamed for it.
+                //
+                // This is the only place pool exhaustion is reported. The router asks
+                // the pool for a profile and turns the pool's exhaustion into this
+                // exception itself, so a separate catch for `BrowserPoolExhaustedException`
+                // here could never run: the downloader never sees that exception, and the
+                // branch only looked like it was taking care of a case that was already
+                // taken care of one layer below.
                 log.warn("No egress group could serve {}: {}", task.url, e.message)
                 result =
                     Either.Left(
                         NetworkError(
                             message = "No egress group could serve the request: ${e.message}",
-                            cause = e,
-                            url = task.url.toString(),
-                            isAntibot = false,
-                        ),
-                    )
-            } catch (e: BrowserPoolExhaustedException) {
-                log.error("BrowserPool exhausted for {}: {}", task.url, e.message)
-                result =
-                    Either.Left(
-                        NetworkError(
-                            message = "Browser pool exhausted: ${e.message}",
                             cause = e,
                             url = task.url.toString(),
                             // Deliberately NOT isAntibot. Pool exhaustion means no browser slot

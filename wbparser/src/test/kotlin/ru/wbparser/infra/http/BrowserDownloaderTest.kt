@@ -9,6 +9,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import kotlinx.coroutines.runBlocking
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.value.CrawlUrl
@@ -328,6 +329,9 @@ class BrowserDownloaderTest :
             // does not — a busy pool must not be mistaken for a refused session,
             // or the crawler backs off a profile that was only busy.
             error?.message shouldContain "egress group"
+            // One wording for one fact: the router owns the pool's exhaustion, and
+            // there is no second branch behind it that says the same thing differently.
+            error?.message shouldNotContain "Browser pool exhausted"
             borrowed.close()
             pool.close()
         }
