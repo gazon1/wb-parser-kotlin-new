@@ -21,7 +21,10 @@
 #   suite actually exercised, including the integration module's. Without it the
 #   integration suites were invisible to the gate: a module's own report holds
 #   only that module's classes.
+# - 86% — the `app` floor after the catalog's answers started naming the instance
+#   and the moment of their data: 87.2% measured (2026-10-21). The point of
+#   headroom is kept: a floor of 87% would have had none.
 
-app 84
+app 86
 merged 82
 wbparser 81
