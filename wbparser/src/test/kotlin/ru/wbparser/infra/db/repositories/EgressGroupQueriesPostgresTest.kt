@@ -6,6 +6,7 @@ import io.kotest.matchers.shouldBe
 import org.testcontainers.containers.PostgreSQLContainer
 import ru.wbparser.domain.pipeline.CrawlEgressGroupsTable
 import ru.wbparser.testing.ModelDatabase
+import javax.sql.DataSource
 
 /**
  * The ledger of egress groups, against a real PostgreSQL.
@@ -26,6 +27,23 @@ class EgressGroupQueriesPostgresTest :
         }
         afterSpec { container.stop() }
         beforeTest { database.clear() }
+
+        /**
+         * When the group's address was last *observed*.
+         *
+         * The ledger's own record does not carry the time — the operator's question is
+         * "which address is this group at", and the time is the freshness of that
+         * answer. The test asks the column directly.
+         */
+        fun DataSource.probedAtOf(groupId: String): java.time.OffsetDateTime? =
+            connection.use { conn ->
+                conn.prepareStatement("SELECT probed_at FROM crawl_egress_groups WHERE group_id = ?").use { ps ->
+                    ps.setString(1, groupId)
+                    ps.executeQuery().use { rs ->
+                        if (rs.next()) rs.getObject("probed_at", java.time.OffsetDateTime::class.java) else null
+                    }
+                }
+            }
 
         test("a group that was never seen is not in the ledger") {
             database.dataSource.fetchEgressGroups() shouldHaveSize 0
@@ -57,6 +75,21 @@ class EgressGroupQueriesPostgresTest :
             val record = database.dataSource.fetchEgressGroups().single()
             record.egressIp shouldBe "192.0.2.3"
             record.ipChanges shouldBe 2
+        }
+
+        test("a probe that learned nothing changes nothing") {
+            database.dataSource.upsertEgressGroup("ip-1", "203.0.113.7", isolated = true)
+            val probedAtBefore = database.dataSource.probedAtOf("ip-1")
+
+            // The probe could not learn the address: the echo service was down, or the
+            // group was not reachable. The address is unknown, not changed.
+            database.dataSource.upsertEgressGroup("ip-1", null, isolated = false)
+
+            val record = database.dataSource.fetchEgressGroups().single()
+            record.egressIp shouldBe "203.0.113.7"
+            record.ipChanges shouldBe 0
+            record.isolated shouldBe true
+            database.dataSource.probedAtOf("ip-1") shouldBe probedAtBefore
         }
 
         test("a group that is not isolated is recorded as such") {

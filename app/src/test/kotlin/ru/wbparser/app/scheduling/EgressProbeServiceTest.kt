@@ -198,4 +198,35 @@ class EgressProbeServiceTest :
 
             router.groupState("ip-1").requests shouldBe 1
         }
+
+        test("a group whose address could not be learned is not an observation") {
+            val report =
+                EgressReport(
+                    groups =
+                        listOf(
+                            EgressGroupProbe(
+                                groupId = "ip-1",
+                                egressIp = "203.0.113.9",
+                                isolated = true,
+                                proxyIdentity = null,
+                                ipChanged = false,
+                            ),
+                            EgressGroupProbe(
+                                groupId = "ip-2",
+                                egressIp = null,
+                                isolated = false,
+                                proxyIdentity = null,
+                                ipChanged = false,
+                            ),
+                        ),
+                    problems = emptyList(),
+                    misconfigured = false,
+                )
+
+            // The ledger may only be told what was seen. A group whose address the
+            // probe could not learn is not in the ledger's business: recording it
+            // would erase the last known address and count a change that did not
+            // happen.
+            observedGroups(report).map { it.groupId } shouldBe listOf("ip-1")
+        }
     })

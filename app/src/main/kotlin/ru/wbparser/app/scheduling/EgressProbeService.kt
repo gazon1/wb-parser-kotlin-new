@@ -10,6 +10,7 @@ import ru.wbparser.infra.db.repositories.fetchEgressGroups
 import ru.wbparser.infra.db.repositories.releaseEgressPenalty
 import ru.wbparser.infra.db.repositories.upsertEgressGroup
 import ru.wbparser.infra.http.BrowserPool
+import ru.wbparser.infra.http.EgressGroupProbe
 import ru.wbparser.infra.http.EgressProbe
 import ru.wbparser.infra.http.EgressProbeConfig
 import ru.wbparser.infra.http.EgressReport
@@ -70,7 +71,17 @@ class EgressProbeService(
         for (problem in report.problems) {
             log.warn("Egress probe: {}", problem)
         }
-        for (group in report.groups) {
+        for (group in report.groups.filter { !it.observed }) {
+            // The probe could not learn this group's address. That is not an
+            // observation, and it must not be recorded as one: the last known address
+            // stays, the row keeps saying when it was really seen, and the counter of
+            // address changes does not grow by a probe that saw nothing.
+            log.warn(
+                "Egress group {}: the address could not be learned — the last known one is kept",
+                group.groupId,
+            )
+        }
+        for (group in observedGroups(report)) {
             log.info(
                 "Egress group {}: address={}, isolated={}, proxy={}",
                 group.groupId,
@@ -124,3 +135,12 @@ class EgressProbeService(
         }
     }
 }
+
+/**
+ * The groups the ledger may be told about.
+ *
+ * A probe that could not learn the address learned nothing. That is not an observation,
+ * and it must not be recorded as one: the address is *unknown*, not *changed*, so the
+ * last known address stays and the row keeps saying when it was really seen.
+ */
+internal fun observedGroups(report: EgressReport): List<EgressGroupProbe> = report.groups.filter { it.observed }
