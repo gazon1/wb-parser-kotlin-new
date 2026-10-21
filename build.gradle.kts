@@ -36,8 +36,19 @@ subprojects {
     // downloads a matching JDK when the machine does not have one, so a fresh
     // clone builds without installing anything.
     plugins.withId("org.jetbrains.kotlin.jvm") {
-        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension> {
+        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
             jvmToolchain(22)
+
+            // The warnings are errors in every module, in one place.
+            //
+            // It used to be the same three lines in each of the three module scripts:
+            // three places to forget, and a module that forgot them compiled with
+            // warnings nobody looked at. The rule is the same for every module, so it
+            // is stated once — the way the JDK version is.
+            compilerOptions {
+                allWarningsAsErrors.set(true)
+                freeCompilerArgs.add("-Xjsr305=strict")
+            }
         }
     }
 

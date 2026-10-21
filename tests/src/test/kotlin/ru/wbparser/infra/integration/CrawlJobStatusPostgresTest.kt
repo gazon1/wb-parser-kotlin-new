@@ -16,6 +16,7 @@ import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.runner.CrawlRunner
 import ru.wbparser.infra.runner.CrawlSource
+import ru.wbparser.infra.runner.RunResult
 import ru.wbparser.testing.PostgresFixture
 
 /**
@@ -95,7 +96,7 @@ class CrawlJobStatusPostgresTest :
 
                 val result = runner.run()
 
-                (result is CrawlRunner.RunResult.Failure) shouldBe true
+                (result is RunResult.Failure) shouldBe true
 
                 val job = db.row("SELECT status, error_message, pages_crawled FROM crawl_jobs")
                 job["status"] shouldBe "Failed"
@@ -139,7 +140,7 @@ class CrawlJobStatusPostgresTest :
 
                 val result = runner.run()
 
-                (result is CrawlRunner.RunResult.Success) shouldBe true
+                (result is RunResult.Success) shouldBe true
                 db.row("SELECT status FROM crawl_jobs")["status"] shouldBe "Completed"
             }
         }
@@ -163,7 +164,7 @@ class CrawlJobStatusPostgresTest :
 
                 // One target crawled, one did not. Reporting "Completed" would hide a lost
                 // catalog behind a successful sibling.
-                (result is CrawlRunner.RunResult.Failure) shouldBe true
+                (result is RunResult.Failure) shouldBe true
                 val job = db.row("SELECT status, error_message FROM crawl_jobs")
                 job["status"] shouldBe "Failed"
                 (job["error_message"] as? String).shouldNotBeEmpty()
@@ -187,7 +188,7 @@ class CrawlJobStatusPostgresTest :
 
                 // "Nothing to crawl" is its own outcome: reporting it as a successful
                 // crawl with zero pages made an idle scheduler look like a broken one.
-                (result is CrawlRunner.RunResult.NothingDue) shouldBe true
+                (result is RunResult.NothingDue) shouldBe true
                 db.rows("SELECT id FROM crawl_jobs").size shouldBe 0
             }
         }
@@ -217,8 +218,8 @@ class CrawlJobStatusPostgresTest :
                 // The lock release used to run `executeUpdate()` against pg_advisory_unlock,
                 // which returns a boolean. PostgreSQL rejected it, so the run after the first
                 // never happened: the caller saw an exception and the lock leaked.
-                (first is CrawlRunner.RunResult.Success) shouldBe true
-                (second is CrawlRunner.RunResult.Success) shouldBe true
+                (first is RunResult.Success) shouldBe true
+                (second is RunResult.Success) shouldBe true
                 db.rows("SELECT id FROM crawl_jobs").size shouldBe 2
             }
         }

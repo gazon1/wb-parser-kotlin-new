@@ -17,6 +17,7 @@ import ru.wbparser.infra.http.EgressAttribution
 import ru.wbparser.infra.runner.CrawlRunner
 import ru.wbparser.infra.runner.CrawlRunnerConfig
 import ru.wbparser.infra.runner.CrawlSource
+import ru.wbparser.infra.runner.RunResult
 import ru.wbparser.testing.PostgresFixture
 import java.util.UUID
 
@@ -195,7 +196,7 @@ class CrawlTargetStateTest :
 
                 val result = runnerWith(refused, allDownEgress).run()
 
-                result shouldBe CrawlRunner.RunResult.NoEgressAvailable
+                result shouldBe RunResult.NoEgressAvailable
                 // Nothing was served, so nothing is blamed — and no job row was opened
                 // for a run that never served a target.
                 val state = stateOf(id)
@@ -261,7 +262,7 @@ class CrawlTargetStateTest :
                 val second = runner.run()
 
                 // The second run has nothing to do: the freshness window has not passed.
-                (second is CrawlRunner.RunResult.NothingDue) shouldBe true
+                (second is RunResult.NothingDue) shouldBe true
             }
         }
     })
