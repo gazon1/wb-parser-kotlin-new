@@ -103,6 +103,18 @@ class CrawlRunner(
     private suspend fun runUnsafe(): RunResult {
         val startedAt = java.time.Instant.now()
 
+        // The address is asked *before* the work is taken.
+        //
+        // The claim leases the targets it hands out, and a lease keeps every host away
+        // from them until it expires. A run that refuses to start because no address can
+        // serve must not hold those targets: it would keep the whole deployment from
+        // working them for the whole lease duration, for a run that served nothing.
+        val egress = source.egress
+        if (egress != null && !egress.isAnyGroupAvailable()) {
+            log.warn("No egress group can serve a request right now — the crawl is not started.")
+            return RunResult.NoEgressAvailable
+        }
+
         // The targets are claimed, not read: the claim leases them, so another host
         // working on the same database takes other targets and never the same one.
         val claimed =
@@ -114,15 +126,15 @@ class CrawlRunner(
                 leaseFor = config.leaseDuration,
             )
 
-        // The two reasons not to start are decided before a job row exists, and both
-        // are answers about the world rather than about the crawl.
-        val refusal = reasonNotToStart(claimed)
-        if (refusal != null) return refusal
+        // Nothing to crawl — no job row is opened, which also keeps crawl_jobs.target_id
+        // (NOT NULL, foreign key) satisfiable. Nothing was claimed either, so nothing
+        // is leased.
+        if (claimed.isEmpty()) return RunResult.NothingDue
 
         val due = db.ds.fetchTargetsByIds(claimed)
 
         var jobId: UUID? = null
-        try {
+        return try {
             jobId = jobStore.openJob(due.first().id)
             val ctx = CrawlContext(jobId, startedAt, due.map { it.id })
 
@@ -167,23 +179,23 @@ class CrawlRunner(
                 } catch (_: Throwable) {
                     // hooks must not crash
                 }
-                return RunResult.Success(totalPages, totalItems)
+                RunResult.Success(totalPages, totalItems)
+            } else {
+                val message = failures.joinToString("; ")
+                jobStore.closeJob(
+                    jobId,
+                    JobStatus.Failed,
+                    pagesCrawled = totalPages,
+                    itemsSaved = totalItems,
+                    errorMessage = message,
+                )
+                try {
+                    hooks.onCrawlEnd(ctx, Stop.ManualStop)
+                } catch (_: Throwable) {
+                    // hooks must not crash
+                }
+                RunResult.Failure(message)
             }
-
-            val message = failures.joinToString("; ")
-            jobStore.closeJob(
-                jobId,
-                JobStatus.Failed,
-                pagesCrawled = totalPages,
-                itemsSaved = totalItems,
-                errorMessage = message,
-            )
-            try {
-                hooks.onCrawlEnd(ctx, Stop.ManualStop)
-            } catch (_: Throwable) {
-                // hooks must not crash
-            }
-            return RunResult.Failure(message)
         } catch (e: CancellationException) {
             // A cancelled crawl must not be reported as a failed one — the job row records
             // the distinction that "gave up" is not the same as "broke".
@@ -196,7 +208,7 @@ class CrawlRunner(
             jobId?.let { id ->
                 runCatching { jobStore.closeJob(id, JobStatus.Failed, errorMessage = t.message) }
             }
-            return RunResult.Failure(t.message ?: "Unknown error")
+            RunResult.Failure(t.message ?: "Unknown error")
         } finally {
             // The leases are given back as soon as the run is over, so the next host can
             // take the targets right away. A lease that is not released expires on its
@@ -204,32 +216,6 @@ class CrawlRunner(
             runCatching { db.ds.releaseTargetLeases(config.instanceId) }
                 .onFailure { log.warn("Could not release the target leases: {}", it.message) }
         }
-    }
-
-    /**
-     * The reasons a run does not start, decided before a job row exists.
-     *
-     * Two of them, and both are answers about the world rather than about the crawl:
-     *
-     * - **Nothing is due.** No job row is opened, which also keeps
-     *   `crawl_jobs.target_id` (NOT NULL, foreign key) satisfiable.
-     * - **Every address is refusing.** A run started now would serve nothing, fail
-     *   every target at once and close as a failed crawl — and the refusal belongs to
-     *   the addresses, not to the targets and not to the crawler. So the run does not
-     *   start, and no job row is opened for a run that served nothing.
-     *
-     * @param claimed the ids of the targets this run has leased.
-     * @return the outcome that stops the run, or `null` when the run may start.
-     */
-    private fun reasonNotToStart(claimed: List<UUID>): RunResult? {
-        if (claimed.isEmpty()) return RunResult.NothingDue
-
-        val egress = source.egress
-        if (egress != null && !egress.isAnyGroupAvailable()) {
-            log.warn("No egress group can serve a request right now — the crawl is not started.")
-            return RunResult.NoEgressAvailable
-        }
-        return null
     }
 
     /**
