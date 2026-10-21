@@ -385,6 +385,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **MUST** иметь гейт, который умеет падать: проверка, отличимая от проверки, _(from `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk`)
 - **Never** двигать версию в базовом образе, не двигая тулчейн в том же изменении. _(from `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk`)
 - **Never** считать `publish-image` защитой от такой поломки: джоб не обязательный, _(from `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk`)
+- **Always** измерять новый адрес по протоколу (`2026-10-27-the-measurement-does-not-authorize-a-second-address`) до того, как доверять ему обход: гейт протокола, который не пройден, не разрешает адрес. _(from `2026-11-01-one-crawler-many-addresses`)
+- **Always** измерять цену хопа: адрес измеряется вместе с задержкой до WB, и эндпоинт, который добавляет больше задержки, чем снимает отказов, адресом не является. _(from `2026-11-01-one-crawler-many-addresses`)
+- **Always** объявлять прокси группы в конфигурации краулера и сверять его с AdsPower до старта обхода: расхождение адреса и объявления молча даёт не тот бюджет и не тот адрес, ради которых группа объявлена. _(from `2026-11-01-one-crawler-many-addresses`)
+- **MUST** держать один бюджет на адрес: пока процесс один, бюджет живёт в процессе; при появлении второго хоста бюджет переезжает в базу (ADR `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`). _(from `2026-11-01-one-crawler-many-addresses`)
+- **Never** множить краулер, чтобы получить больше адресов: адрес — это то, за что считает WB, и его можно получить без второй машины. _(from `2026-11-01-one-crawler-many-addresses`)
+- **Never** считать адрес группы известным, если он не объявлен и не наблюдался: «не знаю» и «прямой выход» — разные вещи, и вторая не должна получаться молча. _(from `2026-11-01-one-crawler-many-addresses`)
+- **Never** хранить пароль прокси в репозитории: пароль на каждый эндпоинт свой, приходит из секрета, а ротация — сознательное действие, после которого надо убедиться, что AdsPower узнал новый пароль, а не старый. _(from `2026-11-01-one-crawler-many-addresses`)
 
 ## Per-tag
 
@@ -1067,6 +1074,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-29-the-address-is-asked-before-the-work-is-taken` — architecture  concurrency  antibot  database
 - `2026-10-30-an-empty-observation-changes-nothing` — infrastructure  antibot  operations  database
 - `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk` — infrastructure  build  operations
+- `2026-11-01-one-crawler-many-addresses` — architecture  egress  operations  antibot
 
 ## Active entries
 
@@ -1165,3 +1173,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-29-the-address-is-asked-before-the-work-is-taken` — Адрес спрашивают раньше, чем берут работу
 - `2026-10-30-an-empty-observation-changes-nothing` — Пустое наблюдение не меняет строку леджера
 - `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk` — Образ и сборка просят одну и ту же версию JDK
+- `2026-11-01-one-crawler-many-addresses` — Один краулер — много адресов
