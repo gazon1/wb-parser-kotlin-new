@@ -2,8 +2,8 @@ package ru.wbparser.testing
 
 import arrow.core.Either
 import io.kotest.matchers.shouldBe
-import ru.wbparser.domain.error.DomainError
 import ru.wbparser.domain.pipeline.Crawled
+import ru.wbparser.domain.pipeline.FailedCrawl
 import ru.wbparser.domain.pipeline.Side
 
 /**
@@ -12,7 +12,7 @@ import ru.wbparser.domain.pipeline.Side
  * A run that ends in a failure still carries the sides of everything that
  * happened before it — that is where the diagnostics live.
  */
-fun Either<Pair<DomainError, List<Side>>, Pair<Crawled, List<Side>>>.sidesOf(): List<Side> = fold({ it.second }, { it.second })
+fun Either<Pair<FailedCrawl, List<Side>>, Pair<Crawled, List<Side>>>.sidesOf(): List<Side> = fold({ it.second }, { it.second })
 
 /**
  * The first emission of a named metric.

@@ -334,6 +334,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **MUST** держать правило в digest одной строкой: Critical-раздел рассчитан на то, что правило читается и ищется целиком. _(from `2026-10-21-the-digest-keeps-the-whole-rule`)
 - **Never** обрезать правило по первой строке: агент читает digest перед задачей, и правило, обрезанное на полуслове, читается как другое правило. _(from `2026-10-21-the-digest-keeps-the-whole-rule`)
 - **Never** переносить правило в ADR только ради генератора: перенос — это ширина исходника, а digest собирает правило сам. _(from `2026-10-21-the-digest-keeps-the-whole-rule`)
+- **Always** носить прочитанное вместе с отказом: «0 страниц» о цели, которая прочитала страницы, — это ложь в отчёте. _(from `2026-10-21-the-failure-keeps-what-was-read`)
+- **Always** сохранять то, что уже прочитано, прежде чем объявлять отказ. _(from `2026-10-21-the-failure-keeps-what-was-read`)
+- **Never** отменять разобранные страницы пакета из-за одной сломанной: соседние страницы не связаны с ней. _(from `2026-10-21-the-failure-keeps-what-was-read`)
+- **Never** продолжать пагинацию после отказа: отказ останавливает краул этой цели. _(from `2026-10-21-the-failure-keeps-what-was-read`)
 - **Always** держать `kotlinx-serialization` в версионном каталоге и читать с неё DTO: исключение декодирования пришло сюда из библиотеки, а не из кода краула. _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Always** логировать путь элемента, который не разобрался, вместе со смещением и выдержкой входа: путь — это ответ на вопрос «что WB поменял». _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Always** проверять защиту, которую нельзя вызвать настоящим входом, через шов, который позволяет её вызвать: непроверяемая защита — это вера, а не гарантия. _(from `2026-10-21-the-parse-failure-names-the-field`)
@@ -1122,6 +1126,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — ci  workflow  contract
 - `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — diagnostics  api  architecture
 - `2026-10-21-the-digest-keeps-the-whole-rule` — documentation  workflow
+- `2026-10-21-the-failure-keeps-what-was-read` — crawler  pipeline  observability
 - `2026-10-21-the-parse-failure-names-the-field` — crawler  diagnostics  catalog  api
 - `2026-10-21-the-profile-id-is-read-too` — adspower  api  tests
 - `2026-10-21-the-read-model-is-not-needed-yet` — catalog  performance  database  measurement
@@ -1231,6 +1236,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-cross-repo-compatibility-is-a-report` — Кросс-репозиторная совместимость — это отчёт, а не блокирующий гейт
 - `2026-10-21-the-diagnostic-lives-in-one-place-and-reads-every-answer` — Диагностика разбора живёт в одном месте и читает все ответы WB
 - `2026-10-21-the-digest-keeps-the-whole-rule` — Правило попадает в digest целиком, а не по первой строке
+- `2026-10-21-the-failure-keeps-what-was-read` — Отказ не выбрасывает прочитанное
 - `2026-10-21-the-parse-failure-names-the-field` — Ошибка разбора называет поле, а не страницу
 - `2026-10-21-the-profile-id-is-read-too` — Имя поля профиля читается в обеих написаниях
 - `2026-10-21-the-read-model-is-not-needed-yet` — Материализованная read-модель каталога пока не нужна — вот цифры, по которым это решено
