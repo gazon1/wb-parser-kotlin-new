@@ -23,7 +23,6 @@ import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.ProductId
 import ru.wbparser.infra.db.connect
 import ru.wbparser.infra.db.repositories.fetchSubjectNames
-import ru.wbparser.infra.runner.CrawlRunner.RunResult
 import ru.wbparser.testing.ModelDatabase
 import java.util.UUID
 import javax.sql.DataSource

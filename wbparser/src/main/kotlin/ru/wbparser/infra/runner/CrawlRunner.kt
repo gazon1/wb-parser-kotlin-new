@@ -67,7 +67,7 @@ class CrawlRunner(
      * When null, the counters are computed but reported nowhere.
      */
     private val meterRegistry: MeterRegistry? = null,
-) {
+) : CrawlRun {
     private val log = LoggerFactory.getLogger(CrawlRunner::class.java)
 
     private val jobStore = CrawlJobStore(db, log)
@@ -88,7 +88,7 @@ class CrawlRunner(
     /**
      * Runs the crawler: acquires advisory lock, crawls all due targets, closes lock.
      */
-    suspend fun run(): RunResult =
+    override suspend fun run(): RunResult =
         withContext(Dispatchers.IO) {
             val lockResult: Either<LockUnavailable, RunResult> = advisoryLock.withLock { runUnsafe() }
             lockResult.fold(
@@ -356,73 +356,5 @@ class CrawlRunner(
                     }
                 }.awaitAll()
         }
-    }
-
-    sealed class RunResult {
-        data class Success(
-            val pagesCrawled: Int,
-            val itemsSaved: Int,
-        ) : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_SUCCESS
-        }
-
-        data class Failure(
-            val message: String,
-        ) : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_FAILURE
-        }
-
-        /**
-         * The crawl was not started: the advisory lock was not taken.
-         *
-         * [reason] says why — another instance holds the lock, or the wait for it
-         * timed out.
-         */
-        data class AlreadyRunning(
-            val reason: String,
-        ) : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_LOCKED
-        }
-
-        /**
-         * There was nothing to crawl: no target is active, or every target is
-         * still inside its freshness window.
-         *
-         * This is not the same as a crawl that ran and found nothing. Reporting
-         * it as `Success(0, 0)` made a healthy idle crawler look like a broken
-         * one — the scheduler ticks every 30 seconds and most of those ticks
-         * have nothing to do.
-         */
-        data object NothingDue : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_SUCCESS
-        }
-
-        /**
-         * The crawl was not started: no egress group can serve a request right now.
-         *
-         * Every address is refusing, so there is nothing to serve. Starting the run
-         * anyway would fail every target at once and close the job as a failed crawl
-         * — and the refusal belongs to the addresses, not to the targets.
-         *
-         * The exit code is the success one, like [NothingDue]: the crawler did what it
-         * could, and what it could was nothing.
-         */
-        data object NoEgressAvailable : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_SUCCESS
-        }
-    }
-
-    companion object {
-        /** Exit code: crawl ran and succeeded. */
-        const val EXIT_CODE_SUCCESS = 0
-
-        /** Exit code: crawl ran and failed. */
-        const val EXIT_CODE_FAILURE = 1
-
-        /** Exit code: crawl was not started — advisory lock held by another instance. */
-        const val EXIT_CODE_LOCKED = 2
-
-        /** Exit code: crawl was cancelled. */
-        const val EXIT_CODE_CANCELLED = 3
     }
 }
