@@ -28,7 +28,17 @@ data class EgressGroupProbe(
     val isolated: Boolean,
     val proxyIdentity: String?,
     val ipChanged: Boolean,
-)
+) {
+    /**
+     * Whether the probe actually saw this group's address.
+     *
+     * A probe that learned nothing is not an observation: the address is *unknown*, not
+     * *changed*. The difference decides what the ledger may do with the row — an
+     * unknown address must not erase the last known one, and it must not be counted as
+     * a change of address.
+     */
+    val observed: Boolean get() = egressIp != null
+}
 
 /**
  * The result of a probe run.

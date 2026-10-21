@@ -38,6 +38,17 @@ fun DataSource.fetchEgressGroups(): List<EgressGroupRecord> {
  * The change counter is maintained by the database rather than by the caller: the row
  * knows the address it was last seen at, and only the database can compare the two
  * without a read-then-write race between two probes.
+ *
+ * ## An empty observation changes nothing
+ *
+ * A probe that could not learn the address learned nothing. The address is *unknown*,
+ * not *changed*, so a null address must not erase the last known one, must not be
+ * counted as a change, and must not move the time of the observation: the row keeps
+ * saying when the address was really seen, and a stale `probed_at` is how the operator
+ * sees that the probe has not been answering.
+ *
+ * @param egressIp the address the group was seen at, or null when the probe learned
+ *   nothing.
  */
 fun DataSource.upsertEgressGroup(
     groupId: String,
@@ -51,11 +62,18 @@ fun DataSource.upsertEgressGroup(
                 INSERT INTO crawl_egress_groups (group_id, egress_ip, isolated, probed_at, ip_changes)
                 VALUES (?, ?, ?, now(), 0)
                 ON CONFLICT (group_id) DO UPDATE
-                   SET egress_ip = EXCLUDED.egress_ip,
-                       isolated = EXCLUDED.isolated,
-                       probed_at = now(),
+                   SET egress_ip = COALESCE(EXCLUDED.egress_ip, crawl_egress_groups.egress_ip),
+                       isolated = CASE WHEN EXCLUDED.egress_ip IS NULL
+                                      THEN crawl_egress_groups.isolated
+                                      ELSE EXCLUDED.isolated
+                                  END,
+                       probed_at = CASE WHEN EXCLUDED.egress_ip IS NULL
+                                        THEN crawl_egress_groups.probed_at
+                                        ELSE now()
+                                    END,
                        ip_changes = crawl_egress_groups.ip_changes
-                           + CASE WHEN crawl_egress_groups.egress_ip IS DISTINCT FROM EXCLUDED.egress_ip
+                           + CASE WHEN EXCLUDED.egress_ip IS NOT NULL
+                                    AND crawl_egress_groups.egress_ip IS DISTINCT FROM EXCLUDED.egress_ip
                                   THEN 1 ELSE 0 END
                 """.trimIndent(),
             ).use { ps ->

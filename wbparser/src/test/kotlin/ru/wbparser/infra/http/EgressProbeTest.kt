@@ -76,6 +76,8 @@ class EgressProbeTest :
 
             report.problems shouldContain "No echo service is configured — the crawler's own address is unknown."
             report.groups.single().egressIp shouldBe null
+            // The address is unknown, not changed: nothing was observed.
+            report.groups.single().observed shouldBe false
             report.misconfigured shouldBe false
         }
 
@@ -90,6 +92,7 @@ class EgressProbeTest :
                 ).probe()
 
             report.groups.single().egressIp shouldBe "203.0.113.7"
+            report.groups.single().observed shouldBe true
             report.groups.single().isolated shouldBe true
             report.problems shouldHaveSize 0
         }
