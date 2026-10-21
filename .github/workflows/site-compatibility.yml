@@ -23,10 +23,31 @@ name: Site compatibility
 # answer to *its* question instead of to "the last green run", which may have
 # been about another image.
 #
-# A `conclusion` that is not `success` is a failure — including `cancelled`,
-# `timed_out` and `neutral`, and including a run that never appeared at all.
-# "The storefront's run is missing" and "the storefront's run passed" are not
-# the same thing, and only one of them is a compatibility check.
+# A `conclusion` that is not `success` is not an answer that says yes —
+# including `cancelled`, `timed_out` and `neutral`, and including a run that
+# never appeared at all. "The storefront's run is missing" and "the storefront's
+# run passed" are not the same thing, and only one of them is a compatibility
+# check. The difference between the answers is written down; the difference
+# does not decide the crawler's `main`.
+#
+# ## The answer is a report, not a gate
+#
+# The storefront's verdict is not the crawler's verdict. A storefront that
+# cannot read the crawler's released image is a fact about the storefront, and
+# a red `main` of the crawler would say "the crawler is broken" about a
+# storefront that is broken — in a repository whose team cannot fix it and
+# cannot make the storefront catch up before the next release.
+#
+# The contract between the two repositories is enforced where it protects the
+# people who use the storefront: the storefront's pin names the crawler image
+# it runs, and that pin moves only on a green answer. A red answer therefore
+# means "the storefront keeps the image it had", not "the storefront serves
+# something it does not understand".
+#
+# So the answer is recorded rather than enforced here, and the record outlives
+# the run: it is written into the run's summary, and a non-green answer opens
+# an issue in this repository. What this job still fails on is what the
+# crawler is responsible for — its token, its dispatch, its image.
 #
 # ## A missing token fails, loudly
 #
@@ -69,8 +90,11 @@ jobs:
   # reader to the wrong place.
   #
   # When the image does not appear, this job fails and the compatibility job is
-  # skipped — and a skipped job does not block a merge. The gate that matters —
-  # "the storefront understands this image" — is the one that has to be green.
+  # skipped — and a skipped job does not block a merge. The question "does the
+  # storefront understand this image" is not this repository's gate: it is the
+  # storefront's pin, which moves only on a green answer. What is this
+  # repository's own is the image, and its absence is the crawler's failure —
+  # so it stays loud.
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -149,6 +173,12 @@ jobs:
     # The dispatch, the storefront's own CI (image build plus suite), and the
     # wait for its conclusion.
     timeout-minutes: 60
+    # `issues: write` is the report's grant: a non-green answer opens an issue
+    # in this repository, so that the signal outlives the run. The storefront
+    # is reached with its own token; this grant is the crawler's own.
+    permissions:
+      contents: read
+      issues: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
@@ -263,7 +293,13 @@ jobs:
       # The site's commit is read from the run and compared with the commit the
       # dispatch asked about: a run against a site commit nobody asked for is
       # not an answer to this question, however green it is.
+      #
+      # A run that never appears is not an answer either — and it is not the
+      # crawler's failure to fix. It is recorded as the absence of an answer
+      # and reported, because the report says "there was no answer", which is
+      # not the same as saying "the storefront understands this image".
       - name: Wait for the storefront's run to appear
+        id: wait
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
@@ -281,8 +317,10 @@ jobs:
             )"
             if [ -z "$run_id" ]; then
               if [ "$(date +%s)" -ge "$deadline" ]; then
-                echo "::error::the storefront's run never appeared — compatibility is not proven"
-                exit 1
+                echo "::warning::the storefront's run never appeared — there is no answer"
+                echo "answer=none" >> "$GITHUB_ENV"
+                echo "found=false" >> "$GITHUB_OUTPUT"
+                exit 0
               fi
               echo "waiting for the storefront's run to appear..."
               sleep 15
@@ -290,9 +328,11 @@ jobs:
           done
           echo "The storefront's run: $run_id"
           echo "run_id=${run_id}" >> "$GITHUB_ENV"
+          echo "found=true" >> "$GITHUB_OUTPUT"
 
       - name: The storefront's run is about the commit we asked about
-        if: github.event_name != 'pull_request'
+        id: match
+        if: github.event_name != 'pull_request' && steps.wait.outputs.found == 'true'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
@@ -303,20 +343,124 @@ jobs:
           head_sha="$(gh api "repos/${SITE_REPO}/actions/runs/${RUN_ID}" --jq '.head_sha')"
           echo "the run checked ${head_sha}, the question was about ${EXPECTED_SHA}"
           if [ "$head_sha" != "$EXPECTED_SHA" ]; then
-            echo "::error::the storefront's run checked a different commit than the one that was asked about"
-            exit 1
+            # A run about another commit is not an answer to this question,
+            # however green it is. That is a fact about the answer, and it is
+            # reported as one — it is not a reason to fail the crawler's main.
+            echo "::warning::the storefront's run checked a different commit than the one that was asked about"
+            echo "answer=other-commit" >> "$GITHUB_ENV"
+            echo "matched=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+          echo "matched=true" >> "$GITHUB_OUTPUT"
 
       # `--exit-status` makes the wait's outcome the step's outcome: a
       # storefront run that failed must fail this one, and a storefront run that
       # never finished must not pass silently either.
+      #
+      # The outcome of the *answer* is not the outcome of the crawler's `main`.
+      # The storefront's conclusion is recorded — and it does not fail the
+      # crawler's release, because the storefront's verdict is the storefront's
+      # to give. What the conclusion means is written down in the report below.
       - name: The storefront's conclusion
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.wait.outputs.found == 'true' && steps.match.outputs.matched == 'true'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
           RUN_ID: ${{ env.run_id }}
-        run: gh run watch "$RUN_ID" --repo "$SITE_REPO" --exit-status
+        run: |
+          set -euo pipefail
+          conclusion="success"
+          if ! gh run watch "$RUN_ID" --repo "$SITE_REPO" --exit-status; then
+            conclusion="$(gh api "repos/${SITE_REPO}/actions/runs/${RUN_ID}" --jq '.conclusion // "unknown"')"
+            echo "::warning::the storefront's run concluded '${conclusion}'"
+          fi
+          echo "answer=${conclusion}" >> "$GITHUB_ENV"
+          echo "answer: ${conclusion}"
+
+      # The answer is written down, and a non-green one is reported.
+      #
+      # The report is an issue in this repository, and not only a line in the
+      # run's summary: a summary is a scrollback buffer with a retention
+      # period, and the one thing this report must not be is a thing that
+      # disappears. One open issue is enough — a report that opens a new issue
+      # on every release teaches people to ignore the label — and a green
+      # answer closes it, because the storefront caught up.
+      - name: The answer is recorded
+        if: github.event_name != 'pull_request' && success()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          ANSWER: ${{ env.answer }}
+          IMAGE: ${{ needs.image.outputs.image }}
+          SITE_REPO: ${{ vars.SITE_REPO }}
+          SITE_SHA: ${{ steps.dispatch.outputs.site_sha }}
+          RUN_ID: ${{ env.run_id }}
+        run: |
+          set -euo pipefail
+          answer="${ANSWER:-none}"
+          run_url="https://github.com/${SITE_REPO}/actions/runs/${RUN_ID:-none}"
+
+          {
+            echo "### The storefront's answer"
+            echo ""
+            echo "- Crawler image: \`${IMAGE}\`"
+            echo "- Storefront commit: \`${SITE_SHA}\`"
+            echo "- Storefront run: ${RUN_ID:-none} — ${run_url}"
+            echo "- Answer: **${answer}**"
+            echo ""
+            if [ "$answer" = "success" ]; then
+              echo "The storefront understands this image, and its pin may move to it."
+            else
+              echo "The storefront did not confirm this image."
+              echo ""
+              echo "- The pin that names the storefront's crawler image moves only on a green"
+              echo "  answer, so the storefront keeps the image it had."
+              echo "- The crawler's \`main\` is not red about it: the answer is a report, and the"
+              echo "  report is the issue this run has opened."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          gh label create contract-compatibility --color D93F0B \
+            --description "The storefront did not confirm the crawler's released image" --force
+
+          open_number="$(
+            gh issue list --repo "$GH_REPO" --label contract-compatibility --state open \
+              --json number --jq '.[0].number // empty'
+          )"
+
+          if [ "$answer" = "success" ]; then
+            if [ -n "$open_number" ]; then
+              gh issue comment "$open_number" --repo "$GH_REPO" \
+                --body "The storefront answered green again: run ${RUN_ID:-none} (${run_url})."
+              gh issue close "$open_number" --repo "$GH_REPO" \
+                --comment "The storefront confirmed the crawler's image: run ${RUN_ID:-none} (${run_url})."
+            fi
+            exit 0
+          fi
+
+          {
+            echo "The storefront did not confirm the crawler's released image."
+            echo ""
+            echo "- Crawler image: \`${IMAGE}\`"
+            echo "- Storefront commit: \`${SITE_SHA}\`"
+            echo "- Storefront run: ${RUN_ID:-none} — ${run_url}"
+            echo "- Answer: **${answer}**"
+            echo ""
+            echo "The pin that names the storefront's crawler image moves only on a green"
+            echo "answer, so the storefront keeps the image it had. The crawler's \`main\` is"
+            echo "not red about it: the answer is a report, and this issue is the report."
+            echo ""
+            echo "<!-- opened by .github/workflows/site-compatibility.yml -->"
+          } > "$RUNNER_TEMP/compatibility.md"
+
+          if [ -n "$open_number" ]; then
+            gh issue comment "$open_number" --repo "$GH_REPO" --body-file "$RUNNER_TEMP/compatibility.md"
+            echo "the report is issue #${open_number}"
+          else
+            gh issue create --repo "$GH_REPO" \
+              --title "The storefront did not confirm the crawler's released image" \
+              --label contract-compatibility --body-file "$RUNNER_TEMP/compatibility.md"
+          fi
 
       # The pull request's case, said out loud.
       #

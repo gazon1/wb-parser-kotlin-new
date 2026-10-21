@@ -304,6 +304,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** называть в фасаде таблицы, которые читает API: гейт совместимости читает _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
 - **Never** собирать SQL в фасаде: фасад держит решения, а не текст запросов. _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
 - **Never** тестировать решение о тексте SQL только через базу: где фильтр уехал и _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Always** закрывать открытый issue совместимости, когда витрина снова ответила зелёным. _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
+- **Always** оставлять красным то, за что отвечает краулер: незаданный репозиторий или _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
+- **Always** писать ответ витрины в отчёт: в сводку прогона и в issue с меткой _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
+- **Always** считать пин витрины тем местом, где контракт обязателен: пин едет только на _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
+- **Never** добавлять `site-compatibility` в обязательные проверки `main`, пока витрина не _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
+- **Never** открывать второй issue совместимости, пока первый открыт. _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
+- **Never** ронять `main` краулера из-за ответа витрины: красный, отменённый, прерванный _(from `2026-10-21-the-cross-repo-compatibility-is-a-report`)
 - **Always** называть лицензию в `README.md` и держать текст `LICENSE` _(from `2026-10-21-the-repository-is-licensed`)
 - **Always** проверять лицензию новой зависимости до того, как она попадает _(from `2026-10-21-the-repository-is-licensed`)
 - **Never** менять лицензию репозитория молча: смена лицензии — это _(from `2026-10-21-the-repository-is-licensed`)
@@ -1023,6 +1030,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-one-decision-is-one-pull-request` — workflow  conventions
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — catalog  contract  observability
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — architecture  refactoring  maintainability
+- `2026-10-21-the-cross-repo-compatibility-is-a-report` — ci  workflow  contract
 - `2026-10-21-the-repository-is-licensed` — legal  project  governance
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
@@ -1117,6 +1125,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-one-decision-is-one-pull-request` — Одно решение — один pull request, и он перебазирован на свежий main
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — Ответ говорит, кто ответил и о каком моменте данные
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — Запросы каталога живут в решениях, которые они держат, а фасад держит поверхность
+- `2026-10-21-the-cross-repo-compatibility-is-a-report` — Кросс-репозиторная совместимость — это отчёт, а не блокирующий гейт
 - `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
