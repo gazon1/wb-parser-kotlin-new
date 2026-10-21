@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.RestController
 import ru.wbparser.app.config.EgressGroups
 import ru.wbparser.infra.db.repositories.countSubjects
 import ru.wbparser.infra.db.repositories.countTargetsWithoutSearchToken
+import ru.wbparser.infra.http.SessionSource
 import javax.sql.DataSource
 
 /**
@@ -19,6 +20,12 @@ class HealthRoutes(
     private val datasource: DataSource,
     private val meterRegistry: MeterRegistry,
     private val groups: EgressGroups.Resolved,
+    /**
+     * The pool whose sessions are reported. It is optional so that a health check
+     * without a browser still answers — a readiness that needs a browser to say
+     * "the browser is not there" is a readiness that fails for the wrong reason.
+     */
+    private val pool: SessionSource? = null,
 ) {
     @GetMapping("/live")
     fun liveness() = mapOf("status" to "UP")
@@ -75,7 +82,7 @@ class HealthRoutes(
             // The egress state is a third section: which address each group leaves
             // from, and whether it is still answering. Without it the numbers above
             // have nothing to be compared with.
-            "egress" to egressStats(meterRegistry, datasource, groups.groups),
+            "egress" to egressStats(meterRegistry, datasource, groups.groups, pool),
         )
     }
 }
