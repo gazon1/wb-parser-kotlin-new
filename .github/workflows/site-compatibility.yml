@@ -95,6 +95,7 @@ jobs:
           CRAWLER_IMAGE: ${{ inputs.crawler_image }}
           OWNER: ${{ github.repository_owner }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
@@ -102,8 +103,30 @@ jobs:
           image="${CRAWLER_IMAGE:-ghcr.io/${OWNER}/wb-parser:${GITHUB_SHA::7}}"
 
           deadline=$(( $(date +%s) + 1200 ))
-          until docker buildx imagetools inspect "$image" >/dev/null 2>&1; do
-            if [ "$(date +%s)" -ge "$deadline" ]; then
+          while true; do
+            if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+              break
+            fi
+
+            # The image of a commit that is no longer the tip of `main` will
+            # never appear: its own CI run was cancelled when `main` moved on,
+            # and the newer commit publishes an image of its own.
+            #
+            # Waiting out the whole budget and then failing is a red run about
+            # nothing: the commit it names is not the one that will be
+            # deployed, and the run that answers that question is the newer
+            # commit's run. So the wait ends as soon as the commit is
+            # superseded, and says so.
+            if [ -z "${CRAWLER_IMAGE:-}" ]; then
+              tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha' 2>/dev/null || echo "")"
+              if [ -n "$tip" ] && [ "$tip" != "$GITHUB_SHA" ]; then
+                echo "::notice::commit ${GITHUB_SHA::7} is no longer the tip of main (${tip::7}): its image will never be published, and the newer commit's run is the one that answers this question."
+                echo "superseded=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
+
+            if [ "$(date + %s)" -ge "$deadline" ]; then
               echo "::error::the image $image never appeared in the registry"
               exit 1
             fi
@@ -119,6 +142,9 @@ jobs:
 
   site-compatibility:
     needs: image
+    # A superseded commit has no image and no question left to ask: the newer
+    # commit's run answers it. The job says so and ends green.
+    if: needs.image.outputs.superseded != 'true'
     runs-on: ubuntu-latest
     # The dispatch, the storefront's own CI (image build plus suite), and the
     # wait for its conclusion.
