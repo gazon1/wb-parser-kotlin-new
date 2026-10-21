@@ -42,6 +42,15 @@ class CatalogReadiness(
     private val dataSource: CatalogDataSource,
     private val queries: CatalogQueries,
     meterRegistry: MeterRegistry,
+    /**
+     * The database the crawler writes to.
+     *
+     * It is here for one thing: to say whether the catalog reads from the same database
+     * the crawler writes to. A catalog that reads a replica answers with numbers that
+     * are behind the writer's, and that has to be visible — otherwise a missing product
+     * looks like a bug in the crawler.
+     */
+    private val writerUrl: String? = null,
     private val schemaCache: CatalogCache = CatalogCache(meterRegistry, Duration.ofSeconds(60), name = "schema"),
 ) {
     /**
@@ -67,7 +76,21 @@ class CatalogReadiness(
         // process, so a second instance would answer with different numbers and a
         // doubled limit — and nothing else would say so. The id does not prevent a
         // second instance; it makes one visible.
+        //
+        // Тот же id едет с каждым ответом, который несёт данные (`instanceId` в
+        // ответах), поэтому клиент различает два инстанса, не спрашивая готовность
+        // отдельно.
         checks["instance"] = INSTANCE_ID
+
+        // Where the numbers come from. The catalog may read a replica, and a replica
+        // answers with what was written a moment ago — that is a property of the
+        // deployment, and it belongs in the answer, not in a runbook nobody reads.
+        checks["source"] =
+            if (readsFromAnotherDatabase()) {
+                "REPLICA: the catalog reads from another database than the writer — its answers may be behind"
+            } else {
+                "PRIMARY: the catalog reads from the database the writer writes to"
+            }
 
         if (connectionError == null) {
             val missing = schemaCache.get("schema") { queries.missingColumns() }
@@ -104,6 +127,15 @@ class CatalogReadiness(
     }
 
     @Suppress("TooGenericExceptionCaught")
+    /**
+     * Whether the catalog reads from a database other than the writer's.
+     */
+    private fun readsFromAnotherDatabase(): Boolean {
+        val writer = writerUrl ?: return false
+        if (writer.isBlank()) return false
+        return !writer.equals(dataSource.url, ignoreCase = true)
+    }
+
     private fun probeConnection(): String? =
         try {
             dataSource.read { connection ->

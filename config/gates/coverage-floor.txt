@@ -21,7 +21,16 @@
 #   suite actually exercised, including the integration module's. Without it the
 #   integration suites were invisible to the gate: a module's own report holds
 #   only that module's classes.
+# - 86% — the `app` floor after the catalog's answers started naming the instance
+#   and the moment of their data: 87.2% measured (2026-10-21). The point of
+#   headroom is kept: a floor of 87% would have had none.
+# - 86% / 89% / 90% — after the catalog's queries were split by decision and the
+#   branch was rebased onto the merge of #129: `app` 86% against 87.7%,
+#   `merged` 89% against 90.1%, `wbparser` 90% against 91.3%. The split did not
+#   lower the coverage: the parts that hold the text of the SQL are tested
+#   without a database, and the parts that read it are tested against a real
+#   PostgreSQL.
 
-app 84
-merged 82
-wbparser 81
+app 86
+merged 89
+wbparser 90

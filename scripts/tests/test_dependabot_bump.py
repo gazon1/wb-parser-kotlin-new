@@ -76,6 +76,45 @@ class BumpTest(unittest.TestCase):
     def test_body_without_versions_is_unknown(self) -> None:
         self.assertEqual(BUMP.classify("There is nothing to bump here."), BUMP.UNKNOWN)
 
+    def test_prose_with_from_and_to_is_not_a_bump(self) -> None:
+        # Тело pull request'а — это не только список обновлений: там есть
+        # таблицы, и в их заголовке «from» и «to» стоят без всяких версий.
+        # Такая пара не является бампом и не должна решать его.
+        body = (
+            "| Dependency | from | to |\n"
+            "|---|---|---|\n"
+            "- [foo] updates from 1.0.0 to 1.0.1\n"
+        )
+        self.assertEqual(BUMP.classify(body), BUMP.PATCH)
+
+    def test_a_version_the_script_reads_only_partly_stops_the_merge(self) -> None:
+        # `22-jre → 24-jre` — версия, у которой скрипт возьмёт только число.
+        # 22 и 24 — это разные major, и такой бамп автослияние не запускает.
+        body = (
+            "Bumps the group with 2 updates.\n"
+            "- [foo] updates from 1.0.0 to 1.0.1\n"
+            "- [eclipse-temurin] updates from 22-jre to 24-jre\n"
+        )
+        self.assertEqual(BUMP.classify(body), BUMP.MAJOR)
+
+    def test_a_version_that_became_a_line_is_not_mergeable(self) -> None:
+        # `2.19.1 → 2.22` — предложение точнее не стало, а стало грубее:
+        # `2.22` — это линия версий, а не релиз, и какой релиз за ней стоит,
+        # скрипт не знает. Такого релиза может и не быть вовсе: `2.22`
+        # публикует jackson-annotations, а у jackson-databind есть только
+        # `2.22.0`…`2.22.4`.
+        self.assertEqual(BUMP.classify("Bumps foo from 2.19.1 to 2.22."), BUMP.MIXED)
+
+    def test_a_line_in_a_group_stops_the_merge(self) -> None:
+        # Один такой бамп в группе останавливает всю группу: сливать можно
+        # только то, что понятно.
+        body = (
+            "Bumps the group with 2 updates.\n"
+            "- [foo] updates from 1.0.0 to 1.0.1\n"
+            "- [jackson-databind] updates from 2.19.1 to 2.22\n"
+        )
+        self.assertEqual(BUMP.classify(body), BUMP.MIXED)
+
 
 class ExitCodeTest(unittest.TestCase):
     """Что скрипт решает машине сливать."""
@@ -108,6 +147,15 @@ class ExitCodeTest(unittest.TestCase):
         result = self._run("Nothing here.")
         self.assertEqual(result.returncode, 1)
         self.assertEqual(result.stdout.strip(), "unknown")
+
+    def test_a_version_that_became_a_line_is_not_mergeable(self) -> None:
+        # `2.19.1 → 2.22` — версия, которой может не быть на Maven Central
+        # вовсе. Скрипт не ходит в сеть и не знает, опубликован ли релиз, но
+        # он знает, что точность имени упала, — и «не знаю» не значит
+        # «не опасно».
+        result = self._run("Bumps foo from 2.19.1 to 2.22.")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stdout.strip(), "mixed")
 
     def test_a_file_argument_is_read(self) -> None:
         import tempfile

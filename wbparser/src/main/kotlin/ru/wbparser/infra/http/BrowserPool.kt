@@ -45,63 +45,16 @@ class BrowserPool(
      * to inject a [FakeBrowserAutomation] without any real browser I/O.
      */
     private val browserAutomations: List<BrowserAutomation>? = null,
-    /**
-     * How fast this pool may talk to WB, for groups that do not say otherwise.
-     *
-     * A group that shares one egress IP shares one budget, and the budget is set by the
-     * pacer — not by the number of profiles. Groups with different IPs get their own
-     * pacer and therefore their own budget, which is the point of splitting them. See
-     * [RequestPacer] and
-     * `docs/decisions/2026-10-21-egress-groups-are-the-unit-of-rate-limiting.md`.
-     */
-    private val pacing: RequestPacing = RequestPacing(),
-    /**
-     * Per-group pacing. A group that is not listed here uses [pacing].
-     */
-    private val groupPacings: Map<String, RequestPacing> = emptyMap(),
 ) {
     /**
-     * One pacer per egress group.
+     * The groups this pool serves.
      *
-     * The pacer is the group's request budget: one request per interval for the whole
-     * group, because the group is one address as far as WB is concerned.
+     * The groups come from the profiles: a group is a set of profiles that share one
+     * egress IP. The *budget* of a group is not the pool's business — it belongs to
+     * [EgressPacerRegistry], and the router asks that registry. The pool's business is
+     * profiles and pages: which browser to lend out, and when.
      */
-    private val pacers: Map<String, RequestPacer> =
-        profiles
-            .map { it.egressGroup }
-            .distinct()
-            .associateWith { groupId ->
-                val groupPacing = groupPacings[groupId] ?: pacing
-                RequestPacer(
-                    groupPacing.minIntervalMs,
-                    groupPacing.jitterMinMs,
-                    groupPacing.jitterMaxMs,
-                )
-            }
-
-    /** The groups this pool serves. */
-    val egressGroupIds: Set<String> get() = pacers.keys
-
-    /**
-     * Waits until this group's next request may be sent to WB.
-     *
-     * Called by the downloader before every fetch, for the group that will serve it.
-     */
-    suspend fun awaitRequestSlot(groupId: String) {
-        val pacer = requireNotNull(pacers[groupId]) { "Unknown egress group '$groupId'" }
-        pacer.awaitSlot()
-    }
-
-    /**
-     * How long until this group may send its next request, in milliseconds.
-     *
-     * A peek — it reserves nothing. It is what tells the router which group will be
-     * free soonest.
-     */
-    fun millisUntilSlot(groupId: String): Long {
-        val pacer = requireNotNull(pacers[groupId]) { "Unknown egress group '$groupId'" }
-        return pacer.millisUntilSlot()
-    }
+    val egressGroupIds: Set<String> = profiles.map { it.egressGroup }.distinct().toSet()
 
     /** Discovered Chrome endpoints, resolved lazily and cached for the pool's lifetime. */
     @Volatile

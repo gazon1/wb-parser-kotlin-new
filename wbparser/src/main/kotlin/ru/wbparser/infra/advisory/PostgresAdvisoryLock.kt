@@ -8,7 +8,14 @@ import java.sql.Connection
 import javax.sql.DataSource
 import kotlin.time.Duration.Companion.milliseconds
 
-private const val LOCK_KEY = 0xC0FFEEC0FFEEL
+/**
+ * The key of the deployment-wide lock.
+ *
+ * Two locks live under this one: the key itself, which every instance of a deployment
+ * shares, and a per-host key derived from it, which lets several hosts crawl at the
+ * same time. Which of the two a host takes is the deployment's decision.
+ */
+const val DEPLOYMENT_LOCK_KEY = 0xC0FFEEC0FFEEL
 
 /**
  * How often the lock is retried while another instance holds it.
@@ -20,12 +27,21 @@ private const val POLL_INTERVAL_MS = 500L
 
 /**
  * PostgreSQL advisory lock to prevent concurrent crawls.
- * Uses pg_try_advisory_lock with a fixed lock key per application.
- * This ensures only one crawler instance runs at a time across all targets.
+ *
+ * ## What the key decides
+ *
+ * The key is the scope of the lock. The deployment-wide key means "one crawl at a time
+ * in this database"; a per-host key means "one crawl at a time on this host", and lets
+ * several hosts share the work. The work itself is divided by the lease on the
+ * targets, so the lock no longer has to divide it.
+ *
+ * @param lockKey the key the lock is taken under. The default is the deployment-wide
+ *   one; a host that shares its work with other hosts takes a key of its own.
  */
 data class PostgresAdvisoryLock(
     val datasource: DataSource,
     val lockTimeoutMs: Long = 60_000,
+    val lockKey: Long = DEPLOYMENT_LOCK_KEY,
 )
 
 /**
@@ -100,8 +116,8 @@ private suspend fun PostgresAdvisoryLock.acquire(conn: Connection): Acquisition 
     }
 }
 
-private fun tryAcquire(conn: Connection): Boolean =
-    conn.prepareStatement("SELECT pg_try_advisory_lock($LOCK_KEY)").use { ps ->
+private fun PostgresAdvisoryLock.tryAcquire(conn: Connection): Boolean =
+    conn.prepareStatement("SELECT pg_try_advisory_lock($lockKey)").use { ps ->
         ps.executeQuery().use { rs ->
             rs.next() && rs.getBoolean(1)
         }
@@ -121,8 +137,8 @@ private fun tryAcquire(conn: Connection): Boolean =
  * the connection is about to be returned to the pool regardless, and failing a finished
  * crawl over the bookkeeping would be the worse outcome.
  */
-private fun release(conn: Connection): Boolean =
-    conn.prepareStatement("SELECT pg_advisory_unlock($LOCK_KEY)").use { ps ->
+private fun PostgresAdvisoryLock.release(conn: Connection): Boolean =
+    conn.prepareStatement("SELECT pg_advisory_unlock($lockKey)").use { ps ->
         ps.executeQuery().use { rs ->
             rs.next() && rs.getBoolean(1)
         }

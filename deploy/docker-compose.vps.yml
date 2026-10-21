@@ -1,5 +1,5 @@
 # =============================================================================
-# VPS runtime contract for the crawler.
+# VPS runtime contract for the crawler and its browser.
 #
 # This is the compose file that runs on 91.188.212.39. It is deliberately NOT the
 # same as ../docker-compose.yml: that one owns its own PostgreSQL for a
@@ -8,16 +8,47 @@
 #
 # Kept in the repository rather than templated by the Ansible role on purpose —
 # how the app runs is the app's contract, and a change to it belongs in review
-# here. The role copies this file verbatim and only writes `.env` next to it.
+# here. The role copies this file verbatim and only writes the env files next to
+# it.
 #
-# Both files are written next to this compose file by the Caddy-vps Ansible role,
-# and they are deliberately not one file:
+# Two images, one namespace
+# -------------------------
+# The crawler cannot fetch a Wildberries page without a real browser. The browser
+# comes from AdsPower: a headless Chrome runtime that exposes a local API and
+# launches the Chrome whose CDP endpoint the crawler then drives. Both halves are
+# images built by this repository and pulled by the role:
 #
-#   .env     DIGEST and IMAGE_OWNER only. Compose interpolates ${…} out of this
-#            one, so anything in it is subject to `$` expansion.
-#   app.env  the credentials, passed to the container through env_file, which
-#            passes values literally. A password containing `$` must not be
-#            interpreted by the tooling that reads it.
+#   wb-parser            the crawler
+#   wb-parser-adspower   the AdsPower runtime (Xvfb + the CLI + the Chrome kernel)
+#
+# The AdsPower runtime runs with `network_mode: "service:wb-parser"`, which means
+# it SHARES the crawler's network namespace. That is the whole point of the
+# arrangement:
+#
+#   - the AdsPower Local API listens on 127.0.0.1:50325 inside that namespace, and
+#     the crawler reaches it there — the crawler never has to know the host's
+#     address, and the API is never published anywhere;
+#   - the Chrome that AdsPower launches binds its CDP port in the same namespace,
+#     so the URL the API hands back (127.0.0.1:<port>) is reachable as it is;
+#   - nothing is published on the host's public interfaces. The crawler binds the
+#     bridge network it is attached to, and that network is not reachable from
+#     the internet.
+#
+# The alternative — the crawler on the host network — would put the admin API on
+# the public address of the VPS, and the AdsPower API would have to listen there
+# too. Sharing a namespace avoids both.
+#
+# The env files are written next to this compose file by the Caddy-vps Ansible
+# role, and they are deliberately not one file:
+#
+#   .env         the image digests, plus the owner. Compose interpolates ${…} out
+#                of this one, so anything in it is subject to `$` expansion.
+#   app.env      the crawler's credentials, passed to the container through
+#                env_file, which passes values literally. A password containing
+#                `$` must not be interpreted by the tooling that reads it.
+#   browser.env  the AdsPower key, for the same reason and for a different
+#                consumer: the browser runtime must never see the database
+#                password, and the crawler must never see the AdsPower key.
 #
 # Folding them together looked simpler and would have silently eaten the `$` in
 # any password that had one.
@@ -48,6 +79,12 @@ services:
       - "8080"
     networks:
       - caddy_net
+    # The AdsPower state, shared with the browser runtime below. The crawler only
+    # reads it — its pre-flight check looks at the profile directories the
+    # runtime materialised, and a crawler that cannot see them would report every
+    # profile as broken. The runtime owns the contents.
+    volumes:
+      - adspower-state:/root/.adspowerCli
     healthcheck:
       # wget, not curl: eclipse-temurin:22-jre-alpine ships no curl, so a
       # `curl -fsS …` healthcheck could never pass and the container would be
@@ -70,9 +107,57 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # ── AdsPower browser runtime ────────────────────────────────────────────────
+  #
+  # The browser is not a convenience here: without it the crawler cannot fetch a
+  # single page. It shares the crawler's network namespace (see the header), so
+  # its Local API is on 127.0.0.1:50325 for the crawler and for nothing else.
+  wb-parser-browser:
+    image: ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser-adspower@${BROWSER_DIGEST:?BROWSER_DIGEST must be set to the digest of the browser runtime image, e.g. BROWSER_DIGEST=sha256:…}
+    container_name: wb-parser-browser
+    restart: unless-stopped
+    # The shared namespace. Everything the browser exposes — the Local API, the
+    # Chrome CDP ports — lands in the crawler's namespace, which is on caddy_net
+    # and nowhere else.
+    network_mode: "service:wb-parser"
+    depends_on:
+      wb-parser:
+        condition: service_started
+    env_file:
+      - browser.env
+    # The AdsPower state: the Chrome kernel (520 MB) and the per-profile browser
+    # directories. It is a named volume, not a bind mount: the kernel is
+    # downloaded once by the runtime, and a bind mount from the host would put
+    # 520 MB of browser build on the VPS filesystem and make its layout part of
+    # the deployment contract.
+    volumes:
+      - adspower-state:/root/.adspowerCli
+    healthcheck:
+      # The runtime's own API. The image ships curl (the crawler image does not,
+      # which is why the two healthchecks use different tools).
+      test:
+        - CMD-SHELL
+        - "curl -sf http://127.0.0.1:50325/v1/policies/status || exit 1"
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      # The first start downloads the Chrome kernel, which is slow.
+      start_period: 300s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
 networks:
   # Created and owned by the Caddy-vps Ansible role. Declaring it external means
   # this compose file never creates or deletes it.
   caddy_net:
     external: true
     name: caddy_net
+
+volumes:
+  # The AdsPower runtime's state. Owned by this compose file, so `docker compose
+  # down` keeps it: the Chrome kernel is worth keeping between deploys.
+  adspower-state:
+    name: wbparser-adspower-state

@@ -4,22 +4,19 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.mockk
-import kotlinx.coroutines.test.runTest
 import ru.wbparser.testing.FakeBrowserAutomation
 
 /**
  * The pool, seen through its egress groups.
  *
  * A group is the address WB sees, so the pool has to hand out a profile of the group
- * that was asked for, and it has to keep the request budgets of the groups apart.
+ * that was asked for. The *budget* of a group is not the pool's business — it belongs
+ * to [EgressPacerRegistry], and its own test asks it.
  */
 class BrowserPoolGroupTest :
     FunSpec({
 
-        fun poolOf(
-            vararg groups: Pair<String, List<String>>,
-            groupIntervals: Map<String, Long> = emptyMap(),
-        ): BrowserPool {
+        fun poolOf(vararg groups: Pair<String, List<String>>): BrowserPool {
             val profiles = groups.flatMap { (group, ids) -> ids.map { BrowserProfileConfig(it, "ws://$it", group) } }
             val automations =
                 profiles.map {
@@ -32,10 +29,6 @@ class BrowserPoolGroupTest :
             return BrowserPool(
                 profiles = profiles,
                 browserAutomations = automations,
-                groupPacings =
-                    groups.associate { (group, _) ->
-                        group to RequestPacing(minIntervalMs = groupIntervals[group] ?: 0L)
-                    },
             )
         }
 
@@ -86,34 +79,5 @@ class BrowserPoolGroupTest :
 
             pool.tryBorrowPage("ip-1", includeFlagged = false) shouldBe null
             pool.tryBorrowPage("ip-1", includeFlagged = true) shouldNotBe null
-        }
-
-        test("a group's budget starts when it sends a request, not before") {
-            val pool = poolOf("ip-1" to listOf("p1"), groupIntervals = mapOf("ip-1" to 60_000L))
-
-            pool.millisUntilSlot("ip-1") shouldBe 0L
-
-            runTest {
-                pool.awaitRequestSlot("ip-1")
-            }
-
-            // The group has just sent a request, so it owes the interval.
-            (pool.millisUntilSlot("ip-1") > 50_000L) shouldBe true
-        }
-
-        test("one group's budget does not hold back another") {
-            val pool =
-                poolOf(
-                    "ip-1" to listOf("p1"),
-                    "ip-2" to listOf("p2"),
-                    groupIntervals = mapOf("ip-1" to 60_000L, "ip-2" to 60_000L),
-                )
-
-            runTest {
-                pool.awaitRequestSlot("ip-1")
-            }
-
-            (pool.millisUntilSlot("ip-1") > 50_000L) shouldBe true
-            pool.millisUntilSlot("ip-2") shouldBe 0L
         }
     })

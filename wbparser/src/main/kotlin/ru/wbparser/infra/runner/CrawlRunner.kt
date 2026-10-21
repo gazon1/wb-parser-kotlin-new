@@ -12,17 +12,22 @@ import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.scheduling.FailureClass
+import ru.wbparser.domain.scheduling.RunOutcome
 import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.infra.advisory.LockUnavailable
 import ru.wbparser.infra.advisory.PostgresAdvisoryLock
 import ru.wbparser.infra.advisory.withLock
 import ru.wbparser.infra.db.DatabaseHandle
-import ru.wbparser.infra.db.repositories.fetchActiveTargets
+import ru.wbparser.infra.db.repositories.TargetRun
+import ru.wbparser.infra.db.repositories.claimDueTargets
+import ru.wbparser.infra.db.repositories.fetchTargetsByIds
 import ru.wbparser.infra.db.repositories.markTargetCrawled
 import ru.wbparser.infra.db.repositories.markTargetFailed
 import ru.wbparser.infra.db.repositories.markTargetRequeued
-import ru.wbparser.infra.scheduler.targetsDue
+import ru.wbparser.infra.db.repositories.recordTargetRun
+import ru.wbparser.infra.db.repositories.releaseTargetLeases
+import java.time.Instant
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -62,7 +67,7 @@ class CrawlRunner(
      * When null, the counters are computed but reported nowhere.
      */
     private val meterRegistry: MeterRegistry? = null,
-) {
+) : CrawlRun {
     private val log = LoggerFactory.getLogger(CrawlRunner::class.java)
 
     private val jobStore = CrawlJobStore(db, log)
@@ -78,12 +83,12 @@ class CrawlRunner(
             failureHandler = config.failureHandler,
         )
 
-    private val advisoryLock = PostgresAdvisoryLock(db.ds, config.lockTimeoutMs)
+    private val advisoryLock = PostgresAdvisoryLock(db.ds, config.lockTimeoutMs, config.lockKey)
 
     /**
      * Runs the crawler: acquires advisory lock, crawls all due targets, closes lock.
      */
-    suspend fun run(): RunResult =
+    override suspend fun run(): RunResult =
         withContext(Dispatchers.IO) {
             val lockResult: Either<LockUnavailable, RunResult> = advisoryLock.withLock { runUnsafe() }
             lockResult.fold(
@@ -97,15 +102,39 @@ class CrawlRunner(
 
     private suspend fun runUnsafe(): RunResult {
         val startedAt = java.time.Instant.now()
-        val targets = db.ds.fetchActiveTargets()
-        val due = targetsDue(targets, config.freshness)
+
+        // The address is asked *before* the work is taken.
+        //
+        // The claim leases the targets it hands out, and a lease keeps every host away
+        // from them until it expires. A run that refuses to start because no address can
+        // serve must not hold those targets: it would keep the whole deployment from
+        // working them for the whole lease duration, for a run that served nothing.
+        val egress = source.egress
+        if (egress != null && !egress.isAnyGroupAvailable()) {
+            log.warn("No egress group can serve a request right now — the crawl is not started.")
+            return RunResult.NoEgressAvailable
+        }
+
+        // The targets are claimed, not read: the claim leases them, so another host
+        // working on the same database takes other targets and never the same one.
+        val claimed =
+            db.ds.claimDueTargets(
+                owner = config.instanceId,
+                now = startedAt,
+                freshness = config.freshness,
+                limit = config.claimLimit,
+                leaseFor = config.leaseDuration,
+            )
 
         // Nothing to crawl — no job row is opened, which also keeps crawl_jobs.target_id
-        // (NOT NULL, foreign key) satisfiable.
-        if (due.isEmpty()) return RunResult.NothingDue
+        // (NOT NULL, foreign key) satisfiable. Nothing was claimed either, so nothing
+        // is leased.
+        if (claimed.isEmpty()) return RunResult.NothingDue
+
+        val due = db.ds.fetchTargetsByIds(claimed)
 
         var jobId: UUID? = null
-        try {
+        return try {
             jobId = jobStore.openJob(due.first().id)
             val ctx = CrawlContext(jobId, startedAt, due.map { it.id })
 
@@ -132,7 +161,7 @@ class CrawlRunner(
                     failures += "${target.name}: ${result.error}"
                     log.error("Target {} failed: {}", target.name, result.error)
                 }
-                recordOutcome(target, result)
+                recordOutcome(jobId, target, result)
             }
 
             // crawl_jobs.status has no Partial value (CHECK constraint), so a run that lost
@@ -150,23 +179,23 @@ class CrawlRunner(
                 } catch (_: Throwable) {
                     // hooks must not crash
                 }
-                return RunResult.Success(totalPages, totalItems)
+                RunResult.Success(totalPages, totalItems)
+            } else {
+                val message = failures.joinToString("; ")
+                jobStore.closeJob(
+                    jobId,
+                    JobStatus.Failed,
+                    pagesCrawled = totalPages,
+                    itemsSaved = totalItems,
+                    errorMessage = message,
+                )
+                try {
+                    hooks.onCrawlEnd(ctx, Stop.ManualStop)
+                } catch (_: Throwable) {
+                    // hooks must not crash
+                }
+                RunResult.Failure(message)
             }
-
-            val message = failures.joinToString("; ")
-            jobStore.closeJob(
-                jobId,
-                JobStatus.Failed,
-                pagesCrawled = totalPages,
-                itemsSaved = totalItems,
-                errorMessage = message,
-            )
-            try {
-                hooks.onCrawlEnd(ctx, Stop.ManualStop)
-            } catch (_: Throwable) {
-                // hooks must not crash
-            }
-            return RunResult.Failure(message)
         } catch (e: CancellationException) {
             // A cancelled crawl must not be reported as a failed one — the job row records
             // the distinction that "gave up" is not the same as "broke".
@@ -179,7 +208,13 @@ class CrawlRunner(
             jobId?.let { id ->
                 runCatching { jobStore.closeJob(id, JobStatus.Failed, errorMessage = t.message) }
             }
-            return RunResult.Failure(t.message ?: "Unknown error")
+            RunResult.Failure(t.message ?: "Unknown error")
+        } finally {
+            // The leases are given back as soon as the run is over, so the next host can
+            // take the targets right away. A lease that is not released expires on its
+            // own — this is about not making the other host wait for the expiry.
+            runCatching { db.ds.releaseTargetLeases(config.instanceId) }
+                .onFailure { log.warn("Could not release the target leases: {}", it.message) }
         }
     }
 
@@ -197,17 +232,48 @@ class CrawlRunner(
      * address has seen the same thing.
      */
     private fun recordOutcome(
+        jobId: UUID,
         target: Target,
         result: TargetResult,
     ) {
         val failureClass = result.failureClass
+        val egress = source.egress
+        val group = egress?.lastGroupFor(target.id)
+
+        // The run leaves a row: which group served the target, from which address, and
+        // how it went. Without it the question "which address gave the refusal?" is
+        // answerable only from the logs, and the logs do not last.
+        runCatching {
+            db.ds.recordTargetRun(
+                jobId = jobId,
+                run =
+                    TargetRun(
+                        targetId = target.id,
+                        egressGroup = group,
+                        // The address is not written from here: the ledger of the groups
+                        // holds the one the probe saw, and one fact has one place.
+                        egressIp = null,
+                        outcome =
+                            RunOutcome.of(
+                                // A target that answered with something that is not the
+                                // catalog failed without an error message: the failure is
+                                // the class, and the class is what the run is judged by.
+                                failed = result.error != null || failureClass != null,
+                                failureClass = failureClass,
+                            ),
+                        pages = result.pages,
+                        items = result.items,
+                        startedAt = result.startedAt,
+                    ),
+                finishedAt = Instant.now(),
+            )
+        }.onFailure { log.warn("Could not record the run of target {}: {}", target.name, it.message) }
+
         if (failureClass == null) {
             db.ds.markTargetCrawled(target.id)
             return
         }
 
-        val egress = source.egress
-        val group = egress?.lastGroupFor(target.id)
         if (failureClass == FailureClass.Egress) {
             val delay = db.ds.markTargetRequeued(target.id)
             log.warn(
@@ -276,59 +342,5 @@ class CrawlRunner(
                     }
                 }.awaitAll()
         }
-    }
-
-    sealed class RunResult {
-        data class Success(
-            val pagesCrawled: Int,
-            val itemsSaved: Int,
-        ) : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_SUCCESS
-        }
-
-        data class Failure(
-            val message: String,
-        ) : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_FAILURE
-        }
-
-        /**
-         * The crawl was not started: the advisory lock was not taken.
-         *
-         * [reason] says why — another instance holds the lock, or the wait for it
-         * timed out.
-         */
-        data class AlreadyRunning(
-            val reason: String,
-        ) : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_LOCKED
-        }
-
-        /**
-         * There was nothing to crawl: no target is active, or every target is
-         * still inside its freshness window.
-         *
-         * This is not the same as a crawl that ran and found nothing. Reporting
-         * it as `Success(0, 0)` made a healthy idle crawler look like a broken
-         * one — the scheduler ticks every 30 seconds and most of those ticks
-         * have nothing to do.
-         */
-        data object NothingDue : RunResult() {
-            fun exitCode(): Int = EXIT_CODE_SUCCESS
-        }
-    }
-
-    companion object {
-        /** Exit code: crawl ran and succeeded. */
-        const val EXIT_CODE_SUCCESS = 0
-
-        /** Exit code: crawl ran and failed. */
-        const val EXIT_CODE_FAILURE = 1
-
-        /** Exit code: crawl was not started — advisory lock held by another instance. */
-        const val EXIT_CODE_LOCKED = 2
-
-        /** Exit code: crawl was cancelled. */
-        const val EXIT_CODE_CANCELLED = 3
     }
 }

@@ -77,12 +77,27 @@ gate blocking "the CI workflows are wired" python3 scripts/ci/check-ci-workflows
 # are intentional and safe; all other org.jetbrains.exposed imports in domain/ are forbidden.
 gate blocking "domain purity: no infra imports in domain" bash scripts/ci/check-domain-purity.sh
 
+# --- the catalog measurement ---------------------------------------------------
+# `known_pages_limit` is a number about a catalog, and a number without its evidence
+# cannot be checked: no date, no boundary, no source. The YAML is the source of truth
+# and `catalog_measurements.json` is the measurement behind it. A limit that was edited
+# by hand — back to a round number, because that is what the file looked like before —
+# is exactly what this gate exists to catch, and it costs one file comparison.
+gate blocking "the catalog YAML agrees with the measurement artifact" python3 scripts/check-measurements.py
+
 # --- the demo seed ------------------------------------------------------------
 # The demo seed writes synthetic rows into the table the crawler writes into. Its
 # five run-time barriers are the last line of defence; this gate is the first one,
 # and it is the one that can be read: nothing that shapes a deployed instance may
 # switch it on.
 gate blocking "the demo seed is not enabled in production" python3 scripts/ci/check-demo-seed-not-in-production.py
+
+# --- the catalogue's rights ---------------------------------------------------
+# The role script refuses to run when a table is in neither of its lists — but it
+# refuses at provisioning time, after the migration that created the table has
+# already been applied. The decision belongs to the migration, so the check that
+# finds the undecided table belongs to the same change as the table.
+gate blocking "every table is decided about in the catalogue role" python3 scripts/ci/check-catalogue-role-tables.py
 
 # --- report ------------------------------------------------------------------
 echo
