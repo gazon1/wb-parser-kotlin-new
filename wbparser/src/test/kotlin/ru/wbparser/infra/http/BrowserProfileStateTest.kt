@@ -3,6 +3,7 @@ package ru.wbparser.infra.http
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import org.slf4j.LoggerFactory
+import ru.wbparser.domain.session.SessionState
 import ru.wbparser.testing.FakeBrowserAutomation
 
 /**
@@ -81,11 +82,23 @@ class BrowserProfileStateTest :
 
         test("a flagged profile comes back cold, so the next borrower re-establishes the session") {
             val state = state()
-            state.warm = true
+            state.session.onWarm()
 
             state.flagFor(60_000L)
 
             state.warm shouldBe false
+        }
+
+        test("the refusal is counted against the session, not only against the profile") {
+            val state = state()
+
+            state.flagFor(60_000L)
+
+            // The counter is the point of the session: it says how many requests the
+            // session sent before WB refused it, and that number is what the ledger
+            // writes down next to the address.
+            state.session.refusalCount shouldBe 1
+            state.session.currentState shouldBe SessionState.Flagged
         }
 
         test("a browser the pool started is reported as started by the pool") {

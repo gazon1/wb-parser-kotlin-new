@@ -14,6 +14,14 @@ import java.util.concurrent.atomic.AtomicLong
  * everything now is healthy, and a group that answered everything an hour ago and
  * refuses everything now is not. Only the second number is a verdict.
  *
+ * ## Two kinds of failure, counted apart
+ *
+ * A refusal is WB's answer, and a transport failure is the absence of one. They are
+ * counted in separate counters and kept in the same window, because the question the
+ * health answers — "may this group be believed about a broken catalog?" — is about the
+ * refusals, while the question the transport chain answers — "is the network between
+ * here and there working?" — is about the other kind.
+ *
  * ## Why the verdict matters to the crawler
  *
  * A burnt address answers with a degraded body, which looks exactly like a broken
@@ -27,13 +35,27 @@ internal class GroupHealth(
 ) {
     private val requests = AtomicLong(0)
     private val refused = AtomicLong(0)
+    private val transportFailures = AtomicLong(0)
+    private val lastHealthyAt = AtomicLong(0L)
     private val window = ConcurrentLinkedQueue<Sample>()
 
     /** How many requests the group was asked for, since the process started. */
     val requestCount: Long get() = requests.get()
 
-    /** How many of them were refused, since the process started. */
+    /** How many of them WB refused, since the process started. */
     val refusedCount: Long get() = refused.get()
+
+    /** How many of them never reached WB, since the process started. */
+    val transportFailureCount: Long get() = transportFailures.get()
+
+    /**
+     * When the group last answered normally, in epoch milliseconds; zero when it never has.
+     *
+     * This is the fact the ledger could not hold: the group was answering at 20:14, and
+     * nothing since says so. Without it, "the address changed" and "the address went
+     * quiet" look the same in the table.
+     */
+    fun lastHealthyAtMs(): Long = lastHealthyAt.get()
 
     /**
      * Records one request's outcome.
@@ -43,18 +65,29 @@ internal class GroupHealth(
         outcome: DownloadOutcome,
     ) {
         requests.incrementAndGet()
-        if (outcome == DownloadOutcome.Antibot) refused.incrementAndGet()
-        window.add(Sample(now, outcome == DownloadOutcome.Antibot))
+        when (outcome) {
+            DownloadOutcome.Success -> lastHealthyAt.set(now)
+            DownloadOutcome.Antibot -> refused.incrementAndGet()
+            DownloadOutcome.Error -> transportFailures.incrementAndGet()
+        }
+        window.add(Sample(now, outcome))
     }
 
     /**
      * The refusal rate over the last [windowMs] milliseconds.
+     *
+     * Only the refusals count: a transport failure is not the group refusing, and
+     * counting it as one would make a broken network look like a burnt address.
      */
     fun refusalRate(now: Long): Double {
         trim(now)
         val samples = window.toList()
         if (samples.isEmpty()) return 0.0
-        return samples.count { it.refused }.toDouble() / samples.size
+        val answered = samples.count { it.outcome == DownloadOutcome.Success }
+        val refused = samples.count { it.outcome == DownloadOutcome.Antibot }
+        val total = answered + refused
+        if (total == 0) return 0.0
+        return refused.toDouble() / total
     }
 
     /**
@@ -74,6 +107,6 @@ internal class GroupHealth(
      */
     private class Sample(
         val at: Long,
-        val refused: Boolean,
+        val outcome: DownloadOutcome,
     )
 }

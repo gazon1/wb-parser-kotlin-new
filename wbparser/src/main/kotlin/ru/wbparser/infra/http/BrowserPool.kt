@@ -1,6 +1,8 @@
 package ru.wbparser.infra.http
 
 import org.slf4j.LoggerFactory
+import ru.wbparser.domain.session.SessionPolicy
+import ru.wbparser.domain.session.SessionSnapshot
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -53,7 +55,15 @@ class BrowserPool(
      * knows its own endpoints.
      */
     private val resolveEndpoints: () -> List<String> = { discoverChromeEndpoints() },
-) {
+    /**
+     * The rules that decide how long a profile's session lives and how much it may send.
+     *
+     * The pool holds the profiles; the policy belongs to the deployment, and it is
+     * handed to every session the pool creates. Zero limits mean "not limited" — see
+     * [SessionPolicy] for why every limit is zero until the measurement decides it.
+     */
+    private val sessionPolicy: SessionPolicy = SessionPolicy(),
+) : SessionSource {
     /**
      * The groups this pool serves.
      *
@@ -99,6 +109,7 @@ class BrowserPool(
                     profileConfig = profile,
                     api = adsPowerApi,
                     automation = browserAutomations?.get(index) ?: CdpAutomation(),
+                    sessionPolicy = sessionPolicy,
                     context =
                         BrowserPoolContext(
                             index = index,
@@ -110,6 +121,22 @@ class BrowserPool(
                 )
             }
     }
+
+    /**
+     * The sessions of the pool, one per profile.
+     *
+     * The capacity of the crawler is counted here, and it is counted in **sessions**:
+     * an address is not a unit of capacity, a live session is. Two profiles of one
+     * group are two sessions, and a group whose profiles have all been refused serves
+     * nothing no matter how good its address is.
+     */
+    override fun sessionSnapshots(): List<SessionSnapshot> = profileStates.map { it.session.snapshot() }
+
+    /** How many sessions of the pool may still work. */
+    override val liveSessionCount: Int get() = profileStates.count { !it.isRetired() }
+
+    /** How many sessions of the pool have left the rotation. */
+    override val retiredSessionCount: Int get() = profileStates.count { it.isRetired() }
 
     /**
      * Borrows the next available [com.microsoft.playwright.Page] from the pool
@@ -172,6 +199,10 @@ class BrowserPool(
             val index = cursor.updateAndGet { (it + 1) % profileStates.size }
             val state = profileStates[index]
             if (groupId != null && state.egressGroup != groupId) continue
+            // A retired session is not lent out, not even when everything else is busy:
+            // it is out of the rotation by decision, and handing it out would undo that
+            // decision one request at a time.
+            if (state.isRetired()) continue
             val acquired = state.lock.tryAcquire(adsPower.borrowTimeoutMs, TimeUnit.MILLISECONDS)
             if (acquired) {
                 try {
@@ -184,7 +215,8 @@ class BrowserPool(
         }
         throw BrowserPoolExhaustedException(
             "No browser profile freed within ${adsPower.borrowTimeoutMs}ms " +
-                "(${profileStates.size} configured, group=${groupId ?: "all"})",
+                "(${profileStates.size} configured, group=${groupId ?: "all"}, " +
+                "live sessions=${liveSessionCount})",
         )
     }
 
@@ -204,6 +236,9 @@ class BrowserPool(
                 val index = cursor.updateAndGet { (it + 1) % profileStates.size }
                 val state = profileStates[index]
                 if (groupId != null && state.egressGroup != groupId) continue
+                // A retired session is not lent out at all. It is not "busy" and not
+                // "resting": it is out of the rotation, and the pool does not undo that.
+                if (state.isRetired()) continue
                 val flagged = state.isFlagged()
                 if (flagged != (pass == 1)) continue
                 if (state.lock.tryAcquire()) {
@@ -232,7 +267,12 @@ class BrowserPool(
             egressGroup = state.egressGroup,
             hooks =
                 BorrowedPageHooks(
-                    onWarm = { state.warm = true },
+                    onWarm = { state.session.onWarm() },
+                    // The request counter lives on the session: it is the session that
+                    // WB counts, and the count is what says how close it came to the
+                    // threshold.
+                    onRequest = { state.session.onRequest() },
+                    onAnswered = { state.session.onAnswered() },
                     onAntibot = { cooldownMs -> state.flagFor(cooldownMs) },
                     onClose = { release(state) },
                 ),
