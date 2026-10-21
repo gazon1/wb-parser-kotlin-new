@@ -427,6 +427,7 @@ def write_report(
     orders: list[list[str]],
     seed: int,
     pause_minutes: float,
+    pause_max_minutes: float = MIN_PAUSE_MINUTES,
 ) -> None:
     """The report, written from the data."""
     passed = all(finding["ok"] for finding in findings)
@@ -447,7 +448,7 @@ def write_report(
         f"| Каталог | {plan.get('catalog', '?')} |",
         f"| Объём | ровно {plan['count']} запросов на прогон |",
         f"| Повторов | {plan.get('repeats', MIN_REPEATS)} |",
-        f"| Пауза между прогонами на одном адресе | {pause_minutes} мин |",
+        f"| Пауза между прогонами на одном адресе | {pause_minutes}–{pause_max_minutes} мин |",
         f"| Порядок | рандомизирован, seed `{seed}` |",
         f"| Боевой класс прокси | {plan.get('combat_class', 'не указан')} |",
         "",
@@ -521,7 +522,13 @@ def main() -> int:
         "--pause-minutes",
         type=float,
         default=float(MIN_PAUSE_MINUTES),
-        help="the pause between the runs on one address (the protocol says 30–60)",
+        help="the shortest pause between the runs on one address (the protocol says 30–60)",
+    )
+    parser.add_argument(
+        "--pause-max-minutes",
+        type=float,
+        default=float(MAX_PAUSE_MINUTES),
+        help="the longest pause between the runs on one address",
     )
     parser.add_argument("--repeats", type=int, default=None, help="how many times to repeat the runs")
     parser.add_argument("--block", default=None, help="the block's name, if not the plan's")
@@ -563,6 +570,20 @@ def main() -> int:
     records: list[dict] = []
     last_on_address: dict[str, float] = {}
 
+    # The pauses of the block: one draw per repeat, from the seeded random, so
+    # that the block's timing is reproducible and the pause is not always the
+    # shortest the protocol allows.
+    pause_rng = random.Random(seed + 7919)
+    pause_draws = [
+        round(
+            args.pause_minutes
+            + pause_rng.random() * max(0.0, args.pause_max_minutes - args.pause_minutes),
+            1,
+        )
+        for _ in range(plan["repeats"])
+    ]
+    print(f"  паузы между прогонами на одном адресе: {pause_draws} мин")
+
     for repeat, order in enumerate(orders, start=1):
         for run in order:
             parts = parts_of(run)
@@ -570,6 +591,12 @@ def main() -> int:
 
             # The pause is between two RUNS on one address. A run that touches
             # several addresses waits for the longest of them.
+            #
+            # The length is drawn from the protocol's range (30–60 minutes), not
+            # taken at its edge: a fixed 30 would measure the worst case of the
+            # cool-down on every run, and the block would say more about the
+            # edge than about the addresses. The draw comes from the seeded
+            # random, so the pauses are reproducible.
             waits = []
             for address in addresses:
                 if address not in last_on_address:
@@ -579,6 +606,9 @@ def main() -> int:
                     waits.append(args.pause_minutes * 60 - elapsed)
             if waits:
                 wait = max(waits)
+                target = pause_draws[repeat - 1] if repeat - 1 < len(pause_draws) else args.pause_minutes
+                if target * 60 > wait:
+                    wait = target * 60
                 print(f"  ждём {wait / 60:.1f} мин перед {run['label']}")
                 time.sleep(wait)
 
@@ -680,6 +710,7 @@ def main() -> int:
         [[run["label"] for run in order] for order in orders],
         seed,
         args.pause_minutes,
+        args.pause_max_minutes,
     )
 
     block = {
@@ -688,6 +719,8 @@ def main() -> int:
         "plan": plan,
         "orders": [[run["label"] for run in order] for order in orders],
         "pause_minutes": args.pause_minutes,
+        "pause_max_minutes": args.pause_max_minutes,
+        "pause_draws": pause_draws,
         "findings": findings,
         "passed": passed,
         "started_at": records[0]["started_at"] if records else None,

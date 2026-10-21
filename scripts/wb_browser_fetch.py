@@ -480,6 +480,11 @@ def measurement_of(outcomes: list[dict], label: str | None) -> dict:
         "succeeded": succeeded,
         "refusal_ratio": round(refused / requests, 4) if requests else None,
         "statuses": sorted({o.get("status", 0) for o in outcomes}),
+        # The sequence of statuses, request by request. The share says HOW OFTEN
+        # the address was refused; the sequence says WHERE the refusals started —
+        # and that is the difference between "this address is refused" and "this
+        # session was refused after the Nth request in a burst".
+        "status_sequence": [o.get("status", 0) for o in outcomes],
     }
 
 
