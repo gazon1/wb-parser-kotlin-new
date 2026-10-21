@@ -437,6 +437,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **MUST** читать зависимость из тела pull request'а: это то, что dependabot пишет сам, и то, что уже есть у workflow'а. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
 - **Never** ключить решение номером pull request'а: номер меняется при каждом цикле dependabot'а, и решение перестаёт находиться. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
 - **Never** прощать гейту расхождение без записанного решения: никто не решал, что образ может нести не ту версию. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
+- **Always** держать в файле роутера только маршрутизацию: выбор группы, её книги и перевод состояния circuit'а в словарь кодовой базы. _(from `2026-11-05-the-router-file-holds-the-routing`)
+- **Always** писать в KDoc типа, какое решение он держит: файл без этого ответа повторяет ту же проблему в меньшем масштабе. _(from `2026-11-05-the-router-file-holds-the-routing`)
+- **Never** менять поведение вместе с переносом: перенос решения не должен двигать значения по умолчанию, подписи и границы. _(from `2026-11-05-the-router-file-holds-the-routing`)
+- **Never** объявлять в файле роутера типы состояния (`DownloadOutcome`, `EgressAttribution`, `EgressRouterConfig` и подобные): у каждого типа — свой файл, названный по типу. _(from `2026-11-05-the-router-file-holds-the-routing`)
 
 ## Per-tag
 
@@ -1136,6 +1140,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-01-one-crawler-many-addresses` — architecture  egress  operations  antibot
 - `2026-11-02-the-protocol-runs-from-the-repository` — operations  measurement  antibot
 - `2026-11-03-the-decision-belongs-to-the-dependency` — workflow  dependencies  conventions
+- `2026-11-05-the-router-file-holds-the-routing` — architecture  refactoring  infrastructure
 
 ## Active entries
 
@@ -1244,3 +1249,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-01-one-crawler-many-addresses` — Один краулер — много адресов
 - `2026-11-02-the-protocol-runs-from-the-repository` — Правило протокола живёт в репозитории, а не в памяти оператора
 - `2026-11-03-the-decision-belongs-to-the-dependency` — Решение принадлежит зависимости, а не номеру pull request'а
+- `2026-11-05-the-router-file-holds-the-routing` — Файл роутера содержит только маршрутизацию, а типы состояния живут по одному на файл
