@@ -126,7 +126,7 @@ jobs:
               fi
             fi
 
-            if [ "$(date + %s)" -ge "$deadline" ]; then
+            if [ "$(date +%s)" -ge "$deadline" ]; then
               echo "::error::the image $image never appeared in the registry"
               exit 1
             fi
