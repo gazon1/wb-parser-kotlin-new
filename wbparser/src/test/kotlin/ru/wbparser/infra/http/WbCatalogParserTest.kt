@@ -18,6 +18,7 @@ import ru.wbparser.domain.parsing.WbCatalogEnvelope
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.infra.json.describeJsonFailure
+import ru.wbparser.infra.json.wbJson
 import java.util.UUID
 
 /**
@@ -173,6 +174,35 @@ class WbCatalogParserTest :
             val failure = runCatching { wbJson.decodeFromString<WbCatalogEnvelope>(body) }.exceptionOrNull()
 
             describeJsonFailure(failure!!) shouldContain "$.products[0]"
+        }
+
+        test("a number sent as a string is read — leniency is not what makes it work") {
+            // The strict decoder reads a quoted number into a numeric field on its own.
+            // This was measured, because "leniency saves us when the id comes as a string"
+            // was the only reason `isLenient` was ever there.
+            val body = """{"products":[{"id":"100000001","name":"Товар"}]}"""
+
+            val page = page(parseWbCatalog(fetched(body)))
+
+            page.items.map { it.productId.value } shouldBe listOf(100000001L)
+        }
+
+        test("an answer that is not JSON is a failure, not a page read from nothing") {
+            // An unquoted key is what leniency used to accept. WB's answer is written by a
+            // server-side serializer, so this is not something that happens — and if it
+            // does, the failure has to name what broke instead of parsing anyway.
+            val result = parseWbCatalog(fetched("""{products:[]}"""))
+
+            result.isLeft() shouldBe true
+            reason(result) shouldContain "does not fit the catalog"
+        }
+
+        test("an unknown field does not fail the answer — WB adds fields without asking") {
+            val body = """{"products":[{"id":1,"name":"Товар","newField":"что-то новое"}]}"""
+
+            val page = page(parseWbCatalog(fetched(body)))
+
+            page.items.size shouldBe 1
         }
 
         test("an answer whose shape changed is a failure — an exhausted catalog is not a change of shape") {

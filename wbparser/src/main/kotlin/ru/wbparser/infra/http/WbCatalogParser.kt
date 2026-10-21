@@ -3,7 +3,6 @@ package ru.wbparser.infra.http
 import arrow.core.Either
 import arrow.core.left
 import arrow.core.right
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.error.ParseError
@@ -14,19 +13,7 @@ import ru.wbparser.domain.parsing.carriesProducts
 import ru.wbparser.domain.parsing.toParsedItem
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.infra.json.describeJsonFailure
-
-/**
- * The decoder the catalog answer is read with.
- *
- * `internal` rather than `private` so that the test can decode with the very same
- * configuration the parser uses — a test that decodes with a different `Json` proves
- * something about the test, not about the parser.
- */
-internal val wbJson: Json =
-    Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-    }
+import ru.wbparser.infra.json.wbJson
 
 private val log = LoggerFactory.getLogger("ru.wbparser.infra.http.WbCatalogParser")
 
