@@ -224,6 +224,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** мерить строку floors по merged-отчёту с фильтром по пакетам модуля. _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
 - **Never** выводить «покрытие модуля» из отчёта, который этот модуль не видел. _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
 - **Never** читать из отчёта модуля вывод о покрытии приложения: в этом репозитории _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
+- **Always** держать окно свежести длиннее круга по всем целям: круг — это _(from `2026-10-20-the-crawl-cadence-follows-the-measured-catalog`)
+- **Always** ждать, что круг занимает часы, а не минуты: полный обход 132 _(from `2026-10-20-the-crawl-cadence-follows-the-measured-catalog`)
+- **Always** пересчитывать расписание, когда меняется измеренная длина _(from `2026-10-20-the-crawl-cadence-follows-the-measured-catalog`)
+- **Never** ставить запасной лимит ниже измеренного минимума: цель без _(from `2026-10-20-the-crawl-cadence-follows-the-measured-catalog`)
+- **Never** считать тик ритмом обхода: ритм задаёт окно свежести. _(from `2026-10-20-the-crawl-cadence-follows-the-measured-catalog`)
 - **Always** держать `docs/RUNBOOK.md` в состоянии, в котором команды из него работают. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Always** пересобирать данные процедурой `rebuild_prod_data.sh`, а не ручными _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Always** показывать усечение каталога отдельным счётчиком: полнота данных не должна _(from `2026-10-20-the-crawl-reports-its-own-limits`)
@@ -231,6 +236,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** выставлять `known_pages_limit` по круглому числу: сначала измерить длину _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** грузить в БД цель без `wb_search_query`. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** оставлять в каталоге поле, которое никто не читает. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Always** давать гейту здоровья время на первый старт: ядро Chrome (520 МБ) _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Always** держать ключ AdsPower в файле, который compose передаёт буквально. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Always** публиковать оба образа из одного коммита и поднимать их одним _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Always** читать compose-файл из репозитория приложения: как краул работает — _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Never** включать Flyway обратно, пока история миграций базы не совпадает с _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Never** запекать ядро Chrome в образ: ключ AdsPower попадёт в слой. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Never** отдавать контейнеру краула host-сеть: Local API AdsPower и админский _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
 - **Always** измерять модель тем же скриптом (`scripts/load-catalog.sh`) и тем же набором _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
 - **Always** указывать в ответе, когда собраны агрегаты (`asOf` это уже делает) — staleness _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
 - **Never** материализовать модель каталога, не решив заранее: кто её пересобирает, в каких _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
@@ -961,7 +973,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-catalog-lists-products-not-observations` — catalog  database  contract
 - `2026-10-20-the-counters-measure-different-things` — catalog  contract  observability
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — build  tests  gate  coverage
+- `2026-10-20-the-crawl-cadence-follows-the-measured-catalog` — crawler  scheduling  configuration  catalog
 - `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
+- `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace` — deployment  infrastructure  docker  crawler
 - `2026-10-20-the-materialized-read-model-is-a-separate-decision` — catalog  performance  database
 - `2026-10-20-the-measurement-travels-with-the-limit` — crawler  catalog  data-quality  operations  tooling
 - `2026-10-20-the-registry-is-total-by-construction` — pipeline  architecture  domain  types
@@ -1046,7 +1060,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-catalog-lists-products-not-observations` — Каталог показывает товары, а не наблюдения
 - `2026-10-20-the-counters-measure-different-things` — Счётчики измеряют разные вещи, и ось названа в имени
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — Покрытие меряется по коду, а не по модулю, которому он принадлежит
+- `2026-10-20-the-crawl-cadence-follows-the-measured-catalog` — the crawl cadence follows the measured catalog
 - `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
+- `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace` — the crawler and its browser share one network namespace
 - `2026-10-20-the-materialized-read-model-is-a-separate-decision` — Материализованная модель каталога — это отдельное решение, и вот какое
 - `2026-10-20-the-measurement-travels-with-the-limit` — the measurement travels with the limit: the metadata belongs to the target, the evidence belongs to the repository
 - `2026-10-20-the-registry-is-total-by-construction` — The registry is total by construction, and a side nobody emits is not a side

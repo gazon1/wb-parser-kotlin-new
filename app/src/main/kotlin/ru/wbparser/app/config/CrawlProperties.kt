@@ -24,18 +24,21 @@ data class Schedule(
      *
      * This is a **tick**, not a cadence: it decides how often the crawler checks which
      * targets are due. The cadence itself is [freshnessMinutes] — how long a target
-     * rests after it was crawled. With the defaults the crawler looks every four hours
-     * and re-crawls a target every four hours, which is the same thing; but a tick of
-     * 30 seconds next to a 4-hour freshness window means 480 empty ticks per crawl,
+     * rests after it was crawled. The tick is deliberately shorter than a round: a
+     * tick that finds work starts a round and holds the advisory lock for as long as
+     * that round runs, and the ticks in between are no-ops. A tick of 30 seconds next
+     * to a multi-hour freshness window would mean hundreds of empty ticks per crawl,
      * which is how the schedule became confusing in the first place.
      */
-    val cron: String = "0 0 */4 * * *",
+    val cron: String = "0 0 */2 * * *",
     /**
      * How many minutes a target rests after it was crawled.
      *
-     * The single knob for the crawl cadence. Defaults to four hours.
+     * The single knob for the crawl cadence. It has to be longer than a round over
+     * all the targets — a window shorter than that asks for a second visit before
+     * the first one finished, and the window stops meaning anything.
      */
-    val freshnessMinutes: Long = 240L,
+    val freshnessMinutes: Long = 360L,
 )
 
 data class Lock(
@@ -62,7 +65,7 @@ data class Lock(
 
 data class Spider(
     val maxDepth: Int = 2,
-    val maxPagesPerCatalog: Int = 10,
+    val maxPagesPerCatalog: Int = 60,
     val concurrency: Int = 3,
     val useBrowserForAuth: Boolean = true,
     val useBrowserFetch: Boolean = false,

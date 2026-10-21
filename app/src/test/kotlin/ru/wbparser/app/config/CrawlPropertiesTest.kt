@@ -24,10 +24,10 @@ class CrawlPropertiesTest :
         test("a configuration without a crawler block yields the documented defaults") {
             val properties = bind("some.other.key" to "ignored")
 
-            properties.schedule.cron shouldBe "0 0 */4 * * *"
+            properties.schedule.cron shouldBe "0 0 */2 * * *"
             properties.lock.timeoutMinutes shouldBe 10L
             properties.spider.maxDepth shouldBe 2
-            properties.spider.maxPagesPerCatalog shouldBe 10
+            properties.spider.maxPagesPerCatalog shouldBe 60
             properties.spider.concurrency shouldBe 3
             properties.spider.useBrowserForAuth shouldBe true
             properties.spider.useBrowserFetch shouldBe false
