@@ -92,6 +92,11 @@ jobs:
       # decision — but a decision may already have been made and recorded, and
       # then the question is not open any more. The workflow says which of the
       # two it is, and the table says why.
+      #
+      # The decision is asked by the dependency, not by the number of this pull
+      # request: dependabot opens a new pull request for the same dependency
+      # every time, and the decision was made about the dependency, not about
+      # the pull request that happened to carry it.
       - name: The bumps that may merge themselves
         id: bump
         env:
@@ -102,12 +107,18 @@ jobs:
           while read -r number; do
             [ -n "$number" ] || continue
             bump="$(python3 scripts/dependabot_bump.py "$RUNNER_TEMP/description-${number}.md")" || {
-              decision="$(python3 scripts/dependency_decision.py "$number")"
-              if [ "$decision" != "none" ]; then
-                echo "::notice::#${number}: a decision is recorded — $decision"
-              else
-                echo "::notice::#${number} is not a patch and not a minor, and no decision is recorded — a person decides"
-              fi
+              decision="$(python3 scripts/dependency_decision.py --pull-request "$RUNNER_TEMP/description-${number}.md")"
+              case "$decision" in
+                none)
+                  echo "::notice::#${number} is not a patch and not a minor, and no decision is recorded — a person decides"
+                  ;;
+                unknown)
+                  echo "::notice::#${number} is not a patch and not a minor, and its dependency could not be read from the description — a person decides"
+                  ;;
+                *)
+                  echo "::notice::#${number}: a decision is recorded — $decision"
+                  ;;
+              esac
               continue
             }
             echo "#${number} is a $bump"

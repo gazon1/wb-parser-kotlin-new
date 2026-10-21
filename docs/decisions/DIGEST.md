@@ -424,6 +424,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **MUST** коммитить сырые JSON вместе с отчётом: отчёт без сырых данных — это утверждение, а не измерение. _(from `2026-11-02-the-protocol-runs-from-the-repository`)
 - **Never** править числа в отчёте блока рукой: отчёт пишется из данных, и правка расходится с JSON рядом — гейт это находит. _(from `2026-11-02-the-protocol-runs-from-the-repository`)
 - **Never** считать правило выполненным, если его нельзя проверить по данным: гейт пишет «не решается из данных», и это честнее «да». _(from `2026-11-02-the-protocol-runs-from-the-repository`)
+- **Always** держать одну и ту же схему ключа в краулере и в витрине. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
+- **Always** записывать решение по зависимости, а номер(а) pull request'а — оставлять в причине. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
+- **Always** объяснять гейтом записанное решение, а не падать молча: решение `deferred` с причиной — это объяснение, а не ошибка. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
+- **Always** спрашивать решение по зависимости: и в обходе dependabot'а, и в гейтах, которые проверяют согласие версий. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
+- **MUST** падать громко на нечитаемой таблице решений: решение, которое никто не может прочитать, не решение. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
+- **MUST** читать зависимость из тела pull request'а: это то, что dependabot пишет сам, и то, что уже есть у workflow'а. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
+- **Never** ключить решение номером pull request'а: номер меняется при каждом цикле dependabot'а, и решение перестаёт находиться. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
+- **Never** прощать гейту расхождение без записанного решения: никто не решал, что образ может нести не ту версию. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
 
 ## Per-tag
 
@@ -1121,6 +1129,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk` — infrastructure  build  operations
 - `2026-11-01-one-crawler-many-addresses` — architecture  egress  operations  antibot
 - `2026-11-02-the-protocol-runs-from-the-repository` — operations  measurement  antibot
+- `2026-11-03-the-decision-belongs-to-the-dependency` — workflow  dependencies  conventions
 
 ## Active entries
 
@@ -1227,3 +1236,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk` — Образ и сборка просят одну и ту же версию JDK
 - `2026-11-01-one-crawler-many-addresses` — Один краулер — много адресов
 - `2026-11-02-the-protocol-runs-from-the-repository` — Правило протокола живёт в репозитории, а не в памяти оператора
+- `2026-11-03-the-decision-belongs-to-the-dependency` — Решение принадлежит зависимости, а не номеру pull request'а
