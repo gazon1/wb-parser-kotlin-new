@@ -305,6 +305,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** показывать в health-ответе счётчики процесса как счётчики группы: после смены адреса они описывают адрес, которого больше нет. _(from `2026-10-21-one-state-for-the-egress-group`)
 - **Never** решать «доступен ли адрес» в вызывающем коде: у состояния один вердикт, и взять его можно только оттуда. _(from `2026-10-21-one-state-for-the-egress-group`)
 - **Never** собирать состояние группы из метрик: у процесса — накопительные счётчики, у адреса — окно; это разные числа. _(from `2026-10-21-one-state-for-the-egress-group`)
+- **Always** покрывать тестом любое решение о настройках декодера: «строго» — это утверждение, которое надо уметь отличить от «терпимо ко всему». _(from `2026-10-21-the-answer-is-read-strictly`)
+- **Always** терпимо относиться к неизвестным полям: `ignoreUnknownKeys` остаётся. _(from `2026-10-21-the-answer-is-read-strictly`)
+- **Always** читать ответы каталога одним декодером — `ru.wbparser.infra.json.wbJson`. _(from `2026-10-21-the-answer-is-read-strictly`)
+- **Never** включать `isLenient` для ответов WB: он покупает нестандартный синтаксис, которого нет, и съедает причину сбоя разбора. _(from `2026-10-21-the-answer-is-read-strictly`)
+- **Never** читать «сбой разбора» как «пустой каталог»: сбой называет поле, пустой каталог — это конец пагинации. _(from `2026-10-21-the-answer-is-read-strictly`)
 - **Always** брать идентификатор инстанса из одной константы (`CatalogReadiness.INSTANCE_ID`), чтобы `/ready` и ответы с данными не могли разойтись. _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
 - **Always** называть момент по тому, что он измеряет: `dataAsOf` — момент данных, `asOf` — момент вычисления агрегата. _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
 - **Always** описывать ось поля там, где имя её не выражает, — в контракте и в ADR. _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
@@ -1131,6 +1136,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested` — browser  tests  coverage  diagnostics
 - `2026-10-21-one-decision-is-one-pull-request` — workflow  conventions
 - `2026-10-21-one-state-for-the-egress-group` — infrastructure  antibot  operations
+- `2026-10-21-the-answer-is-read-strictly` — crawler  parsing  data-quality
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — catalog  contract  observability
 - `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — crawler  diagnostics  catalog  pipeline
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — architecture  refactoring  maintainability
@@ -1243,6 +1249,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-every-branch-of-the-browser-path-that-names-the-failure-is-tested` — Каждая ветвь браузерного пути, которая говорит краулу «что сломалось», проверена
 - `2026-10-21-one-decision-is-one-pull-request` — Одно решение — один pull request, и он перебазирован на свежий main
 - `2026-10-21-one-state-for-the-egress-group` — Состояние egress-группы — один ответ, а не три
+- `2026-10-21-the-answer-is-read-strictly` — Ответ читается строго: нестандартный JSON — это сбой с именем поля
 - `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — Ответ говорит, кто ответил и о каком моменте данные
 - `2026-10-21-the-answer-that-does-not-parse-is-a-failure` — Ответ, который не разобрался, — это сбой, а не конец каталога
 - `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — Запросы каталога живут в решениях, которые они держат, а фасад держит поверхность

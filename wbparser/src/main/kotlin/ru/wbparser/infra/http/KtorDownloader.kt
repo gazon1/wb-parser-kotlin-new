@@ -14,11 +14,11 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import ru.wbparser.domain.error.NetworkError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.value.CrawlHttpStatusCode
+import ru.wbparser.infra.json.wbJson
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -29,12 +29,6 @@ class KtorDownloader(
     private val timeoutMs: Long = HttpConstants.DEFAULT_HTTP_TIMEOUT_MS,
     private val userAgent: String = DEFAULT_USER_AGENT,
 ) {
-    private val json =
-        Json {
-            ignoreUnknownKeys = true
-            isLenient = true
-        }
-
     private val client =
         HttpClient(CIO) {
             install(HttpTimeout) {
@@ -43,7 +37,7 @@ class KtorDownloader(
                 socketTimeoutMillis = timeoutMs
             }
             install(ContentNegotiation) {
-                json(json)
+                json(wbJson)
             }
             install(Logging) {
                 logger =
