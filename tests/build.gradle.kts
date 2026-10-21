@@ -8,14 +8,6 @@ plugins {
     id("org.jetbrains.kotlinx.kover")
 }
 
-kotlin {
-    // The JDK version is set once, in the root build's `subprojects { }` block.
-    compilerOptions {
-        allWarningsAsErrors.set(true)
-        freeCompilerArgs.add("-Xjsr305=strict")
-    }
-}
-
 dependencies {
     // This module has no main source set — it is a test-only module, so both
     // project dependencies are `testImplementation`. The app dependency is not
