@@ -166,6 +166,20 @@ class WbCatalogDtoTest :
             data.toProductsPage().items.size shouldBe 1
         }
 
+        test("the model says whether the answer carries a products list at all") {
+            // The difference between "the catalog is over" and "WB renamed the field" — and
+            // the difference between an answer with an empty list and an answer with none.
+            fun carries(body: String): Boolean = json.decodeFromString<WbCatalogEnvelope>(body).carriesProducts()
+
+            carries("""{"products":[]}""") shouldBe true
+            carries("""{"data":{"products":[]}}""") shouldBe true
+            carries("""{"payload":{"products":[]}}""") shouldBe true
+            // A rename inside a wrapper: the wrapper is there, the list is not.
+            carries("""{"data":{"items":[]}}""") shouldBe false
+            // A rename of the top-level key.
+            carries("""{"metadata":{"catalog_type":"catalog-merger"},"total":5}""") shouldBe false
+        }
+
         test("an unknown field does not fail the decode — WB adds fields without warning") {
             val decoded = json.decodeFromString<WbItemDto>("""{"id": 1, "name": "x", "somethingNew": 42}""")
 
