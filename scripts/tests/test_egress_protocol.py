@@ -68,6 +68,7 @@ def a_record(label: str, address: str = "IP1", **extra) -> dict:
         "errored": 0,
         "succeeded": 39,
         "refusal_ratio": 0.025,
+        "repeat": 1,
         "started_at": "2026-10-21T10:00:00Z",
         "finished_at": "2026-10-21T10:02:00Z",
     }
@@ -130,12 +131,70 @@ class TheEvaluationTest(unittest.TestCase):
 
     def test_three_repeats_on_one_address_pass_the_rules(self):
         records = []
-        for repeat in range(3):
-            records.append(a_record("A1", started_at=f"2026-10-21T1{repeat}:00:00Z"))
-            records.append(a_record("A2", "IP2", started_at=f"2026-10-21T1{repeat}:30:00Z"))
+        for repeat in range(1, 4):
+            records.append(
+                a_record("A1", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:00:00Z")
+            )
+            records.append(
+                a_record("A2", "IP2", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:30:00Z")
+            )
         findings = runner.evaluate(records, self.plan, [["A2", "A1"], ["A2", "A1"], ["A2", "A1"]])
         failed = [finding["rule"] for finding in findings if not finding["ok"]]
         self.assertEqual(failed, [])
+
+    def test_the_parts_of_one_concurrent_run_are_not_a_missed_pause(self):
+        """A6 is two profiles on one address at the same time: ONE run.
+
+        The gap between its two parts is zero by construction — and it is not a
+        pause that was skipped. A gate that measured the gap between the PARTS
+        would fail every correct A6.
+        """
+        records = []
+        for repeat in range(1, 4):
+            records.append(
+                a_record("A6", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:00:00Z")
+            )
+            records.append(
+                a_record("A6", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:00:00Z")
+            )
+        findings = runner.evaluate(records, self.plan, [["A6-a"], ["A6-a"], ["A6-a"]])
+        pause = next(finding for finding in findings if finding["rule"].startswith("пауза 30–60"))
+        self.assertTrue(pause["ok"], pause["detail"])
+
+    def test_a_paired_run_is_one_run(self):
+        records = [
+            a_record("A6", repeat=1, started_at="2026-10-21T10:00:00Z"),
+            a_record("A6", repeat=1, started_at="2026-10-21T10:00:00Z"),
+        ]
+        instances = runner.run_instances(records)
+        self.assertEqual(len(instances), 1)
+        self.assertEqual(instances[0]["addresses"], ["IP1"])
+
+    def test_the_volume_is_measured_per_part(self):
+        """A paired run makes `count` requests per profile; the run's total is twice that."""
+        plan = {
+            "block": "b",
+            "count": 40,
+            "repeats": 1,
+            "combat_class": "direct",
+            "runs": [
+                {
+                    "label": "A6",
+                    "mode": "concurrent",
+                    "parts": [
+                        {"profile": "p1", "address": "IP1", "delay": 3.0},
+                        {"profile": "p2", "address": "IP1", "delay": 3.0},
+                    ],
+                }
+            ],
+        }
+        records = [
+            a_record("A6", repeat=1, started_at="2026-10-21T10:00:00Z"),
+            a_record("A6", repeat=1, started_at="2026-10-21T10:00:00Z"),
+        ]
+        findings = runner.evaluate(records, plan, [["A6"]])
+        volume = next(finding for finding in findings if finding["rule"].startswith("фиксированный"))
+        self.assertTrue(volume["ok"], volume["detail"])
 
     def test_one_repeat_fails_the_repeat_rule(self):
         findings = runner.evaluate([a_record("A1")], self.plan, [["A1"]])

@@ -94,14 +94,47 @@ def validate(plan: dict) -> None:
     if not isinstance(runs, list) or not runs:
         raise PlanError("the plan has no runs")
     for run in runs:
-        for field in ("label", "profile", "address"):
-            if not run.get(field):
-                raise PlanError(f"the run {run.get('label', '?')} has no '{field}'")
+        if not run.get("label"):
+            raise PlanError("a run has no 'label'")
+        for part in parts_of(run):
+            for field in ("profile", "address"):
+                if not part.get(field):
+                    raise PlanError(f"the run {run['label']} has a part without '{field}'")
+        mode = run.get("mode", "sequential")
+        if mode not in ("sequential", "concurrent"):
+            raise PlanError(
+                f"the run {run['label']} has the mode '{mode}' — the modes are "
+                "'sequential' and 'concurrent'"
+            )
     labels = [run["label"] for run in runs]
     if len(set(labels)) != len(labels):
         raise PlanError(f"the plan repeats a label: {labels}")
     if not plan.get("count"):
         raise PlanError("the plan has no 'count' — the volume is the denominator of the refusal share")
+
+
+def parts_of(run: dict) -> list[dict]:
+    """The parts of a run: one for a single-profile run, several for a paired one.
+
+    A run may be several profiles. The protocol needs both kinds:
+
+    - **A5** — two profiles on DIFFERENT addresses, *not* simultaneously: the
+      point is two addresses at the production rate, not one address at twice the
+      rate;
+    - **A6** — two profiles on the SAME address, *simultaneously*: the point is
+      twice the rate on one address.
+
+    A single-profile run is a run of one part, and the two forms are the same
+    thing to the runner.
+    """
+    if run.get("parts"):
+        return list(run["parts"])
+    return [{key: value for key, value in run.items() if key not in ("label", "mode", "parts")}]
+
+
+def addresses_of(run: dict) -> list[str]:
+    """The addresses a run touches."""
+    return list(dict.fromkeys(part["address"] for part in parts_of(run)))
 
 
 def order_for(runs: list[dict], seed: int) -> list[dict]:
@@ -111,34 +144,43 @@ def order_for(runs: list[dict], seed: int) -> list[dict]:
     return ordered
 
 
-def run_instrument(run: dict, plan: dict) -> dict:
-    """One measurement run through the instrument, with the block's metadata."""
+def instrument_argv(part: dict, plan: dict, label: str) -> list[str]:
+    """The command of one measurement run."""
     argv = [
         sys.executable,
         str(INSTRUMENT),
         "--profile",
-        run["profile"],
+        part["profile"],
         "--catalog",
         str(plan["catalog"]),
         "--count",
         str(plan["count"]),
         "--delay",
-        str(run.get("delay", 3.0)),
+        str(part.get("delay", 3.0)),
         "--label",
-        run["label"],
+        label,
         "--json",
     ]
     if plan.get("query"):
         argv += ["--query", plan["query"]]
+    return argv
 
-    started = now()
-    completed = subprocess.run(argv, capture_output=True, text=True)
-    finished = now()
 
+def summarise(
+    part: dict,
+    plan: dict,
+    label: str,
+    stdout: str,
+    stderr: str,
+    returncode: int,
+    started: datetime,
+    finished: datetime,
+) -> dict:
+    """The record of one measurement run: the instrument's numbers and the block's facts."""
     summary: dict = {}
-    if completed.stdout.strip():
+    if stdout.strip():
         try:
-            summary = json.loads(completed.stdout)
+            summary = json.loads(stdout)
         except json.JSONDecodeError:
             summary = {}
     if not summary:
@@ -147,42 +189,73 @@ def run_instrument(run: dict, plan: dict) -> dict:
         # the counts have to stay consistent (requests = refused + errored +
         # succeeded), or the gate will read the run as broken when it is empty.
         summary = {
-            "label": run["label"],
+            "label": label,
             "requests": 0,
             "refused": 0,
             "errored": 0,
             "succeeded": 0,
             "refusal_ratio": 0.0,
             "statuses": [],
-            "error": (completed.stderr or completed.stdout or "the instrument said nothing").strip()[:500],
+            "error": (stderr or stdout or "the instrument said nothing").strip()[:500],
         }
-    summary["profile"] = run["profile"]
-    summary["address"] = run["address"]
-    summary["proxy_class"] = run.get("proxy_class", "unknown")
-    summary["delay"] = run.get("delay", 3.0)
+    summary["label"] = label
+    summary["profile"] = part["profile"]
+    summary["address"] = part["address"]
+    summary["proxy_class"] = part.get("proxy_class", "unknown")
+    summary["delay"] = part.get("delay", 3.0)
     summary["started_at"] = iso(started)
     summary["finished_at"] = iso(finished)
-    summary["exit_code"] = completed.returncode
+    summary["exit_code"] = returncode
     return summary
 
 
-def pauses_of(records: list[dict]) -> list[dict]:
+def run_instrument(part: dict, plan: dict, label: str) -> dict:
+    """One measurement run through the instrument, with the block's metadata."""
+    started = now()
+    completed = subprocess.run(instrument_argv(part, plan, label), capture_output=True, text=True)
+    finished = now()
+    return summarise(part, plan, label, completed.stdout, completed.stderr, completed.returncode, started, finished)
+
+
+def run_instances(records: list[dict]) -> list[dict]:
+    """The runs of a block: one per (label, repeat), with the addresses it touched.
+
+    A run may be several parts — A5 is two profiles on two addresses, A6 is two
+    profiles on one address at the same time. The pause is between RUNS, so the
+    parts of one run are one run: the gap between the two parts of A6 is zero by
+    construction, and it is not a pause that was skipped.
+    """
+    grouped: dict[tuple[str, int], dict] = {}
+    for record in records:
+        key = (record.get("label", "?"), int(record.get("repeat", 0)))
+        instance = grouped.setdefault(
+            key,
+            {"label": key[0], "repeat": key[1], "addresses": [], "started_at": record["started_at"]},
+        )
+        if record["address"] not in instance["addresses"]:
+            instance["addresses"].append(record["address"])
+        if record["started_at"] < instance["started_at"]:
+            instance["started_at"] = record["started_at"]
+    return sorted(grouped.values(), key=lambda instance: instance["started_at"])
+
+
+def pauses_of(instances: list[dict]) -> list[dict]:
     """The gaps between the runs on one address, in minutes."""
     last_on_address: dict[str, datetime] = {}
     gaps = []
-    for record in records:
-        address = record["address"]
-        started = parse_iso(record["started_at"])
-        previous = last_on_address.get(address)
-        if previous is not None:
-            gaps.append(
-                {
-                    "address": address,
-                    "label": record["label"],
-                    "minutes": round((started - previous).total_seconds() / 60.0, 1),
-                }
-            )
-        last_on_address[address] = started
+    for instance in instances:
+        started = parse_iso(instance["started_at"])
+        for address in instance["addresses"]:
+            previous = last_on_address.get(address)
+            if previous is not None:
+                gaps.append(
+                    {
+                        "address": address,
+                        "label": instance["label"],
+                        "minutes": round((started - previous).total_seconds() / 60.0, 1),
+                    }
+                )
+            last_on_address[address] = started
     return gaps
 
 
@@ -190,10 +263,13 @@ def evaluate(records: list[dict], plan: dict, orders: list[list[str]]) -> list[d
     """The protocol's rules, checked against what was actually done."""
     findings: list[dict] = []
 
-    labels = sorted({record["label"] for record in records})
-    repeats = min(
-        sum(1 for record in records if record["label"] == label) for label in labels
-    ) if labels else 0
+    instances = run_instances(records)
+    labels = sorted({instance["label"] for instance in instances})
+    repeats = (
+        min(sum(1 for instance in instances if instance["label"] == label) for label in labels)
+        if labels
+        else 0
+    )
     findings.append(
         {
             "rule": "не менее трёх повторов на прогон",
@@ -212,16 +288,19 @@ def evaluate(records: list[dict], plan: dict, orders: list[list[str]]) -> list[d
         }
     )
 
+    # The volume is per PART: a paired run makes `count` requests per profile, and
+    # the run's own total is twice that. The protocol's rule is about one run's
+    # volume, and one profile's volume is what the instrument's `--count` fixes.
     volumes = sorted({record.get("requests", 0) for record in records})
     findings.append(
         {
             "rule": "фиксированный объём запросов на прогон",
             "ok": len(volumes) == 1 and volumes[0] == plan["count"],
-            "detail": f"запрошено {plan['count']}; прогоны видели {volumes}",
+            "detail": f"запрошено {plan['count']} на профиль; прогоны видели {volumes}",
         }
     )
 
-    gaps = pauses_of(records)
+    gaps = pauses_of(instances)
     bad = [gap for gap in gaps if not (MIN_PAUSE_MINUTES <= gap["minutes"] <= MAX_PAUSE_MINUTES)]
     findings.append(
         {
@@ -282,10 +361,19 @@ def aggregate(records: list[dict]) -> list[dict]:
         rows.append(
             {
                 "label": label,
-                "profile": of_label[0].get("profile", "?"),
-                "address": of_label[0].get("address", "?"),
-                "proxy_class": of_label[0].get("proxy_class", "unknown"),
-                "delay": of_label[0].get("delay", 0),
+                "profiles": ", ".join(
+                    dict.fromkeys(record.get("profile", "?") for record in of_label)
+                ),
+                "addresses": ", ".join(
+                    dict.fromkeys(record.get("address", "?") for record in of_label)
+                ),
+                "proxy_class": ", ".join(
+                    sorted({record.get("proxy_class", "unknown") for record in of_label})
+                ),
+                "delay": ", ".join(
+                    str(delay)
+                    for delay in dict.fromkeys(record.get("delay", 0) for record in of_label)
+                ),
                 "runs": len(of_label),
                 "requests": requests,
                 "refused": refused,
@@ -332,12 +420,12 @@ def write_report(
         "",
         "## Прогоны",
         "",
-        "| Прогон | Профиль | Адрес | Класс | delay | прогонов | запросов | отказов | доля | транспортных | успешных |",
+        "| Прогон | Профили | Адреса | Класс | delay | частей | запросов | отказов | доля | транспортных | успешных |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in rows:
         lines.append(
-            "| {label} | {profile} | {address} | {proxy_class} | {delay} | {runs} | {requests} | "
+            "| {label} | {profiles} | {addresses} | {proxy_class} | {delay} | {runs} | {requests} | "
             "{refused} | {share:.1%} | {errored} | {succeeded} |".format(
                 share=row["refusal_ratio"], **row
             )
@@ -444,21 +532,107 @@ def main() -> int:
 
     for repeat, order in enumerate(orders, start=1):
         for run in order:
-            address = run["address"]
-            elapsed = time.time() - last_on_address.get(address, 0.0)
-            if last_on_address and elapsed < args.pause_minutes * 60:
-                wait = args.pause_minutes * 60 - elapsed
-                print(f"  ждём {wait / 60:.1f} мин перед {run['label']} на {address}")
+            parts = parts_of(run)
+            addresses = addresses_of(run)
+
+            # The pause is between two RUNS on one address. A run that touches
+            # several addresses waits for the longest of them.
+            waits = []
+            for address in addresses:
+                if address not in last_on_address:
+                    continue
+                elapsed = time.time() - last_on_address[address]
+                if elapsed < args.pause_minutes * 60:
+                    waits.append(args.pause_minutes * 60 - elapsed)
+            if waits:
+                wait = max(waits)
+                print(f"  ждём {wait / 60:.1f} мин перед {run['label']}")
                 time.sleep(wait)
-            print(f"  повтор {repeat}: {run['label']} (профиль {run['profile']}, {address})")
-            record = run_instrument(run, plan)
-            record["repeat"] = repeat
-            record["seed"] = seed
-            record["block"] = plan["block"]
-            records.append(record)
-            path = raw / f"{run['label']}-r{repeat}.json"
-            path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-            last_on_address[address] = time.time()
+
+            mode = run.get("mode", "sequential")
+            profiles = ", ".join(part["profile"] for part in parts)
+            print(f"  повтор {repeat}: {run['label']} ({mode}, профили {profiles})")
+
+            if mode == "concurrent":
+                # A6: two profiles on ONE address, at the same time. The point of
+                # the run is the DOUBLE rate on that address, and running them one
+                # after another would halve it — the run would measure something
+                # else than the thing it is for.
+                processes = []
+                process_started: list[datetime] = []
+                process_finished: list[datetime] = []
+                started_at = now()
+                for index, part in enumerate(parts):
+                    processes.append(
+                        (
+                            index,
+                            part,
+                            subprocess.Popen(
+                                [
+                                    sys.executable,
+                                    str(INSTRUMENT),
+                                    "--profile",
+                                    part["profile"],
+                                    "--catalog",
+                                    str(plan["catalog"]),
+                                    "--count",
+                                    str(plan["count"]),
+                                    "--delay",
+                                    str(part.get("delay", 3.0)),
+                                    "--label",
+                                    f"{run['label']}-{chr(ord('a') + index)}",
+                                    "--json",
+                                ]
+                                + (["--query", plan["query"]] if plan.get("query") else []),
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                text=True,
+                            ),
+                        )
+                    )
+                for index, part, process in processes:
+                    process_started.append(started_at)
+                    stdout, stderr = process.communicate()
+                    process_finished.append(now())
+                    started = iso(process_started[index])
+                    finished = iso(process_finished[index])
+                    record = summarise(
+                        part,
+                        plan,
+                        run["label"],
+                        stdout,
+                        stderr,
+                        process.returncode,
+                        parse_iso(started),
+                        parse_iso(finished),
+                    )
+                    record["part"] = chr(ord("a") + index)
+                    record["repeat"] = repeat
+                    record["seed"] = seed
+                    record["block"] = plan["block"]
+                    records.append(record)
+                    path = raw / f"{run['label']}-{chr(ord('a') + index)}-r{repeat}.json"
+                    path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+                for address in addresses:
+                    last_on_address[address] = time.time()
+                continue
+
+            for index, part in enumerate(parts):
+                suffix = f"-{chr(ord('a') + index)}" if len(parts) > 1 else ""
+                # The instrument is told which part it is, so its own output says
+                # so; the RECORD carries the run's label, so the report and the
+                # gate sum the run, not its parts.
+                record = run_instrument(part, plan, f"{run['label']}{suffix}")
+                record["repeat"] = repeat
+                record["seed"] = seed
+                record["block"] = plan["block"]
+                if len(parts) > 1:
+                    record["part"] = chr(ord("a") + index)
+                records.append(record)
+                path = raw / f"{run['label']}{suffix}-r{repeat}.json"
+                path.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            for address in addresses:
+                last_on_address[address] = time.time()
 
     findings = evaluate(records, plan, [[run["label"] for run in order] for order in orders])
     rows = aggregate(records)
