@@ -135,6 +135,7 @@ object CrawlTargetsTable : Table("crawl_targets") {
      * seen from the same group is more likely the address's.
      */
     val anomalyGroup: Column<String?> = varchar("anomaly_group", 64).nullable()
+
     // V12: the measurement metadata of `knownPagesLimit`. The limit is a number
     // about a catalog, and these four are the evidence behind it — when it was measured, where
     // the pagination ended, where the number came from, and which WB subject the
@@ -158,7 +159,6 @@ object CrawlTargetsTable : Table("crawl_targets") {
      * dictionary WB publishes and the crawler loads on demand.
      */
     val wbSubjectId: Column<Long?> = long("wb_subject_id").nullable()
-
 
     /**
      * Who holds the lease of this target, and until when.
