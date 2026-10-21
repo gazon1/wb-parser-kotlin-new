@@ -4,10 +4,12 @@ import arrow.core.Either
 import arrow.core.getOrElse
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
+import org.slf4j.LoggerFactory
 import org.testcontainers.containers.PostgreSQLContainer
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
@@ -20,6 +22,7 @@ import ru.wbparser.domain.pipeline.ScrapedItemsTable
 import ru.wbparser.domain.pipeline.WbSubjectsTable
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
+import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.domain.value.ProductId
 import ru.wbparser.infra.db.connect
 import ru.wbparser.infra.db.repositories.fetchSubjectNames
@@ -332,5 +335,27 @@ class CrawlRunnerPostgresTest :
                     "Карты памяти: Catalog 9467 has no WB search token (wb_search_query) - refusing to crawl",
                 )
             transaction { ScrapedItemsTable.selectAll().count() } shouldBe 0
+        }
+
+        test("the job row keeps a bounded error message") {
+            val dataSource = freshDatabase()
+            insertTarget(dataSource)
+
+            val store = CrawlJobStore(connect(dataSource), LoggerFactory.getLogger("RunErrorMessageRowTest"))
+            val jobId = store.openJob(targetId)
+            // A run that failed on every target writes one line per target into one
+            // cell. The row has to stay readable — and the cut has to be visible.
+            store.closeJob(jobId, JobStatus.Failed, errorMessage = "Target 9467: failed. ".repeat(400))
+
+            val stored = transaction { CrawlJobsTable.selectAll().toList() }.single()[CrawlJobsTable.errorMessage]
+
+            (stored != null) shouldBe true
+            val message = "Target 9467: failed. ".repeat(400)
+            val marker =
+                "\u2026 [truncated: ${message.length} characters in total, " +
+                    "$MAX_RUN_ERROR_MESSAGE_CHARS kept]"
+            val text = requireNotNull(stored)
+            text.length shouldBe (MAX_RUN_ERROR_MESSAGE_CHARS + marker.length)
+            text shouldContain "truncated"
         }
     })
