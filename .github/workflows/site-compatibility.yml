@@ -187,7 +187,22 @@ jobs:
           echo "dispatch id: ${dispatch_id}"
           echo "site commit: ${site_sha}"
 
+      # The storefront is asked about RELEASED images only.
+      #
+      # A pull request's image is not a release: the pin must not move to it
+      # (the storefront's own rule refuses that), and asking the storefront
+      # about it paints a red run on the storefront's `main` — a run that is
+      # about the crawler's pull request, in the storefront's repository, where
+      # somebody reading the storefront's own history would look for the
+      # storefront's fault.
+      #
+      # A red signal has to mean what it says. The storefront's `main` is red
+      # when the storefront is broken; the crawler's pull request is checked by
+      # the crawler's own CI. Who asks whom about which image is a decision, and
+      # this is it: released images are checked across the boundary, pull
+      # requests are checked on their own side.
       - name: Ask the storefront to check itself against that image
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
@@ -223,6 +238,7 @@ jobs:
       # dispatch asked about: a run against a site commit nobody asked for is
       # not an answer to this question, however green it is.
       - name: Wait for the storefront's run to appear
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
@@ -250,6 +266,7 @@ jobs:
           echo "run_id=${run_id}" >> "$GITHUB_ENV"
 
       - name: The storefront's run is about the commit we asked about
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
@@ -268,8 +285,25 @@ jobs:
       # storefront run that failed must fail this one, and a storefront run that
       # never finished must not pass silently either.
       - name: The storefront's conclusion
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
           RUN_ID: ${{ env.run_id }}
         run: gh run watch "$RUN_ID" --repo "$SITE_REPO" --exit-status
+
+      # The pull request's case, said out loud.
+      #
+      # A job that quietly does nothing is a job nobody can tell from a job
+      # that did something and found nothing. The summary says which one this
+      # was and why the storefront was not asked.
+      - name: A pull request's image is not asked about
+        if: github.event_name == 'pull_request'
+        run: |
+          {
+            echo "### The storefront was not asked about this image"
+            echo ""
+            echo "- The storefront is asked about **released** images only."
+            echo "- The pin does not move for a pull request's image — that is the rule, not a failure."
+            echo "- This image is checked by the crawler's own CI; a red run here would have been a run in the storefront's repository, about this pull request."
+          } >> "$GITHUB_STEP_SUMMARY"
