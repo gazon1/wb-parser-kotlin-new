@@ -1,6 +1,5 @@
 package ru.wbparser.infra.http
 
-import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
@@ -54,7 +53,7 @@ class EgressRouterChainsTest :
 
             // The address was never refused by WB: the network failed it. Closing the
             // anti-bot circuit here would be the address paying for a broken cable.
-            router.groupState("ip-1").circuitState shouldBe CircuitBreaker.State.CLOSED
+            router.groupState("ip-1").circuitState shouldBe EgressCircuitState.Closed
         }
 
         test("the transport failures of a group are counted apart from its refusals") {
@@ -124,7 +123,7 @@ class EgressRouterChainsTest :
             router.onAddressChanged("ip-1")
 
             val state = router.groupState("ip-1")
-            state.circuitState shouldBe CircuitBreaker.State.CLOSED
+            state.circuitState shouldBe EgressCircuitState.Closed
             state.requests shouldBe 0
             state.refused shouldBe 0
         }
