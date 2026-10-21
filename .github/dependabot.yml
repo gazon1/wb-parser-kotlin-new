@@ -91,7 +91,9 @@ updates:
 
   # The base images of Dockerfile.app and Dockerfile.debug. The JDK inside them is
   # pinned to the version the build asks for, so a bump of the base image is a
-  # pull request to review — not a surprise on the next build.
+  # pull request to review — not a surprise on the next build. The pin is checked
+  # by `scripts/ci/check-docker-jdk.py`: a bump that moves the JDK without moving
+  # the toolchain fails the static gates, before the merge.
   - package-ecosystem: docker
     directory: "/"
     schedule:

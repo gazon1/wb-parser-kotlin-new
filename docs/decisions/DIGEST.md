@@ -374,6 +374,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **MUST** хранить время последнего настоящего наблюдения, чтобы устаревший ответ был _(from `2026-10-30-an-empty-observation-changes-nothing`)
 - **Never** записывать наблюдение, которого не было: неизвестный адрес не стирает _(from `2026-10-30-an-empty-observation-changes-nothing`)
 - **Never** позволять счётчику настоящих изменений расти на шум. _(from `2026-10-30-an-empty-observation-changes-nothing`)
+- **Always** нести в образах ту версию JDK, которую просит сборка. _(from `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk`)
+- **Always** читать версию из кода, а не из комментария: комментарий, объясняющий _(from `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk`)
+- **MUST** иметь гейт, который умеет падать: проверка, отличимая от проверки, _(from `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk`)
+- **Never** двигать версию в базовом образе, не двигая тулчейн в том же изменении. _(from `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk`)
+- **Never** считать `publish-image` защитой от такой поломки: джоб не обязательный, _(from `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk`)
 
 ## Per-tag
 
@@ -1054,6 +1059,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-28-the-scheduler-asks-the-crawl-one-question` — architecture  testing  scheduling
 - `2026-10-29-the-address-is-asked-before-the-work-is-taken` — architecture  concurrency  antibot  database
 - `2026-10-30-an-empty-observation-changes-nothing` — infrastructure  antibot  operations  database
+- `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk` — infrastructure  build  operations
 
 ## Active entries
 
@@ -1150,3 +1156,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-28-the-scheduler-asks-the-crawl-one-question` — Планировщик спрашивает обход об одном и говорит, как он прошёл
 - `2026-10-29-the-address-is-asked-before-the-work-is-taken` — Адрес спрашивают раньше, чем берут работу
 - `2026-10-30-an-empty-observation-changes-nothing` — Пустое наблюдение не меняет строку леджера
+- `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk` — Образ и сборка просят одну и ту же версию JDK
