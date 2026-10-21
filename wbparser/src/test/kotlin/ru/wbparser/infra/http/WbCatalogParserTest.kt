@@ -1,9 +1,16 @@
+@file:OptIn(ExperimentalSerializationApi::class)
+
 package ru.wbparser.infra.http
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.JsonDecodingException
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
+import ru.wbparser.domain.parsing.WbCatalogEnvelope
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import java.util.UUID
@@ -122,6 +129,44 @@ class WbCatalogParserTest :
 
         test("malformed JSON degrades to an empty page instead of aborting the crawl") {
             val page = parseWbCatalog(fetched("{not json at all"))
+
+            page.items shouldBe emptyList()
+            page.isEmptyPage shouldBe true
+        }
+
+        test("a field of the wrong type is named in the failure — the log says what WB changed") {
+            val body = """{"products":[{"id":"не число","name":"Товар"}]}"""
+
+            val failure = runCatching { wbJson.decodeFromString<WbCatalogEnvelope>(body) }.exceptionOrNull()
+
+            val decoding = failure.shouldBeInstanceOf<JsonDecodingException>()
+            describeParseFailure(decoding) shouldContain "$.products[0].id"
+        }
+
+        test("a missing required field is reported with the path of the entry that lacks it") {
+            val body = """{"products":[{"id":1}]}"""
+
+            val failure = runCatching { wbJson.decodeFromString<WbCatalogEnvelope>(body) }.exceptionOrNull()
+
+            describeParseFailure(failure!!) shouldContain "$.products[0]"
+        }
+
+        test("an answer whose shape changed degrades to an empty page, and the reason survives") {
+            val page = parseWbCatalog(fetched("""{"products":[{"id":"не число","name":"Товар"}]}"""))
+
+            page.items shouldBe emptyList()
+            page.isEmptyPage shouldBe true
+        }
+
+        test("an answer that overflows the stack degrades to an empty page instead of killing the crawl") {
+            // A `StackOverflowError` is an `Error`, not an `Exception`: a catch that only
+            // knows `Exception` never sees it, and one pathological answer takes the whole
+            // crawl down with it. The parser catches it explicitly — and this test is the
+            // only way to know that catch is there at all.
+            val page =
+                parseWbCatalog(fetched("""{"products":[]}""")) {
+                    throw StackOverflowError()
+                }
 
             page.items shouldBe emptyList()
             page.isEmptyPage shouldBe true
