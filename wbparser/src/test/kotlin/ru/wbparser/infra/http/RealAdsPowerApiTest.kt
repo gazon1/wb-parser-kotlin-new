@@ -190,7 +190,7 @@ class RealAdsPowerApiTest :
             api.checkActiveV2("p1") shouldBe null
             discoveries shouldBe 2
         }
-    
+
         // ─── the profile list ────────────────────────────────────────────────────
         //
         // The list is read from `/api/v1/user/list`: the client used to read
