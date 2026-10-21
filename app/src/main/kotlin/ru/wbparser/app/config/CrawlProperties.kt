@@ -211,7 +211,18 @@ data class Session(
 data class EgressCircuit(
     val windowSeconds: Int = 600,
     val openSeconds: Long = 600L,
-    val perGroup: Map<String, EgressCircuit> = emptyMap(),
+    val perGroup: Map<String, GroupCircuitWindow> = emptyMap(),
+)
+
+/**
+ * The circuit's thresholds of one group.
+ *
+ * @param windowSeconds how far back the circuit looks, in seconds.
+ * @param openSeconds how long the circuit stays open, in seconds.
+ */
+data class GroupCircuitWindow(
+    val windowSeconds: Int = 600,
+    val openSeconds: Long = 600L,
 )
 
 /**

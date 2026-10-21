@@ -1,6 +1,5 @@
 package ru.wbparser.app.config
 
-import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
 import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -12,6 +11,7 @@ import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.BrowserDownloader
 import ru.wbparser.infra.http.BrowserFetchTiming
 import ru.wbparser.infra.http.BrowserPool
+import ru.wbparser.infra.http.CircuitWindow
 import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressRouter
 import ru.wbparser.infra.http.EgressRouterConfig
@@ -20,7 +20,6 @@ import ru.wbparser.infra.http.parseWbCatalog
 import ru.wbparser.infra.runner.CrawlRunner
 import ru.wbparser.infra.runner.CrawlRunnerConfig
 import ru.wbparser.infra.runner.CrawlSource
-import java.time.Duration
 
 /**
  * Provides [CrawlRunner] as a Spring bean, wiring together:
@@ -138,36 +137,14 @@ class CrawlerConfig {
      */
     private fun circuitConfigOf(properties: CrawlProperties): EgressRouterConfig {
         val declared = properties.spider.egressCircuit
-        val perGroup =
-            declared.perGroup.mapValues { (_, own) ->
-                circuitConfigOf(own.windowSeconds, own.openSeconds)
-            }
-        return EgressRouterConfig(
-            circuitConfig = circuitConfigOf(declared.windowSeconds, declared.openSeconds),
-            circuitConfigs = perGroup,
+        return EgressRouterConfig.of(
+            default = CircuitWindow(declared.windowSeconds, declared.openSeconds),
+            perGroup =
+                declared.perGroup.mapValues { (_, own) ->
+                    CircuitWindow(own.windowSeconds, own.openSeconds)
+                },
         )
     }
-
-    /**
-     * One circuit's thresholds.
-     *
-     * The window is measured in seconds, because the refusal is a count of requests in
-     * a session and not a rate: a window of "the last ten calls" would describe
-     * something WB does not do.
-     */
-    private fun circuitConfigOf(
-        windowSeconds: Int,
-        openSeconds: Long,
-    ): CircuitBreakerConfig =
-        CircuitBreakerConfig
-            .custom()
-            .failureRateThreshold(50f)
-            .minimumNumberOfCalls(5)
-            .waitDurationInOpenState(Duration.ofSeconds(openSeconds))
-            .permittedNumberOfCallsInHalfOpenState(3)
-            .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.TIME_BASED)
-            .slidingWindowSize(windowSeconds)
-            .build()
 
     @Bean
     fun browserDownloader(

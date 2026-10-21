@@ -4,6 +4,25 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
 import java.time.Duration
 
 /**
+ * How far the anti-bot circuit looks back, and how long it stays open.
+ *
+ * The two numbers are the whole configuration of a circuit, and they travel together
+ * because they describe one thing: the scale at which the circuit judges a group.
+ *
+ * @param windowSeconds how far back the circuit looks, in seconds.
+ * @param openSeconds how long the circuit stays open, in seconds.
+ */
+data class CircuitWindow(
+    val windowSeconds: Int,
+    val openSeconds: Long,
+) {
+    init {
+        require(windowSeconds > 0) { "windowSeconds must be positive: $windowSeconds" }
+        require(openSeconds > 0) { "openSeconds must be positive: $openSeconds" }
+    }
+}
+
+/**
  * The tunables of the router.
  *
  * @param circuitConfig the anti-bot circuit's thresholds — the ones every group uses
@@ -33,6 +52,27 @@ data class EgressRouterConfig(
 ) {
     companion object {
         /**
+         * The router's configuration, as the deployment declares it.
+         *
+         * The deployment states the window and the open time in numbers; the shape of
+         * the circuit behind them is this module's business. That is why the factory
+         * lives here and not in the application: the application should not have to
+         * know which library implements the circuit to say how long the circuit looks
+         * back.
+         *
+         * @param default the window every group uses unless it says otherwise.
+         * @param perGroup the windows of the groups that have their own.
+         */
+        fun of(
+            default: CircuitWindow,
+            perGroup: Map<String, CircuitWindow> = emptyMap(),
+        ): EgressRouterConfig =
+            EgressRouterConfig(
+                circuitConfig = default.toCircuitConfig(),
+                circuitConfigs = perGroup.mapValues { (_, window) -> window.toCircuitConfig() },
+            )
+
+        /**
          * The anti-bot circuit's thresholds.
          *
          * The window is measured in **time**, not in calls, and it is long: the
@@ -47,15 +87,7 @@ data class EgressRouterConfig(
          * also long.
          */
         fun defaultCircuitConfig(): CircuitBreakerConfig =
-            CircuitBreakerConfig
-                .Builder()
-                .failureRateThreshold(50f)
-                .minimumNumberOfCalls(5)
-                .waitDurationInOpenState(Duration.ofSeconds(DEFAULT_CIRCUIT_OPEN_SECONDS))
-                .permittedNumberOfCallsInHalfOpenState(3)
-                .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.TIME_BASED)
-                .slidingWindowSize(DEFAULT_CIRCUIT_WINDOW_SECONDS)
-                .build()
+            CircuitWindow(DEFAULT_CIRCUIT_WINDOW_SECONDS, DEFAULT_CIRCUIT_OPEN_SECONDS).toCircuitConfig()
 
         /** 75 s — comfortably longer than the open window of the default config. */
         const val DEFAULT_MAX_OPEN_WAIT_MS: Long = 75_000L
@@ -82,3 +114,21 @@ data class EgressRouterConfig(
         const val DEFAULT_CIRCUIT_OPEN_SECONDS: Long = 600L
     }
 }
+
+/**
+ * The circuit's thresholds, as the library understands them.
+ *
+ * The failure rate and the number of calls that make the circuit judge at all stay the
+ * ones the deployment has always used: they are about *how many* failures make a
+ * group look bad, and the measurement did not touch that.
+ */
+private fun CircuitWindow.toCircuitConfig(): CircuitBreakerConfig =
+    CircuitBreakerConfig
+        .Builder()
+        .failureRateThreshold(50f)
+        .minimumNumberOfCalls(5)
+        .waitDurationInOpenState(Duration.ofSeconds(openSeconds))
+        .permittedNumberOfCallsInHalfOpenState(3)
+        .slidingWindowType(CircuitBreakerConfig.SlidingWindowType.TIME_BASED)
+        .slidingWindowSize(windowSeconds)
+        .build()
