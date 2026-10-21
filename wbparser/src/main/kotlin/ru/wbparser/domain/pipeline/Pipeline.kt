@@ -26,6 +26,21 @@ data class Crawled(
 )
 
 /**
+ * A crawl that failed, with what it managed to read before the failure.
+ *
+ * The counters travel with the failure because a failure is not the opposite of a crawl: a
+ * target that read thirty pages and then hit an answer that does not fit **has read thirty
+ * pages**. Reporting it as "0 pages, 0 items" is the report lying about work that was done —
+ * and the run that reads it cannot tell a target that failed early from one that failed
+ * late.
+ */
+data class FailedCrawl(
+    val error: DomainError,
+    val pagesCrawled: Int,
+    val itemsSaved: Int,
+)
+
+/**
  * A crawl pipeline — pure description + pure reduce.
  *
  * The stage functions are injected, so purity is a property of the *composition* rather than
@@ -97,7 +112,7 @@ data class Pipeline(
     suspend fun run(
         tasks: List<Crawling>,
         concurrency: Int = 1,
-    ): Either<Pair<DomainError, List<Side>>, Pair<Crawled, List<Side>>> {
+    ): Either<Pair<FailedCrawl, List<Side>>, Pair<Crawled, List<Side>>> {
         val coordinator = Coordinator(retryPolicy) { d -> waiter.wait(d) }
         val batch = PipelineBatch(this, coordinator)
         val pageProcessor = PipelinePageProcessor(this)
@@ -127,12 +142,32 @@ data class Pipeline(
             val batchResult = batch.run(claimedTask, pending, concurrency)
             val (donePages, batchSides, failureError, retryableTasks) = batchResult
 
+            // --- Sequential post-processing: stop check, enrich/save, pagination ---
+            //
+            // The pages that *did* parse are read before the failure is reported: one broken
+            // answer must not throw away the pages next to it. The crawl of this target still
+            // ends with the failure — but what was read stays read.
+            sides.addAll(batchSides)
+            val pageResult = pageProcessor.process(donePages, pending, sides, pagesCrawled)
+            pagesCrawled = pageResult.pagesCrawled
+            // The items of the last processed page were saved before the stop was decided.
+            // Dropping them from the count made the report say "0 items" about a page that
+            // was written to the database.
+            itemsSaved += pageResult.itemsSaved
+            lastPageWasEmpty = pageResult.lastPageWasEmpty
+
             // Propagate first failure as Either.Left.
             // The Left carries all sides accumulated so far — including successful tasks
             // from the current batch that ran before the hard failure was detected.
             // PipelineRunner.fold below guarantees these sides are interpreted even on failure.
             failureError?.let {
-                return Either.Left(it to (sides + batchSides).toList())
+                return Either.Left(
+                    FailedCrawl(
+                        error = it,
+                        pagesCrawled = pagesCrawled,
+                        itemsSaved = itemsSaved,
+                    ) to sides.toList(),
+                )
             }
 
             // --- Coordinator-level retry: dispatcher threads are never blocked ---
@@ -149,7 +184,13 @@ data class Pipeline(
                             "Retry ${retryable.attempt + 1}/${retryPolicy.maxAttempts} failed for ${retryable.task.url}",
                             retryable.signal,
                         )
-                    return Either.Left(ex.toDomainError() to (sides + batchSides).toList())
+                    return Either.Left(
+                        FailedCrawl(
+                            error = ex.toDomainError(),
+                            pagesCrawled = pagesCrawled,
+                            itemsSaved = itemsSaved,
+                        ) to sides.toList(),
+                    )
                 }
                 // Only re-add to pending when retry was successfully scheduled.
                 // scheduleRetry returned true, so attemptCount has been incremented.
@@ -157,24 +198,11 @@ data class Pipeline(
                 pending.add(retryable.task)
             }
 
-            sides.addAll(batchSides)
-
-            // --- Sequential post-processing: stop check, enrich/save, pagination ---
-            val pageResult = pageProcessor.process(donePages, pending, sides, pagesCrawled)
-            if (pageResult.stopped == null) {
-                pagesCrawled = pageResult.pagesCrawled
-                itemsSaved += pageResult.itemsSaved
-                lastPageWasEmpty = pageResult.lastPageWasEmpty
-            } else {
+            if (pageResult.stopped != null) {
                 // paginationStop fired: the current batch's pagination enqueued tasks that we
                 // must NOT process (stop is at a page boundary).  Clear pending so the
-                // coordinator loop exits immediately, and record the final page count.
+                // coordinator loop exits immediately.
                 pending.clear()
-                pagesCrawled = pageResult.pagesCrawled
-                // The items of the last processed page were saved before the stop was
-                // decided. Dropping them from the count made the report say "0 items"
-                // about a page that was written to the database.
-                itemsSaved += pageResult.itemsSaved
                 stopped = pageResult.stopped
                 break
             }

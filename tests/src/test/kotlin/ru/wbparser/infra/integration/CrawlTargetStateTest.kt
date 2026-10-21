@@ -1,6 +1,7 @@
 package ru.wbparser.infra.integration
 
 import arrow.core.Either
+import arrow.core.getOrElse
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -149,6 +150,59 @@ class CrawlTargetStateTest :
          * The state of an address that refuses everything and is not to be asked at all.
          */
         fun burnt(groupId: String = "ip-1"): EgressGroupState = EgressGroupState.open(groupId).copy(refusalRate = 1.0)
+
+        /**
+         * A parser that reads the first page and refuses the second one.
+         *
+         * The second page is the one that answers with something that does not fit — the
+         * failure this repository now treats as a failure instead of an empty catalog.
+         */
+        val failingOnSecondPage: (Fetched) -> Either<ParseError, ParsedPage> = { fetched ->
+            if (fetched.task.url
+                    .toString()
+                    .contains("page=2")
+            ) {
+                Either.Left(
+                    ParseError(
+                        message = "WB's answer does not fit the catalog: path=$.products[0].id",
+                        url = fetched.task.url.toString(),
+                    ),
+                )
+            } else {
+                Either.Right(
+                    ParsedPage(
+                        input = fetched,
+                        items =
+                            listOf(
+                                ru.wbparser.domain.model.ParsedItem(
+                                    productId =
+                                        ru.wbparser.domain.value
+                                            .ProductId(1L),
+                                    name = "Товар",
+                                    priceKopecks = 1000L,
+                                    salePriceKopecks = null,
+                                    cashbackPercent = null,
+                                    cashbackKopecks = null,
+                                    brand = null,
+                                    category = null,
+                                    imageUrl = null,
+                                    pageUrl = fetched.task.url,
+                                    brandId = null,
+                                    subjectId = null,
+                                    supplierId = null,
+                                    inStock = true,
+                                ),
+                            ),
+                        nextPageUrl =
+                            ru.wbparser.domain.value
+                                .CrawlUrl
+                                .of("${fetched.task.url}&page=2")
+                                .getOrElse { throw IllegalArgumentException(it.message) },
+                        isEmptyPage = false,
+                    ),
+                )
+            }
+        }
 
         /**
          * An egress side that says the address is fine.
@@ -326,6 +380,23 @@ class CrawlTargetStateTest :
                 state["consecutive_failures"] shouldBe 1
                 state["egress_failure_count"] shouldBe 0
                 (state["next_attempt_at"] != null) shouldBe true
+            }
+        }
+
+        test("a target that failed late reports the pages it did read") {
+            runTest {
+                db.seedTarget("Упала поздно")
+
+                runnerWith(emptyButSuccessful, healthyEgress, parser = failingOnSecondPage).run()
+
+                // The first page was read and written; the second one broke. The report says
+                // "0 pages" about a target that read a page — the report lying about work
+                // that was done, and the run unable to tell a target that failed early from
+                // one that failed late.
+                val job = db.row("SELECT pages_crawled, items_saved FROM crawl_jobs")
+                (job["pages_crawled"] as Int) shouldBe 1
+                (job["items_saved"] as Int) shouldBe 1
+                db.rows("SELECT id FROM scraped_items").size shouldBe 1
             }
         }
 

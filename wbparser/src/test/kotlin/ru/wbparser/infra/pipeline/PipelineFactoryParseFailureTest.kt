@@ -71,9 +71,9 @@ class PipelineFactoryParseFailureTest :
                 val result = pipeline.run(listOf(task()))
 
                 result.isLeft() shouldBe true
-                val (error, _) = (result as Either.Left).value
-                error.shouldBeInstanceOf<ParseError>()
-                error.message shouldContain "$.products[0].id"
+                val (failed, _) = (result as Either.Left).value
+                failed.error.shouldBeInstanceOf<ParseError>()
+                failed.error.message shouldContain "$.products[0].id"
             }
         }
 
