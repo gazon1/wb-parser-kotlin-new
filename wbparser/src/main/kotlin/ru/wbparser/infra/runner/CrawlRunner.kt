@@ -22,6 +22,7 @@ import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.db.repositories.TargetRun
 import ru.wbparser.infra.db.repositories.claimDueTargets
 import ru.wbparser.infra.db.repositories.fetchTargetsByIds
+import ru.wbparser.infra.db.repositories.markGroupHealthy
 import ru.wbparser.infra.db.repositories.markTargetCrawled
 import ru.wbparser.infra.db.repositories.markTargetFailed
 import ru.wbparser.infra.db.repositories.markTargetRequeued
@@ -239,6 +240,11 @@ class CrawlRunner(
         val failureClass = result.failureClass
         val egress = source.egress
         val group = egress?.lastGroupFor(target.id)
+        // The session that served the run, with its counters. The ledger holds the
+        // address and the session side by side, because WB's refusal is a statement
+        // about the session and the measurement has not settled whether the counter
+        // it keeps belongs to the session or to the address.
+        val session = egress?.lastSessionFor(target.id)
 
         // The run leaves a row: which group served the target, from which address, and
         // how it went. Without it the question "which address gave the refusal?" is
@@ -253,6 +259,9 @@ class CrawlRunner(
                         // The address is not written from here: the ledger of the groups
                         // holds the one the probe saw, and one fact has one place.
                         egressIp = null,
+                        sessionId = session?.profileId,
+                        sessionRequests = session?.requests?.toInt() ?: 0,
+                        sessionRefusals = session?.refusals?.toInt() ?: 0,
                         outcome =
                             RunOutcome.of(
                                 // A target that answered with something that is not the
@@ -270,6 +279,13 @@ class CrawlRunner(
         }.onFailure { log.warn("Could not record the run of target {}: {}", target.name, it.message) }
 
         if (failureClass == null) {
+            // The group answered normally: the ledger learns when the address was last
+            // healthy. Without this, "the address changed" and "the address went quiet"
+            // look the same in the table.
+            if (group != null) {
+                runCatching { db.ds.markGroupHealthy(group, Instant.now()) }
+                    .onFailure { log.warn("Could not record that group {} is healthy: {}", group, it.message) }
+            }
             db.ds.markTargetCrawled(target.id)
             return
         }

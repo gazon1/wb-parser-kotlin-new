@@ -1,13 +1,16 @@
 package ru.wbparser.infra.integration
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.comparables.shouldBeBetween
 import io.kotest.matchers.shouldBe
 import org.jetbrains.exposed.sql.Database
 import org.testcontainers.containers.PostgreSQLContainer
 import ru.wbparser.domain.scheduling.RunOutcome
 import ru.wbparser.infra.db.DatabaseHandle
+import ru.wbparser.infra.db.repositories.fetchEgressGroups
 import ru.wbparser.infra.db.repositories.fetchTargetRuns
 import ru.wbparser.infra.db.repositories.insertTarget
+import ru.wbparser.infra.db.repositories.markGroupHealthy
 import ru.wbparser.infra.db.repositories.markTargetRequeued
 import ru.wbparser.infra.db.repositories.recordTargetRun
 import ru.wbparser.infra.db.repositories.releaseEgressPenalty
@@ -231,5 +234,93 @@ class TargetRunQueriesTest :
 
             db.ds.releaseEgressPenalty(group) shouldBe 0
             db.row("SELECT egress_failure_count FROM crawl_targets")["egress_failure_count"] shouldBe 1
+        }
+
+        test("a run records the session that served it, with its counters") {
+            val (targetId, jobId, group) = world()
+
+            db.ds.recordTargetRun(
+                jobId = jobId,
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = group,
+                        egressIp = null,
+                        sessionId = "k18a6j35",
+                        sessionRequests = 13,
+                        sessionRefusals = 1,
+                        outcome = RunOutcome.Antibot,
+                        pages = 3,
+                        items = 0,
+                        startedAt = Instant.now(),
+                    ),
+                finishedAt = Instant.now(),
+            )
+
+            val run = db.ds.fetchTargetRuns().single()
+            // The session's counters sit next to the address: the question "who
+            // refused this?" has two answers, and the ledger holds both.
+            run.sessionId shouldBe "k18a6j35"
+            run.sessionRequests shouldBe 13
+            run.sessionRefusals shouldBe 1
+        }
+
+        test("a run that never reached a session has no session to count") {
+            val (targetId, jobId, _) = world()
+
+            db.ds.recordTargetRun(
+                jobId = jobId,
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = null,
+                        egressIp = null,
+                        outcome = RunOutcome.Error,
+                        pages = 0,
+                        items = 0,
+                        startedAt = Instant.now(),
+                    ),
+                finishedAt = Instant.now(),
+            )
+
+            val run = db.ds.fetchTargetRuns().single()
+            run.sessionId shouldBe null
+            run.sessionRequests shouldBe 0
+        }
+
+        /**
+         * The moment as the database can hold it.
+         *
+         * Postgres keeps microseconds and the JVM keeps nanoseconds, so the value that
+         * comes back is the same moment within a microsecond — and a comparison that
+         * demands bit equality would be testing the driver's rounding, not the fact.
+         */
+        fun sameMoment(
+            expected: Instant,
+            actual: Instant?,
+        ) = actual!!.shouldBeBetween(expected.minusMillis(1), expected.plusMillis(1))
+
+        test("a group remembers when it last answered normally") {
+            world()
+
+            db.ds.fetchEgressGroups().single().lastHealthyAt shouldBe null
+
+            val moment = Instant.now().minusSeconds(60)
+            db.ds.markGroupHealthy("ip-1", moment)
+
+            sameMoment(moment, db.ds.fetchEgressGroups().single().lastHealthyAt)
+        }
+
+        test("the last healthy moment only moves forward") {
+            world()
+            val later = Instant.now()
+            val earlier = later.minusSeconds(600)
+
+            db.ds.markGroupHealthy("ip-1", later)
+            db.ds.markGroupHealthy("ip-1", earlier)
+
+            // A run that started earlier and finished later must not drag the group's
+            // last healthy moment into the past.
+            sameMoment(later, db.ds.fetchEgressGroups().single().lastHealthyAt)
         }
     })
