@@ -133,12 +133,39 @@ def is_page_refusal(data: object) -> bool:
     return "page param" in message
 
 
+def read_subject_id(products: object) -> Optional[int]:
+    """The WB subject id the products of a page carry.
+
+    The products of one catalog carry a single `subjectId` — the subject the category
+    belongs to. For the catalog 9467 («Карты памяти») every product of every page
+    carries `subjectId` 1260 and `subjectParentId` 6237.
+
+    It is measured, never guessed: a page whose products disagree has no single
+    answer, and a page without products has none either. Both are `None` — an
+    unmeasured subject id stays unmeasured.
+    """
+    if not isinstance(products, list) or not products:
+        return None
+    subject_ids = set()
+    for product in products:
+        if not isinstance(product, dict):
+            return None
+        subject_id = product.get("subjectId")
+        if not isinstance(subject_id, int) or isinstance(subject_id, bool):
+            return None
+        subject_ids.add(subject_id)
+    if len(subject_ids) != 1:
+        return None
+    return subject_ids.pop()
+
+
 def plan_limit(
     total: Optional[int],
     observed_page_size: int,
     boundary: str,
     pages_available: int,
     page_cap: Optional[int] = None,
+    subject_id: Optional[int] = None,
 ) -> dict:
     """The measured result of one catalog, as the report records it.
 
@@ -146,12 +173,16 @@ def plan_limit(
     the measurement disagree, the disagreement is the interesting part — it means WB's
     `total` does not describe what the pagination serves, and the measurement is the
     one that counts.
+
+    `subject_id` is the subject the catalog's products carry. It is part of the
+    measurement — the products were looked at anyway — and it is recorded only when
+    it was observed.
     """
     estimate = estimate_pages(total, observed_page_size) if total is not None else None
     limit = known_pages_limit(pages_available, boundary)
     if page_cap is not None:
         limit = clamp_to_api_cap(limit, page_cap)
-    return {
+    plan = {
         "wb_total": total,
         "observed_page_size": observed_page_size,
         "estimated_pages": estimate,
@@ -159,3 +190,6 @@ def plan_limit(
         "boundary": boundary,
         "known_pages_limit": limit,
     }
+    if subject_id is not None:
+        plan["wb_subject_id"] = subject_id
+    return plan

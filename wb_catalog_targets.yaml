@@ -7,6 +7,9 @@ pages:
   search_query: menu_v3_9463 смартфон
   shard: electronic84
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:34:31+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132017'
   name: Электронные книги
   url: https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/elektronnye-knigi
@@ -15,6 +18,9 @@ pages:
   search_query: menu_redirect_132017 электронные книги
   shard: electronic21
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:59:14+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9477'
   name: Планшеты
   url: https://www.wildberries.ru/catalog/elektronika/planshety
@@ -23,6 +29,9 @@ pages:
   search_query: menu_v3_9477 планшеты
   shard: electronic84
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:35:46+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9467'
   name: Карты памяти
   url: https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/karty-pamyati
@@ -31,6 +40,10 @@ pages:
   search_query: menu_v3_9467 карты памяти
   shard: electronic74
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T16:46:20+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
+  wb_subject_id: 1260
 - id: '9473'
   name: Аксессуары для съемки
   url: https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/aksessuary-dlya-semki
@@ -39,6 +52,9 @@ pages:
   search_query: menu_mined_subject_v2_9473
   shard: electronic75
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:36:01+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9927'
   name: Стилусы
   url: https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/stilusy
@@ -47,6 +63,9 @@ pages:
   search_query: menu_mined_subject_v2_9927
   shard: electronic84
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:36:08+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9924'
   name: Телевизоры
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/televizory/televizory
@@ -55,6 +74,9 @@ pages:
   search_query: menu_v3_9924 телевизор
   shard: electronic50
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:36:16+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9496'
   name: Аудиотехника
   url: https://www.wildberries.ru/catalog/elektronika/audiotehnika
@@ -63,6 +85,9 @@ pages:
   search_query: menu_redirect_subject_v2_9496 аудиотехника
   shard: electronic51
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:36:24+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9837'
   name: Наушники и гарнитуры
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/naushniki-i-garnitury
@@ -71,6 +96,9 @@ pages:
   search_query: menu_v3_9837 гарнитуры и наушники
   shard: electronic52
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:59:28+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '146581'
   name: Беззеркальные фотоаппараты
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/bezzerkalnye-fotoapparaty
@@ -79,6 +107,9 @@ pages:
   search_query: menu_146581 беззеркальные фотоаппараты
   shard: electronic53
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:36:37+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '146582'
   name: Зеркальные фотоаппараты
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/zerkalnye-fotoapparaty
@@ -87,6 +118,9 @@ pages:
   search_query: menu_146582 зеркальный фотоаппарат
   shard: electronic53
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:59:39+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '146583'
   name: Цифровые фотоаппараты
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/tsifrovye-fotoapparaty
@@ -95,6 +129,9 @@ pages:
   search_query: menu_146583 цифровой фотоаппарат
   shard: electronic53
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:36:49+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '146584'
   name: Пленочные фотоаппараты
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/plenochnye-fotoapparaty
@@ -103,6 +140,9 @@ pages:
   search_query: menu_146584 пленочный фотоаппарат
   shard: electronic53
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:36:56+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '146585'
   name: Детские фотоаппараты
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/detskie-fotoapparaty
@@ -111,6 +151,9 @@ pages:
   search_query: menu_146585 детские фотоаппараты
   shard: electronic53
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:37:03+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '146586'
   name: Фотоаппараты моментальной печати
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/fotoapparaty/fotoapparaty-momentalnoy-pechati
@@ -119,6 +162,9 @@ pages:
   search_query: menu_146586 фотоаппарат для моментальной печати
   shard: electronic53
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:37:10+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '128308'
   name: Видеокамеры
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/videokamery
@@ -127,6 +173,9 @@ pages:
   search_query: menu_mined_subject_v2_128308
   shard: electronic53
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:37:17+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '58397'
   name: Микрофоны
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/mikrofony
@@ -135,6 +184,9 @@ pages:
   search_query: menu_mined_subject_v2_58397
   shard: electronic53
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:37:24+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9856'
   name: DVD и медиа-плееры
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/dvd-pleery
@@ -143,6 +195,9 @@ pages:
   search_query: menu_mined_subject_v2_9856
   shard: electronic53
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:37:32+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130375'
   name: Аккумуляторы для камер
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/akkumulyatory-dlya-kamer
@@ -151,6 +206,9 @@ pages:
   search_query: menu_mined_subject_v2_130375
   shard: electronic54
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:37:39+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130401'
   name: Вспышки для камер
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/vspyshki-dlya-kamer
@@ -159,6 +217,9 @@ pages:
   search_query: menu_mined_subject_v2_130401
   shard: electronic54
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:37:47+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130379'
   name: Защитные пленки и стекла
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/zashchitnye-plenki-i-stekla
@@ -167,6 +228,9 @@ pages:
   search_query: menu_mined_subject_v2_130379
   shard: electronic54
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:37:56+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130376'
   name: Кабели и зарядные устройства
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/kabeli-i-zaryadnye-ustroystva
@@ -175,6 +239,9 @@ pages:
   search_query: menu_redirect_subject_v2_130376 кабели и зарядные устройства
   shard: electronic54
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:38:07+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130377'
   name: Карты памяти и картридеры
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/karty-pamyati-i-kartridery
@@ -183,6 +250,9 @@ pages:
   search_query: menu_mined_subject_v2_130377
   shard: electronic54
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:38:14+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130403'
   name: Крепления для камер
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/krepleniya-dlya-kamer
@@ -191,6 +261,9 @@ pages:
   search_query: menu_v3_130403 крепления для камер
   shard: electronic55
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:38:23+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130400'
   name: Крышки для камер
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/kryshki-dlya-kamer
@@ -199,6 +272,9 @@ pages:
   search_query: menu_v3_130400 крышки для камер
   shard: electronic55
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:38:31+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130402'
   name: Линзы и фильтры
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/linzy-i-filtry
@@ -207,6 +283,9 @@ pages:
   search_query: menu_mined_subject_v2_130402
   shard: electronic55
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:38:39+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130393'
   name: Пульты для камер
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/akkumulyatory-dlya-kamer/pulty
@@ -215,6 +294,9 @@ pages:
   search_query: menu_v3_130393 пульты для камер
   shard: electronic55
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:38:58+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '131080'
   name: Реквизит для фотографа
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/rekvizit-dlya-fotografa
@@ -223,6 +305,9 @@ pages:
   search_query: menu_v3_131080 реквизит фотограф
   shard: electronic55
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:39:05+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130394'
   name: Средства для чистки оптики
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/sredstva-dlya-chistki-optiki
@@ -231,6 +316,9 @@ pages:
   search_query: menu_mined_subject_v2_130394
   shard: electronic55
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:39:12+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130378'
   name: Фотопленка
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/fotoplenka
@@ -239,6 +327,9 @@ pages:
   search_query: menu_mined_subject_v2_130378
   shard: electronic55
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:39:19+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130392'
   name: Штативы и моноподы
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/shtativy-i-monopody
@@ -247,6 +338,9 @@ pages:
   search_query: menu_v3_130392 моноподы и штативы
   shard: electronic55
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:39:27+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130623'
   name: Аксессуары для телевизоров
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/aksessuary-dlya-televizorov
@@ -255,6 +349,9 @@ pages:
   search_query: menu_mined_subject_v2_130623
   shard: electronic53
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:39:35+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130374'
   name: Объективы
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/aksessuary/obektivy
@@ -263,6 +360,9 @@ pages:
   search_query: menu_v3_130374 объективы
   shard: electronic50
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:39:42+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '10459'
   name: Студийное оборудование
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/studiynoe-oborudovanie
@@ -271,6 +371,9 @@ pages:
   search_query: menu_mined_subject_v2_10459
   shard: electronic50
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:59:51+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '10028'
   name: Кронштейны
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/kronshteiny
@@ -279,6 +382,9 @@ pages:
   search_query: menu_v3_10028 кронштейн
   shard: electronic50
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:39:55+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130753'
   name: Фоторамки цифровые
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/fotoramki-tsifrovye
@@ -287,6 +393,9 @@ pages:
   search_query: menu_v3_130753 цифровая фоторамка
   shard: electronic50
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:40:02+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9508'
   name: Чехлы и рюкзаки
   url: https://www.wildberries.ru/catalog/elektronika/foto-i-video-tehnika/chehly-i-ryukzaki
@@ -295,6 +404,9 @@ pages:
   search_query: menu_mined_subject_v2_9508
   shard: electronic50
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:40:10+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132028'
   name: Проекторы и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/proektory-i-aksessuary
@@ -303,6 +415,9 @@ pages:
   search_query: menu_redirect_132028 проекторы и аксессуары
   shard: electronic48
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T14:03:28+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132027'
   name: Квадрокоптеры и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/tv-audio-foto-video-tehnika/kvadrokoptery-i-aksessuary
@@ -311,6 +426,9 @@ pages:
   search_query: menu_redirect_132027 квадрокоптеры и аксессуары
   shard: electronic48
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:40:23+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9492'
   name: Ноутбуки
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/noutbuki-ultrabuki
@@ -319,6 +437,9 @@ pages:
   search_query: menu_redirect_subject_v2_9492 ноутбуки
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:40:31+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9963'
   name: Компьютеры и моноблоки
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/kompyutery
@@ -327,6 +448,9 @@ pages:
   search_query: menu_v3_9963 компьютеры и моноблоки
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:40:38+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132022'
   name: Мониторы
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/monitory
@@ -335,6 +459,9 @@ pages:
   search_query: menu_redirect_subject_v2_10009 мониторы
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:40:46+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131796'
   name: Клавиатуры
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/klaviatury
@@ -343,6 +470,9 @@ pages:
   search_query: menu_mined_subject_v2_131796
   shard: electronic45
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:40:54+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131797'
   name: Мыши
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/myshi
@@ -351,6 +481,9 @@ pages:
   search_query: menu_mined_subject_v2_131797
   shard: electronic45
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:41:02+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131798'
   name: Комплекты клавиатур и мышей
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/komplekty-klaviatur-i-myshey
@@ -359,6 +492,9 @@ pages:
   search_query: menu_v3_131798 клавиатура и мышка
   shard: electronic45
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T14:00:08+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132019'
   name: Игровые наушники
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/naushniki
@@ -367,6 +503,9 @@ pages:
   search_query: menu_redirect_132010 игровые наушники
   shard: electronic47
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:41:15+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131800'
   name: Веб-камеры
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/veb-kamery
@@ -375,6 +514,9 @@ pages:
   search_query: menu_v3_131800 web-камера
   shard: electronic45
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:41:22+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131801'
   name: Микрофоны
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/kolonki-i-mikrofony
@@ -383,6 +525,9 @@ pages:
   search_query: menu_v3_131801 колонки для компьютера с микрофоном
   shard: electronic45
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:41:29+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131954'
   name: Колонки
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/kolonki
@@ -391,6 +536,9 @@ pages:
   search_query: menu_redirect_131954 колонки
   shard: electronic45
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:41:38+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132020'
   name: Рули игровые
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/ruli-igrovye
@@ -399,6 +547,9 @@ pages:
   search_query: menu_redirect_132020 рули игровые
   shard: electronic49
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:41:45+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132021'
   name: Графические планшеты
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/graficheskie-planshety
@@ -407,6 +558,9 @@ pages:
   search_query: menu_v3_131803 графический планшеты
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:41:53+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132023'
   name: Flash-накопители
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/usb-nakopiteli-i-karty-pamyati
@@ -415,6 +569,9 @@ pages:
   search_query: menu_v3_59065 usb накопитель
   shard: preset_electronic83
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:42:01+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131802'
   name: Кабели и переходники
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/kabeli-i-perekxodniki
@@ -423,6 +580,9 @@ pages:
   search_query: menu_v3_131802 кабели и переходники для пк
   shard: electronic45
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:42:08+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132026'
   name: Кронштейны для мониторов
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/peripheral-accessories/kronshteyny-dlya-monitorov
@@ -431,6 +591,9 @@ pages:
   search_query: menu_redirect_132026 кронштейны для мониторов
   shard: electronic46
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:42:16+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '60805'
   name: Внешние накопители информации
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/vneshnie-nakopiteli-informatsii
@@ -439,6 +602,9 @@ pages:
   search_query: menu_mined_subject_v2_60805
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:42:24+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131924'
   name: Неттопы и Мини ПК
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/nettopy-i-mini-pk
@@ -447,6 +613,9 @@ pages:
   search_query: menu_v3_131924 неттопы и мини пк
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:42:31+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131803'
   name: Графические планшеты
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/graficheskie-planshety
@@ -455,6 +624,9 @@ pages:
   search_query: menu_v3_131803 графический планшеты
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:42:38+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9493'
   name: Аксессуары для ноутбуков
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/notebook-accessories
@@ -463,6 +635,9 @@ pages:
   search_query: menu_redirect_subject_v2_9493 аксессуары для ноутбука
   shard: electronic71
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:42:46+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132366'
   name: Сетевые фильтры
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/setevye-filtry
@@ -471,6 +646,9 @@ pages:
   search_query: menu_redirect_132366 сетевые фильтры
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:42:53+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132367'
   name: Элементы питания
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/elementy-pitaniya
@@ -479,6 +657,9 @@ pages:
   search_query: menu_redirect_132367 элементы питания
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:43:02+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132368'
   name: Источники бесперебойного питания
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/istochniki-bespereboynogo-pitaniya
@@ -487,6 +668,9 @@ pages:
   search_query: menu_redirect_132368 источники бесперебойного питания
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:43:10+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132369'
   name: Стабилизаторы напряжения
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/stabilizatory-napryazheniya
@@ -495,6 +679,9 @@ pages:
   search_query: menu_redirect_132369 стабилизаторы напряжения
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:43:17+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132370'
   name: Контроллеры ИБП
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/kontrollery-ibp
@@ -503,6 +690,9 @@ pages:
   search_query: menu_redirect_132370 контроллеры ибп
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:43:36+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '132371'
   name: Аккумуляторы для ИБП
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-periferiya/zashchita-pitaniya/akkumulyatory-dlya-ibp
@@ -511,6 +701,9 @@ pages:
   search_query: menu_redirect_132371 аккумуляторы для ибп
   shard: electronic43
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:43:43+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131994'
   name: Видеокарты
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/videokarty
@@ -519,6 +712,9 @@ pages:
   search_query: menu_redirect_131994 видеокарты
   shard: electronic73
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:43:51+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131995'
   name: Процессоры
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/protsessory
@@ -527,6 +723,9 @@ pages:
   search_query: menu_redirect_131995 процессоры
   shard: electronic71
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:43:59+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131996'
   name: Материнские платы
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/materinskie-platy
@@ -535,6 +734,9 @@ pages:
   search_query: menu_redirect_131996 материнские платы
   shard: preset_electronic72
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:44:07+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131997'
   name: Твердотельные накопители SSD
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/tverdotelnye-nakopiteli-sdd
@@ -543,6 +745,9 @@ pages:
   search_query: menu_redirect_131997 твердотельные накопители ssd
   shard: preset_electronic72
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T14:00:23+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131998'
   name: Оперативная память
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/operativnaya-pamyat
@@ -551,6 +756,9 @@ pages:
   search_query: menu_redirect_131998 оперативная память
   shard: preset_electronic72
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:44:32+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131999'
   name: USB-накопители и карты памяти
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/usb-nakopiteli-i-karty-pamyati
@@ -559,6 +767,9 @@ pages:
   search_query: menu_redirect_131999 usb-накопители и карты памяти
   shard: preset_electronic72
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:44:40+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132000'
   name: Жесткие диски HDD
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/zhestkie-diski-hdd
@@ -567,6 +778,9 @@ pages:
   search_query: menu_redirect_132000 жесткий диск hdd
   shard: electronic73
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:45:05+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '132001'
   name: Охлаждение компьютера
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/okxlazhdenie-kompyutera
@@ -575,6 +789,9 @@ pages:
   search_query: menu_redirect_132001 охлаждение для пк
   shard: preset_electronic72
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:45:12+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132002'
   name: Термоинтерфейсы для ПК
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/termointerfeysy-dlya-pk
@@ -583,6 +800,9 @@ pages:
   search_query: menu_redirect_132002 термоинтерфейсы для пк
   shard: preset_electronic72
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:45:19+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132003'
   name: Корпуса для ПК
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/korpusa-dlya-pk
@@ -591,6 +811,9 @@ pages:
   search_query: menu_redirect_132003 корпуса для пк
   shard: preset_electronic72
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:45:44+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '132004'
   name: Блоки питания
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/bloki-pitaniya
@@ -599,6 +822,9 @@ pages:
   search_query: menu_redirect_132004 блоки питания для пк
   shard: preset_electronic72
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:45:53+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132005'
   name: Устройства расширения и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-i-kompyutery/komplektuyushchie-dlya-pk/ustroystva-rasshireniya-i-aksessuary
@@ -607,6 +833,9 @@ pages:
   search_query: menu_132005 аксессуары для ноутбуков и пк
   shard: preset_electronic72
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:46:18+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '131928'
   name: Видеокарты
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/videokarty
@@ -615,6 +844,9 @@ pages:
   search_query: menu_redirect_131928 игровая видеокарта
   shard: electronic47
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:46:36+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '131929'
   name: Компьютеры
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/kompyutery
@@ -623,6 +855,9 @@ pages:
   search_query: menu_redirect_131929 компьютеры
   shard: electronic47
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:46:43+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131930'
   name: Мониторы
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/monitory
@@ -631,6 +866,9 @@ pages:
   search_query: menu_redirect_131930 мониторы
   shard: electronic47
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:46:51+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '131931'
   name: Ноутбуки
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/noutbuki
@@ -639,6 +877,9 @@ pages:
   search_query: menu_redirect_131931 ноутбуки
   shard: electronic47
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:47:16+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '132010'
   name: Наушники
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/naushniki
@@ -647,6 +888,9 @@ pages:
   search_query: menu_redirect_132010 игровые наушники
   shard: electronic47
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:47:23+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132011'
   name: Клавиатуры
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/klaviatury
@@ -655,6 +899,9 @@ pages:
   search_query: menu_redirect_132011 клавиатуры
   shard: electronic49
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:47:31+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132012'
   name: Мыши
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/myshi
@@ -663,6 +910,9 @@ pages:
   search_query: menu_redirect_132012 мыши
   shard: electronic49
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:47:39+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132013'
   name: Коврики для мыши
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/kovriki-dlya-myshi
@@ -671,6 +921,9 @@ pages:
   search_query: menu_redirect_132013 коврики для мыши
   shard: electronic49
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:47:47+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '132014'
   name: Игровые консоли
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/igrovye-konsoli
@@ -679,6 +932,9 @@ pages:
   search_query: menu_redirect_132014 игровые консоли
   shard: electronic49
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:47:55+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132015'
   name: Геймпады и джойстики
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/geympady-i-dzhoystiki
@@ -687,6 +943,9 @@ pages:
   search_query: menu_redirect_132015 геймпады и джойстики
   shard: electronic49
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:48:03+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132016'
   name: Рули игровые
   url: https://www.wildberries.ru/catalog/elektronika/igrovaya-tekxnika/ruli-igrovye
@@ -695,6 +954,9 @@ pages:
   search_query: menu_redirect_132020 рули игровые
   shard: electronic49
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:48:09+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '148872'
   name: Наушники беспроводные
   url: https://www.wildberries.ru/catalog/elektronika/igry-i-razvlecheniya/aksessuary/garnitury/naushniki-besprovodnye
@@ -703,6 +965,9 @@ pages:
   search_query: menu_148872 наушники беспроводные
   shard: preset_electronic56
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:48:17+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '148873'
   name: Наушники проводные
   url: https://www.wildberries.ru/catalog/elektronika/igry-i-razvlecheniya/aksessuary/garnitury/naushniki-provodnye
@@ -711,6 +976,9 @@ pages:
   search_query: menu_148873 наушники проводные
   shard: preset_electronic56
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:48:24+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '148874'
   name: Гарнитуры
   url: https://www.wildberries.ru/catalog/elektronika/igry-i-razvlecheniya/aksessuary/garnitury/garnitury
@@ -719,6 +987,9 @@ pages:
   search_query: menu_148874 гарнитуры
   shard: preset_electronic56
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:48:32+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '148876'
   name: Док-станции
   url: https://www.wildberries.ru/catalog/elektronika/igry-i-razvlecheniya/aksessuary/garnitury/dokstantsii
@@ -727,6 +998,9 @@ pages:
   search_query: menu_148876 док-станции
   shard: preset_electronic56
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:48:40+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9845'
   name: Смарт-часы и браслеты
   url: https://www.wildberries.ru/catalog/elektronika/smart-chasy
@@ -735,6 +1009,9 @@ pages:
   search_query: menu_redirect_subject_v2_9845 смарт часы и аксессуары
   shard: electronic58
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:48:51+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '15580'
   name: МФУ
   url: https://www.wildberries.ru/catalog/elektronika/noutbuki-pereferiya/periferiynye-ustroystva/mfu
@@ -743,6 +1020,9 @@ pages:
   search_query: menu_v3 мфу
   shard: electronic81
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:49:09+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '60809'
   name: Расходные материалы
   url: https://www.wildberries.ru/catalog/elektronika/ofisnaya-tehnika/rashodnye-materialy
@@ -751,6 +1031,9 @@ pages:
   search_query: menu_mined_subject_v2_60809
   shard: electronic81
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:49:19+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '128307'
   name: Ламинаторы, сканеры, шредеры
   url: https://www.wildberries.ru/catalog/elektronika/ofisnaya-tehnika/laminatory-skanery-shredery
@@ -759,6 +1042,9 @@ pages:
   search_query: menu_mined_subject_v2_128307
   shard: electronic81
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:49:26+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '128306'
   name: ИБП и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/ofisnaya-tehnika/ibp-i-aksessuary
@@ -767,6 +1053,9 @@ pages:
   search_query: menu_mined_subject_v2_128306
   shard: electronic81
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:49:33+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '63017'
   name: Оборудование для презентаций
   url: https://www.wildberries.ru/catalog/elektronika/ofisnaya-tehnika/oborudovanie-dlya-prezentatsiy
@@ -775,6 +1064,9 @@ pages:
   search_query: menu_mined_subject_v2_63017
   shard: electronic81
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:49:40+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '60808'
   name: 3D-печать
   url: https://www.wildberries.ru/catalog/elektronika/ofisnaya-tehnika/3d-pechat
@@ -783,6 +1075,9 @@ pages:
   search_query: menu_v3_60808 3d печать
   shard: electronic81
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:49:48+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132029'
   name: Роутеры
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/routery
@@ -791,6 +1086,9 @@ pages:
   search_query: menu_redirect_132029 роутеры
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:49:55+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132355'
   name: Mesh системы
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/mesh-sistemy
@@ -799,6 +1097,9 @@ pages:
   search_query: menu_redirect_132355 mesh системы
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T14:07:24+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '132356'
   name: Модемы
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/modemy
@@ -807,6 +1108,9 @@ pages:
   search_query: menu_redirect_132356 модемы
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:50:15+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132357'
   name: Коммутаторы
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/kommutatory
@@ -815,6 +1119,9 @@ pages:
   search_query: menu_redirect_132357 коммутаторы
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T14:01:07+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132358'
   name: Усилители сигнала
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/usiliteli-signala
@@ -823,6 +1130,9 @@ pages:
   search_query: menu_redirect_132358 усилители сигнала
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:50:27+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132359'
   name: Сетевые адаптеры
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/setevye-adaptery
@@ -831,6 +1141,9 @@ pages:
   search_query: menu_redirect_132359 сетевые адаптеры
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:50:34+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132360'
   name: PoE инжекторы
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/poe-inzhektory
@@ -839,6 +1152,9 @@ pages:
   search_query: menu_redirect_132360 poe инжекторы
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:50:41+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132361'
   name: Панели коммутационные
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/paneli-kommutatsionnye
@@ -847,6 +1163,9 @@ pages:
   search_query: menu_redirect_132361 панели коммутационные
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:51:00+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '132363'
   name: Сетевые хранилища
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/setevye-kxranilishcha
@@ -855,6 +1174,9 @@ pages:
   search_query: menu_redirect_132363 сетевые хранилища
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:51:08+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132364'
   name: Медиаконвертеры
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/mediakonvertery
@@ -863,6 +1185,9 @@ pages:
   search_query: menu_redirect_132364 медиаконвертеры
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:51:15+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '132365'
   name: Трансиверы
   url: https://www.wildberries.ru/catalog/elektronika/setevoe-oborudovanie/transivery
@@ -871,6 +1196,9 @@ pages:
   search_query: menu_redirect_132365 трансиверы
   shard: electronic78
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:51:22+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '130772'
   name: Игровые консоли
   url: https://www.wildberries.ru/catalog/elektronika/razvlecheniya-i-gadzhety/igrovye-konsoli/igrovye-konsoli
@@ -879,6 +1207,9 @@ pages:
   search_query: menu_redirect_subject_v2_130772 игровые консоли
   shard: electronic89
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:51:30+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '10491'
   name: Игры
   url: https://www.wildberries.ru/catalog/elektronika/razvlecheniya-i-gadzhety/diski-s-igrami
@@ -887,6 +1218,9 @@ pages:
   search_query: menu_mined_10491 игры
   shard: electronic90
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:51:38+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '15692'
   name: Геймпады
   url: https://www.wildberries.ru/catalog/elektronika/razvlecheniya-i-gadzhety/geympady
@@ -895,6 +1229,9 @@ pages:
   search_query: menu_redirect_subject_v2_15692 геймпады
   shard: electronic89
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:51:45+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '61808'
   name: Аксессуары для геймпадов
   url: https://www.wildberries.ru/catalog/elektronika/igrovye-konsoli-i-igry/aksessuary-dlya-geympadov
@@ -903,6 +1240,9 @@ pages:
   search_query: menu_v3_61808 аксессуары для геймпадов
   shard: electronic90
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:51:53+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9509'
   name: Аксессуары для консолей
   url: https://www.wildberries.ru/catalog/elektronika/razvlecheniya-i-gadzhety/gaming-accessories
@@ -911,6 +1251,9 @@ pages:
   search_query: menu_v3_9509 аксессуары для консолей
   shard: electronic90
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:52:00+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9497'
   name: Развлечения и гаджеты
   url: https://www.wildberries.ru/catalog/elektronika/razvlecheniya-i-gadzhety
@@ -919,6 +1262,9 @@ pages:
   search_query: menu_redirect_subject_v2_9497 развлечения и гаджеты электроника
   shard: electronic82
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:52:09+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9835'
   name: Автоэлектроника и навигация
   url: https://www.wildberries.ru/catalog/elektronika/avtoelektronika
@@ -927,6 +1273,9 @@ pages:
   search_query: menu_redirect_subject_v2_9835 автоэлектроника и навигация
   shard: electronic79
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:52:19+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '16292'
   name: Системы видеонаблюдения
   url: https://www.wildberries.ru/catalog/elektronika/videonablyudenie
@@ -935,6 +1284,9 @@ pages:
   search_query: menu_mined_subject_v2_16292
   shard: electronic60
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:52:28+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '60758'
   name: Замки и домофоны
   url: https://www.wildberries.ru/catalog/elektronika/bezopasnost-doma/zamki-i-domofony
@@ -943,6 +1295,9 @@ pages:
   search_query: menu_mined_subject_v2_60758
   shard: electronic60
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:52:35+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '60775'
   name: Датчики и сенсоры
   url: https://www.wildberries.ru/catalog/elektronika/bezopasnost-doma/datchiki-i-sensory
@@ -951,6 +1306,9 @@ pages:
   search_query: menu_mined_subject_v2_60775
   shard: electronic60
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:52:41+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '60763'
   name: Сигнализация
   url: https://www.wildberries.ru/catalog/elektronika/bezopasnost-doma/signalizatsiya
@@ -959,6 +1317,9 @@ pages:
   search_query: menu_mined_subject_v2_60763
   shard: electronic60
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:52:49+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '60772'
   name: Аксессуары для систем видеонаблюдения
   url: https://www.wildberries.ru/catalog/elektronika/bezopasnost-doma/aksessuary-dlya-sistem-videonablyudeniya
@@ -967,6 +1328,9 @@ pages:
   search_query: menu_mined_subject_v2_60772
   shard: electronic60
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:52:56+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '7588'
   name: Умный дом
   url: https://www.wildberries.ru/catalog/elektronika/umnyy-dom
@@ -975,6 +1339,9 @@ pages:
   search_query: menu_redirect_subject_v2_7588 товары для умного дома
   shard: electronic80
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T14:01:18+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '9240'
   name: Электротранспорт и аксессуары
   url: https://www.wildberries.ru/catalog/sport/elektrotransport-i-aksessuary
@@ -983,6 +1350,9 @@ pages:
   search_query: menu_redirect_subject_v2_9240 электротранспорт и аксессуары для электросамокаат
   shard: preset_electronic39
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:53:09+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '148951'
   name: Внешние аккумуляторы и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/vneshnie-akkumulyatory-i-aksessuary
@@ -990,6 +1360,9 @@ pages:
   root_category_name: Электроника
   search_query: menu_148951 внешние аккумуляторы
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T14:01:30+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '148952'
   name: Элементы питания и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/elementy-pitaniya-i-aksessuary
@@ -997,6 +1370,9 @@ pages:
   root_category_name: Электроника
   search_query: menu_148952 элементы питания
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:53:23+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '148953'
   name: Кабели и аксессуары
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/kabeli-i-aksessuary
@@ -1004,6 +1380,9 @@ pages:
   root_category_name: Электроника
   search_query: menu_148953 кабель зарядки
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:53:32+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '148954'
   name: Блоки питания
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/bloki-pitaniya
@@ -1011,6 +1390,9 @@ pages:
   root_category_name: Электроника
   search_query: menu_148954 блоки питания
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:54:00+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '148955'
   name: Беспроводные зарядные устройства
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/besprovodnye-zaryadnye-ustroystva
@@ -1018,6 +1400,9 @@ pages:
   root_category_name: Электроника
   search_query: menu_148955 беспроводная зарядка
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:54:12+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '148956'
   name: Проводные зарядные устройства
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/provodnye-zaryadnye-ustroystva
@@ -1025,6 +1410,9 @@ pages:
   root_category_name: Электроника
   search_query: menu_148956 проводная зарядка
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:54:36+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '148958'
   name: Адаптеры и переходники
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/adaptery-i-perehodniki
@@ -1032,6 +1420,9 @@ pages:
   root_category_name: Электроника
   search_query: menu_148958 адаптеры и переходники
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:55:01+00:00'
+  known_pages_limit_boundary: catalog_end
+  known_pages_limit_source: measurement
 - id: '148959'
   name: Разветвители
   url: https://www.wildberries.ru/catalog/elektronika/kabeli-i-zaryadnye-ustroystva/razvetviteli
@@ -1039,6 +1430,9 @@ pages:
   root_category_name: Электроника
   search_query: menu_148959 разветвитель
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:55:08+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement
 - id: '128516'
   name: Музыка и видео
   url: https://www.wildberries.ru/catalog/elektronika/muzyka-i-video
@@ -1047,3 +1441,6 @@ pages:
   search_query: menu_mined_128516 музыка и видео
   shard: electronic66
   known_pages_limit: 60
+  known_pages_limit_measured_at: '2026-10-20T13:55:21+00:00'
+  known_pages_limit_boundary: api_cap
+  known_pages_limit_source: measurement

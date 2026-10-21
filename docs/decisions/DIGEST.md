@@ -235,6 +235,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** указывать в ответе, когда собраны агрегаты (`asOf` это уже делает) — staleness _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
 - **Never** материализовать модель каталога, не решив заранее: кто её пересобирает, в каких _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
 - **Never** считать `latest_product_observations` материализованной моделью: это view, _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
+- **Always** брать лимит как максимум по всем измерениям, а не как последнее. _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Always** запускать `python3 scripts/check-measurements.py --self-test` после _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Always** оставлять метаданные пустыми у цели, которую не измеряли, — NULL _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Always** писать в YAML лимит вместе с датой, границей и источником измерения. _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Never** записывать в YAML лимит, которого нет в артефакте измерения: гейт _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Never** править `catalog_measurements.json` руками: артефакт перегенерируется _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Never** ставить `wb_subject_id` по догадке: он измеряется по товарам каталога. _(from `2026-10-20-the-measurement-travels-with-the-limit`)
 - **Always** give every `Side` variant a non-null interpreter. The registry _(from `2026-10-20-the-registry-is-total-by-construction`)
 - **Always** keep the no-op defaults for `Side.Log` and `Side.Metric`. A _(from `2026-10-20-the-registry-is-total-by-construction`)
 - **Never** add a `Side` variant that no stage emits. If the effect is not _(from `2026-10-20-the-registry-is-total-by-construction`)
@@ -951,6 +958,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — build  tests  gate  coverage
 - `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
 - `2026-10-20-the-materialized-read-model-is-a-separate-decision` — catalog  performance  database
+- `2026-10-20-the-measurement-travels-with-the-limit` — crawler  catalog  data-quality  operations  tooling
 - `2026-10-20-the-registry-is-total-by-construction` — pipeline  architecture  domain  types
 - `2026-10-20-the-repository-measures-its-own-posture` — ci  security  supply-chain  scorecard  gate
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
@@ -1034,6 +1042,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — Покрытие меряется по коду, а не по модулю, которому он принадлежит
 - `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
 - `2026-10-20-the-materialized-read-model-is-a-separate-decision` — Материализованная модель каталога — это отдельное решение, и вот какое
+- `2026-10-20-the-measurement-travels-with-the-limit` — the measurement travels with the limit: the metadata belongs to the target, the evidence belongs to the repository
 - `2026-10-20-the-registry-is-total-by-construction` — The registry is total by construction, and a side nobody emits is not a side
 - `2026-10-20-the-repository-measures-its-own-posture` — The repository measures its own posture, and the actions it runs are pinned
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
