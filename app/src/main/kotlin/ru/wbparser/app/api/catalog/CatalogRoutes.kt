@@ -39,11 +39,25 @@ class CatalogRoutes(
      * The response carries the moment the count was computed, because a count served from
      * the cache is up to ten minutes old and a number without an age is a number nobody
      * can vouch for.
+     *
+     * Ответ несёт и момент, о котором данные, — самое свежее наблюдение среди товаров,
+     * которые держат цели, — потому что это разные оси: счётчик может быть десять минут
+     * старым, а посчитанные данные — день, и только второй момент говорит, насколько
+     * свеж каталог.
      */
     @GetMapping("/targets", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun targets(): TargetsResponse {
         val cached = cache.getWithTime("targets") { queries.listTargets() }
-        return TargetsResponse(items = cached.value, asOf = cached.computedAt)
+        return TargetsResponse(
+            items = cached.value,
+            asOf = cached.computedAt,
+            // Отвечает тот же инстанс, который читает: та же константа, которую
+            // проверка готовности публикует как `checks.instance`.
+            instanceId = CatalogReadiness.INSTANCE_ID,
+            // Самый свежий момент среди строк, из которых посчитаны счётчики. У каждой
+            // цели свой свежий момент, а момент агрегата — их максимум.
+            dataAsOf = cached.value.mapNotNull { it.newestScrapedAt }.maxOrNull(),
+        )
     }
 
     /**
@@ -89,6 +103,10 @@ class CatalogRoutes(
      *
      * Cached for ten minutes, for the same reason the target list is, and for the same
      * reason it carries the moment the counters were computed.
+     *
+     * Счётчики также несут момент, о котором данные (`dataAsOf`), и инстанс, который
+     * ответил (`instanceId`): агрегат без момента своих данных и без автора — это
+     * число, за которое никто не может поручиться.
      */
     @GetMapping("/stats", produces = [MediaType.APPLICATION_JSON_VALUE])
     fun stats(): SiteStats {

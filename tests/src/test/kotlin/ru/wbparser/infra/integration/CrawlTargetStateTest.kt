@@ -17,6 +17,7 @@ import ru.wbparser.infra.http.EgressAttribution
 import ru.wbparser.infra.runner.CrawlRunner
 import ru.wbparser.infra.runner.CrawlRunnerConfig
 import ru.wbparser.infra.runner.CrawlSource
+import ru.wbparser.infra.runner.RunResult
 import ru.wbparser.testing.PostgresFixture
 import java.util.UUID
 
@@ -121,6 +122,8 @@ class CrawlTargetStateTest :
                 override fun lastGroupFor(targetId: UUID): String? = "ip-1"
 
                 override fun isGroupHealthy(groupId: String): Boolean = true
+
+                override fun isAnyGroupAvailable(): Boolean = true
             }
 
         /**
@@ -131,6 +134,20 @@ class CrawlTargetStateTest :
                 override fun lastGroupFor(targetId: UUID): String? = "ip-1"
 
                 override fun isGroupHealthy(groupId: String): Boolean = false
+
+                override fun isAnyGroupAvailable(): Boolean = true
+            }
+
+        /**
+         * An egress side where every address is refusing: there is nothing to serve.
+         */
+        val allDownEgress =
+            object : EgressAttribution {
+                override fun lastGroupFor(targetId: UUID): String? = "ip-1"
+
+                override fun isGroupHealthy(groupId: String): Boolean = false
+
+                override fun isAnyGroupAvailable(): Boolean = false
             }
 
         fun runnerWith(
@@ -153,7 +170,7 @@ class CrawlTargetStateTest :
             db.row(
                 """
                 SELECT last_crawled_at, consecutive_failures, egress_failure_count,
-                       next_attempt_at, anomaly_group
+                       next_attempt_at, anomaly_group, lease_owner, lease_until
                   FROM crawl_targets
                  WHERE id = '$targetId'
                 """.trimIndent(),
@@ -170,6 +187,40 @@ class CrawlTargetStateTest :
                 state["consecutive_failures"] shouldBe 0
                 state["egress_failure_count"] shouldBe 0
                 (state["next_attempt_at"] == null) shouldBe true
+            }
+        }
+
+        test("the crawl does not start when no address can serve a request") {
+            runTest {
+                val id = db.seedTarget("Всё лежит")
+
+                val result = runnerWith(refused, allDownEgress).run()
+
+                result shouldBe RunResult.NoEgressAvailable
+                // Nothing was served, so nothing is blamed — and no job row was opened
+                // for a run that never served a target.
+                val state = stateOf(id)
+                (state["last_crawled_at"] == null) shouldBe true
+                state["consecutive_failures"] shouldBe 0
+                state["egress_failure_count"] shouldBe 0
+                (state["next_attempt_at"] == null) shouldBe true
+                db.rows("SELECT id FROM crawl_jobs").size shouldBe 0
+            }
+        }
+
+        test("a run that refuses to start takes no lease on the targets") {
+            runTest {
+                val id = db.seedTarget("Аренда не взята")
+
+                runnerWith(refused, allDownEgress).run()
+
+                // The lease is a promise to work the target, and this run promised
+                // nothing: it refused before it started. A lease taken anyway would keep
+                // every host away from the target until it expired — for a run that
+                // never served anything.
+                val state = stateOf(id)
+                (state["lease_owner"] == null) shouldBe true
+                (state["lease_until"] == null) shouldBe true
             }
         }
 
@@ -227,7 +278,7 @@ class CrawlTargetStateTest :
                 val second = runner.run()
 
                 // The second run has nothing to do: the freshness window has not passed.
-                (second is CrawlRunner.RunResult.NothingDue) shouldBe true
+                (second is RunResult.NothingDue) shouldBe true
             }
         }
     })

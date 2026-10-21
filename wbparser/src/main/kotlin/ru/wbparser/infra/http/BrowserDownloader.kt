@@ -275,25 +275,42 @@ open class BrowserDownloader(
             val response: Map<*, *> = page.evaluate(fetchScript, headersJson) as Map<*, *>
 
             val status = (response["status"] as? Number)?.toInt() ?: 0
-            if (status != 200) {
-                return FetchResult.HttpError(status)
+            val body = response["body"] as? String
+            when {
+                status != 200 -> FetchResult.HttpError(status)
+
+                body == null -> FetchResult.JsError("No body in fetch response")
+
+                // An empty body is not an empty catalog.
+                //
+                // WB answers an exhausted catalog with a JSON envelope whose
+                // `products` array is empty — there is a body, and it says so. A
+                // body with nothing in it is a response that was cut off, and
+                // reporting it as a page with no products is how a failed fetch
+                // becomes a successful crawl of nothing.
+                body.isBlank() -> FetchResult.JsError("Empty body in fetch response")
+
+                else -> {
+                    // The body has to be JSON, and parsing it here is the check:
+                    // WB's anti-bot challenge is HTML, and a page that does not
+                    // parse is a failure, not a catalog. An empty catalog is a
+                    // body with an empty `products` array — that is a page, and
+                    // it is not an error.
+                    objectMapper.readTree(body)
+                    FetchResult.Success(body)
+                }
             }
-
-            val jsonBody =
-                response["body"] as? String
-                    ?: return FetchResult.JsError("No body in fetch response")
-
-            val products = objectMapper.readTree(jsonBody).get("products")
-            if (products == null || products.isEmpty) {
-                // Empty catalog — not an error, just no data
-                return FetchResult.Success(jsonBody)
-            }
-
-            FetchResult.Success(jsonBody)
         } catch (e: com.microsoft.playwright.PlaywrightException) {
             val msg = e.message ?: "Playwright error"
-            // Check for common antibot indicators
-            if (msg.contains("403") || msg.contains("498") || msg.contains("aborted")) {
+            // Check for common antibot indicators.
+            //
+            // The comparison is case-insensitive because Chrome writes them in upper
+            // case: `net::ERR_ABORTED` is not "aborted" as a substring test sees
+            // it, and a case-sensitive check turns every aborted request into a
+            // plain script error — so the anti-bot answer, and the back-off and
+            // the profile cooldown that belong to it, never happen.
+            val lower = msg.lowercase()
+            if (lower.contains("403") || lower.contains("498") || lower.contains("aborted")) {
                 FetchResult.HttpError(403)
             } else {
                 FetchResult.JsError(msg)

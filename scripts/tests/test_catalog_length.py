@@ -323,5 +323,41 @@ class TestReportShape(unittest.TestCase):
         self.assertEqual(limits["9467"]["wb_total"], 49394)
 
 
+class TestReadSubjectId(unittest.TestCase):
+    """`subjectId` — идентификатор предмета, к которому принадлежит категория.
+
+    Он **измеряется**, а не угадывается: товары каталога несут один и тот же
+    `subjectId`, и если товары расходятся — ответа нет.
+    """
+
+    def test_reads_the_subject_the_products_carry(self):
+        products = [{"productId": 1, "subjectId": 1260}, {"productId": 2, "subjectId": 1260}]
+        self.assertEqual(LENGTH.read_subject_id(products), 1260)
+
+    def test_an_empty_page_has_no_subject(self):
+        self.assertIsNone(LENGTH.read_subject_id([]))
+
+    def test_products_that_disagree_have_no_single_subject(self):
+        products = [{"subjectId": 1260}, {"subjectId": 6237}]
+        self.assertIsNone(LENGTH.read_subject_id(products))
+
+    def test_a_product_without_a_subject_has_no_subject(self):
+        self.assertIsNone(LENGTH.read_subject_id([{"productId": 1}]))
+
+    def test_a_boolean_is_not_a_subject(self):
+        self.assertIsNone(LENGTH.read_subject_id([{"subjectId": True}]))
+
+    def test_not_a_list_is_no_subject(self):
+        self.assertIsNone(LENGTH.read_subject_id({"subjectId": 1260}))
+
+    def test_the_plan_carries_the_subject_when_it_was_observed(self):
+        plan = LENGTH.plan_limit(49394, 100, LENGTH.BOUNDARY_API_CAP, 60, 60, subject_id=1260)
+        self.assertEqual(plan["wb_subject_id"], 1260)
+
+    def test_the_plan_has_no_subject_when_it_was_not_observed(self):
+        plan = LENGTH.plan_limit(49394, 100, LENGTH.BOUNDARY_API_CAP, 60, 60)
+        self.assertNotIn("wb_subject_id", plan)
+
+
 if __name__ == "__main__":
     unittest.main()

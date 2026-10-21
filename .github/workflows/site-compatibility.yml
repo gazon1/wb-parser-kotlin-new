@@ -95,6 +95,7 @@ jobs:
           CRAWLER_IMAGE: ${{ inputs.crawler_image }}
           OWNER: ${{ github.repository_owner }}
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
           echo "$GHCR_TOKEN" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
@@ -102,7 +103,29 @@ jobs:
           image="${CRAWLER_IMAGE:-ghcr.io/${OWNER}/wb-parser:${GITHUB_SHA::7}}"
 
           deadline=$(( $(date +%s) + 1200 ))
-          until docker buildx imagetools inspect "$image" >/dev/null 2>&1; do
+          while true; do
+            if docker buildx imagetools inspect "$image" >/dev/null 2>&1; then
+              break
+            fi
+
+            # The image of a commit that is no longer the tip of `main` will
+            # never appear: its own CI run was cancelled when `main` moved on,
+            # and the newer commit publishes an image of its own.
+            #
+            # Waiting out the whole budget and then failing is a red run about
+            # nothing: the commit it names is not the one that will be
+            # deployed, and the run that answers that question is the newer
+            # commit's run. So the wait ends as soon as the commit is
+            # superseded, and says so.
+            if [ -z "${CRAWLER_IMAGE:-}" ]; then
+              tip="$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq '.sha' 2>/dev/null || echo "")"
+              if [ -n "$tip" ] && [ "$tip" != "$GITHUB_SHA" ]; then
+                echo "::notice::commit ${GITHUB_SHA::7} is no longer the tip of main (${tip::7}): its image will never be published, and the newer commit's run is the one that answers this question."
+                echo "superseded=true" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+            fi
+
             if [ "$(date +%s)" -ge "$deadline" ]; then
               echo "::error::the image $image never appeared in the registry"
               exit 1
@@ -119,6 +142,9 @@ jobs:
 
   site-compatibility:
     needs: image
+    # A superseded commit has no image and no question left to ask: the newer
+    # commit's run answers it. The job says so and ends green.
+    if: needs.image.outputs.superseded != 'true'
     runs-on: ubuntu-latest
     # The dispatch, the storefront's own CI (image build plus suite), and the
     # wait for its conclusion.
@@ -187,7 +213,22 @@ jobs:
           echo "dispatch id: ${dispatch_id}"
           echo "site commit: ${site_sha}"
 
+      # The storefront is asked about RELEASED images only.
+      #
+      # A pull request's image is not a release: the pin must not move to it
+      # (the storefront's own rule refuses that), and asking the storefront
+      # about it paints a red run on the storefront's `main` — a run that is
+      # about the crawler's pull request, in the storefront's repository, where
+      # somebody reading the storefront's own history would look for the
+      # storefront's fault.
+      #
+      # A red signal has to mean what it says. The storefront's `main` is red
+      # when the storefront is broken; the crawler's pull request is checked by
+      # the crawler's own CI. Who asks whom about which image is a decision, and
+      # this is it: released images are checked across the boundary, pull
+      # requests are checked on their own side.
       - name: Ask the storefront to check itself against that image
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
@@ -223,6 +264,7 @@ jobs:
       # dispatch asked about: a run against a site commit nobody asked for is
       # not an answer to this question, however green it is.
       - name: Wait for the storefront's run to appear
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
@@ -250,6 +292,7 @@ jobs:
           echo "run_id=${run_id}" >> "$GITHUB_ENV"
 
       - name: The storefront's run is about the commit we asked about
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
@@ -268,8 +311,25 @@ jobs:
       # storefront run that failed must fail this one, and a storefront run that
       # never finished must not pass silently either.
       - name: The storefront's conclusion
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.SITE_REPO_TOKEN }}
           SITE_REPO: ${{ vars.SITE_REPO }}
           RUN_ID: ${{ env.run_id }}
         run: gh run watch "$RUN_ID" --repo "$SITE_REPO" --exit-status
+
+      # The pull request's case, said out loud.
+      #
+      # A job that quietly does nothing is a job nobody can tell from a job
+      # that did something and found nothing. The summary says which one this
+      # was and why the storefront was not asked.
+      - name: A pull request's image is not asked about
+        if: github.event_name == 'pull_request'
+        run: |
+          {
+            echo "### The storefront was not asked about this image"
+            echo ""
+            echo "- The storefront is asked about **released** images only."
+            echo "- The pin does not move for a pull request's image — that is the rule, not a failure."
+            echo "- This image is checked by the crawler's own CI; a red run here would have been a run in the storefront's repository, about this pull request."
+          } >> "$GITHUB_STEP_SUMMARY"

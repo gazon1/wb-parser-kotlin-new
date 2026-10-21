@@ -1,6 +1,10 @@
 package ru.wbparser.app.catalog
 
+import org.hamcrest.BaseMatcher
+import org.hamcrest.Description
 import org.hamcrest.Matchers.containsString
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -19,6 +23,10 @@ import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
 import ru.wbparser.app.WbParser
+import ru.wbparser.app.api.catalog.CatalogCache
+import ru.wbparser.app.api.catalog.CatalogReadiness
+import java.sql.Timestamp
+import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
 
@@ -81,6 +89,16 @@ class CatalogRoutesTest {
         @Volatile
         @JvmStatic
         var roleProvisioned: Boolean = false
+
+        /**
+         * The moment the seeded data belongs to.
+         *
+         * Fixed, so that a test can tell the moment of the data from the moment the
+         * answer was computed: they are two different axes, and only a fixed moment shows
+         * that.
+         */
+        @JvmStatic
+        val DATA_MOMENT: Instant = Instant.parse("2026-01-01T00:00:00Z")
     }
 
     @Autowired
@@ -89,7 +107,17 @@ class CatalogRoutesTest {
     @Autowired
     lateinit var dataSource: DataSource
 
+    /**
+     * Собственный кэш каталога на два агрегата.
+     *
+     * Посев заменяет данные, поэтому в момент, когда он закончен, кэш агрегатов устарел,
+     * а тест, который их прочитал, прочитал бы числа прошлого теста.
+     */
+    @Autowired
+    lateinit var cache: CatalogCache
+
     private lateinit var target: UUID
+    private lateinit var item: UUID
 
     @BeforeEach
     fun seed() {
@@ -112,19 +140,26 @@ class CatalogRoutesTest {
                     it.setObject(1, target)
                     it.executeUpdate()
                 }
-            connection
-                .prepareStatement(
-                    """
-                    INSERT INTO scraped_items (id, target_id, product_url, content_hash, title,
-                                               price_kopecks, cashback_percent, scraped_at)
-                    VALUES (?, ?, 'https://example.invalid/p/1', 'hash-1', 'Товар', 19900, 5.00, now())
-                    """.trimIndent(),
-                ).use {
-                    it.setObject(1, UUID.randomUUID())
-                    it.setObject(2, target)
-                    it.executeUpdate()
-                }
         }
+        item =
+            dataSource.connection.use { connection ->
+                connection
+                    .prepareStatement(
+                        """
+                        INSERT INTO scraped_items (id, target_id, product_url, content_hash, title,
+                                                   price_kopecks, cashback_percent, scraped_at)
+                        VALUES (?, ?, 'https://example.invalid/p/1', 'hash-1', 'Товар', 19900, 5.00, now())
+                        """.trimIndent(),
+                    ).use {
+                        val id = UUID.randomUUID()
+                        it.setObject(1, id)
+                        it.setObject(2, target)
+                        it.executeUpdate()
+                        id
+                    }
+            }
+        // The data is new, so the cached aggregates are stale.
+        cache.invalidate()
     }
 
     /**
@@ -276,6 +311,110 @@ class CatalogRoutesTest {
     }
 
     @Test
+    fun everyAnswerNamesTheInstanceThatAnswered() {
+        // Кэш каталога и его лимит запросов живут в процессе, поэтому второй инстанс
+        // ответил бы другими числами — и больше никто бы об этом не сказал. Id,
+        // который едет с ответом, — тот же, что публикует готовность.
+        listOf("/api/catalog/v1/items", "/api/catalog/v1/targets", "/api/catalog/v1/stats").forEach { path ->
+            mockMvc
+                .perform(get(path).header("X-Api-Key", "test-catalog-key"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.instanceId").value(CatalogReadiness.INSTANCE_ID))
+        }
+        mockMvc
+            .perform(get("/api/catalog/v1/items/$item").header("X-Api-Key", "test-catalog-key"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.instanceId").value(CatalogReadiness.INSTANCE_ID))
+    }
+
+    @Test
+    fun theReadinessReportsTheSameInstanceThatTheAnswersCarry() {
+        mockMvc
+            .perform(get("/api/catalog/v1/ready").header("X-Api-Key", "test-catalog-key"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.checks.instance").value(CatalogReadiness.INSTANCE_ID))
+    }
+
+    @Test
+    fun theMomentOfTheDataIsNotTheMomentTheAggregateWasComputed() {
+        seedAtAFixedMoment()
+
+        val first = momentsOf("/api/catalog/v1/stats")
+
+        // Агрегат кэшируется на десять минут, и `asOf` — это момент, когда он был
+        // посчитан, то есть момент чтения кэша. Пересчёт двигает этот момент и не
+        // двигает момент данных: данные не менялись, изменился только ответ о них.
+        cache.invalidate()
+        Thread.sleep(20)
+        val second = momentsOf("/api/catalog/v1/stats")
+
+        assertTrue(second.computedAt > first.computedAt, "the moment of the computation must move")
+        assertEquals(first.dataAsOf, second.dataAsOf, "the moment of the data must not move")
+        assertEquals(DATA_MOMENT, second.dataAsOf, "the moment of the data is the moment it was observed")
+    }
+
+    @Test
+    fun theListCarriesTheMomentOfTheProductsItReturns() {
+        seedAtAFixedMoment()
+
+        mockMvc
+            .perform(get("/api/catalog/v1/items").header("X-Api-Key", "test-catalog-key"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.dataAsOf").value(DATA_MOMENT.toString()))
+    }
+
+    @Test
+    fun theTargetsCarryTheMomentOfTheProductsTheyHold() {
+        seedAtAFixedMoment()
+
+        mockMvc
+            .perform(get("/api/catalog/v1/targets").header("X-Api-Key", "test-catalog-key"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.dataAsOf").value(DATA_MOMENT.toString()))
+    }
+
+    /**
+     * Два момента агрегата: когда он был посчитан и о каком моменте его данные.
+     */
+    private fun momentsOf(path: String): Moments {
+        val computedAt = mutableListOf<Instant>()
+        val dataAsOf = mutableListOf<Instant>()
+        mockMvc
+            .perform(get(path).header("X-Api-Key", "test-catalog-key"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.asOf").value(CapturedMoment(computedAt)))
+            .andExpect(jsonPath("$.dataAsOf").value(CapturedMoment(dataAsOf)))
+        return Moments(computedAt.single(), dataAsOf.single())
+    }
+
+    /**
+     * Заменяет посеянные строки одной строкой, наблюдённой в [DATA_MOMENT].
+     *
+     * Момент фиксирован, чтобы тест мог отличить момент данных от момента вычисления
+     * ответа: это две разные оси, и только фиксированный момент это показывает.
+     */
+    private fun seedAtAFixedMoment() {
+        dataSource.connection.use { connection ->
+            connection.createStatement().use { it.execute("TRUNCATE scraped_items") }
+            connection
+                .prepareStatement(
+                    """
+                    INSERT INTO scraped_items (id, target_id, product_url, content_hash, title,
+                                               price_kopecks, cashback_percent, scraped_at, product_id)
+                    VALUES (?, ?, 'https://example.invalid/p/2', 'hash-2', 'Товар', 19900, 5.00, ?, 42)
+                    """.trimIndent(),
+                ).use {
+                    it.setObject(1, UUID.randomUUID())
+                    it.setObject(2, target)
+                    it.setTimestamp(3, Timestamp.from(DATA_MOMENT))
+                    it.executeUpdate()
+                }
+        }
+        // The data is new, so the cached aggregates are stale.
+        cache.invalidate()
+    }
+
+    @Test
     fun theTopDealsAreServed() {
         mockMvc
             .perform(get("/api/catalog/v1/top-deals").header("X-Api-Key", "test-catalog-key"))
@@ -302,5 +441,41 @@ class CatalogRoutesTest {
     @Test
     fun theHealthEndpointOfTheApplicationIsStillPublic() {
         mockMvc.perform(get("/api/health/live")).andExpect(status().isOk())
+    }
+}
+
+/**
+ * Два момента агрегата: когда он был посчитан и о каком моменте его данные.
+ */
+private data class Moments(
+    val computedAt: Instant,
+    val dataAsOf: Instant,
+)
+
+/**
+ * Матчер, который запоминает увиденный момент.
+ *
+ * Тело ответа здесь нельзя прочитать строкой: сервлетного API нет на компиляционном
+ * пути этого модуля, и именно упоминание типа ответа потребовало бы его. JSON-матчеры
+ * работают и без него — и один из них может вынести значение наружу.
+ */
+private class CapturedMoment(
+    private val sink: MutableList<Instant>,
+) : BaseMatcher<Any?>() {
+    override fun matches(item: Any?): Boolean {
+        val text = item as? String ?: return false
+        sink += Instant.parse(text)
+        return true
+    }
+
+    override fun describeTo(description: Description) {
+        description.appendText("an ISO-8601 moment")
+    }
+
+    override fun describeMismatch(
+        item: Any?,
+        description: Description,
+    ) {
+        description.appendText("was ").appendText(item?.toString() ?: "null")
     }
 }

@@ -224,6 +224,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** мерить строку floors по merged-отчёту с фильтром по пакетам модуля. _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
 - **Never** выводить «покрытие модуля» из отчёта, который этот модуль не видел. _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
 - **Never** читать из отчёта модуля вывод о покрытии приложения: в этом репозитории _(from `2026-10-20-the-coverage-floor-measures-the-code-not-the-module`)
+- **Always** держать окно свежести длиннее круга по всем целям: круг — это _(from `2026-10-20-the-crawl-cadence-follows-the-measured-catalog`)
+- **Always** ждать, что круг занимает часы, а не минуты: полный обход 132 _(from `2026-10-20-the-crawl-cadence-follows-the-measured-catalog`)
+- **Always** пересчитывать расписание, когда меняется измеренная длина _(from `2026-10-20-the-crawl-cadence-follows-the-measured-catalog`)
+- **Never** ставить запасной лимит ниже измеренного минимума: цель без _(from `2026-10-20-the-crawl-cadence-follows-the-measured-catalog`)
+- **Never** считать тик ритмом обхода: ритм задаёт окно свежести. _(from `2026-10-20-the-crawl-cadence-follows-the-measured-catalog`)
 - **Always** держать `docs/RUNBOOK.md` в состоянии, в котором команды из него работают. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Always** пересобирать данные процедурой `rebuild_prod_data.sh`, а не ручными _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Always** показывать усечение каталога отдельным счётчиком: полнота данных не должна _(from `2026-10-20-the-crawl-reports-its-own-limits`)
@@ -231,10 +236,24 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** выставлять `known_pages_limit` по круглому числу: сначала измерить длину _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** грузить в БД цель без `wb_search_query`. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** оставлять в каталоге поле, которое никто не читает. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
+- **Always** давать гейту здоровья время на первый старт: ядро Chrome (520 МБ) _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Always** держать ключ AdsPower в файле, который compose передаёт буквально. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Always** публиковать оба образа из одного коммита и поднимать их одним _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Always** читать compose-файл из репозитория приложения: как краул работает — _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Never** включать Flyway обратно, пока история миграций базы не совпадает с _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Never** запекать ядро Chrome в образ: ключ AdsPower попадёт в слой. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
+- **Never** отдавать контейнеру краула host-сеть: Local API AdsPower и админский _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
 - **Always** измерять модель тем же скриптом (`scripts/load-catalog.sh`) и тем же набором _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
 - **Always** указывать в ответе, когда собраны агрегаты (`asOf` это уже делает) — staleness _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
 - **Never** материализовать модель каталога, не решив заранее: кто её пересобирает, в каких _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
 - **Never** считать `latest_product_observations` материализованной моделью: это view, _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
+- **Always** брать лимит как максимум по всем измерениям, а не как последнее. _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Always** запускать `python3 scripts/check-measurements.py --self-test` после _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Always** оставлять метаданные пустыми у цели, которую не измеряли, — NULL _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Always** писать в YAML лимит вместе с датой, границей и источником измерения. _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Never** записывать в YAML лимит, которого нет в артефакте измерения: гейт _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Never** править `catalog_measurements.json` руками: артефакт перегенерируется _(from `2026-10-20-the-measurement-travels-with-the-limit`)
+- **Never** ставить `wb_subject_id` по догадке: он измеряется по товарам каталога. _(from `2026-10-20-the-measurement-travels-with-the-limit`)
 - **Always** give every `Side` variant a non-null interpreter. The registry _(from `2026-10-20-the-registry-is-total-by-construction`)
 - **Always** keep the no-op defaults for `Side.Log` and `Side.Metric`. A _(from `2026-10-20-the-registry-is-total-by-construction`)
 - **Never** add a `Side` variant that no stage emits. If the effect is not _(from `2026-10-20-the-registry-is-total-by-construction`)
@@ -254,6 +273,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** применять `scripts/wb-catalog/enrich_catalog_queries.py` к YAML перед _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
 - **Never** считать, что глубина ограничивает число страниц: `max_depth` — это глубина по _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
 - **Never** читать `nextPage` из `payload` как единственный источник пагинации: у v18 его _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)
+- **Always** держать артефакты с разными линиями версий в разных группах _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
+- **Always** помнить, что версия из BOM и версия из каталога могут быть _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
+- **Always** проверять, что версия, которую предлагает Dependabot, есть на _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
+- **Never** держать два артефакта с разными линиями версий на одном ключе _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
+- **Never** считать бамп, предложение которого стало грубее _(from `2026-10-21-a-version-nobody-published-is-not-a-version`)
 - **Always** выбирать группу по ближайшему свободному слоту паузера. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Always** делить паузу и circuit breaker по egress-группам, а не по процессу. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Always** держать в группе одинаковый прокси: группа — это один источник. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
@@ -263,6 +287,27 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** отдавать профиль в две группы. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Never** ронять старт из-за недоступности эхо-сервиса: probe предупреждает, _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Never** считать, что несколько профилей на группе дают скорость: бюджет _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
+- **Always** брать следующий pull request от свежего `main`, а не от _(from `2026-10-21-one-decision-is-one-pull-request`)
+- **Always** держать одно решение в одном pull request'е, а решение, _(from `2026-10-21-one-decision-is-one-pull-request`)
+- **Always** перебазировать ветку на свежий `main` перед открытием pull _(from `2026-10-21-one-decision-is-one-pull-request`)
+- **Never** держать в одной ветке больше ~5 коммитов или ~20 файлов: за _(from `2026-10-21-one-decision-is-one-pull-request`)
+- **Never** разрешать конфликт в чужой ветке, не перечитав решение, которое _(from `2026-10-21-one-decision-is-one-pull-request`)
+- **Always** брать идентификатор инстанса из одной константы _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** называть момент по тому, что он измеряет: `dataAsOf` — момент данных, _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** описывать ось поля там, где имя её не выражает, — в контракте и в ADR. _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** считать момент данных по тем строкам, которые ответ читает _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Never** давать двум осям одно имя и **Never** переиспользовать `asOf` для момента _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Never** переименовывать существующее поле контракта, чтобы снять двусмысленность _(from `2026-10-21-the-answer-says-who-answered-and-when-the-data-is`)
+- **Always** давать каждой новой части собственный тест — о её решении, а не о переносе _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Always** делить класс по решению, которое он держит, и давать каждой части имя _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Always** держать публичную поверхность неизменной при разбиении: фасад делегирует, _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Always** называть в фасаде таблицы, которые читает API: гейт совместимости читает _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Never** собирать SQL в фасаде: фасад держит решения, а не текст запросов. _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Never** тестировать решение о тексте SQL только через базу: где фильтр уехал и _(from `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold`)
+- **Always** называть лицензию в `README.md` и держать текст `LICENSE` _(from `2026-10-21-the-repository-is-licensed`)
+- **Always** проверять лицензию новой зависимости до того, как она попадает _(from `2026-10-21-the-repository-is-licensed`)
+- **Never** менять лицензию репозитория молча: смена лицензии — это _(from `2026-10-21-the-repository-is-licensed`)
+- **Never** создавать `NOTICE` без причины: Apache-2.0 требует его только _(from `2026-10-21-the-repository-is-licensed`)
 - **Always** объявлять egress-группы единственным списком профилей. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Always** проверять изоляцию статически, до первого запроса к WB. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **MUST** различать «проверка прошла» и «проверка не смогла выполниться»: второй _(from `2026-10-22-egress-groups-are-declared-and-checked`)
@@ -270,6 +315,47 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** держать два способа описать профили: они разойдутся, и разойдутся тихо. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать профиль без прокси прямой, если AdsPower говорит, что прокси есть, _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать статическую проверку достаточной: два разных прокси могут _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Always** писать прогон цели в базу: без этого история не знает, кто обслуживал цель. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Always** проверять адрес по расписанию, а не только на старте. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **MUST** различать «адрес неизвестен» и «адрес подтверждён»: неизвестный адрес не _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Never** останавливать краулер из-за недоступного эхо-сервиса: это «проверка не _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Never** переносить накопленное старым адресом на новый: circuit, книги и штраф. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Never** считать `crawl_targets` историей прогонов: это агрегат цели, а не журнал. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Always** отличать «нечего делать» от «провалилось»: отдельный исход, а не _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Always** показывать состояние egress в health-ответе. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Always** считать, что недоступный эхо-сервис — это «проверка не выполнилась», а не _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **MUST** называть пороги числами, а не описаниями. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Never** класть адрес в тег метрики: он меняется, а серия остаётся. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Never** открывать прогон, когда ни один адрес не может обслужить запрос. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Never** открывать строку прогона для прогона, который ничего не обслужил. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
+- **Always** брать цели арендой, а не блокировкой базы. _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Always** включать общий бюджет, когда за одним адресом работает больше одного _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **MUST** истекать аренду сама: хост может умереть, и цель не должна ждать его _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Never** выдавать истёкшую аренду за занятую: истёкшая аренда — это «свободно». _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Never** дублировать правило свежести в SQL и в коде: правило одно, и его _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Never** отдавать аренду раньше, чем цель обработана: чужая машина возьмёт её _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Never** считать, что один хост за адресом — это весь трафик на адрес. _(from `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`)
+- **Always** читать каталог через его собственный пул и роль. _(from `2026-10-26-the-catalog-reads-from-a-replica`)
+- **MUST** сообщать в готовности, что каталог читает не оттуда же, куда пишет _(from `2026-10-26-the-catalog-reads-from-a-replica`)
+- **Never** выдавать отставание реплики за ошибку данных. _(from `2026-10-26-the-catalog-reads-from-a-replica`)
+- **Never** направлять писателя на реплику: потерянные данные не выглядят как _(from `2026-10-26-the-catalog-reads-from-a-replica`)
+- **Never** принимать решение о месте агрегатов вместе с решением о реплике: это _(from `2026-10-26-the-catalog-reads-from-a-replica`)
+- **Always** отделять антибот (498) от транспортного сброса (статус 0) в любом _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Always** писать измеренные числа в репозиторий рядом с решением, которое на них _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Always** считать параллельную работу на одном адресе отдельным фактором: адрес _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **MUST** повторить замер по правилам протокола (≥3 повторов, рандомизированный _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Never** объявлять лимит WB rate-based по одному блоку: гейт протокола требует _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Never** откатывать мульти-egress на основании одного замера: конструкция держится _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Never** покупать второй адрес, опираясь на блок 2026-10-20: гейт не пройден, а _(from `2026-10-27-the-measurement-does-not-authorize-a-second-address`)
+- **Always** отделять «нечего делать» от «сломалось» в любом исходе, который _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **MUST** держать тест на каждый исход планировщика: исходов шесть, и «ничего не _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **Never** глотать отмену в планировщике: `CancellationException` пробрасывается. _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **Never** отдавать планировщику конкретного исполнителя, если у исполнителя есть _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **Never** прятать исход прогона внутри класса, который его производит: производитель _(from `2026-10-28-the-scheduler-asks-the-crawl-one-question`)
+- **Always** спрашивать то, что не зависит от работы, **до** того, как работа взята. _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
+- **MUST** иметь тест, который доказывает: отказавшийся прогон не оставляет аренды на _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
+- **Never** брать аренду (или любое эксклюзивное право на работу) для того, что не _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
+- **Never** полагаться на `finally` для освобождения того, что взято ранним выходом: _(from `2026-10-29-the-address-is-asked-before-the-work-is-taken`)
 
 ## Per-tag
 
@@ -917,15 +1003,30 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-catalog-lists-products-not-observations` — catalog  database  contract
 - `2026-10-20-the-counters-measure-different-things` — catalog  contract  observability
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — build  tests  gate  coverage
+- `2026-10-20-the-crawl-cadence-follows-the-measured-catalog` — crawler  scheduling  configuration  catalog
 - `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
+- `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace` — deployment  infrastructure  docker  crawler
 - `2026-10-20-the-materialized-read-model-is-a-separate-decision` — catalog  performance  database
+- `2026-10-20-the-measurement-travels-with-the-limit` — crawler  catalog  data-quality  operations  tooling
 - `2026-10-20-the-registry-is-total-by-construction` — pipeline  architecture  domain  types
 - `2026-10-20-the-repository-measures-its-own-posture` — ci  security  supply-chain  scorecard  gate
 - `2026-10-20-the-request-rate-has-one-owner` — crawler  antibot  browser  performance
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — catalog  database  migrations
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — crawler  api  data-quality
+- `2026-10-21-a-version-nobody-published-is-not-a-version` — dependencies  build  workflow
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — infrastructure  browser  antibot  architecture
+- `2026-10-21-one-decision-is-one-pull-request` — workflow  conventions
+- `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — catalog  contract  observability
+- `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — architecture  refactoring  maintainability
+- `2026-10-21-the-repository-is-licensed` — legal  project  governance
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
+- `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
+- `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
+- `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — architecture  database  concurrency  antibot
+- `2026-10-26-the-catalog-reads-from-a-replica` — architecture  database  operations  catalog
+- `2026-10-27-the-measurement-does-not-authorize-a-second-address` — antibot  operations  infrastructure  measurement
+- `2026-10-28-the-scheduler-asks-the-crawl-one-question` — architecture  testing  scheduling
+- `2026-10-29-the-address-is-asked-before-the-work-is-taken` — architecture  concurrency  antibot  database
 
 ## Active entries
 
@@ -995,12 +1096,27 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-catalog-lists-products-not-observations` — Каталог показывает товары, а не наблюдения
 - `2026-10-20-the-counters-measure-different-things` — Счётчики измеряют разные вещи, и ось названа в имени
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — Покрытие меряется по коду, а не по модулю, которому он принадлежит
+- `2026-10-20-the-crawl-cadence-follows-the-measured-catalog` — the crawl cadence follows the measured catalog
 - `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
+- `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace` — the crawler and its browser share one network namespace
 - `2026-10-20-the-materialized-read-model-is-a-separate-decision` — Материализованная модель каталога — это отдельное решение, и вот какое
+- `2026-10-20-the-measurement-travels-with-the-limit` — the measurement travels with the limit: the metadata belongs to the target, the evidence belongs to the repository
 - `2026-10-20-the-registry-is-total-by-construction` — The registry is total by construction, and a side nobody emits is not a side
 - `2026-10-20-the-repository-measures-its-own-posture` — The repository measures its own posture, and the actions it runs are pinned
 - `2026-10-20-the-request-rate-has-one-owner` — Темп запросов задаёт pacer — один, а не два
 - `2026-10-20-versioned-catalog-and-latest-observation-view` — Каталог целей версионируется в репозитории, последнее наблюдение — во view
 - `2026-10-20-wb-catalog-api-endpoint-and-token` — Каталог WB читается через u-search/exactmatch v18 с токеном меню
+- `2026-10-21-a-version-nobody-published-is-not-a-version` — Версия, которой никто не публиковал, — это не версия
 - `2026-10-21-egress-groups-are-the-unit-of-rate-limiting` — Egress-группа — единица ограничения, а не профиль
+- `2026-10-21-one-decision-is-one-pull-request` — Одно решение — один pull request, и он перебазирован на свежий main
+- `2026-10-21-the-answer-says-who-answered-and-when-the-data-is` — Ответ говорит, кто ответил и о каком моменте данные
+- `2026-10-21-the-catalogs-reads-live-in-the-decisions-they-hold` — Запросы каталога живут в решениях, которые они держат, а фасад держит поверхность
+- `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
+- `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
+- `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна
+- `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — Работа и бюджет живут там, где про них известно
+- `2026-10-26-the-catalog-reads-from-a-replica` — Каталог читает с реплики, краулер пишет в primary
+- `2026-10-27-the-measurement-does-not-authorize-a-second-address` — Измерение не даёт оснований покупать второй адрес
+- `2026-10-28-the-scheduler-asks-the-crawl-one-question` — Планировщик спрашивает обход об одном и говорит, как он прошёл
+- `2026-10-29-the-address-is-asked-before-the-work-is-taken` — Адрес спрашивают раньше, чем берут работу

@@ -230,22 +230,36 @@ class EgressProbe(
         val addresses = mutableMapOf<String, String>()
         if (config.echoUrls.isEmpty()) {
             problems += "No echo service is configured — the crawler's own address is unknown."
+            recordProbeFailure()
             return addresses
         }
         val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(config.budgetMs)
         for (group in groups) {
             if (System.nanoTime() > deadline) {
                 problems += "The egress probe ran out of time — some groups were not checked."
+                recordProbeFailure()
                 break
             }
             val address = probeGroup(group)
             if (address == null) {
                 problems += "Egress group '${group.id}': the address could not be determined."
+                recordProbeFailure()
             } else {
                 addresses[group.id] = address
             }
         }
         return addresses
+    }
+
+    /**
+     * Counts a probe that could not establish the address.
+     *
+     * "The check could not run" and "the check failed" are different things, and the
+     * operator has to be able to tell them apart: an unreachable echo service is a
+     * problem with the third party, a changed address is a problem with the address.
+     */
+    private fun recordProbeFailure() {
+        meterRegistry?.counter("crawl.egress.probe.failed")?.increment()
     }
 
     /**

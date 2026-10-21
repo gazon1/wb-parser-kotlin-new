@@ -6,7 +6,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.spring") apply false
     id("org.jetbrains.kotlin.plugin.serialization") apply false
     id("org.springframework.boot") version "3.4.1" apply false
-    id("io.gitlab.arturbosch.detekt") version "1.23.7" apply false
+    id("io.gitlab.arturbosch.detekt") version "1.23.8" apply false
     // The Gradle plugin's own version is independent of the ktlint CLI version pinned in
     // the version catalogue (`ktlint = "1.3.0"`), which the ktlint extension below reuses.
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1" apply false
@@ -36,8 +36,19 @@ subprojects {
     // downloads a matching JDK when the machine does not have one, so a fresh
     // clone builds without installing anything.
     plugins.withId("org.jetbrains.kotlin.jvm") {
-        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinProjectExtension> {
+        extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
             jvmToolchain(22)
+
+            // The warnings are errors in every module, in one place.
+            //
+            // It used to be the same three lines in each of the three module scripts:
+            // three places to forget, and a module that forgot them compiled with
+            // warnings nobody looked at. The rule is the same for every module, so it
+            // is stated once — the way the JDK version is.
+            compilerOptions {
+                allWarningsAsErrors.set(true)
+                freeCompilerArgs.add("-Xjsr305=strict")
+            }
         }
     }
 

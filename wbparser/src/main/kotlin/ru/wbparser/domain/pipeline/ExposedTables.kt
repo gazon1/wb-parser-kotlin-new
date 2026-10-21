@@ -136,6 +136,41 @@ object CrawlTargetsTable : Table("crawl_targets") {
      */
     val anomalyGroup: Column<String?> = varchar("anomaly_group", 64).nullable()
 
+    // V12: the measurement metadata of `knownPagesLimit`. The limit is a number
+    // about a catalog, and these four are the evidence behind it — when it was measured, where
+    // the pagination ended, where the number came from, and which WB subject the
+    // catalog's products carry. Without them the limit is an assertion nobody can
+    // check, and `catalog_end` (the catalog ended by itself) cannot be told apart from
+    // `api_cap` (WB refused the next page — the crawl stores a slice, and the
+    // truncation counter fires honestly about it).
+    //
+    // All four are nullable: a target whose limit was never measured says so with
+    // NULL, which is a statement a NOT NULL column cannot make.
+    val knownPagesLimitMeasuredAt: Column<OffsetDateTime?> =
+        timestampWithTimeZone("known_pages_limit_measured_at").nullable()
+    val knownPagesLimitBoundary: Column<String?> = text("known_pages_limit_boundary").nullable()
+    val knownPagesLimitSource: Column<String?> = text("known_pages_limit_source").nullable()
+
+    /**
+     * The WB subject id the products of this target carry.
+     *
+     * It is measured, not guessed: the products of a catalog carry a single
+     * `subjectId`. It is not a foreign key to `wb_subjects` — that table is a
+     * dictionary WB publishes and the crawler loads on demand.
+     */
+    val wbSubjectId: Column<Long?> = long("wb_subject_id").nullable()
+
+    /**
+     * Who holds the lease of this target, and until when.
+     *
+     * The lease is not the freshness: [lastCrawledAt] says when the target was read,
+     * [nextAttemptAt] says when it may be tried again, and the lease says who is
+     * reading it right now. An expired lease is a free lease, so a host that dies
+     * does not hold its targets.
+     */
+    val leaseOwner: Column<String?> = varchar("lease_owner", 128).nullable()
+    val leaseUntil: Column<OffsetDateTime?> = timestampWithTimeZone("lease_until").nullable()
+
     // TIMESTAMPTZ, and the database fills both with now().
     val createdAt: Column<OffsetDateTime> = timestampWithTimeZone("created_at")
     val updatedAt: Column<OffsetDateTime> = timestampWithTimeZone("updated_at")
@@ -157,6 +192,33 @@ object CrawlEgressGroupsTable : Table("crawl_egress_groups") {
     val ipChanges: Column<Int> = integer("ip_changes")
 
     override val primaryKey = PrimaryKey(groupId)
+}
+
+/**
+ * The runs of the targets: which egress group served which target, from which
+ * address, and how it went.
+ *
+ * `crawl_targets` holds the aggregate of a target — when it was read, how many times
+ * in a row it failed — and this table holds the runs themselves. The aggregate says
+ * "when"; this table says "by whom" and "how".
+ *
+ * The `outcome` column carries `CHECK (outcome IN ('ok', 'antibot',
+ * 'target_candidate', 'error'))` — the same four values as
+ * [ru.wbparser.domain.scheduling.RunOutcome], which is what the write path sends.
+ */
+object CrawlTargetRunsTable : Table("crawl_target_runs") {
+    val id: Column<UUID> = uuid("id")
+    val jobId: Column<UUID> = uuid("job_id")
+    val targetId: Column<UUID> = uuid("target_id")
+    val egressGroup: Column<String?> = varchar("egress_group", 64).nullable()
+    val egressIp: Column<String?> = varchar("egress_ip", 45).nullable()
+    val outcome: Column<String> = varchar("outcome", 32)
+    val pages: Column<Int> = integer("pages")
+    val items: Column<Int> = integer("items")
+    val startedAt: Column<OffsetDateTime> = timestampWithTimeZone("started_at")
+    val finishedAt: Column<OffsetDateTime> = timestampWithTimeZone("finished_at")
+
+    override val primaryKey = PrimaryKey(id)
 }
 
 /**
