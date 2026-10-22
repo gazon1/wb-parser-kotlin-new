@@ -1,15 +1,14 @@
 package ru.wbparser.infra.db.repositories
 
-import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
-import ru.wbparser.domain.pipeline.CrawlTargetRunsTable
 import ru.wbparser.domain.pipeline.CrawlTargetsTable
 import ru.wbparser.domain.scheduling.RunOutcome
 import ru.wbparser.domain.scheduling.TargetBackoff
 import ru.wbparser.infra.db.exposedOnce
+import java.sql.ResultSet
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.UUID
@@ -46,6 +45,14 @@ data class TargetRun(
      * zero would say "the search is empty".
      */
     val wbTotal: Int? = null,
+    /**
+     * The name of the target that was run.
+     *
+     * Read from the targets table, not copied into the run: the name is the target's
+     * fact, and a run that carried its own copy would be a second copy that drifts.
+     * Null when the target is gone — a run outlives the target it was about.
+     */
+    val targetName: String? = null,
 )
 
 /**
@@ -181,32 +188,78 @@ private fun DataSource.targetFailureCounts(targetId: UUID): Pair<Int, Int>? {
  *
  * This is what an operator reads when the metrics say a group refuses and the runs
  * say which address was behind it.
+ *
+ * The target's name comes from the targets table: a run carries the target's id, and an
+ * id answers "which target" only for whoever already knows the catalogue. The join is a
+ * left one — a run outlives the target it was about, and a run whose target is gone is
+ * still a run.
+ *
+ * @param targetId only the runs of this target, when the caller asks for one.
  */
-fun DataSource.fetchTargetRuns(limit: Int = 100): List<TargetRun> {
-    exposedOnce()
-    return transaction {
-        CrawlTargetRunsTable
-            .selectAll()
-            .orderBy(CrawlTargetRunsTable.startedAt to org.jetbrains.exposed.sql.SortOrder.DESC)
-            .limit(limit)
-            .map { row -> row.toTargetRun() }
+fun DataSource.fetchTargetRuns(
+    limit: Int = 100,
+    targetId: UUID? = null,
+): List<TargetRun> {
+    val sql =
+        if (targetId == null) {
+            """
+            SELECT r.target_id, t.name AS target_name, r.egress_group, r.egress_ip,
+                   r.session_id, r.session_requests, r.session_refusals,
+                   r.outcome, r.pages, r.items, r.wb_total, r.started_at
+              FROM crawl_target_runs r
+              LEFT JOIN crawl_targets t ON t.id = r.target_id
+             ORDER BY r.started_at DESC
+             LIMIT ?
+            """.trimIndent()
+        } else {
+            """
+            SELECT r.target_id, t.name AS target_name, r.egress_group, r.egress_ip,
+                   r.session_id, r.session_requests, r.session_refusals,
+                   r.outcome, r.pages, r.items, r.wb_total, r.started_at
+              FROM crawl_target_runs r
+              LEFT JOIN crawl_targets t ON t.id = r.target_id
+             WHERE r.target_id = ?
+             ORDER BY r.started_at DESC
+             LIMIT ?
+            """.trimIndent()
+        }
+    return connection.use { conn ->
+        conn.prepareStatement(sql).use { ps ->
+            if (targetId == null) {
+                ps.setInt(1, limit)
+            } else {
+                ps.setObject(1, targetId)
+                ps.setInt(2, limit)
+            }
+            ps.executeQuery().use { rs ->
+                buildList { while (rs.next()) add(rs.toTargetRun()) }
+            }
+        }
     }
 }
 
-private fun ResultRow.toTargetRun(): TargetRun =
+/**
+ * The run as the row describes it.
+ *
+ * The identifiers are read as text: PostgreSQL hands a `uuid` back as a [UUID] and the
+ * test databases hand back a string, and the caller wants the id, not the driver's
+ * opinion about it.
+ */
+private fun ResultSet.toTargetRun(): TargetRun =
     TargetRun(
-        targetId = this[CrawlTargetRunsTable.targetId],
-        egressGroup = this[CrawlTargetRunsTable.egressGroup],
-        egressIp = this[CrawlTargetRunsTable.egressIp],
-        sessionId = this[CrawlTargetRunsTable.sessionId],
-        sessionRequests = this[CrawlTargetRunsTable.sessionRequests],
-        sessionRefusals = this[CrawlTargetRunsTable.sessionRefusals],
+        targetId = UUID.fromString(getString("target_id")),
+        egressGroup = getString("egress_group"),
+        egressIp = getString("egress_ip"),
+        sessionId = getString("session_id"),
+        sessionRequests = getInt("session_requests"),
+        sessionRefusals = getInt("session_refusals"),
         outcome =
             RunOutcome.entries
-                .firstOrNull { it.dbValue == this[CrawlTargetRunsTable.outcome] }
+                .firstOrNull { it.dbValue == getString("outcome") }
                 ?: RunOutcome.Error,
-        pages = this[CrawlTargetRunsTable.pages],
-        items = this[CrawlTargetRunsTable.items],
-        startedAt = this[CrawlTargetRunsTable.startedAt].toInstant(),
-        wbTotal = this[CrawlTargetRunsTable.wbTotal],
+        pages = getInt("pages"),
+        items = getInt("items"),
+        startedAt = getTimestamp("started_at")?.toInstant() ?: Instant.now(),
+        wbTotal = getInt("wb_total").takeUnless { wasNull() },
+        targetName = getString("target_name"),
     )

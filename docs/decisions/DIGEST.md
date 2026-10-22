@@ -389,6 +389,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** держать два способа описать профили: они разойдутся, и разойдутся тихо. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать профиль без прокси прямой, если AdsPower говорит, что прокси есть, но не отдаёт его адрес. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать статическую проверку достаточной: два разных прокси могут сходиться на одном адресе, и это видит только живой probe. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Always** давать таблице-прогону читателя вместе с её созданием; таблица, которую никто не читает, — это запись в пустоту. _(from `2026-10-22-the-table-of-runs-has-a-reader`)
+- **Always** отвечать 400, а не 500, на некорректный ввод оператора. _(from `2026-10-22-the-table-of-runs-has-a-reader`)
+- **Never** копировать в прогон поле, которое принадлежит другому объекту (имя цели принадлежит цели). _(from `2026-10-22-the-table-of-runs-has-a-reader`)
+- **Never** отдавать наружу адреса и сессии без аутентификации. _(from `2026-10-22-the-table-of-runs-has-a-reader`)
 - **Always** писать прогон цели в базу: без этого история не знает, кто обслуживал цель. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **Always** проверять адрес по расписанию, а не только на старте. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **MUST** различать «адрес неизвестен» и «адрес подтверждён»: неизвестный адрес не повод закрывать circuit. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
@@ -1165,6 +1169,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-run-message-has-a-length` — crawler  operations  database  error-handling
 - `2026-10-21-the-schema-gate-reads-the-package` — gates  database  architecture
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
+- `2026-10-22-the-table-of-runs-has-a-reader` — reporting  operations  egress  api
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
 - `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — architecture  database  concurrency  antibot
@@ -1281,6 +1286,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-run-message-has-a-length` — Сообщение прогона в `crawl_jobs.error_message` имеет длину — и говорит, что обрезано
 - `2026-10-21-the-schema-gate-reads-the-package` — Гейт совместимости схемы читает пакет решений каталога, а не один файл
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
+- `2026-10-22-the-table-of-runs-has-a-reader` — Таблица прогонов получает читателя
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна
 - `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — Работа и бюджет живут там, где про них известно

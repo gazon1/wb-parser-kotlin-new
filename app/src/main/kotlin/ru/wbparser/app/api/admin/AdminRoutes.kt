@@ -13,8 +13,10 @@ import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.infra.db.repositories.TargetDraft
+import ru.wbparser.infra.db.repositories.TargetRun
 import ru.wbparser.infra.db.repositories.deleteTarget
 import ru.wbparser.infra.db.repositories.fetchAllTargets
+import ru.wbparser.infra.db.repositories.fetchTargetRuns
 import ru.wbparser.infra.db.repositories.insertTarget
 import ru.wbparser.infra.db.repositories.updateTarget
 import java.sql.ResultSet
@@ -83,6 +85,22 @@ class AdminRoutes(
         @RequestParam(defaultValue = "20") limit: Int,
         @RequestParam(required = false) targetId: String?,
     ): List<Job> = datasource.fetchAdminJobs(limit, targetId)
+
+    /**
+     * The runs of the targets: who served them, and how they went.
+     *
+     * The table has been written on every run since it was created, and until now
+     * nothing outside the tests read it — the question it exists for ("which address
+     * gave the refusal?") was answerable only from the logs, and the logs do not last.
+     *
+     * The target id is a [UUID] parameter, so a malformed one is a bad request and not
+     * a failure of the server.
+     */
+    @GetMapping("/target-runs")
+    fun getTargetRuns(
+        @RequestParam(defaultValue = "100") limit: Int,
+        @RequestParam(required = false) targetId: UUID?,
+    ): List<TargetRun> = datasource.fetchTargetRuns(limit, targetId)
 }
 
 /**

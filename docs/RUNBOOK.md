@@ -286,7 +286,10 @@ HTTP-сервера, не проверяет. Именно его использ
 `GET /actuator/metrics` (список Micrometer-метрик, §7), `GET /api/admin/targets` (цели,
 `X-Api-Key`), `GET /api/admin/jobs?limit=20&targetId=<uuid>` (последние прогоны: `status`,
 `pagesCrawled`, `itemsSaved`, `errorMessage`), `GET /api/admin/errors?limit=100&unresolvedOnly=true`
-(записанные ошибки краула).
+(записанные ошибки краула), `GET /api/admin/target-runs?limit=100&targetId=<uuid>` (прогоны
+целей: кто обслужил — `egressGroup`/`egressIp`/`sessionId`, чем закончилось — `outcome`,
+что прочитано — `pages`/`items`, что WB говорит о размере выдачи — `wbTotal`; `targetName`
+подставляется из таблицы целей).
 
 > В `application.yml` включён `management.prometheus.metrics.export.enabled: true`, но
 > зависимости `micrometer-registry-prometheus` в сборке нет — `/actuator/prometheus` может не
