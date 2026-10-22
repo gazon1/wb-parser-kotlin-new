@@ -1,11 +1,11 @@
 package ru.wbparser.app.api.health
 
 import io.micrometer.core.instrument.MeterRegistry
-import ru.wbparser.domain.session.SessionSnapshot
+import ru.wbparser.browser.session.SessionSnapshot
+import ru.wbparser.browser.session.SessionSource
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
 import ru.wbparser.infra.http.EgressGroup
 import ru.wbparser.infra.http.EgressGroupState
-import ru.wbparser.infra.http.SessionSource
 import java.util.concurrent.TimeUnit
 
 /**

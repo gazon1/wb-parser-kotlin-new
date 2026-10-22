@@ -17,11 +17,11 @@ import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
 import ru.wbparser.testing.DropTestInterpreter
+import ru.wbparser.testing.FixtureServer
 import ru.wbparser.testing.LogTestInterpreter
 import ru.wbparser.testing.NoRetryKtorDownloader
 import ru.wbparser.testing.SqliteTestHandle
 import ru.wbparser.testing.TestSideCollector
-import ru.wbparser.testing.WbFixtureServer
 import ru.wbparser.testing.fixedClockOf
 import ru.wbparser.testing.writeItemsSqlite
 import java.util.UUID
@@ -33,7 +33,7 @@ import java.util.UUID
 class WbParserRetryTest :
     FunSpec({
 
-        val server = WbFixtureServer()
+        val server = FixtureServer()
         beforeSpec { server.start() }
         afterSpec { server.stop() }
 
@@ -49,7 +49,7 @@ class WbParserRetryTest :
                 ?.readText()
                 ?: throw IllegalStateException("Fixture not found")
 
-        val catalogUrl: String by lazy { "${server.baseUrl()}/catalog" }
+        val catalogUrl: String by lazy { "${server.baseUrl}/catalog" }
 
         test("parser retries on 500 and saves items on second attempt") {
             // Arrange: first call returns 500, second returns the 5-product page

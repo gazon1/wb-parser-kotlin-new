@@ -182,7 +182,6 @@ crawler:
       window-seconds: 600
       open-seconds: 600
       per-group: {}
-    browser-retry-limit: 3
     # How many crawl targets run at once. Derived from the number of profiles when
     # it is not set: the pool serialises per profile, so more workers queue rather
     # than parallelise. It used to be a number in this file that had to be kept
@@ -209,6 +208,17 @@ crawler:
     # Whether the browsers are stopped in AdsPower when the application exits. A
     # browser left running after the crawler is gone keeps its profile locked.
     close-browsers-on-exit: true
+    # Whether the browsers that survived the previous run are stopped at startup.
+    #
+    # A crawler that was killed — SIGKILL, an OOM, a fallen JVM — never got to stop
+    # its browsers: the AdsPower runtime is a container of its own and keeps them
+    # running. The next run finds them, and this is the switch that stops them
+    # instead of inheriting a session older than the one it could have created.
+    # The price is a fresh session: the first request of each profile pays the
+    # warm-up again.
+    # Off for a deployment where several crawlers share one AdsPower runtime — the
+    # second one would stop the first one's browsers.
+    reconcile-browsers-on-start: true
 
 # ==============================================================================
 # Catalog read API

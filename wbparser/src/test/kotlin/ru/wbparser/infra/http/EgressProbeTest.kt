@@ -6,8 +6,13 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
+import ru.wbparser.browser.adspower.AdsPowerConfig
+import ru.wbparser.browser.adspower.AdsPowerProfileProxy
+import ru.wbparser.browser.pool.BrowserPool
+import ru.wbparser.browser.pool.BrowserProfileConfig
+import ru.wbparser.browser.testing.FakeAdsPowerApi
+import ru.wbparser.browser.testing.FakeBrowserAutomation
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
-import ru.wbparser.testing.FakeBrowserAutomation
 
 /**
  * The probe that checks what the crawler actually looks like from the outside.

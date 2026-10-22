@@ -53,6 +53,7 @@ DEFAULT_CLASSPATH_FILE = ROOT / "app" / "build" / "runtime-classpath.txt"
 # it resolves them against.
 CODE_DIRS = [
     ROOT / "app" / "build" / "classes" / "kotlin" / "main",
+    ROOT / "browser" / "build" / "classes" / "kotlin" / "main",
     ROOT / "wbparser" / "build" / "classes" / "kotlin" / "main",
 ]
 

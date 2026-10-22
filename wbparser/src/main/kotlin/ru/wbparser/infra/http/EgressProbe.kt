@@ -7,6 +7,8 @@ import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import ru.wbparser.browser.adspower.AdsPowerProfileProxy
+import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit

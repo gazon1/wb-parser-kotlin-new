@@ -47,7 +47,7 @@
 
 | Переменная | Где используется | Комментарий |
 |---|---|---|
-| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | `spring.datasource` и `crawler.database` | `DB_NAME` должен совпадать с базой, из которой читает витрина; legacy-стек .NET использовал `webcrawler` — указание на неё даёт пустой каталог без ошибки |
+| `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | `spring.datasource` | `DB_NAME` должен совпадать с базой, из которой читает витрина; legacy-стек .NET использовал `webcrawler` — указание на неё даёт пустой каталог без ошибки |
 | `ADMIN_API_KEY` | `AdminApiKeyFilter` | **Обязательна**: без неё приложение падает на старте (`IllegalStateException`). Ключ передаётся в заголовке `X-Api-Key` |
 | `ADMIN_PASSWORD`, `ADMIN_USER` | `spring.security.user` | Basic-auth для admin API; предпочтительнее `X-Api-Key` |
 | `ADSPOWER_API_KEY` | AdsPower Local API | Требуется для обхода |

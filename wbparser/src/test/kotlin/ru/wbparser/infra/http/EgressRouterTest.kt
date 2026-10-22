@@ -4,7 +4,9 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
 import kotlinx.coroutines.test.runTest
-import ru.wbparser.testing.FakeBrowserAutomation
+import ru.wbparser.browser.pool.BrowserPool
+import ru.wbparser.browser.pool.BrowserProfileConfig
+import ru.wbparser.browser.testing.FakeBrowserAutomation
 
 /**
  * Which egress group serves the next request.

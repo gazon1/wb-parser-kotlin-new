@@ -5,7 +5,7 @@ import org.springframework.beans.factory.DisposableBean
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import ru.wbparser.app.config.CrawlProperties
-import ru.wbparser.infra.http.BrowserPool
+import ru.wbparser.browser.pool.BrowserPool
 
 /**
  * Closes the AdsPower browsers that are not needed any more.

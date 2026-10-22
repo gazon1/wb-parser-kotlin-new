@@ -36,6 +36,7 @@ RUN --mount=type=cache,target=/root/.gradle \
 # change to a source file leaves this layer intact: Kotlin, Spring, Ktor and
 # Arrow are fetched once instead of on every rebuild.
 COPY settings.gradle.kts build.gradle.kts ./
+COPY browser/build.gradle.kts browser/
 COPY wbparser/build.gradle.kts wbparser/
 COPY app/build.gradle.kts app/
 COPY tests/build.gradle.kts tests/

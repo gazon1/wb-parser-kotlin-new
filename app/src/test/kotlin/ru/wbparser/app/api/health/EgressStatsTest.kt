@@ -3,13 +3,13 @@ package ru.wbparser.app.api.health
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
-import ru.wbparser.domain.session.SessionSnapshot
-import ru.wbparser.domain.session.SessionState
+import ru.wbparser.browser.session.SessionSnapshot
+import ru.wbparser.browser.session.SessionSource
+import ru.wbparser.browser.session.SessionState
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
 import ru.wbparser.infra.http.EgressGroup
 import ru.wbparser.infra.http.EgressGroupCounters
 import ru.wbparser.infra.http.EgressGroupState
-import ru.wbparser.infra.http.SessionSource
 
 /**
  * The egress section of the readiness response.

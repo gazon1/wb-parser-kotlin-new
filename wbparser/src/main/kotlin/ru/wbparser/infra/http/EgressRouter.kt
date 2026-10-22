@@ -3,6 +3,9 @@ package ru.wbparser.infra.http
 import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import kotlinx.coroutines.delay
 import org.slf4j.LoggerFactory
+import ru.wbparser.browser.pool.BorrowedPage
+import ru.wbparser.browser.pool.BrowserPool
+import ru.wbparser.browser.pool.BrowserPoolExhaustedException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit

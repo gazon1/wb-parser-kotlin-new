@@ -58,6 +58,7 @@ FLOOR_FILE = ROOT / "config" / "gates" / "coverage-floor.txt"
 #: module → where Gradle writes that module's kover XML report.
 REPORT_FILES = {
     "wbparser": "wbparser/build/reports/kover/report.xml",
+    "browser": "browser/build/reports/kover/report.xml",
     "app": "app/build/reports/kover/report.xml",
     # The repository-wide report. The root project is the merging module: it has no
     # sources of its own, and the `kover` dependencies it declares make its report the
@@ -85,6 +86,7 @@ MERGED_REPORT = REPORT_FILES["merged"]
 #: module → the packages its row covers in the merged report. `None` means all of them.
 MODULE_PACKAGES: dict[str, tuple[str, ...] | None] = {
     "app": ("ru/wbparser/app",),
+    "browser": ("ru/wbparser/browser",),
     "wbparser": ("ru/wbparser",),
     "merged": None,
 }
@@ -92,9 +94,11 @@ MODULE_PACKAGES: dict[str, tuple[str, ...] | None] = {
 #: module → packages its row excludes: a package under another module's prefix.
 #:
 #: `ru/wbparser/app` is under `ru/wbparser`, so the crawler's row has to say that the
-#: application's packages are not its own.
+#: application's packages are not its own. The same holds for the browser stack: it
+#: lives in its own module, and its packages are under `ru/wbparser` only because the
+#: package root is shared.
 MODULE_EXCLUDED: dict[str, tuple[str, ...]] = {
-    "wbparser": ("ru/wbparser/app",),
+    "wbparser": ("ru/wbparser/app", "ru/wbparser/browser"),
 }
 
 

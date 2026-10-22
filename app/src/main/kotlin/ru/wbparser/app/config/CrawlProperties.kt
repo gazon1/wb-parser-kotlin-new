@@ -13,24 +13,11 @@ import ru.wbparser.domain.pipeline.BusinessRules
 data class CrawlProperties(
     val schedule: Schedule = Schedule(),
     val spider: Spider = Spider(),
-    val database: Database = Database(),
     val worker: Worker = Worker(),
     val lock: Lock = Lock(),
 )
 
 data class Schedule(
-    /**
-     * When the scheduler looks for work.
-     *
-     * This is a **tick**, not a cadence: it decides how often the crawler checks which
-     * targets are due. The cadence itself is [freshnessMinutes] — how long a target
-     * rests after it was crawled. The tick is deliberately shorter than a round: a
-     * tick that finds work starts a round and holds the advisory lock for as long as
-     * that round runs, and the ticks in between are no-ops. A tick of 30 seconds next
-     * to a multi-hour freshness window would mean hundreds of empty ticks per crawl,
-     * which is how the schedule became confusing in the first place.
-     */
-    val cron: String = "0 0 */2 * * *",
     /**
      * How many minutes a target rests after it was crawled.
      *
@@ -67,7 +54,6 @@ data class Spider(
     val maxDepth: Int = 2,
     val maxPagesPerCatalog: Int = 60,
     val concurrency: Int = 3,
-    val useBrowserForAuth: Boolean = true,
     val useBrowserFetch: Boolean = false,
     /**
      * The egress groups: sets of profiles that are expected to share one egress IP.
@@ -95,18 +81,6 @@ data class Spider(
      * How long one probe service may take before the next one is tried.
      */
     val egressProbeTimeoutMs: Long = 5_000L,
-    /**
-     * How often the crawler asks the network which address it leaves from.
-     *
-     * The address belongs to the world outside the process: a proxy may rotate it,
-     * lose it, or be replaced while the crawler runs. A probe that only ran at
-     * startup would keep pacing an address that no longer exists.
-     */
-    val egressProbeIntervalMs: Long = 900_000L,
-    /**
-     * How long a profile that answered with an anti-bot status rests before it is used again.
-     */
-    val browserRetryLimit: Int = 3,
     /**
      * How many crawl targets run at once.
      *
@@ -148,11 +122,6 @@ data class Spider(
      */
     val browserIdleTimeoutMs: Long = 300_000L,
     /**
-     * How often the idle browsers are looked for. A tick, not a policy: the policy is
-     * [browserIdleTimeoutMs].
-     */
-    val browserJanitorIntervalMs: Long = 60_000L,
-    /**
      * Whether the AdsPower browsers are stopped when the application exits.
      *
      * A browser left running after the crawler is gone keeps its window open and its
@@ -160,6 +129,18 @@ data class Spider(
      * it would have created for itself.
      */
     val closeBrowsersOnExit: Boolean = true,
+    /**
+     * Whether the browsers that survived the previous run are stopped at startup.
+     *
+     * A crawler that was killed — SIGKILL, an OOM, a fallen JVM — never got to stop
+     * its browsers: the AdsPower runtime is a container of its own and keeps them
+     * running. The next run finds them, and this is the switch that stops them
+     * instead of inheriting a session older than the one it could have created.
+     *
+     * Off for a deployment where several crawlers share one AdsPower runtime: the
+     * second one would stop the first one's browsers.
+     */
+    val reconcileBrowsersOnStart: Boolean = true,
     /**
      * The rules that decide how long a profile's session lives and how much it may send.
      *
@@ -246,22 +227,6 @@ data class Rules(
             blacklistedCategories = blacklistedCategories,
         )
 }
-
-/**
- * Crawler's own connection settings.
- *
- * These defaults exist only for the case where `application.yml` is absent; the shipped
- * config binds this block to the same `${DB_HOST}` / `${DB_PORT}` / `${DB_NAME}` /
- * `${DB_USER}` / `${DB_PASSWORD}` placeholders as `spring.datasource`, and Spring property
- * binding overrides every value here. The two connections must stay pointed at the same
- * database: `spring.datasource` backs the health endpoints, this one backs [CrawlRunner].
- */
-data class Database(
-    val url: String = "jdbc:postgresql://localhost:5432/wbparser",
-    val username: String = "postgres",
-    val password: String = "postgres",
-    val poolSize: Int = 10,
-)
 
 data class Worker(
     val enabled: Boolean = false,

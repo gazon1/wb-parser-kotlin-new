@@ -6,7 +6,9 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import io.mockk.mockk
-import ru.wbparser.testing.FakeBrowserAutomation
+import ru.wbparser.browser.pool.BrowserPool
+import ru.wbparser.browser.pool.BrowserProfileConfig
+import ru.wbparser.browser.testing.FakeBrowserAutomation
 import java.util.UUID
 
 /**

@@ -1,5 +1,7 @@
 package ru.wbparser.infra.http
 
+import ru.wbparser.browser.adspower.AdsPowerProfileProxy
+
 /**
  * The proxy an egress group is declared to leave through.
  *

@@ -24,40 +24,37 @@ class CrawlPropertiesTest :
         test("a configuration without a crawler block yields the documented defaults") {
             val properties = bind("some.other.key" to "ignored")
 
-            properties.schedule.cron shouldBe "0 0 */2 * * *"
             properties.lock.timeoutMinutes shouldBe 10L
             properties.spider.maxDepth shouldBe 2
             properties.spider.maxPagesPerCatalog shouldBe 60
             properties.spider.concurrency shouldBe 3
-            properties.spider.useBrowserForAuth shouldBe true
             properties.spider.useBrowserFetch shouldBe false
-            properties.spider.browserRetryLimit shouldBe 3
             properties.spider.browserWarmupMs shouldBe 2_000L
             properties.spider.browserJitterMinMs shouldBe 200L
             properties.spider.browserJitterMaxMs shouldBe 500L
-            properties.database.url shouldBe "jdbc:postgresql://localhost:5432/wbparser"
-            properties.database.poolSize shouldBe 10
+            properties.spider.closeBrowsersOnExit shouldBe true
+            properties.spider.reconcileBrowsersOnStart shouldBe true
             properties.worker.enabled shouldBe false
         }
 
         test("explicit values override the defaults") {
             val properties =
                 bind(
-                    "crawler.schedule.cron" to "0 30 2 * * *",
                     "crawler.lock.timeout-minutes" to 3L,
                     "crawler.spider.max-depth" to 5,
                     "crawler.spider.concurrency" to 7,
                     "crawler.spider.use-browser-fetch" to true,
                     "crawler.spider.browser-warmup-ms" to 1_500L,
+                    "crawler.spider.reconcile-browsers-on-start" to false,
                     "crawler.worker.enabled" to true,
                 )
 
-            properties.schedule.cron shouldBe "0 30 2 * * *"
             properties.lock.timeoutMinutes shouldBe 3L
             properties.spider.maxDepth shouldBe 5
             properties.spider.concurrency shouldBe 7
             properties.spider.useBrowserFetch shouldBe true
             properties.spider.browserWarmupMs shouldBe 1_500L
+            properties.spider.reconcileBrowsersOnStart shouldBe false
             properties.worker.enabled shouldBe true
         }
 

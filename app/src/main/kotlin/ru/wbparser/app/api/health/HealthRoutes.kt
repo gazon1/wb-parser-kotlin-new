@@ -6,12 +6,12 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import ru.wbparser.app.config.EgressGroups
+import ru.wbparser.browser.session.SessionSource
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
 import ru.wbparser.infra.db.repositories.countSubjects
 import ru.wbparser.infra.db.repositories.countTargetsWithoutSearchToken
 import ru.wbparser.infra.db.repositories.fetchEgressGroups
 import ru.wbparser.infra.http.EgressGroupStates
-import ru.wbparser.infra.http.SessionSource
 import javax.sql.DataSource
 
 /**

@@ -5,11 +5,11 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.EgressGroups
+import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.db.repositories.fetchEgressGroups
 import ru.wbparser.infra.db.repositories.releaseEgressPenalty
 import ru.wbparser.infra.db.repositories.upsertEgressGroup
-import ru.wbparser.infra.http.BrowserPool
 import ru.wbparser.infra.http.EgressGroupProbe
 import ru.wbparser.infra.http.EgressProbe
 import ru.wbparser.infra.http.EgressProbeConfig

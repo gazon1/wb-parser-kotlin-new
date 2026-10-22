@@ -1,6 +1,6 @@
 package ru.wbparser.app.config
 
-import ru.wbparser.infra.http.BrowserProfileConfig
+import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.infra.http.DeclaredProxy
 import ru.wbparser.infra.http.EgressGroup
 import ru.wbparser.infra.http.RequestPacing
