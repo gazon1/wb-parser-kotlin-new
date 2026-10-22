@@ -393,6 +393,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** проверять объявление поиском по всему репозиторию, включая тесты, прежде чем назвать его мёртвым. _(from `2026-10-22-the-code-nobody-calls-is-gone`)
 - **Never** держать тестовые помощники в `main`: тестовая приспособленность живёт в тестовых источниках. _(from `2026-10-22-the-code-nobody-calls-is-gone`)
 - **Never** оставлять публичное объявление, которое ничего не зовёт. _(from `2026-10-22-the-code-nobody-calls-is-gone`)
+- **Always** закрывать пробелы, которые закрываются дешёво, и записывать те, что не закрываются. _(from `2026-10-22-the-gaps-are-closed-or-written-down`)
+- **Always** называть шов по решению, которое он открывает, а не по тесту, который через него проходит. _(from `2026-10-22-the-gaps-are-closed-or-written-down`)
+- **Always** проверять телом ответа, что в него попало: тест на статус, но не на текст, пропускает пустые тела. _(from `2026-10-22-the-gaps-are-closed-or-written-down`)
+- **Never** оставлять решение в коде без проверки только потому, что «его и так сложно проверить». _(from `2026-10-22-the-gaps-are-closed-or-written-down`)
 - **Always** давать таблице-прогону читателя вместе с её созданием; таблица, которую никто не читает, — это запись в пустоту. _(from `2026-10-22-the-table-of-runs-has-a-reader`)
 - **Always** отвечать 400, а не 500, на некорректный ввод оператора. _(from `2026-10-22-the-table-of-runs-has-a-reader`)
 - **Never** копировать в прогон поле, которое принадлежит другому объекту (имя цели принадлежит цели). _(from `2026-10-22-the-table-of-runs-has-a-reader`)
@@ -1174,6 +1178,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-schema-gate-reads-the-package` — gates  database  architecture
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
 - `2026-10-22-the-code-nobody-calls-is-gone` — dead-code  cleanup  domain
+- `2026-10-22-the-gaps-are-closed-or-written-down` — testing  coverage  seams  playwright
 - `2026-10-22-the-table-of-runs-has-a-reader` — reporting  operations  egress  api
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
@@ -1292,6 +1297,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-schema-gate-reads-the-package` — Гейт совместимости схемы читает пакет решений каталога, а не один файл
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-22-the-code-nobody-calls-is-gone` — Код, который никто не зовёт, убран
+- `2026-10-22-the-gaps-are-closed-or-written-down` — Пробелы покрытия закрыты, а непокрываемый — записан
 - `2026-10-22-the-table-of-runs-has-a-reader` — Таблица прогонов получает читателя
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна
