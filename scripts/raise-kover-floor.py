@@ -99,6 +99,20 @@ HEADER = [
     "#   suite actually exercised, including the integration module's. Without it the",
     "#   integration suites were invisible to the gate: a module's own report holds",
     "#   only that module's classes.",
+    "# - 86% — the `app` floor after the catalog's answers started naming the instance",
+    "#   and the moment of their data: 87.2% measured (2026-10-21). The point of",
+    "#   headroom is kept: a floor of 87% would have had none.",
+    "# - 86% / 89% / 90% — after the catalog's queries were split by decision and the",
+    "#   branch was rebased onto the merge of #129: `app` 86% against 87.7%,",
+    "#   `merged` 89% against 90.1%, `wbparser` 90% against 91.3%. The split did not",
+    "#   lower the coverage: the parts that hold the text of the SQL are tested",
+    "#   without a database, and the parts that read it are tested against a real",
+    "#   PostgreSQL.",
+    "# - 89% / 91% / 92% — after the runs got a reader, the dead code was removed and",
+    "#   the catalog's error answers were covered: `app` 89% against 90.1%,",
+    "#   `merged` 91% against 92.4%, `wbparser` 92% against 93.5% (2026-10-22). The",
+    "#   history lives here, in the script that writes the file: a file rewritten by",
+    "#   the script and edited by hand is a history that disappears one raise later.",
 ]
 
 
