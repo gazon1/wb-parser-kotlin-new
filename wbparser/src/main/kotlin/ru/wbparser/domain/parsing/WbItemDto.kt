@@ -171,10 +171,7 @@ data class WbCatalogMetadata(
     /** WB sends `catalog_type` — the snake_case name has to be mapped explicitly. */
     @SerialName("catalog_type")
     val catalogType: String? = null,
-    @SerialName("catalog_value")
-    val catalogValue: String? = null,
     val name: String? = null,
-    val normquery: String? = null,
 )
 
 /**

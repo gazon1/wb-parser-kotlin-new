@@ -19,8 +19,8 @@ class StageCompositionTest :
 
         test("Done from the first stage feeds the second, and the output is the second's") {
             runTest {
-                val first = stageOf { s: String -> s.length }
-                val second = stageOf { n: Int -> n > 3 }
+                val first = Stage<String, Int>(StageInfo("first")) { Step.Done(it.length) }
+                val second = Stage<Int, Boolean>(StageInfo("second")) { Step.Done(it > 3) }
 
                 val result = (first andThen second)("hello")
 

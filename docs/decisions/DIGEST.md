@@ -389,6 +389,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** держать два способа описать профили: они разойдутся, и разойдутся тихо. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать профиль без прокси прямой, если AdsPower говорит, что прокси есть, но не отдаёт его адрес. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать статическую проверку достаточной: два разных прокси могут сходиться на одном адресе, и это видит только живой probe. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Always** говорить в коде, когда «неиспользуемость» — это решение (как у `andThen`). Неиспользуемость без записи — это забытая функция. _(from `2026-10-22-the-code-nobody-calls-is-gone`)
+- **Always** проверять объявление поиском по всему репозиторию, включая тесты, прежде чем назвать его мёртвым. _(from `2026-10-22-the-code-nobody-calls-is-gone`)
+- **Never** держать тестовые помощники в `main`: тестовая приспособленность живёт в тестовых источниках. _(from `2026-10-22-the-code-nobody-calls-is-gone`)
+- **Never** оставлять публичное объявление, которое ничего не зовёт. _(from `2026-10-22-the-code-nobody-calls-is-gone`)
 - **Always** давать таблице-прогону читателя вместе с её созданием; таблица, которую никто не читает, — это запись в пустоту. _(from `2026-10-22-the-table-of-runs-has-a-reader`)
 - **Always** отвечать 400, а не 500, на некорректный ввод оператора. _(from `2026-10-22-the-table-of-runs-has-a-reader`)
 - **Never** копировать в прогон поле, которое принадлежит другому объекту (имя цели принадлежит цели). _(from `2026-10-22-the-table-of-runs-has-a-reader`)
@@ -1169,6 +1173,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-run-message-has-a-length` — crawler  operations  database  error-handling
 - `2026-10-21-the-schema-gate-reads-the-package` — gates  database  architecture
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
+- `2026-10-22-the-code-nobody-calls-is-gone` — dead-code  cleanup  domain
 - `2026-10-22-the-table-of-runs-has-a-reader` — reporting  operations  egress  api
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
@@ -1286,6 +1291,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-run-message-has-a-length` — Сообщение прогона в `crawl_jobs.error_message` имеет длину — и говорит, что обрезано
 - `2026-10-21-the-schema-gate-reads-the-package` — Гейт совместимости схемы читает пакет решений каталога, а не один файл
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
+- `2026-10-22-the-code-nobody-calls-is-gone` — Код, который никто не зовёт, убран
 - `2026-10-22-the-table-of-runs-has-a-reader` — Таблица прогонов получает читателя
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна
