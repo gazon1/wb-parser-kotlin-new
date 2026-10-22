@@ -15,6 +15,15 @@ dependencies {
     // migrations and application.yml), which reach the test classpath through it.
     testImplementation(project(":wbparser"))
     testImplementation(project(":app"))
+    // The crawler's test support — the fixture server, the fake interpreters, the
+    // test database — is published as its test fixtures. These suites need a real
+    // socket and the same fakes the crawler's own suites use, and a second copy of
+    // either is a second thing to keep in step.
+    testImplementation(testFixtures(project(":wbparser")))
+    // The browser module's contracts — the browser pool and the AdsPower port — are
+    // named by these suites directly, so they are declared here rather than
+    // inherited through the crawler.
+    testImplementation(project(":browser"))
 
     implementation(libs.kotlin.stdlib)
     implementation(libs.kotlin.reflect)

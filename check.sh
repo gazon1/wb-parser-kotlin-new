@@ -43,9 +43,13 @@ bash scripts/ci/static-gates.sh || fail "a static gate failed — see scripts/ci
 # --- [2] merged module unit tests --------------------------------------------
 # The wbparser module (domain + infrastructure merged) carries no Spring, no I/O.
 # If its tests fail, every failure above it is downstream, so they run first.
-step 2 "wbparser:test"
-./gradlew :wbparser:test --quiet || fail "wbparser:test FAILED"
-echo -e "${GREEN}wbparser:test passed${NC}"
+#
+# The browser module runs in the same step: it carries no Spring and no I/O either,
+# and its suites cover the AdsPower client, the CDP overlay and the profile pool —
+# the code the crawler leans on hardest.
+step 2 "wbparser:test + browser:test"
+./gradlew :wbparser:test :browser:test --quiet || fail "wbparser:test / browser:test FAILED"
+echo -e "${GREEN}wbparser:test + browser:test passed${NC}"
 
 # --- [3] integration tests ----------------------------------------------------
 if [[ "$SKIP_DB" == "1" ]]; then

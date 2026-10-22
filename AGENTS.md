@@ -8,15 +8,29 @@
 
 ```
 wb-parser-kotlin/
+├── browser/        — browser stack (java-library): AdsPower Local API client, надстройка
+│                     над Playwright/CDP, пул профилей, состояние сессии. Без Spring,
+│                     без БД, без WB.
 ├── wbparser/       — crawler module (java-library): Stage/Side/Interpreter, модели,
-│                     Repo interfaces, Ktor client, Exposed. Чистая логика без Spring.
+│                     Repo interfaces, Ktor client, Exposed, роутер egress. Чистая
+│                     логика без Spring.
 ├── app/            — Spring Boot 3.4.1: REST-контроллеры, Scheduler, Flyway migrations
 └── tests/          — integration tests (Testcontainers, реальная БД) + гейт старта приложения
 ```
 
-Граница `wbparser → app` явная: `wbparser` — `java-library` (`api` — только то, что
-действительно в типе публичного API модуля), `app` — потребитель. Flyway-миграции
-живут в `app`, `app` зависит от `wbparser`, обратной зависимости нет.
+Границы явные, и их проверяет сборка, а не соглашение:
+
+- `app → wbparser → browser`. Обратного ребра нет: `browser` не знает ни про краул, ни
+  про WB, ни про базу.
+- `browser` — `java-library`, наружу отдаёт один вход: `BrowserPool` плюс аренда
+  `BorrowedPage`. Всё, что не пересекает границу, — `internal` (в Kotlin `internal` — это
+  модуль Gradle, поэтому переезд меняет видимость, и её надо ревизовать).
+- `wbparser` — `java-library` (`api` — только то, что действительно в типе публичного API
+  модуля), `app` — потребитель. Flyway-миграции живут в `app`, `app` зависит от
+  `wbparser`, обратной зависимости нет.
+- Общие тестовые двойники публикуются как `java-test-fixtures` (`browser` — фикстуры
+  браузера, `wbparser` — фикстуры тестовой оснастки), а не пере-объявляются в
+  модуле-потребителе.
 
 ## Gradle команды / Gradle Commands
 
@@ -34,6 +48,7 @@ just t                 # алиас
 
 # Модульные тесты
 just wbparser::test    # crawler module unit tests
+just browser::test     # browser stack unit tests
 just tests::common     # integration tests
 
 # Зависимости

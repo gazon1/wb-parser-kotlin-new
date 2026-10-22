@@ -181,6 +181,10 @@ dependencies {
     // speaks in Playwright's page type. The dependency arrives with the crawler
     // module, but the test uses it directly — so it is declared here.
     testImplementation(libs.playwright)
+    // The browser module itself: the start-up reconciler implements the browser
+    // contract directly, and that contract lives in the browser module.
+    implementation(project(":browser"))
+    testImplementation(testFixtures(project(":browser")))
     testImplementation(libs.mockk)
     testImplementation(libs.exposed.core)
 }

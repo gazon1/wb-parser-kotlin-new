@@ -6,6 +6,8 @@ import com.microsoft.playwright.Page
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import ru.wbparser.browser.pool.BorrowedPage
+import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.domain.error.NetworkError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched

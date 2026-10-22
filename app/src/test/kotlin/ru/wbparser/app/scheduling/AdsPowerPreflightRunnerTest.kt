@@ -14,12 +14,12 @@ import ru.wbparser.app.config.EgressGroups
 import ru.wbparser.app.config.ProxyConfig
 import ru.wbparser.app.config.Spider
 import ru.wbparser.app.config.Worker
+import ru.wbparser.browser.adspower.AdsPowerApi
+import ru.wbparser.browser.adspower.AdsPowerConfig
+import ru.wbparser.browser.adspower.AdsPowerProfileProxy
+import ru.wbparser.browser.playwright.BrowserAutomation
+import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.infra.db.DatabaseHandle
-import ru.wbparser.infra.http.AdsPowerApi
-import ru.wbparser.infra.http.AdsPowerConfig
-import ru.wbparser.infra.http.AdsPowerProfileProxy
-import ru.wbparser.infra.http.BrowserAutomation
-import ru.wbparser.infra.http.BrowserPool
 import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressRouter
 import java.io.PrintWriter

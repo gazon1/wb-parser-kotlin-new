@@ -3,7 +3,9 @@ package ru.wbparser.infra.http
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.mockk.mockk
-import ru.wbparser.testing.FakeBrowserAutomation
+import ru.wbparser.browser.pool.BrowserPool
+import ru.wbparser.browser.pool.BrowserProfileConfig
+import ru.wbparser.browser.testing.FakeBrowserAutomation
 
 /**
  * The state of an egress group — the one answer the router, the health endpoint and the

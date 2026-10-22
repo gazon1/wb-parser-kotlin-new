@@ -3,14 +3,14 @@ package ru.wbparser.app.config
 import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import ru.wbparser.browser.pool.BrowserPool
+import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.domain.model.Crawling
-import ru.wbparser.domain.session.SessionPolicy
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.BrowserDownloader
 import ru.wbparser.infra.http.BrowserFetchTiming
-import ru.wbparser.infra.http.BrowserPool
 import ru.wbparser.infra.http.CircuitWindow
 import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressRouter

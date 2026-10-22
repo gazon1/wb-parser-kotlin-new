@@ -35,6 +35,7 @@ plugins {
 
 rootProject.name = "wb-parser-kotlin"
 
+include("browser")
 include("wbparser")
 include("app")
 include("tests")

@@ -20,10 +20,10 @@ import ru.wbparser.infra.pipeline.PipelineRunner
 import ru.wbparser.infra.pipeline.SideInterpreterRegistry
 import ru.wbparser.infra.pipeline.buildParserPipeline
 import ru.wbparser.testing.DropTestInterpreter
+import ru.wbparser.testing.FixtureServer
 import ru.wbparser.testing.LogTestInterpreter
 import ru.wbparser.testing.SqliteTestHandle
 import ru.wbparser.testing.TestSideCollector
-import ru.wbparser.testing.WbFixtureServer
 import ru.wbparser.testing.findItem
 import ru.wbparser.testing.fixedClockOf
 import ru.wbparser.testing.writeItemsSqlite
@@ -36,7 +36,7 @@ import java.util.UUID
 class WbParserHappyPathTest :
     FunSpec({
 
-        val server = WbFixtureServer()
+        val server = FixtureServer()
         beforeSpec { server.start() }
         afterSpec { server.stop() }
 
@@ -90,7 +90,7 @@ class WbParserHappyPathTest :
 
                 val startUrl =
                     CrawlUrl
-                        .of("${server.baseUrl()}/catalog")
+                        .of("${server.baseUrl}/catalog")
                         .getOrElse { throw IllegalStateException("Invalid URL") }
                 val startTask = Crawling(id = "start-task", url = startUrl, depth = 0, targetId = targetId)
 

@@ -1,5 +1,7 @@
 package ru.wbparser.infra.http
 
+import ru.wbparser.browser.pool.BrowserProfileConfig
+
 /**
  * A set of AdsPower profiles that are expected to share one egress IP.
  *
@@ -51,7 +53,11 @@ data class EgressGroup(
          *
          * A deployment with no per-group configuration has one IP and one group, and
          * behaves exactly as it did before groups existed.
+         *
+         * The name itself belongs to the browser stack — a profile belongs to a group,
+         * and the browser stack is what holds profiles. This constant refers to it, so
+         * there is one name in one place and the dependency runs one way.
          */
-        const val DEFAULT_ID: String = "default"
+        const val DEFAULT_ID: String = BrowserProfileConfig.DEFAULT_EGRESS_GROUP
     }
 }

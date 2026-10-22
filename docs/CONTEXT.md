@@ -43,16 +43,16 @@
 решит, чей это счётчик. Ротация до порога без источника свежих профилей не сохраняет ёмкость,
 а тратит её.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/domain/session/BrowserSession.kt` — `BrowserSession`,
+**Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/session/BrowserSession.kt` — `BrowserSession`,
 `SessionPolicy`, `SessionState`, `SessionSnapshot`;
-`wbparser/src/main/kotlin/ru/wbparser/infra/http/BrowserProfileState.kt` — владелец сессии профиля.
+`browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserProfileState.kt` — владелец сессии профиля.
 
 ## Профиль браузера (BrowserProfileConfig)
 
 Один профиль AdsPower: идентификатор профиля, необязательный CDP WebSocket-URL и имя egress-группы, которой он принадлежит. Профиль задаёт fingerprint и сессию; группа
 задаёт, кого WB считает одним источником. Профиль вне группы — ошибка конфигурации: он молча разделил бы бюджет с той группой, к которой не принадлежит.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/BrowserProfileConfig.kt` — `BrowserProfileConfig`, поле `egressGroup`;
+**Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserProfileConfig.kt` — `BrowserProfileConfig`, поле `egressGroup`;
 `app/src/main/kotlin/ru/wbparser/app/config/EgressGroups.kt` — `EgressGroups.resolve` (запрет профиля в двух группах).
 
 ## Пул браузеров (BrowserPool)
@@ -62,8 +62,42 @@
 сессиях** (`liveSessionCount`, `retiredSessionCount`, `sessionSnapshots()`), а не в адресах: адрес без живой сессии ничего не отправляет, и сессия, которую WB отказала,
 тоже. Сессия, выведенная из ротации политикой, в заём не выдаётся.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/BrowserPool.kt` — `BrowserPool`, `egressGroupIds`, `awaitRequestSlot`, `millisUntilSlot`, `borrowPage`,
-`tryBorrowPage`, `liveSessionCount`, `sessionSnapshots`; `wbparser/src/main/kotlin/ru/wbparser/infra/http/BrowserProfileState.kt` — состояние профиля (сессия, отдых после антибота).
+**Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserPool.kt` — `BrowserPool`, `egressGroupIds`, `awaitRequestSlot`, `millisUntilSlot`, `borrowPage`,
+`tryBorrowPage`, `liveSessionCount`, `sessionSnapshots`; `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserProfileState.kt` — состояние профиля (сессия, отдых после антибота).
+
+## Браузер, возможно, ещё живой (browserMayBeRunning)
+
+Факт о профиле: **окно Chrome, может быть, ещё открыто**. Это не то же самое, что «мы сейчас
+подключены»: CDP-соединение может умереть, а Chrome — нет, и именно такой браузер раньше не
+закрывался никогда (закрытие спрашивало «жива ли связь?», а связь была мертва, а окно — нет).
+
+Факт становится истинным, когда AdsPower сказал, что профиль работает — и мы его открыли, и
+мы к нему подключились; он становится ложным только после подтверждённой остановки. Неудачная
+остановка оставляет его истинным: браузер, возможно, ещё там, и следующая попытка повторит
+остановку.
+
+Закрытие опирается на этот факт: простой-уборщик закрывает профили, которые простаивают и у
+которых факт истинен; выход приложения закрывает все такие профили.
+
+**Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserProfileState.kt` — `browserMayBeRunning`;
+`browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserPool.kt` — `closeIdleBrowsers`, `closeAllBrowsers`.
+
+## Сверка браузеров на старте (BrowserReconciler)
+
+Краул, который убили — SIGKILL, OOM, падение JVM — не успел закрыть свои браузеры: рантайм
+AdsPower — отдельный контейнер, и браузеры продолжают работать. Следующий запуск находит их
+и наследует их сессию, а правило «краул закрывает браузеры, которыми пользовался» их не
+закрывает: этим запуском они не открывались.
+
+Поэтому запуск **сверяется** с AdsPower: что из наших профилей ещё работает — то останавливается,
+до того как начнёт ползать. Это единственная опора, которая переживает аварийную смерть
+процесса: умерший закрыть не может, следующий — может.
+
+Цена сверки — свежая сессия: первый запрос каждого профиля платит разогрев заново.
+
+**Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserReconciler.kt` — `BrowserReconciler`, `ReconcileOutcome`;
+`app/src/main/kotlin/ru/wbparser/app/scheduling/AdsPowerBrowserReconciler.kt` — вызов на старте;
+`app/src/main/kotlin/ru/wbparser/app/config/CrawlProperties.kt` — `Spider.reconcileBrowsersOnStart` (ключ `crawler.spider.reconcile-browsers-on-start`).
 
 ## Заимствованная страница (BorrowedPage)
 
@@ -76,7 +110,7 @@
 > бюджет запросов. Замер этого **не подтвердил**: отказ — это счётчик сессии, а не адреса.
 > Теперь страница помнит, кто её отправил, и сколько запросов у него уже было.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/BorrowedPage.kt` — `BorrowedPage`, `BorrowedPageHooks`, `BrowserPoolExhaustedException`.
+**Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/BorrowedPage.kt` — `BorrowedPage`, `BorrowedPageHooks`, `BrowserPoolExhaustedException`.
 
 ## Паузер запросов (RequestPacer, RequestPacing)
 
@@ -85,7 +119,7 @@
 (`minIntervalMs`, `jitterMinMs`, `jitterMaxMs`) — один объект `RequestPacing`; ноль отключает паузер.
 
 **Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/RequestPacer.kt` — `RequestPacer`, `RequestPacing`, `RequestPacer.jitterMs`;
-`wbparser/src/main/kotlin/ru/wbparser/infra/http/BrowserPool.kt` — по одному паузеру на группу;
+`browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserPool.kt` — по одному паузеру на группу;
 `docs/decisions/2026-10-21-egress-groups-are-the-unit-of-rate-limiting.md`.
 
 ## Маршрутизатор выхода (EgressRouter)
@@ -173,7 +207,7 @@ circuit группы не спрашивается, пока другие отв
 получает бюджет и метрику чужого адреса, и это видно только по цифрам.
 
 **Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressProbe.kt` — `EgressProbe.checkStatic`, `EgressProbe.readConfiguredProxies`,
-`EgressProbe.groupProxyIdentity`; `wbparser/src/main/kotlin/ru/wbparser/infra/http/AdsPowerApi.kt` — `AdsPowerProfileProxy.identity`, `AdsPowerProfileProxy.isDirect`,
+`EgressProbe.groupProxyIdentity`; `browser/src/main/kotlin/ru/wbparser/browser/adspower/AdsPowerApi.kt` — `AdsPowerProfileProxy.identity`, `AdsPowerProfileProxy.isDirect`,
 `AdsPowerProfileProxy.hasOpaqueProxy`.
 
 ## Живая проверка адреса

@@ -382,6 +382,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** перечислять в гейте исключения именами: CTE и псевдонимы подзапросов выводятся из текста, иначе новое имя в новом запросе сделает гейт ложно-красным. _(from `2026-10-21-the-schema-gate-reads-the-package`)
 - **Never** считать прочитанным один файл пакета: фасад не содержит SQL, и гейт, читающий только его, слеп к каждой из десяти частей. _(from `2026-10-21-the-schema-gate-reads-the-package`)
 - **Never** считать чтением то, что написано в комментарии: гейт читает строковые литералы, потому что только они уходят в базу. _(from `2026-10-21-the-schema-gate-reads-the-package`)
+- **Always** держать `browser-idle-timeout-ms`, `browser-janitor-interval-ms`, `close-browsers-on-exit` и `reconcile-browsers-on-start` в `application.yml` с объяснением: это единственное место, где видно, что браузеры закрываются. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
+- **Always** записывать факт «браузер, возможно, ещё жив» и закрывать по нему, а не по живому соединению: соединение может умереть, а браузер — нет. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
+- **Always** сверять состояние с AdsPower при старте: умерший процесс закрыть не может, следующий — может. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
+- **Never** выносить вердикт о профиле по проверке, которая не выполнилась. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
+- **Never** отдавать пустой список там, где список не удалось получить. «Проверка не выполнилась» и «проверка прошла» — разные вещи, и пустой список говорит «прошла». _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
+- **Never** превращать ошибку транспорта в «не запущен». Ошибка — это ошибка: она должна дойти до вызывающего кода исключением или логом. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
+- **Never** ронять выключение из-за того, что AdsPower не ответил. Остановка, которая не удалась, — это неприятность, а не повод повесить процесс; факт остаётся, и попытка повторится. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
 - **Always** объявлять egress-группы единственным списком профилей. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Always** проверять изоляцию статически, до первого запроса к WB. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **MUST** различать «проверка прошла» и «проверка не смогла выполниться»: второй случай — это предупреждение, а не успех. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
@@ -389,6 +396,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** держать два способа описать профили: они разойдутся, и разойдутся тихо. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать профиль без прокси прямой, если AdsPower говорит, что прокси есть, но не отдаёт его адрес. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Never** считать статическую проверку достаточной: два разных прокси могут сходиться на одном адресе, и это видит только живой probe. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
+- **Always** объявлять границу сборкой, а не соглашением. Новый модуль — это `include` в `settings.gradle.kts`, build-скрипт и строка в floors гейтов. _(from `2026-10-22-the-browser-stack-is-a-library`)
+- **Always** объявлять константу в том модуле, который владеет полем, и ссылаться на неё из другого. `EgressGroup.DEFAULT_ID` ссылается на `BrowserProfileConfig.DEFAULT_EGRESS_GROUP`. _(from `2026-10-22-the-browser-stack-is-a-library`)
+- **Always** проверять видимость на шве: `internal` — это модуль Gradle, и переезд меняет то, что видно наружу. _(from `2026-10-22-the-browser-stack-is-a-library`)
+- **Always** публиковать общие тестовые двойники как `java-test-fixtures`, а не пере-объявлять их в каждом модуле-потребителе. _(from `2026-10-22-the-browser-stack-is-a-library`)
+- **Never** оставлять в модуле `public` то, чем пользуются только его же тесты. Всё, что не пересекает границу, — `internal`. _(from `2026-10-22-the-browser-stack-is-a-library`)
+- **Never** переносить в библиотеку политику: бюджет адреса, темп запросов и правила обхода — это политика краула. _(from `2026-10-22-the-browser-stack-is-a-library`)
+- **Never** публиковать артефакт без второго потребителя. _(from `2026-10-22-the-browser-stack-is-a-library`)
+- **Never** тянуть в `browser` то, что не про браузер. Exposed, Arrow, Ktor, Micrometer и resilience4j — краул, не браузер. _(from `2026-10-22-the-browser-stack-is-a-library`)
 - **Always** говорить в коде, когда «неиспользуемость» — это решение (как у `andThen`). Неиспользуемость без записи — это забытая функция. _(from `2026-10-22-the-code-nobody-calls-is-gone`)
 - **Always** проверять объявление поиском по всему репозиторию, включая тесты, прежде чем назвать его мёртвым. _(from `2026-10-22-the-code-nobody-calls-is-gone`)
 - **Never** держать тестовые помощники в `main`: тестовая приспособленность живёт в тестовых источниках. _(from `2026-10-22-the-code-nobody-calls-is-gone`)
@@ -1176,7 +1191,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-repository-is-licensed` — legal  project  governance
 - `2026-10-21-the-run-message-has-a-length` — crawler  operations  database  error-handling
 - `2026-10-21-the-schema-gate-reads-the-package` — gates  database  architecture
+- `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed` — crawler  browser  adspower  operations
 - `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
+- `2026-10-22-the-browser-stack-is-a-library` — build  architecture  dependencies  browser  adspower
 - `2026-10-22-the-code-nobody-calls-is-gone` — dead-code  cleanup  domain
 - `2026-10-22-the-gaps-are-closed-or-written-down` — testing  coverage  seams  playwright
 - `2026-10-22-the-table-of-runs-has-a-reader` — reporting  operations  egress  api
@@ -1295,7 +1312,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
 - `2026-10-21-the-run-message-has-a-length` — Сообщение прогона в `crawl_jobs.error_message` имеет длину — и говорит, что обрезано
 - `2026-10-21-the-schema-gate-reads-the-package` — Гейт совместимости схемы читает пакет решений каталога, а не один файл
+- `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed` — Браузер, который, возможно, ещё жив, закрывается — при простое, при выходе и при следующем старте
 - `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
+- `2026-10-22-the-browser-stack-is-a-library` — Стек браузера — отдельная библиотека, а не часть краула
 - `2026-10-22-the-code-nobody-calls-is-gone` — Код, который никто не зовёт, убран
 - `2026-10-22-the-gaps-are-closed-or-written-down` — Пробелы покрытия закрыты, а непокрываемый — записан
 - `2026-10-22-the-table-of-runs-has-a-reader` — Таблица прогонов получает читателя

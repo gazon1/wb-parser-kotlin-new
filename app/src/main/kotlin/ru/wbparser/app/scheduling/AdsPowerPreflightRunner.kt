@@ -3,11 +3,13 @@ package ru.wbparser.app.scheduling
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
+import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.EgressGroups
-import ru.wbparser.infra.http.AdsPowerPreflight
-import ru.wbparser.infra.http.ProfileHealth
+import ru.wbparser.browser.adspower.AdsPowerPreflight
+import ru.wbparser.browser.adspower.ProfileHealth
+import ru.wbparser.browser.pool.BrowserPool
 
 /**
  * Reports the health of the local AdsPower installation at startup.
@@ -30,8 +32,9 @@ import ru.wbparser.infra.http.ProfileHealth
  * guarantee rather than the warning.
  */
 @Component
+@Order(10)
 class AdsPowerPreflightRunner(
-    private val browserPool: ru.wbparser.infra.http.BrowserPool,
+    private val browserPool: ru.wbparser.browser.pool.BrowserPool,
     private val properties: ru.wbparser.app.config.CrawlProperties,
     private val groups: EgressGroups.Resolved,
     private val probeService: EgressProbeService,
@@ -71,6 +74,10 @@ class AdsPowerPreflightRunner(
                     log.error("AdsPower profile {}: {}", profile.profileId, profile.detail)
                 ProfileHealth.Problem.STALE_LOCK ->
                     log.error("AdsPower profile {}: {}", profile.profileId, profile.detail)
+                // The check could not run, so it has no verdict. A warning, not an
+                // error: nothing is known to be broken.
+                ProfileHealth.Problem.STALE_LOCK_CHECK_FAILED ->
+                    log.warn("AdsPower profile {}: {}", profile.profileId, profile.detail)
                 null -> Unit
             }
         }
