@@ -30,7 +30,12 @@
 #   lower the coverage: the parts that hold the text of the SQL are tested
 #   without a database, and the parts that read it are tested against a real
 #   PostgreSQL.
+# - 89% / 91% / 92% — after the runs got a reader, the dead code was removed and
+#   the catalog's error answers were covered: `app` 89% against 90.1%,
+#   `merged` 91% against 92.4%, `wbparser` 92% against 93.5% (2026-10-22). The
+#   history lives here, in the script that writes the file: a file rewritten by
+#   the script and edited by hand is a history that disappears one raise later.
 
-app 86
-merged 89
-wbparser 90
+app 89
+merged 91
+wbparser 92
