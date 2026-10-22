@@ -4,24 +4,9 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import ru.wbparser.domain.pipeline.Step
-import ru.wbparser.domain.pipeline.stageOf
 
 class StageTest :
     FunSpec({
-
-        test("stageOf wraps a pure function as Done") {
-            val stage = stageOf { str: String -> str.length }
-            val result = stage("hello")
-            result.shouldBeInstanceOf<Step.Done<*, *>>()
-            (result as Step.Done<*, *>).output shouldBe 5
-        }
-
-        test("stageOf output type is correct") {
-            val stage = stageOf { n: Int -> n > 3 }
-            val result = stage(5)
-            result.shouldBeInstanceOf<Step.Done<*, *>>()
-            (result as Step.Done<*, *>).output shouldBe true
-        }
 
         test("Step.Cont holds the input it was created with") {
             val cont: Step<String, Int> = Step.Cont("hello")

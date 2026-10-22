@@ -23,11 +23,6 @@ data class StageInfo(
  * }
  * ```
  *
- * Use [stageOf] for pure transformations without metadata:
- * ```kotlin
- * val normalise = stageOf { item: ParsedItem -> item.copy(price = item.price * 100) }
- * ```
- *
  * ## Design rationale
  *
  * A data class rather than a plain typealias allows metadata ([info]) to travel alongside
@@ -50,15 +45,6 @@ data class Stage<I, O>(
      */
     suspend operator fun invoke(input: I): Step<I, O> = run(input)
 }
-
-/**
- * Lifts a pure transformation into a [Stage] with no metadata.
- * Convenience alias for `Stage { input -> Step.Done(f(input)) }`.
- */
-fun <I, O> stageOf(f: (I) -> O): Stage<I, O> =
-    Stage { input ->
-        Step.Done(f(input))
-    }
 
 /**
  * DSL builder for a named [Stage].
