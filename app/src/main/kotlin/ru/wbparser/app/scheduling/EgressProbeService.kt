@@ -37,7 +37,7 @@ class EgressProbeService(
     private val groups: EgressGroups.Resolved,
     private val database: DatabaseHandle,
     private val router: EgressRouter,
-) {
+) : EgressProbeRunner {
     private val log = LoggerFactory.getLogger(EgressProbeService::class.java)
 
     /**
@@ -45,7 +45,7 @@ class EgressProbeService(
      *
      * @return the report, or null when the probe could not run at all.
      */
-    fun probeAndRecord(): EgressReport? {
+    override fun probeAndRecord(): EgressReport? {
         val spider = properties.spider
         val probe =
             EgressProbe(

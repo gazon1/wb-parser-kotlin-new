@@ -20,7 +20,7 @@ import ru.wbparser.app.config.CrawlProperties
 @Component
 class EgressProbeScheduler(
     private val properties: CrawlProperties,
-    private val probeService: EgressProbeService,
+    private val probeService: EgressProbeRunner,
 ) {
     private val log = LoggerFactory.getLogger(EgressProbeScheduler::class.java)
 

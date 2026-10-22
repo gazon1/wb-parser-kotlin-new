@@ -28,12 +28,15 @@ class CatalogNotFoundException(
 class CatalogErrorHandler {
     /**
      * A parameter the API refuses to interpret.
+     *
+     * A blank reason still gets a reason: the body of an error is read by whoever made
+     * the request, and `{"error": ""}` says less than `{"error": "bad request"}`.
      */
     @ExceptionHandler(CatalogBadRequestException::class)
     fun onBadRequest(exception: CatalogBadRequestException): ResponseEntity<ErrorResponse> =
         ResponseEntity
             .status(HttpStatus.BAD_REQUEST)
-            .body(ErrorResponse(error = exception.message ?: "bad request"))
+            .body(ErrorResponse(error = exception.message?.takeIf { it.isNotBlank() } ?: "bad request"))
 
     /**
      * A product that does not exist.
@@ -42,7 +45,7 @@ class CatalogErrorHandler {
     fun onNotFound(exception: CatalogNotFoundException): ResponseEntity<ErrorResponse> =
         ResponseEntity
             .status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse(error = exception.message ?: "not found"))
+            .body(ErrorResponse(error = exception.message?.takeIf { it.isNotBlank() } ?: "not found"))
 
     /**
      * A parameter that could not be bound to the type the controller asked for.
