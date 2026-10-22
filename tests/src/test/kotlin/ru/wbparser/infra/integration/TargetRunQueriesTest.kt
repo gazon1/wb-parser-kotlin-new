@@ -129,6 +129,70 @@ class TargetRunQueriesTest :
                 .wbTotal shouldBe 49404
         }
 
+        test("a run carries the name of the target it was about") {
+            val (targetId, jobId, group) = world()
+
+            db.ds.recordTargetRun(
+                jobId = jobId,
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = group,
+                        egressIp = null,
+                        outcome = RunOutcome.Ok,
+                        pages = 60,
+                        items = 6000,
+                        startedAt = Instant.now(),
+                        wbTotal = 49404,
+                    ),
+                finishedAt = Instant.now(),
+            )
+
+            // The name is joined, not copied: the target's name is the target's fact, and
+            // a run that carried its own copy would be a second copy that drifts.
+            val run = db.ds.fetchTargetRuns().single()
+            run.targetName shouldBe "catalog"
+            run.wbTotal shouldBe 49404
+        }
+
+        test("the runs of one target are asked for by id") {
+            val (targetId, jobId, group) = world()
+            val otherTargetId =
+                db.ds.insertTarget(
+                    ru.wbparser.infra.db.repositories.TargetDraft(
+                        name = "other-catalog",
+                        startUrl = "https://www.wildberries.ru/catalog/2/list.aspx",
+                    ),
+                )
+
+            listOf(targetId, otherTargetId).forEach { id ->
+                db.ds.recordTargetRun(
+                    jobId = jobId,
+                    run =
+                        ru.wbparser.infra.db.repositories.TargetRun(
+                            targetId = id,
+                            egressGroup = group,
+                            egressIp = null,
+                            outcome = RunOutcome.Ok,
+                            pages = 1,
+                            items = 100,
+                            startedAt = Instant.now(),
+                        ),
+                    finishedAt = Instant.now(),
+                )
+            }
+
+            db.ds
+                .fetchTargetRuns(targetId = targetId)
+                .single()
+                .targetId shouldBe targetId
+            db.ds
+                .fetchTargetRuns(targetId = otherTargetId)
+                .single()
+                .targetId shouldBe otherTargetId
+            db.ds.fetchTargetRuns().size shouldBe 2
+        }
+
         test("a run whose answers carried no count has no number") {
             val (targetId, jobId, group) = world()
 
