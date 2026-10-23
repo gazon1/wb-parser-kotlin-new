@@ -11,6 +11,7 @@ import ru.wbparser.app.config.Worker
 import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
+import ru.wbparser.browser.adspower.AdsPowerUnavailableException
 import ru.wbparser.browser.pool.BrowserPool
 
 /**
@@ -38,8 +39,16 @@ class AdsPowerBrowserReconcilerTest :
             /** Whether the runtime closes the browser when it is asked to. */
             var stopSucceeds: Boolean = true
 
-            override fun checkActiveV2(profileId: String): String? =
-                if (profileId in running) "ws://127.0.0.1:9222/devtools/browser/$profileId" else null
+            /** When set, [checkActiveV2] throws this instead of answering. */
+            var checkActiveFailure: RuntimeException? = null
+
+            /** When set, [isAvailable] throws this instead of answering. */
+            var isAvailableFailure: RuntimeException? = null
+
+            override fun checkActiveV2(profileId: String): String? {
+                checkActiveFailure?.let { throw it }
+                return if (profileId in running) "ws://127.0.0.1:9222/devtools/browser/$profileId" else null
+            }
 
             override fun startProfileV2(profileId: String): String? = null
 
@@ -51,7 +60,10 @@ class AdsPowerBrowserReconcilerTest :
 
             override fun listProfileProxies(): List<AdsPowerProfileProxy> = knownProfiles
 
-            override fun isAvailable(): Boolean = available
+            override fun isAvailable(): Boolean {
+                isAvailableFailure?.let { throw it }
+                return available
+            }
         }
 
         val groups =
@@ -64,27 +76,29 @@ class AdsPowerBrowserReconcilerTest :
                 ),
             )
 
+        fun poolFor(api: FakeAdsPower): BrowserPool =
+            BrowserPool(
+                profiles = groups.profiles,
+                adsPower = AdsPowerConfig(api = api),
+                // The pool never opens a browser in this suite — the reconciliation
+                // only asks AdsPower what is running — so the automations are never
+                // used. They still have to exist: a profile without one would fall
+                // back to the real CDP automation, and Playwright would have to be
+                // installed for a test that never opens a browser.
+                browserAutomations =
+                    groups.profiles.map {
+                        ru.wbparser.browser.testing
+                            .FakeBrowserAutomation(_isConnected = false)
+                    },
+            )
+
         fun runner(
             api: FakeAdsPower,
             spider: Spider = Spider(useBrowserFetch = true),
             workerEnabled: Boolean = true,
-        ): AdsPowerBrowserReconciler {
-            val pool =
-                BrowserPool(
-                    profiles = groups.profiles,
-                    adsPower = AdsPowerConfig(api = api),
-                    // The pool never opens a browser in this suite — the reconciliation
-                    // only asks AdsPower what is running — so the automations are never
-                    // used. They still have to exist: a profile without one would fall
-                    // back to the real CDP automation, and Playwright would have to be
-                    // installed for a test that never opens a browser.
-                    browserAutomations =
-                        groups.profiles.map {
-                            ru.wbparser.browser.testing
-                                .FakeBrowserAutomation(_isConnected = false)
-                        },
-                )
-            return AdsPowerBrowserReconciler(
+            pool: BrowserPool = poolFor(api),
+        ): AdsPowerBrowserReconciler =
+            AdsPowerBrowserReconciler(
                 browserPool = pool,
                 adsPowerApi = api,
                 properties =
@@ -93,7 +107,6 @@ class AdsPowerBrowserReconcilerTest :
                         spider = spider,
                     ),
             )
-        }
 
         test("a browser left running by the previous run is stopped at startup") {
             val api = FakeAdsPower()
@@ -215,6 +228,56 @@ class AdsPowerBrowserReconcilerTest :
             reconciler.retryReconciliation()
 
             api.stopped shouldBe listOf("p1")
+        }
+
+        test("a reconciliation that could not run at all is reported, and the crawler starts anyway") {
+            val api = FakeAdsPower()
+            api.running += "p1"
+            api.isAvailableFailure = RuntimeException("the runtime went away")
+            val reconciler = runner(api)
+
+            // The AdsPower runtime may legitimately come up after the crawler does.
+            // A reconciliation that could not run is a fact to report, not a reason
+            // to refuse to start.
+            reconciler.run(ApplicationArgumentsStub)
+            api.stopped shouldBe emptyList()
+
+            // The question is still open: the next tick asks it again.
+            api.isAvailableFailure = null
+            reconciler.retryReconciliation()
+
+            api.stopped shouldBe listOf("p1")
+        }
+
+        test("a profile the runtime could not answer for is reported, and the reconciliation is retried") {
+            val api = FakeAdsPower()
+            api.running += "p1"
+            api.checkActiveFailure = AdsPowerUnavailableException("the runtime went away")
+            val reconciler = runner(api)
+
+            reconciler.run(ApplicationArgumentsStub)
+            api.stopped shouldBe emptyList()
+
+            // The runtime came back. The question was never answered, so the
+            // reconciliation is not confirmed and the next tick asks it again.
+            api.checkActiveFailure = null
+            reconciler.retryReconciliation()
+
+            api.stopped shouldBe listOf("p1")
+        }
+
+        test("a browser of this run is left alone") {
+            val api = FakeAdsPower()
+            api.running += "p1"
+            val pool = poolFor(api)
+
+            // The run borrows the profile: the browser is ours now, and the
+            // reconciliation is about the browsers of the *previous* run.
+            pool.borrowPage().close()
+
+            runner(api, pool = pool).run(ApplicationArgumentsStub)
+
+            api.stopped shouldBe emptyList()
         }
     })
 

@@ -10,6 +10,7 @@ import ru.wbparser.app.config.EgressGroups
 import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerPreflight
 import ru.wbparser.browser.adspower.ProfileHealth
+import java.nio.file.Path
 
 /**
  * Reports the health of the local AdsPower installation at startup.
@@ -41,13 +42,23 @@ class AdsPowerPreflightRunner(
 ) : ApplicationRunner {
     private val log = LoggerFactory.getLogger(AdsPowerPreflightRunner::class.java)
 
+    /**
+     * The directory the browser profiles live in.
+     *
+     * The check reads it to see whether a profile is healthy. This is a seam, not a
+     * knob: the deployment does not set it, and a test points it at a fixture
+     * instead of the real AdsPower installation — the same seam
+     * [AdsPowerPreflight.check] has.
+     */
+    internal var profileCacheDir: Path = AdsPowerPreflight.profileCacheDir()
+
     override fun run(args: ApplicationArguments) {
         val profileIds = groups.profiles.map { it.profileId }
         if (profileIds.isEmpty()) return
 
         val report =
             runCatching {
-                AdsPowerPreflight.check(profileIds, adsPowerApi)
+                AdsPowerPreflight.check(profileIds, adsPowerApi, profileCacheDir)
             }.getOrElse {
                 log.warn("Could not run the AdsPower pre-flight check: {}", it.message)
                 return

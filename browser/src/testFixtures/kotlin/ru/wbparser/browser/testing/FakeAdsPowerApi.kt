@@ -124,7 +124,21 @@ class FakeAdsPowerApi private constructor(
     /** The proxies the fake reports. Empty by default. */
     var profileProxies: List<AdsPowerProfileProxy> = emptyList()
 
-    override fun listProfileProxies(): List<AdsPowerProfileProxy> = profileProxies
+    /**
+     * When set, [listProfileProxies] throws this instead of answering.
+     *
+     * The list of profiles is how the reconciliation learns which browsers are out
+     * there. A runtime that cannot answer it is a fact the caller has to survive:
+     * the profiles the pool knows are still reconciled, and the unknown ones are
+     * simply not looked for.
+     */
+    var profileProxiesFailure: RuntimeException? = null
+
+    override fun listProfileProxies(): List<AdsPowerProfileProxy> {
+        _calls += AdsPowerCall("", "listProfileProxies")
+        profileProxiesFailure?.let { throw it }
+        return profileProxies
+    }
 
     fun reset() = _calls.clear()
 }
