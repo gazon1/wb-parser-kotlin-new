@@ -201,8 +201,12 @@ jobs:
           echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
           echo "org.gradle.caching=true" >> ~/.gradle/gradle.properties
 
+      # `test koverXmlReport`, not `koverXmlReport`: the merged report is the union of
+      # the modules' reports, and the union can be built before the part it is made of
+      # is regenerated. Asking for the tests in the same invocation makes the report
+      # and the run it describes one thing — the same reason check.sh does it.
       - name: Produce the coverage report
-        run: ./gradlew koverXmlReport --no-daemon
+        run: ./gradlew test koverXmlReport --no-daemon
 
       # The floor lives in config/gates/coverage-floor.txt, one row per module, and
       # scripts/check-coverage.py is the gate. The build script no longer carries a

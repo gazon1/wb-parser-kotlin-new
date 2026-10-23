@@ -30,13 +30,50 @@ If a module's report is missing, this fails. "No report" is not "no coverage" �
 it is "the coverage task did not run", which is the same shape of problem as a
 test task that was UP-TO-DATE and never executed.
 
+## What a stale report looks like
+
+A measurement of an old build is not a measurement of the code. Two ways to be
+wrong, and both of them are silent: the gate reads a report, compares a
+percentage with a floor, and reports a number that describes a repository which
+no longer exists.
+
+**The report predates the run it describes.** The report is the coverage of a
+test run, so it cannot be older than that run by much. The gap between the
+report and the newest JUnit XML is what `--max-age` bounds: a report that is
+hours behind the tests that just ran does not contain them, and reading it
+measures a repository that has already moved on.
+
+The bound is a gap, not an age. A report that is a week old is fine when the
+tests it describes are also a week old — the measurement is still the truth
+about that code. What makes a report stale is not the passage of time but the
+code moving under it.
+
+**The union is behind one of its parts.** The merged report is the union of the
+modules' reports: it holds every module's classes and the coverage every suite
+produced. A union of this run therefore covers at least as many lines of a
+module's packages as that module's own report does — the module's own suites
+are one of the contributors to the union.
+
+A union that shows *less* of a part than the part itself is not the union of
+this run: it was built before that part was regenerated, and it is missing
+coverage that exists. This is not a theoretical worry — it is what a stale
+merged report looks like, and it reads as "the browser module is at 90.4%"
+when the browser module is at 92.1% and the merged report simply never saw it.
+
+So the gate compares the union with its parts, and a union that is behind is a
+failure with the same meaning as a missing report: there is no measurement.
+
 Usage
 -----
     python3 scripts/check-coverage.py [--floor-file FILE] [--report MODULE=PATH]
+                                     [--max-age SECONDS]
 
     --floor-file FILE   read the floors from this file instead of the committed one
     --report MODULE=PATH  read this module's report from this path instead of the
                         standard build output; repeatable
+    --max-age SECONDS  how much older than the last test run a report may be
+                        (default 1h). The gap, not the age: a report that is
+                        behind the tests that just ran does not describe them.
 
 Exit codes
 ----------
@@ -70,6 +107,17 @@ REPORT_FILES = {
     "merged": "build/reports/kover/report.xml",
 }
 
+#: module → where Gradle writes that module's JUnit XML.
+#:
+#: The same directories `check-test-runs.py` reads. They are the record of the run
+#: the coverage report describes, and the report must not be behind them.
+RESULT_DIRS = {
+    "app": "app/build/test-results/test",
+    "browser": "browser/build/test-results/test",
+    "wbparser": "wbparser/build/test-results/test",
+    "tests": "tests/build/test-results/test",
+}
+
 #: The report every module's row is measured on.
 #:
 #: A module's own report holds only that module's classes, and only the coverage that
@@ -99,6 +147,17 @@ MODULE_PACKAGES: dict[str, tuple[str, ...] | None] = {
 #: package root is shared.
 MODULE_EXCLUDED: dict[str, tuple[str, ...]] = {
     "wbparser": ("ru/wbparser/app", "ru/wbparser/browser"),
+}
+
+#: The parts the merged report is the union of: module → its own report.
+#:
+#: The union is the union of these. A part that was regenerated after the union
+#: knows more than the union does, and the difference is coverage the union is
+#: missing — the shape a stale merged report takes.
+UNION_PARTS = {
+    "app": REPORT_FILES["app"],
+    "browser": REPORT_FILES["browser"],
+    "wbparser": REPORT_FILES["wbparser"],
 }
 
 
@@ -184,6 +243,25 @@ def _package_coverage(
     excluded: tuple[str, ...],
 ) -> float:
     """The line coverage of the classes in [packages], excluding [excluded]."""
+    missed, covered = _package_counts(tree, report, packages, excluded)
+    total = missed + covered
+    if total == 0:
+        raise ValueError(f"{rel(report)}: the report contains no lines for {', '.join(packages)}")
+    return covered / total * 100
+
+
+def _package_counts(
+    tree: ET.ElementTree,
+    report: Path,
+    packages: tuple[str, ...],
+    excluded: tuple[str, ...],
+) -> tuple[int, int]:
+    """The (missed, covered) line counters of the classes in [packages].
+
+    The counts, not the percentage: two reports over the same packages hold the
+    same classes, so their covered counts are directly comparable, while their
+    percentages are comparable only through a division.
+    """
     missed = 0
     covered = 0
     for package in tree.getroot().iter("package"):
@@ -198,10 +276,75 @@ def _package_coverage(
                     continue
                 missed += int(counter.get("missed", "0"))
                 covered += int(counter.get("covered", "0"))
-    total = missed + covered
-    if total == 0:
-        raise ValueError(f"{rel(report)}: the report contains no lines for {', '.join(packages)}")
-    return covered / total * 100
+    return missed, covered
+
+
+def newest_test_result_mtime() -> float:
+    """The newest JUnit XML the last test run wrote, as a timestamp.
+
+    Zero when there is none: a repository that has never run its tests has
+    nothing for the report to be behind.
+    """
+    newest = 0.0
+    for source_set in RESULT_DIRS.values():
+        directory = ROOT / source_set
+        if not directory.is_dir():
+            continue
+        for xml in directory.glob("*.xml"):
+            newest = max(newest, xml.stat().st_mtime)
+    return newest
+
+
+def staleness_error(report: Path, newest_test_mtime: float, max_age: int) -> str | None:
+    """The error when the report does not describe the last test run, if it does not.
+
+    The report is the coverage of a test run, so it cannot be behind that run by
+    much. The bound is a gap, not an age: a report that is a week old is honest
+    when the tests it describes are also a week old. What makes a report stale is
+    the code moving under it, not the passage of time.
+    """
+    gap = newest_test_mtime - report.stat().st_mtime
+    if gap <= max_age:
+        return None
+    return (
+        f"{rel(report)} is {int(gap // 60)}m older than the last test run "
+        f"(limit {max_age // 60}m) — it does not describe that run"
+    )
+
+
+def union_shortfall(
+    merged: Path,
+    part: Path,
+    packages: tuple[str, ...],
+    excluded: tuple[str, ...] = (),
+) -> int | None:
+    """How many lines the union [merged] covers less of [part]'s packages than [part] does.
+
+    `None` when the union is not behind: the part is older than the union (so it
+    says nothing about this run), or the union covers at least as much.
+
+    A part older than the union is skipped deliberately. A part that was built
+    from an older run may well cover more lines than the union of the current
+    one — coverage goes down when code is added without tests — and comparing
+    against it would report a loss that never happened.
+    """
+    if not part.is_file():
+        return None
+    if part.stat().st_mtime < merged.stat().st_mtime:
+        return None
+    try:
+        merged_tree = ET.parse(merged)
+        part_tree = ET.parse(part)
+    except ET.ParseError as exc:
+        raise ValueError(f"{rel(part)}: not valid XML ({exc})") from exc
+
+    _, merged_covered = _package_counts(merged_tree, merged, packages, excluded)
+    part_missed, part_covered = _package_counts(part_tree, part, packages, excluded)
+    if part_missed + part_covered == 0:
+        return None
+    if merged_covered >= part_covered:
+        return None
+    return part_covered - merged_covered
 
 
 def module_report(module: str, overrides: dict[str, str] | None = None) -> str | None:
@@ -234,6 +377,41 @@ def module_coverage(
     )
 
 
+def union_errors(measured_reports: set[Path]) -> list[str]:
+    """The errors that come from the union being behind one of its parts.
+
+    Only meaningful when a row was measured on the merged report: the union is
+    the merged report, and the parts are the modules' own reports. A gate run
+    entirely on fixtures has no union to be behind.
+    """
+    merged = ROOT / MERGED_REPORT
+    if merged not in measured_reports:
+        return []
+
+    errors: list[str] = []
+    for module, relative in sorted(UNION_PARTS.items()):
+        packages = MODULE_PACKAGES.get(module)
+        if packages is None:
+            continue
+        try:
+            shortfall = union_shortfall(
+                merged,
+                ROOT / relative,
+                packages,
+                MODULE_EXCLUDED.get(module, ()),
+            )
+        except ValueError as exc:
+            errors.append(f"{module}: {exc}")
+            continue
+        if shortfall is not None:
+            errors.append(
+                f"{module}: the merged report covers {shortfall} line(s) less of "
+                f"{', '.join(packages)} than {rel(ROOT / relative)} does — the union "
+                "is behind its own part, so it does not describe this run"
+            )
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -250,6 +428,15 @@ def main() -> int:
         help="read this module's kover report from this path instead of the build output; "
         "repeatable. It exists so the gate's own failure path can be exercised without "
         "a build: a gate that has never been seen to fail is not known to fail.",
+    )
+    parser.add_argument(
+        "--max-age",
+        type=int,
+        default=3600,
+        help="how much older than the last test run a report may be, in seconds "
+        "(default 1h). The gap, not the age: a report that is behind the tests that "
+        "just ran does not describe them, while a report that is as old as its tests "
+        "is still an honest measurement.",
     )
     args = parser.parse_args()
 
@@ -273,6 +460,8 @@ def main() -> int:
 
     problems: list[str] = []
     errors: list[str] = []
+    measured_reports: set[Path] = set()
+    newest_test_mtime = newest_test_result_mtime()
 
     for module, floor in sorted(floors.items()):
         relative = module_report(module, overrides)
@@ -289,6 +478,13 @@ def main() -> int:
             )
             continue
 
+        measured_reports.add(report)
+
+        stale = staleness_error(report, newest_test_mtime, args.max_age)
+        if stale is not None:
+            errors.append(f"{module}: {stale}")
+            continue
+
         try:
             actual = module_coverage(module, overrides)
         except ValueError as exc:
@@ -300,6 +496,8 @@ def main() -> int:
         else:
             print(f"  ·  {module}: {actual:.1f}% line coverage (floor {floor}%)")
 
+    errors.extend(union_errors(measured_reports))
+
     if errors:
         # "The report is missing" and "the coverage is too low" are different answers,
         # and they get different exit codes: the first means the gate could not
@@ -309,7 +507,9 @@ def main() -> int:
             print(f"❌ {error}", file=sys.stderr)
         print(
             "\nNo report is not no coverage — it is no measurement. The coverage task\n"
-            "must run before this gate can say anything about the module.",
+            "must run before this gate can say anything about the module. A report\n"
+            "that is too old, or a union that is behind its own part, is the same\n"
+            "answer: there is nothing here to measure.",
             file=sys.stderr,
         )
         return 2

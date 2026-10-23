@@ -122,8 +122,14 @@ python3 scripts/check-test-runs.py || fail "a test source set ran fewer tests th
 #
 # The report task is not skipped on failure: a missing report means "the coverage task
 # did not run", which is not the same as "no coverage".
+#
+# `test koverXmlReport`, not `koverXmlReport`: the report is the union of the modules'
+# reports, and the union can be built before the part it is made of is regenerated —
+# the union then reads as a module being at 90.4% when the module is at 92.1%. Asking
+# for the tests in the same invocation makes the report and the run it describes one
+# thing, and the gate below compares the union with its parts to prove it.
 step 8 "line coverage ≥ floor (config/gates/coverage-floor.txt)"
-./gradlew koverXmlReport --quiet || fail "coverage report was not produced"
+./gradlew test koverXmlReport --quiet || fail "coverage report was not produced"
 python3 scripts/check-coverage.py || fail "coverage below floor (see config/gates/coverage-floor.txt)"
 
 # --- [9] lint ------------------------------------------------------------------

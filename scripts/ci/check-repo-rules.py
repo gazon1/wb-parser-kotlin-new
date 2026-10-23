@@ -65,6 +65,54 @@ FORBIDDEN_IN_BROWSER = (
     "arrow",
 )
 
+#: The modules that must not name Playwright at all.
+#:
+#: The other side of the same boundary. `FORBIDDEN_IN_BROWSER` says the browser
+#: module knows about a browser and about nothing else; this says the rest of the
+#: repository does not know about Playwright either. The browser module's public
+#: API is `BrowserPage`, and Playwright is an implementation detail of the module
+#: that owns it.
+#:
+#: Without this rule the boundary is only half-declared: Playwright could creep
+#: back into `wbparser` — which is exactly how it got there the first time, and
+#: why the crawler needed `implementation(libs.playwright)` at all.
+FORBIDDEN_OUTSIDE_BROWSER = (
+    "com.microsoft.playwright",
+)
+
+#: The modules whose production sources must not name Playwright.
+MODULES_WITHOUT_PLAYWRIGHT = (
+    "wbparser/src/main/kotlin",
+    "app/src/main/kotlin",
+)
+
+#: The one package inside the browser module that may name Playwright: the adapter
+#: that wraps it. Everything else in the module speaks `BrowserPage`.
+BROWSER_PLAYWRIGHT_PACKAGE = "browser/src/main/kotlin/ru/wbparser/browser/playwright"
+
+#: The production sources whose types a test double may stand in for.
+PRODUCTION_SOURCE_SETS = (
+    "browser/src/main/kotlin",
+    "wbparser/src/main/kotlin",
+    "app/src/main/kotlin",
+)
+
+#: The test source sets a double may live in.
+TEST_SOURCE_SETS = (
+    "browser/src/test/kotlin",
+    "browser/src/testFixtures/kotlin",
+    "wbparser/src/test/kotlin",
+    "wbparser/src/testFixtures/kotlin",
+    "app/src/test/kotlin",
+    "tests/src/test/kotlin",
+)
+
+#: A declaration of a type: `class X`, `interface X`, `object X`, with the
+#: modifiers that may precede it.
+_DECLARATION = re.compile(
+    r"\b(?:class|interface|object)\s+([A-Z][A-Za-z0-9_]*)",
+)
+
 
 def kotlin_files(root: Path, relative: str) -> list[Path]:
     """Every Kotlin source under `relative`, sorted."""
@@ -196,6 +244,92 @@ def check_browser_module_is_a_browser(root: Path) -> list[str]:
     return findings
 
 
+def check_playwright_stays_inside_the_browser_module(root: Path) -> list[str]:
+    """Playwright is an implementation detail of the browser module.
+
+    The crawler and the application speak `BrowserPage`; only the adapter inside
+    the browser module knows what a Playwright page is. A `com.microsoft.playwright`
+    import anywhere else is the boundary leaking, and it is the leak that made the
+    crawler depend on Playwright at all.
+
+    The browser module's own adapter may name it — that is what an adapter is — and
+    so may the module's tests, which test the adapter against the library it wraps.
+    """
+    findings: list[str] = []
+
+    for module in MODULES_WITHOUT_PLAYWRIGHT:
+        for path in kotlin_files(root, module):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                stripped = line.strip()
+                if not stripped.startswith("import "):
+                    continue
+                for forbidden in FORBIDDEN_OUTSIDE_BROWSER:
+                    if stripped.startswith(f"import {forbidden}"):
+                        findings.append(
+                            f"{relative(path, root)}:{number}: {forbidden} outside the "
+                            "browser module — Playwright is an implementation detail; "
+                            "the boundary is `BrowserPage`"
+                        )
+
+    for path in kotlin_files(root, BROWSER_MODULE):
+        if BROWSER_PLAYWRIGHT_PACKAGE in path.relative_to(root).as_posix():
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            stripped = line.strip()
+            if not stripped.startswith("import "):
+                continue
+            for forbidden in FORBIDDEN_OUTSIDE_BROWSER:
+                if stripped.startswith(f"import {forbidden}"):
+                    findings.append(
+                        f"{relative(path, root)}:{number}: {forbidden} outside the "
+                        "browser module's own adapter — the module speaks `BrowserPage`"
+                    )
+    return findings
+
+
+def production_type_names(root: Path) -> set[str]:
+    """The names of the types the production code declares."""
+    names: set[str] = set()
+    for source_set in PRODUCTION_SOURCE_SETS:
+        for path in kotlin_files(root, source_set):
+            for match in _DECLARATION.finditer(path.read_text(encoding="utf-8")):
+                names.add(match.group(1))
+    return names
+
+
+def check_test_doubles_are_fakes(root: Path) -> list[str]:
+    """A double of one of our own classes is named `Fake*`, not `Mock*`.
+
+    The rule this enforces lives in CODING_STANDARDS.md: a hand-written double of
+    our own type is a `Fake` — it answers and remembers — while a mock is for
+    checking interaction with a library. The naming is the mechanical half of that
+    rule, and this is where it is checked.
+
+    Only a double of *our* type is a finding. Spring's own `MockHttpServletRequest`
+    is a library class, not ours, and the rule has nothing to say about it.
+    """
+    our_types = production_type_names(root)
+    if not our_types:
+        return []
+
+    findings: list[str] = []
+    for source_set in TEST_SOURCE_SETS:
+        for path in kotlin_files(root, source_set):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                for match in _DECLARATION.finditer(line):
+                    name = match.group(1)
+                    if not name.startswith("Mock"):
+                        continue
+                    stood_for = name[len("Mock"):]
+                    if not any(stood_for.startswith(known) for known in our_types):
+                        continue
+                    findings.append(
+                        f"{relative(path, root)}:{number}: {name} is a double of our own "
+                        f"{stood_for} — a double of our type is named `Fake*`, not `Mock*`"
+                    )
+    return findings
+
+
 def check_no_changelog(root: Path) -> list[str]:
     """No CHANGELOG.md.
 
@@ -262,6 +396,8 @@ def check(root: Path) -> list[str]:
         + check_delay_sentinel(root)
         + check_spring_outside_the_app(root)
         + check_browser_module_is_a_browser(root)
+        + check_playwright_stays_inside_the_browser_module(root)
+        + check_test_doubles_are_fakes(root)
         + check_no_changelog(root)
         + check_no_fix_dependencies_in_ci(root)
         + check_no_pinned_jdk(root)
@@ -296,6 +432,23 @@ VIOLATIONS = {
         "\n"
         "class Broken\n"
     ),
+    "wbparser/src/main/kotlin/ru/wbparser/infra/http/Leaky.kt": (
+        "package ru.wbparser.infra.http\n"
+        "\n"
+        "import com.microsoft.playwright.Page\n"
+        "\n"
+        "class Leaky\n"
+    ),
+    "wbparser/src/test/kotlin/ru/wbparser/infra/http/MockAdsPowerApi.kt": (
+        "package ru.wbparser.infra.http\n"
+        "\n"
+        "class MockAdsPowerApi\n"
+    ),
+    "browser/src/main/kotlin/ru/wbparser/browser/adspower/AdsPowerApi.kt": (
+        "package ru.wbparser.browser.adspower\n"
+        "\n"
+        "interface AdsPowerApi\n"
+    ),
     "CHANGELOG.md": "# The history that must not be here\n",
     ".github/workflows/ci.yml": "jobs:\n  build:\n    steps:\n      - run: ./gradlew fixDependencies\n",
     "gradle.properties": "org.gradle.java.home=/home/max/.jdks/temurin-21.0.10\n",
@@ -324,6 +477,8 @@ def self_test() -> int:
             "negative delay",
             "framework import",
             "browser module names",
+            "outside the browser module",
+            "is a double of our own",
             "CHANGELOG.md exists",
             "fixDependencies in CI",
             "pinned JDK path",

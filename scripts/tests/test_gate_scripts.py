@@ -15,6 +15,7 @@ handling, the counting. The policy itself is checked by each script's
 """
 
 import importlib.util
+import os
 import shutil
 import subprocess
 import sys
@@ -216,6 +217,43 @@ class TestJUnitCounting(unittest.TestCase):
             with self.assertRaises(ValueError):
                 TEST_RUNS.count_in_dir(results)
 
+
+class TestTheAgeOfAResultIsNotStaleness(unittest.TestCase):
+    """The age bound of the test-count gate is off unless a workspace may be reused.
+
+    A UP-TO-DATE test task does not rewrite its results, so a repository that has
+    not changed in a week has a week-old XML that is still the truth about the
+    code. The bound fired on exactly that repository — a gate that calls a current
+    result stale teaches people to ignore it.
+
+    The evidence that the results match the code is Gradle's own up-to-date
+    check, which compares content hashes rather than clocks. The bound belongs to
+    a workspace where a task that never ran leaves yesterday's XML behind.
+    """
+
+    def _results(self, tmp: str) -> Path:
+        results = Path(tmp) / "test"
+        results.mkdir()
+        xml = results / "TEST-one.xml"
+        xml.write_text(
+            '<?xml version="1.0" ?>\n'
+            '<testsuite name="one" tests="1">\n'
+            '  <testcase name="a"/>\n'
+            "</testsuite>\n",
+            encoding="utf-8",
+        )
+        old = (xml.stat().st_mtime - 86400, xml.stat().st_mtime - 86400)
+        os.utime(xml, old)
+        return results
+
+    def test_the_age_bound_is_off_by_default(self):
+        self.assertEqual(TEST_RUNS.DEFAULT_MAX_AGE, 0)
+
+    def test_an_old_result_is_not_stale_without_a_bound(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            results = self._results(tmp)
+            self.assertIsNone(TEST_RUNS.staleness_error(results, max_age=0))
+
     def test_malformed_xml_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             results = Path(tmp) / "test"
@@ -370,6 +408,92 @@ class TestCoverageGateCanFail(unittest.TestCase):
         result = self._run("fixture 40\n", "<report")
         self.assertEqual(result.returncode, 2)
         self.assertIn("not valid XML", result.stderr)
+
+
+class TestCoverageReportIsNotBehindItsRun(unittest.TestCase):
+    """The report is the coverage of a test run, so it cannot be behind that run.
+
+    The bound is a gap, not an age: a report that is a week old is honest when the
+    tests it describes are also a week old. What makes a report stale is the code
+    moving under it, not the passage of time — and a gate that treated age as
+    staleness would fire on every UP-TO-DATE report, which is every report of a
+    repository that has not changed since it was written.
+    """
+
+    def _report(self, tmp: str) -> Path:
+        return write(tmp, "report.xml", _kover_report(covered=50, missed=50))
+
+    def test_a_report_newer_than_the_run_is_not_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self._report(tmp)
+            self.assertIsNone(
+                COVERAGE.staleness_error(report, report.stat().st_mtime + 10, 3600)
+            )
+
+    def test_a_report_behind_the_run_is_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self._report(tmp)
+            error = COVERAGE.staleness_error(report, report.stat().st_mtime + 7200, 3600)
+            self.assertIsNotNone(error)
+            self.assertIn("does not describe that run", error)
+
+    def test_a_report_within_the_bound_is_not_stale(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            report = self._report(tmp)
+            self.assertIsNone(
+                COVERAGE.staleness_error(report, report.stat().st_mtime + 60, 3600)
+            )
+
+
+class TestCoverageUnionIsNotBehindItsParts(unittest.TestCase):
+    """The merged report is the union of the modules' reports.
+
+    A union of this run therefore covers at least as many lines of a module's
+    packages as that module's own report does — the module's own suites are one
+    of the contributors to the union. A union that shows *less* of a part than
+    the part itself was built before that part was regenerated, and it is
+    missing coverage that exists.
+
+    This is not a theoretical shape: it is what a stale merged report looks
+    like, and it reads as "the browser module is at 90.4%" when the browser
+    module is at 92.1% and the union simply never saw it.
+    """
+
+    PACKAGE = "ru/wbparser/browser"
+
+    def _reports(self, tmp: str, merged_covered: int, part_covered: int):
+        merged = write(tmp, "merged.xml", _package_report(self.PACKAGE, merged_covered, 0))
+        part = write(tmp, "part.xml", _package_report(self.PACKAGE, part_covered, 0))
+        return merged, part
+
+    def test_a_union_behind_its_part_is_reported_as_a_shortfall(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            merged, part = self._reports(tmp, merged_covered=5, part_covered=8)
+            shortfall = COVERAGE.union_shortfall(merged, part, (self.PACKAGE,))
+            self.assertEqual(shortfall, 3)
+
+    def test_a_union_that_covers_at_least_as_much_is_not_behind(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            merged, part = self._reports(tmp, merged_covered=8, part_covered=5)
+            self.assertIsNone(COVERAGE.union_shortfall(merged, part, (self.PACKAGE,)))
+
+    def test_a_part_older_than_the_union_is_not_compared(self):
+        """An older part may cover more — coverage goes down when code is added.
+
+        Comparing against it would report a loss that never happened, so the
+        comparison is skipped rather than made against stale data.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            merged, part = self._reports(tmp, merged_covered=5, part_covered=8)
+            old = (part.stat().st_mtime - 3600, part.stat().st_mtime - 3600)
+            os.utime(part, old)
+            self.assertIsNone(COVERAGE.union_shortfall(merged, part, (self.PACKAGE,)))
+
+    def test_a_missing_part_is_not_a_shortfall(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            merged, _ = self._reports(tmp, merged_covered=5, part_covered=8)
+            absent = Path(tmp) / "never-written.xml"
+            self.assertIsNone(COVERAGE.union_shortfall(merged, absent, (self.PACKAGE,)))
 
 
 CI_WORKFLOWS = load("ci_workflows", "ci/check-ci-workflows.py")
@@ -689,6 +813,20 @@ def _two_package_report() -> str:
         '  <package name="ru/wbparser/domain">\n'
         '    <class name="ru/wbparser/domain/B">\n'
         '      <counter type="LINE" missed="4" covered="1"/>\n'
+        "    </class>\n"
+        "  </package>\n"
+        "</report>\n"
+    )
+
+
+def _package_report(package: str, covered: int, missed: int) -> str:
+    """A kover XML report with one package, as the merged report has."""
+    return (
+        '<?xml version="1.0" ?>\n'
+        '<report name="fixture">\n'
+        f'  <package name="{package}">\n'
+        f'    <class name="{package}/A">\n'
+        f'      <counter type="LINE" missed="{missed}" covered="{covered}"/>\n'
         "    </class>\n"
         "  </package>\n"
         "</report>\n"

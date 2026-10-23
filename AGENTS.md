@@ -22,15 +22,21 @@ wb-parser-kotlin/
 
 - `app → wbparser → browser`. Обратного ребра нет: `browser` не знает ни про краул, ни
   про WB, ни про базу.
-- `browser` — `java-library`, наружу отдаёт один вход: `BrowserPool` плюс аренда
-  `BorrowedPage`. Всё, что не пересекает границу, — `internal` (в Kotlin `internal` — это
-  модуль Gradle, поэтому переезд меняет видимость, и её надо ревизовать).
+- `browser` — `java-library`. Наружу он отдаёт четыре вещи: `BrowserPool` (пул профилей),
+  `BorrowedPage` (аренда страницы), `BrowserPage` (контракт страницы — единственный, кто
+  говорит с Playwright) и `AdsPowerApi` (клиент Local API). Всё, что не пересекает
+  границу, — `internal` (в Kotlin `internal` — это модуль Gradle, поэтому переезд меняет
+  видимость, и её надо ревизовать). Playwright модуль наружу не отдаёт: его имя проверяет
+  `scripts/ci/check-repo-rules.py` — ни в `wbparser`, ни в `app` его быть не должно.
 - `wbparser` — `java-library` (`api` — только то, что действительно в типе публичного API
   модуля), `app` — потребитель. Flyway-миграции живут в `app`, `app` зависит от
   `wbparser`, обратной зависимости нет.
 - Общие тестовые двойники публикуются как `java-test-fixtures` (`browser` — фикстуры
   браузера, `wbparser` — фикстуры тестовой оснастки), а не пере-объявляются в
   модуле-потребителе.
+- **Worktree'ы.** Репозиторий открыт в нескольких worktree (`git worktree list`), и
+  `main` обычно занят в другом из них: `git checkout main` отсюда падает с «already used
+  by worktree». Перед переключением ветки — `git worktree list`.
 
 ## Gradle команды / Gradle Commands
 
@@ -81,7 +87,7 @@ just deploy::dry-run <tag> # ansible --check --diff
 
 ## CI-поверхности / CI surfaces
 
-Четыре workflow'а — не украшение, а часть гарантий репозитория. Их связность
+Восемь workflow'а — не украшение, а часть гарантий репозитория. Их связность
 проверяет гейт `scripts/ci/check-ci-workflows.py` (в реестре
 `scripts/ci/static-gates.sh`), поэтому удаление или «опустошение» любого из них —
 это finding, а не тихая потеря.
@@ -94,6 +100,8 @@ just deploy::dry-run <tag> # ansible --check --diff
 | `.github/workflows/codeql.yml` | CodeQL: `java-kotlin` (по скомпилированному коду) + `actions` (сами workflow'и) → code scanning | push, PR, еженедельно, dispatch |
 | `.github/workflows/scorecard.yml` | OpenSSF Scorecard → SARIF в code scanning + публикация в Scorecard API | push на main, еженедельно, dispatch |
 | `.github/workflows/lint-autofix.yml` | применяет `scripts/ci/lint-autofix.sh` и **предлагает** правки (ветка `lint-autofix/<run-id>` + PR/комментарий) | push, PR, dispatch |
+| `.github/workflows/dependabot-auto-merge.yml` | мержит PR'ы dependabot: разбирает текст описания, решает по semver, мержит только обновления зависимостей | PR от dependabot, schedule |
+| `.github/workflows/site-compatibility.yml` | спрашивает у витрины, понимает ли она образ, который сейчас собран: контракт между двумя репозиториями | push на main |
 
 Правила, которые из этого следуют:
 
@@ -216,6 +224,10 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 - Длинная команда пишет вывод в лог, а не в пайп: `scripts/bg.sh ./check.sh` возвращает
   путь к логу и работает на фоне. Пайп в `tail` прячет вывод до конца команды — и десять
   `sleep 30 && tail` — это десять раундов контекста впустую.
+- **Watcher, который уже запущен, — источник правды.** Если фоновая задача или
+  `gh pr checks --watch` уже пишет лог, читай лог: повторный опрос того же API даёт
+  тот же ответ и тратит раунд контекста. Одиннадцать одинаковых `sleep 30 && gh pr
+  checks` — это одиннадцать раундов впустую.
 
 ## ❌ Что НЕ делать / What NOT to do
 
@@ -262,18 +274,14 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 ## Tech-debt plan (актуальный)
 
 Кластеры A–G прежнего плана (runtime-баги, purity, мёртвый код, дублирование,
-инфраструктура, покрытие, tooling) **разобраны** — состояние по каждому пункту в файле
-плана. Осталось:
+инфраструктура, покрытие, tooling) **разобраны**. Состояние по каждому пункту живёт в
+файле плана — здесь его не пересказывают: пересказ устаревает тихо и стоит контекста на
+каждом ходе.
 
-- **Покрытие** — по merged-отчёту `koverXmlReport` (строка): `wbparser` 93,5 %,
-  `app` 90,1 %, вместе 92,4 %; полы — 92 / 89 / 91. Не покрыты:
-  `PlaywrightCdpSession`/`PlaywrightCdpConnector` (тонкие адаптеры над Playwright, 0 % —
-  их решения покрыты через шов `CdpSession`/`CdpConnector`, дыра записана решением) и
-  три маршрута админского API (`AdminRoutes` 8,8 % — закрыт только `/target-runs`).
-  Прежние «6 %» и «21 %» в этом файле были неверны.
-- **Эксплуатационное**: доля HTTP 498 (все профили на одном egress IP — не код).
-  Пересборка прод-БД сделана (схема v6, 132 цели, 8174 предметов), деплой
-  переведён на два образа по digest, расписание пересчитано под 60 страниц.
-  Осталось: развернуть контур на VPS и указать витрине `DATABASE_URL`
+- **Покрытие** — полы и измерение живут в `config/gates/coverage-floor.txt` и
+  `scripts/check-coverage.py`; что именно не покрыто, показывает
+  `python3 scripts/coverage-gaps.py` (по merged-отчёту, тем же фильтром, что и гейт).
+- **Эксплуатационное** — доля HTTP 498 (все профили на одном egress IP — не код);
+  развернуть контур на VPS и указать витрине `DATABASE_URL`.
 
 Полный план: `.zcode/plans/plan-sess_871f29cf-f859-4a72-9002-5bbafd737630.md`
