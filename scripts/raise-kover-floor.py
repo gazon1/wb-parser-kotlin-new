@@ -113,6 +113,15 @@ HEADER = [
     "#   `merged` 91% against 92.4%, `wbparser` 92% against 93.5% (2026-10-22). The",
     "#   history lives here, in the script that writes the file: a file rewritten by",
     "#   the script and edited by hand is a history that disappears one raise later.",
+    "# - 89% / 91% / 92% / 91% — after the browser stack became its own module: `app` 89%",
+    "#   against 90.0%, `merged` 91% against 92.2%, `wbparser` 92% against 93.7%, and the",
+    "#   new `browser` row 91% against 91.2% (2026-10-22). The stack left the crawler",
+    "#   whole, so its coverage left with it; the `wbparser` row excludes",
+    "#   `ru/wbparser/browser`, because a package prefix is not a module.",
+    "# - 93% / 95% / 94% / 94% — after the failure paths of the new code were closed, the",
+    "#   probe was split by decision and the adapters that speak to Playwright were",
+    "#   checked against a real Chrome: `app` 93% against 95.0%, `browser` 95% against",
+    "#   96.5%, `merged` 94% against 95.4%, `wbparser` 94% against 95.3% (2026-10-23).",
 ]
 
 

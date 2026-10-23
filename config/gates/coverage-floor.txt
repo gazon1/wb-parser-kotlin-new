@@ -40,8 +40,12 @@
 #   new `browser` row 91% against 91.2% (2026-10-22). The stack left the crawler
 #   whole, so its coverage left with it; the `wbparser` row excludes
 #   `ru/wbparser/browser`, because a package prefix is not a module.
+# - 93% / 95% / 94% / 94% — after the failure paths of the new code were closed, the
+#   probe was split by decision and the adapters that speak to Playwright were
+#   checked against a real Chrome: `app` 93% against 95.0%, `browser` 95% against
+#   96.5%, `merged` 94% against 95.4%, `wbparser` 94% against 95.3% (2026-10-23).
 
-app 89
-browser 91
-merged 91
-wbparser 92
+app 93
+browser 95
+merged 94
+wbparser 94
