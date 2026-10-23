@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
 import ru.wbparser.browser.playwright.BrowserPage
@@ -34,6 +35,7 @@ class EgressProbeTest :
             groups: Map<String, List<String>>,
             answers: Map<String, String> = emptyMap(),
             proxies: List<AdsPowerProfileProxy>? = null,
+            navigateFailure: Throwable? = null,
         ): Pair<BrowserPool, FakeAdsPowerApi> {
             val profiles =
                 groups.flatMap { (group, ids) -> ids.map { BrowserProfileConfig(it, "ws://$it", group) } }
@@ -42,7 +44,11 @@ class EgressProbeTest :
                     FakeBrowserAutomation(
                         _isConnected = true,
                         _healthCheckResult = true,
-                        _currentPage = pageAnswering(answers[profile.profileId] ?: ""),
+                        _currentPage =
+                            FakeBrowserPage(
+                                evaluateAnswer = answers[profile.profileId] ?: "",
+                                navigateFailure = navigateFailure,
+                            ),
                     )
                 }
             // AdsPower describes the proxies of the profiles it knows: by default one
@@ -478,5 +484,142 @@ class EgressProbeTest :
                 ).probe()
 
             report.proxyMismatch shouldBe false
+        }
+
+        test("a profile list that could not be read is reported, not treated as a pass") {
+            val (pool, api) = poolOf(mapOf("ip-1" to listOf("p1")))
+            api.profileProxiesFailure = RuntimeException("the runtime went away")
+
+            val report =
+                EgressProbe(
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
+                    groups = listOf(EgressGroup("ip-1", listOf("p1"))),
+                ).probe()
+
+            // "The list did not come back" is not "there is no proxy to check": a check
+            // that could not run must not be reported as a check that passed.
+            report.problems shouldContain
+                "AdsPower described no profile — the proxy of the groups could not be checked. " +
+                "They are not verified against the proxies the browser actually uses."
+            report.misconfigured shouldBe false
+            report.proxyMismatch shouldBe false
+        }
+
+        test("a group whose profiles AdsPower does not describe is reported") {
+            val (pool, api) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1", "p2")),
+                    mapOf("p1" to "203.0.113.7"),
+                    // AdsPower describes one profile of the group and not the other.
+                    proxies = listOf(AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "http")),
+                )
+
+            val report =
+                EgressProbe(
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
+                    groups = listOf(EgressGroup("ip-1", listOf("p1", "p2"))),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            // The comparison would be a guess, and a guess that silently passes is the
+            // very thing the check exists to stop.
+            report.problems shouldContain
+                "Egress group 'ip-1': AdsPower did not describe 1 of its profiles, so its proxy " +
+                "could not be checked."
+        }
+
+        test("a probe that ran out of time says so") {
+            val (pool, api) = poolOf(mapOf("ip-1" to listOf("p1")), mapOf("p1" to "203.0.113.7"))
+
+            val report =
+                EgressProbe(
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
+                    groups = listOf(EgressGroup("ip-1", listOf("p1"))),
+                    config =
+                        EgressProbeConfig(
+                            echoUrls = listOf("https://echo.invalid/ip"),
+                            budgetMs = 0,
+                        ),
+                ).probe()
+
+            report.problems shouldContain "The egress probe ran out of time — some groups were not checked."
+            report.groups.single().egressIp shouldBe null
+        }
+
+        test("an echo service that does not answer is not an address") {
+            val (pool, api) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1")),
+                    navigateFailure = RuntimeException("the browser is gone"),
+                )
+
+            val report =
+                EgressProbe(
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
+                    groups = listOf(EgressGroup("ip-1", listOf("p1"))),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.groups.single().egressIp shouldBe null
+            report.problems shouldContain "Egress group 'ip-1': the address could not be determined."
+        }
+
+        test("an echo service that answers with something else is not an address") {
+            val (pool, api) = poolOf(mapOf("ip-1" to listOf("p1")), mapOf("p1" to "no address here"))
+
+            val report =
+                EgressProbe(
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
+                    groups = listOf(EgressGroup("ip-1", listOf("p1"))),
+                    config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                ).probe()
+
+            report.groups.single().egressIp shouldBe null
+        }
+
+        test("the gauges report the isolation of each group") {
+            val (pool, api) =
+                poolOf(
+                    mapOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
+                    mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.7"),
+                )
+            val registry = SimpleMeterRegistry()
+
+            EgressProbe(
+                browser = BrowserAccess(pool = pool, adsPowerApi = api),
+                groups = listOf(EgressGroup("ip-1", listOf("p1")), EgressGroup("ip-2", listOf("p2"))),
+                config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                meterRegistry = registry,
+            ).probe()
+
+            // Both groups were seen at one address, so neither has an address of its own.
+            registry
+                .get("crawl.egress.isolated")
+                .tag("egress_group", "ip-1")
+                .gauge()
+                .value() shouldBe 0.0
+            registry
+                .get("crawl.egress.isolated")
+                .tag("egress_group", "ip-2")
+                .gauge()
+                .value() shouldBe 0.0
+        }
+
+        test("a changed address is counted") {
+            val (pool, api) = poolOf(mapOf("ip-1" to listOf("p1")), mapOf("p1" to "203.0.113.7"))
+            val registry = SimpleMeterRegistry()
+
+            EgressProbe(
+                browser = BrowserAccess(pool = pool, adsPowerApi = api),
+                groups = listOf(EgressGroup("ip-1", listOf("p1"))),
+                config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
+                meterRegistry = registry,
+            ).probe(listOf(EgressGroupRecord("ip-1", "198.51.100.1", true, 0)))
+
+            registry
+                .get("crawl.egress.ip.changes")
+                .tag("egress_group", "ip-1")
+                .counter()
+                .count() shouldBe 1.0
         }
     })
