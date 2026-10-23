@@ -537,6 +537,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** писать в KDoc типа, какое решение он держит: файл без этого ответа повторяет ту же проблему в меньшем масштабе. _(from `2026-11-05-the-router-file-holds-the-routing`)
 - **Never** менять поведение вместе с переносом: перенос решения не должен двигать значения по умолчанию, подписи и границы. _(from `2026-11-05-the-router-file-holds-the-routing`)
 - **Never** объявлять в файле роутера типы состояния (`DownloadOutcome`, `EgressAttribution`, `EgressRouterConfig` и подобные): у каждого типа — свой файл, названный по типу. _(from `2026-11-05-the-router-file-holds-the-routing`)
+- **Always** say why a stage's answer became a drop. A drop without a reason is indistinguishable from a rule, and the two are repaired differently. _(from `2026-11-06-the-crawler-answers-its-own-failures`)
+- **Always** test a runner's paths against the database it writes to, when the path is about what the database holds. _(from `2026-11-06-the-crawler-answers-its-own-failures`)
+- **Always** test the path where a stage throws. The stage that talks to the outside world throws instead of answering, and the exception has to become a failure the retry loop understands. _(from `2026-11-06-the-crawler-answers-its-own-failures`)
+- **Never** call a drop of a failed stage a `Filtered` drop without saying that the stage failed — the reason set is read by the dashboards, and the message is read by the operator. _(from `2026-11-06-the-crawler-answers-its-own-failures`)
+- **Never** let a stage failure and a decided drop look the same to the operator. _(from `2026-11-06-the-crawler-answers-its-own-failures`)
 
 ## Per-tag
 
@@ -1257,6 +1262,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-03-the-decision-belongs-to-the-dependency` — workflow  dependencies  conventions
 - `2026-11-04-the-refusal-is-a-count-against-the-session` — antibot  egress  architecture  measurement
 - `2026-11-05-the-router-file-holds-the-routing` — architecture  refactoring  infrastructure
+- `2026-11-06-the-crawler-answers-its-own-failures` — coverage  testing  domain
 
 ## Active entries
 
@@ -1386,3 +1392,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-03-the-decision-belongs-to-the-dependency` — Решение принадлежит зависимости, а не номеру pull request'а
 - `2026-11-04-the-refusal-is-a-count-against-the-session` — Отказ — это счётчик, и код считает его по сессии
 - `2026-11-05-the-router-file-holds-the-routing` — Файл роутера содержит только маршрутизацию, а типы состояния живут по одному на файл
+- `2026-11-06-the-crawler-answers-its-own-failures` — The crawler answers its own failures

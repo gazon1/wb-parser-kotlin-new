@@ -48,4 +48,4 @@
 app 93
 browser 95
 merged 94
-wbparser 94
+wbparser 95

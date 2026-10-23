@@ -295,4 +295,238 @@ class PipelinePageProcessorTest :
                 sides.any { it is Side.Drop } shouldBe true
             }
         }
+
+        // The stage that cannot do what it was asked. A filter and an enrich stage are
+        // pure: they cannot retry and they cannot continue, so an answer of either kind
+        // means the stage failed — and the item is dropped. What must not happen is the
+        // drop being indistinguishable from a drop the filter decided on: one is a rule
+        // at work, the other is a fault, and the operator repairs them differently.
+
+        test("a filter that fails drops the item and says why") {
+            runTest {
+                val p =
+                    pipeline(
+                        filter =
+                            Stage {
+                                Step.Fail<ParsedItem, ParsedItem?>(
+                                    StageFailure.ParseFailure("the rules could not be read", null),
+                                )
+                            },
+                    )
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 0
+                sides.any { it is Side.Drop } shouldBe true
+                val logs = sides.filterIsInstance<Side.Log>()
+                logs.any { it.level == LogLevel.ERROR && it.message.contains("the rules could not be read") } shouldBe true
+            }
+        }
+
+        test("a filter that asks for a retry drops the item and says why") {
+            runTest {
+                val p = pipeline(filter = Stage { Step.Retry<ParsedItem, ParsedItem?>(Retry.Database()) })
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 0
+                sides.any { it is Side.Drop } shouldBe true
+                sides.filterIsInstance<Side.Log>().any { it.message.contains("asked for a retry") } shouldBe true
+            }
+        }
+
+        test("a filter that asks to continue drops the item and says why") {
+            runTest {
+                val p = pipeline(filter = Stage { Step.Cont<ParsedItem, ParsedItem?>(it) })
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 0
+                sides.any { it is Side.Drop } shouldBe true
+                sides.filterIsInstance<Side.Log>().any { it.message.contains("asked to continue") } shouldBe true
+            }
+        }
+
+        test("an enrich that fails drops the item and says why") {
+            runTest {
+                val p =
+                    pipeline(
+                        enrich =
+                            Stage {
+                                Step.Fail<ParsedItem, SavedItem>(
+                                    StageFailure.ParseFailure("the price history could not be read", null),
+                                )
+                            },
+                    )
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 0
+                sides.any { it is Side.Drop } shouldBe true
+                val logs = sides.filterIsInstance<Side.Log>()
+                logs.any { it.level == LogLevel.ERROR && it.message.contains("the price history could not be read") } shouldBe true
+            }
+        }
+
+        test("an enrich that asks for a retry drops the item and says why") {
+            runTest {
+                val p = pipeline(enrich = Stage { Step.Retry<ParsedItem, SavedItem>(Retry.Database()) })
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 0
+                sides.any { it is Side.Drop } shouldBe true
+                sides.filterIsInstance<Side.Log>().any { it.message.contains("asked for a retry") } shouldBe true
+            }
+        }
+
+        test("an enrich that asks to continue drops the item and says why") {
+            runTest {
+                val p = pipeline(enrich = Stage { Step.Cont<ParsedItem, SavedItem>(it) })
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 0
+                sides.any { it is Side.Drop } shouldBe true
+                sides.filterIsInstance<Side.Log>().any { it.message.contains("asked to continue") } shouldBe true
+            }
+        }
+
+        // The save stage is the one stage that talks to the outside world, and it is the
+        // one that throws: a database that goes away mid-page raises an exception rather
+        // than answering. An exception that escaped would take the whole page — and the
+        // whole crawl — with it, so it has to become a failure the retry loop understands.
+
+        test("a save that throws is a database failure, and the retry saves the page") {
+            runTest {
+                var attempts = 0
+                var waits = 0
+                val p =
+                    pipeline(
+                        save =
+                            Stage {
+                                attempts++
+                                if (attempts == 1) error("connection reset by peer")
+                                Step.Done(Unit)
+                            },
+                        waiter = Waiter { waits++ },
+                        retryPolicy = RetryPolicy(maxAttempts = 5, baseDelayMs = 10, jitterPercent = 0.0),
+                    )
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                // The exception became a retryable database failure, and the retry saved
+                // the page: the item is not lost because the database blinked.
+                result.itemsSaved shouldBe 1
+                attempts shouldBe 2
+                waits shouldBe 1
+                sides.filterIsInstance<Side.Metric>().any { it.name == "retries" && it.tags["reason"] == "database" } shouldBe true
+            }
+        }
+
+        test("a save that keeps throwing gives up and says so") {
+            runTest {
+                var attempts = 0
+                val p =
+                    pipeline(
+                        save =
+                            Stage {
+                                attempts++
+                                error("connection reset by peer")
+                            },
+                        waiter = Waiter { },
+                        retryPolicy = RetryPolicy(maxAttempts = 2, baseDelayMs = 10, jitterPercent = 0.0),
+                    )
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 0
+                attempts shouldBe 2
+                // The page was lost, and the crawl says so rather than reporting a
+                // successful page that holds nothing.
+                sides.filterIsInstance<Side.Log>().any { it.level == LogLevel.ERROR } shouldBe true
+            }
+        }
+
+        test("a save that asks to continue saves nothing") {
+            runTest {
+                val p = pipeline(save = Stage { Step.Cont<List<SavedItem>, Unit>(it) })
+                val processor = PipelinePageProcessor(p)
+                val sides = mutableListOf<Side>()
+                val done =
+                    TaskOutcome.Done(
+                        task = task("1", "/one"),
+                        page = ParsedPage(fetched(task("1", "/one")), listOf(item(1)), null, false),
+                        sides = emptyList(),
+                    )
+
+                val result = processor.process(listOf(done), mutableListOf(), sides, startPagesCrawled = 0)
+
+                result.itemsSaved shouldBe 0
+            }
+        }
     })

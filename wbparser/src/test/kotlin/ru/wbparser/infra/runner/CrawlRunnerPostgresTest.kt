@@ -6,6 +6,11 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -20,12 +25,15 @@ import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.domain.value.ProductId
 import ru.wbparser.infra.db.CategoryMappingsTable
+import ru.wbparser.infra.db.CrawlEgressGroupsTable
 import ru.wbparser.infra.db.CrawlJobsTable
 import ru.wbparser.infra.db.CrawlTargetsTable
 import ru.wbparser.infra.db.ScrapedItemsTable
 import ru.wbparser.infra.db.WbSubjectsTable
 import ru.wbparser.infra.db.connect
 import ru.wbparser.infra.db.repositories.fetchSubjectNames
+import ru.wbparser.infra.http.EgressAttribution
+import ru.wbparser.infra.http.EgressGroupState
 import ru.wbparser.testing.ModelDatabase
 import java.util.UUID
 import javax.sql.DataSource
@@ -62,6 +70,7 @@ class CrawlRunnerPostgresTest :
                         CrawlJobsTable,
                         WbSubjectsTable,
                         CategoryMappingsTable,
+                        CrawlEgressGroupsTable,
                     ),
                 )
         }
@@ -117,6 +126,18 @@ class CrawlRunnerPostgresTest :
                 inStock = true,
             )
         }
+
+        /**
+         * An address side that says one group answered.
+         */
+        fun answeringEgress(groupId: String): EgressAttribution =
+            object : EgressAttribution {
+                override fun lastGroupFor(targetId: UUID): String? = groupId
+
+                override fun groupState(groupId: String): EgressGroupState = EgressGroupState(groupId = groupId)
+
+                override fun groupStates(): List<EgressGroupState> = listOf(EgressGroupState(groupId = groupId))
+            }
 
         test("a crawl writes the items and closes the job") {
             val dataSource = freshDatabase()
@@ -357,5 +378,185 @@ class CrawlRunnerPostgresTest :
             val text = requireNotNull(stored)
             text.length shouldBe (MAX_RUN_ERROR_MESSAGE_CHARS + marker.length)
             text shouldContain "truncated"
+        }
+
+        // The two ways a run does not finish the way it was started.
+        //
+        // Another instance holds the lock: the crawl must not start and must say that it
+        // did not start — a run that reports "nothing to do" would be a lie about a
+        // deployment that is working.
+        //
+        // The crawl is cancelled: the job row has to say "cancelled", not "failed".
+        // "Gave up" and "broke" are different, and an operator reading the table has to
+        // be able to tell them apart.
+
+        test("a crawl that cannot take the lock says that another instance is running") {
+            val dataSource = freshDatabase()
+            insertTarget(dataSource)
+            val lockKey = 987_654_321L
+
+            // Another session holds the lock. The lock belongs to the session, so the
+            // connection that took it has to stay open while the runner tries.
+            val holder = dataSource.connection
+            holder.prepareStatement("SELECT pg_try_advisory_lock($lockKey)").use { statement ->
+                statement.executeQuery().use { rows ->
+                    (rows.next() && rows.getBoolean(1)) shouldBe true
+                }
+            }
+
+            try {
+                val runner =
+                    CrawlRunner(
+                        db = connect(dataSource),
+                        source =
+                            CrawlSource(
+                                downloader = { task: Crawling ->
+                                    Either.Right(
+                                        Fetched(
+                                            task = task,
+                                            statusCode = CrawlHttpStatusCode(200),
+                                            body = "{}",
+                                            headers = emptyMap(),
+                                            durationMs = 5L,
+                                        ),
+                                    )
+                                },
+                                parser = { fetched: Fetched ->
+                                    Either.Right(ParsedPage(fetched, emptyList(), null, isEmptyPage = true))
+                                },
+                            ),
+                        config =
+                            CrawlRunnerConfig(
+                                maxPagesPerCatalog = 1,
+                                lockKey = lockKey,
+                                lockTimeoutMs = 300,
+                            ),
+                    )
+
+                val result = runner.run()
+
+                result shouldBe RunResult.AlreadyRunning("Lock acquisition timed out after 300ms")
+                // Nothing was crawled, and no job row was opened for a run that never ran.
+                transaction { CrawlJobsTable.selectAll().count() } shouldBe 0
+            } finally {
+                holder.close()
+            }
+        }
+
+        test("a cancelled crawl closes the job as cancelled, not as failed") {
+            val dataSource = freshDatabase()
+            insertTarget(dataSource)
+            val started = CompletableDeferred<Unit>()
+
+            val runner =
+                CrawlRunner(
+                    db = connect(dataSource),
+                    source =
+                        CrawlSource(
+                            downloader = { task: Crawling ->
+                                // The crawl is inside its first page when it is cancelled.
+                                started.complete(Unit)
+                                awaitCancellation()
+                            },
+                            parser = { fetched: Fetched ->
+                                Either.Right(ParsedPage(fetched, emptyList(), null, isEmptyPage = true))
+                            },
+                        ),
+                    config = CrawlRunnerConfig(maxPagesPerCatalog = 1),
+                )
+
+            coroutineScope {
+                val job = launch { runner.run() }
+                started.await()
+                job.cancelAndJoin()
+            }
+
+            val status = transaction { CrawlJobsTable.selectAll().toList() }.single()[CrawlJobsTable.status]
+            status shouldBe JobStatus.Cancelled.name
+        }
+
+        // The ledger of the addresses. The probe learns the address; the crawl learns
+        // whether the address answers. Two facts in one row, written by two actors, and
+        // the run has to leave the second one behind — otherwise "the address changed"
+        // and "the address went quiet" look the same in the table.
+
+        test("a group that answered is written into the ledger") {
+            val dataSource = freshDatabase()
+            insertTarget(dataSource)
+            transaction {
+                CrawlEgressGroupsTable.insert {
+                    it[CrawlEgressGroupsTable.groupId] = "ip-1"
+                    it[CrawlEgressGroupsTable.egressIp] = "203.0.113.7"
+                    it[CrawlEgressGroupsTable.isolated] = false
+                    it[CrawlEgressGroupsTable.probedAt] = java.time.OffsetDateTime.now(java.time.ZoneOffset.UTC)
+                    it[CrawlEgressGroupsTable.ipChanges] = 0
+                }
+            }
+
+            val runner =
+                CrawlRunner(
+                    db = connect(dataSource),
+                    source =
+                        CrawlSource(
+                            downloader = { task: Crawling ->
+                                Either.Right(
+                                    Fetched(
+                                        task = task,
+                                        statusCode = CrawlHttpStatusCode(200),
+                                        body = "{}",
+                                        headers = emptyMap(),
+                                        durationMs = 5L,
+                                    ),
+                                )
+                            },
+                            parser = { fetched: Fetched ->
+                                Either.Right(ParsedPage(fetched, listOf(parsedItem()), null, isEmptyPage = false))
+                            },
+                            egress = answeringEgress("ip-1"),
+                        ),
+                    config = CrawlRunnerConfig(maxPagesPerCatalog = 1),
+                )
+
+            runner.run() shouldBe RunResult.Success(pagesCrawled = 1, itemsSaved = 1)
+
+            val lastHealthy =
+                transaction { CrawlEgressGroupsTable.selectAll().toList() }
+                    .single()[CrawlEgressGroupsTable.lastHealthyAt]
+            // The group answered, so the ledger knows it.
+            (lastHealthy != null) shouldBe true
+        }
+
+        test("a ledger that cannot be written does not break the crawl") {
+            val dataSource = freshDatabase()
+            insertTarget(dataSource)
+            // A group id the ledger's column cannot hold: the write fails, and the crawl
+            // must carry on — the ledger is a record of the run, not the run itself.
+            val tooLong = "g".repeat(65)
+
+            val runner =
+                CrawlRunner(
+                    db = connect(dataSource),
+                    source =
+                        CrawlSource(
+                            downloader = { task: Crawling ->
+                                Either.Right(
+                                    Fetched(
+                                        task = task,
+                                        statusCode = CrawlHttpStatusCode(200),
+                                        body = "{}",
+                                        headers = emptyMap(),
+                                        durationMs = 5L,
+                                    ),
+                                )
+                            },
+                            parser = { fetched: Fetched ->
+                                Either.Right(ParsedPage(fetched, listOf(parsedItem()), null, isEmptyPage = false))
+                            },
+                            egress = answeringEgress(tooLong),
+                        ),
+                    config = CrawlRunnerConfig(maxPagesPerCatalog = 1),
+                )
+
+            runner.run() shouldBe RunResult.Success(pagesCrawled = 1, itemsSaved = 1)
         }
     })
