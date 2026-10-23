@@ -7,9 +7,9 @@ import org.springframework.core.annotation.Order
 import org.springframework.stereotype.Component
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.EgressGroups
+import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerPreflight
 import ru.wbparser.browser.adspower.ProfileHealth
-import ru.wbparser.browser.pool.BrowserPool
 
 /**
  * Reports the health of the local AdsPower installation at startup.
@@ -34,7 +34,7 @@ import ru.wbparser.browser.pool.BrowserPool
 @Component
 @Order(10)
 class AdsPowerPreflightRunner(
-    private val browserPool: ru.wbparser.browser.pool.BrowserPool,
+    private val adsPowerApi: AdsPowerApi,
     private val properties: ru.wbparser.app.config.CrawlProperties,
     private val groups: EgressGroups.Resolved,
     private val probeService: EgressProbeService,
@@ -47,7 +47,7 @@ class AdsPowerPreflightRunner(
 
         val report =
             runCatching {
-                AdsPowerPreflight.check(profileIds, browserPool.adsPowerApi)
+                AdsPowerPreflight.check(profileIds, adsPowerApi)
             }.getOrElse {
                 log.warn("Could not run the AdsPower pre-flight check: {}", it.message)
                 return

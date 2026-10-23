@@ -7,6 +7,7 @@ import org.springframework.core.annotation.Order
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import ru.wbparser.app.config.CrawlProperties
+import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserReconciler
 import ru.wbparser.browser.pool.ReconcileOutcome
@@ -45,6 +46,13 @@ import java.util.concurrent.atomic.AtomicBoolean
  * knows about has either been closed or reported as a failure. After that there is
  * nothing left to look for, and the retry stops.
  *
+ * A profile AdsPower **refuses** to close is a different thing from a failure:
+ * the runtime answered, and asking again does not change the answer. Such a
+ * browser stays open, and the fact is reported — but the reconciliation is
+ * confirmed, because there is nothing a later attempt could do. Treating a
+ * refusal as "not yet confirmed" is how a reconciliation turns into an endless
+ * loop: every minute, the same question, the same answer.
+ *
  * ## When it does not
  *
  * It never fails the startup. The AdsPower runtime may legitimately come up after
@@ -54,6 +62,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 @Order(0)
 class AdsPowerBrowserReconciler(
     private val browserPool: BrowserPool,
+    private val adsPowerApi: AdsPowerApi,
     private val properties: CrawlProperties,
 ) : ApplicationRunner {
     private val log = LoggerFactory.getLogger(AdsPowerBrowserReconciler::class.java)
@@ -97,7 +106,7 @@ class AdsPowerBrowserReconciler(
     private fun reconcile() {
         val outcome =
             runCatching {
-                BrowserReconciler(browserPool).reconcile()
+                BrowserReconciler(browserPool, adsPowerApi).reconcile()
             }.getOrElse {
                 log.warn("Could not reconcile the browsers of the previous run: {}", it.message)
                 return
@@ -116,7 +125,19 @@ class AdsPowerBrowserReconciler(
                     )
                 }
                 for ((profileId, reason) in outcome.failures) {
-                    log.warn("Could not stop the browser of profile {}: {}", profileId, reason)
+                    log.warn(
+                        "Could not stop the browser of profile {}: {} — the reconciliation is retried",
+                        profileId,
+                        reason,
+                    )
+                }
+                for ((profileId, reason) in outcome.refused) {
+                    log.warn(
+                        "AdsPower would not close the browser of profile {}: {} — it stays open, " +
+                            "and the next run will inherit it",
+                        profileId,
+                        reason,
+                    )
                 }
                 if (outcome.ours.isNotEmpty()) {
                     log.info(
@@ -125,9 +146,11 @@ class AdsPowerBrowserReconciler(
                         outcome.ours,
                     )
                 }
-                // Confirmed: every profile has been closed or reported. There is
-                // nothing left to look for, and the retries stop.
-                if (outcome.failures.isEmpty()) settled.set(true)
+                // Confirmed: nothing is left that a later attempt could change. There
+                // is nothing left to look for, and the retries stop. A refusal does
+                // not keep the reconciliation open — the runtime answered, and the
+                // answer will not change.
+                if (outcome.isConfirmed) settled.set(true)
             }
         }
     }

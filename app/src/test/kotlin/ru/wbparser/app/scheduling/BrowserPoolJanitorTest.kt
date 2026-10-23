@@ -98,7 +98,7 @@ class BrowserPoolJanitorTest :
             // The borrow itself closes the stale handle before it reconnects, so the
             // count starts here rather than at zero.
             val closesBefore = browser.closeCalls
-            val janitor = BrowserPoolJanitor(pool, properties(idleTimeoutMs = 1L, closeOnExit = true))
+            val janitor = BrowserPoolJanitor(pool.idleSweeper, pool.shutdown, properties(idleTimeoutMs = 1L, closeOnExit = true))
 
             janitor.closeIdleBrowsers()
 
@@ -112,7 +112,7 @@ class BrowserPoolJanitorTest :
             val pool = poolWith(api, browser)
             pool.borrowPage().close()
             val closesBefore = browser.closeCalls
-            val janitor = BrowserPoolJanitor(pool, properties(idleTimeoutMs = 0L, closeOnExit = true))
+            val janitor = BrowserPoolJanitor(pool.idleSweeper, pool.shutdown, properties(idleTimeoutMs = 0L, closeOnExit = true))
 
             janitor.closeIdleBrowsers()
 
@@ -125,7 +125,7 @@ class BrowserPoolJanitorTest :
             val browser = FakeBrowser()
             val pool = poolWith(api, browser)
             pool.borrowPage().close()
-            val janitor = BrowserPoolJanitor(pool, properties(idleTimeoutMs = 0L, closeOnExit = true))
+            val janitor = BrowserPoolJanitor(pool.idleSweeper, pool.shutdown, properties(idleTimeoutMs = 0L, closeOnExit = true))
 
             janitor.destroy()
 
@@ -138,7 +138,7 @@ class BrowserPoolJanitorTest :
             val pool = poolWith(api, browser)
             pool.borrowPage().close()
             val closesBefore = browser.closeCalls
-            val janitor = BrowserPoolJanitor(pool, properties(idleTimeoutMs = 0L, closeOnExit = false))
+            val janitor = BrowserPoolJanitor(pool.idleSweeper, pool.shutdown, properties(idleTimeoutMs = 0L, closeOnExit = false))
 
             janitor.destroy()
 

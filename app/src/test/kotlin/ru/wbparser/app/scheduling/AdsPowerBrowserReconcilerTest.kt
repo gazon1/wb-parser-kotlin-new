@@ -35,6 +35,9 @@ class AdsPowerBrowserReconcilerTest :
             val stopped = mutableListOf<String>()
             var knownProfiles: List<AdsPowerProfileProxy> = emptyList()
 
+            /** Whether the runtime closes the browser when it is asked to. */
+            var stopSucceeds: Boolean = true
+
             override fun checkActiveV2(profileId: String): String? =
                 if (profileId in running) "ws://127.0.0.1:9222/devtools/browser/$profileId" else null
 
@@ -42,8 +45,8 @@ class AdsPowerBrowserReconcilerTest :
 
             override fun stopProfileV2(profileId: String): Boolean {
                 stopped += profileId
-                running -= profileId
-                return true
+                if (stopSucceeds) running -= profileId
+                return stopSucceeds
             }
 
             override fun listProfileProxies(): List<AdsPowerProfileProxy> = knownProfiles
@@ -83,6 +86,7 @@ class AdsPowerBrowserReconcilerTest :
                 )
             return AdsPowerBrowserReconciler(
                 browserPool = pool,
+                adsPowerApi = api,
                 properties =
                     CrawlProperties(
                         worker = Worker(enabled = workerEnabled),
@@ -189,6 +193,24 @@ class AdsPowerBrowserReconcilerTest :
 
             // There is nothing left to look for: a browser that appears later belongs
             // to this run, not to the previous one.
+            api.running += "p2"
+            reconciler.retryReconciliation()
+
+            api.stopped shouldBe listOf("p1")
+        }
+
+        test("a browser AdsPower refuses to close ends the reconciliation") {
+            val api = FakeAdsPower()
+            api.running += "p1"
+            api.stopSucceeds = false
+            val reconciler = runner(api)
+
+            reconciler.run(ApplicationArgumentsStub)
+            api.stopped shouldBe listOf("p1")
+
+            // The runtime answered and said no. Asking again every minute does not
+            // change the answer, so the reconciliation is confirmed: the browser
+            // stays open, and that is a fact to report, not a question to keep asking.
             api.running += "p2"
             reconciler.retryReconciliation()
 

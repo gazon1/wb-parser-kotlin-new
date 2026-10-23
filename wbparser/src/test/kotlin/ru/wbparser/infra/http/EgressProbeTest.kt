@@ -64,11 +64,11 @@ class EgressProbeTest :
         }
 
         test("without an echo service the probe says the address is unknown") {
-            val (pool, _) = poolOf(mapOf("ip-1" to listOf("p1")))
+            val (pool, api) = poolOf(mapOf("ip-1" to listOf("p1")))
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1"))),
                 ).probe()
 
@@ -80,11 +80,11 @@ class EgressProbeTest :
         }
 
         test("the address is read from the echo service") {
-            val (pool, _) = poolOf(mapOf("ip-1" to listOf("p1")), mapOf("p1" to "203.0.113.7"))
+            val (pool, api) = poolOf(mapOf("ip-1" to listOf("p1")), mapOf("p1" to "203.0.113.7"))
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -96,12 +96,12 @@ class EgressProbeTest :
         }
 
         test("a JSON answer is read as well as a bare address") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(mapOf("ip-1" to listOf("p1")), mapOf("p1" to """{"ip":"198.51.100.9"}"""))
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -110,7 +110,7 @@ class EgressProbeTest :
         }
 
         test("two groups seen at one address are not isolated") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
                     mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.7"),
@@ -118,7 +118,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1")), EgressGroup("ip-2", listOf("p2"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -128,7 +128,7 @@ class EgressProbeTest :
         }
 
         test("profiles of one group behind different proxies are a configuration error") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1", "p2")),
                     mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.7"),
@@ -141,7 +141,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1", "p2"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -151,7 +151,7 @@ class EgressProbeTest :
         }
 
         test("profiles of one group behind the same proxy are fine") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1", "p2")),
                     mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.7"),
@@ -164,7 +164,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1", "p2"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -173,7 +173,7 @@ class EgressProbeTest :
         }
 
         test("a profile list that did not come back is reported, not treated as a pass") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1")),
                     mapOf("p1" to "203.0.113.7"),
@@ -182,7 +182,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -194,7 +194,7 @@ class EgressProbeTest :
         }
 
         test("two groups behind the same proxy are one source, not two") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
                     mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.8"),
@@ -207,7 +207,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1")), EgressGroup("ip-2", listOf("p2"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -217,7 +217,7 @@ class EgressProbeTest :
         }
 
         test("two groups without a proxy are one address") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
                     mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.8"),
@@ -230,7 +230,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1")), EgressGroup("ip-2", listOf("p2"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -240,7 +240,7 @@ class EgressProbeTest :
         }
 
         test("two groups behind different proxies are fine") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
                     mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.8"),
@@ -253,7 +253,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1")), EgressGroup("ip-2", listOf("p2"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -268,7 +268,7 @@ class EgressProbeTest :
             opaque.hasOpaqueProxy shouldBe true
             opaque.identity shouldBe "opaque:other"
 
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2")),
                     mapOf("p1" to "203.0.113.7", "p2" to "203.0.113.8"),
@@ -277,7 +277,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1")), EgressGroup("ip-2", listOf("p2"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -288,11 +288,11 @@ class EgressProbeTest :
         }
 
         test("a changed address is noticed") {
-            val (pool, _) = poolOf(mapOf("ip-1" to listOf("p1")), mapOf("p1" to "203.0.113.7"))
+            val (pool, api) = poolOf(mapOf("ip-1" to listOf("p1")), mapOf("p1" to "203.0.113.7"))
 
             val probe =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 )
@@ -308,13 +308,13 @@ class EgressProbeTest :
         }
 
         test("a group with no free profile is reported as unknown") {
-            val (pool, _) = poolOf(mapOf("ip-1" to listOf("p1")), mapOf("p1" to "203.0.113.7"))
+            val (pool, api) = poolOf(mapOf("ip-1" to listOf("p1")), mapOf("p1" to "203.0.113.7"))
             // The only profile is taken, so there is nobody to ask.
             pool.borrowPage("ip-1")
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()
@@ -326,7 +326,7 @@ class EgressProbeTest :
         // ── The declared proxy against the proxy the browser really uses ────────────
 
         test("a group whose declared proxy is not the one its profiles use is a mismatch") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1")),
                     mapOf("p1" to "203.0.113.7"),
@@ -335,7 +335,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups =
                         listOf(
                             EgressGroup(
@@ -352,7 +352,7 @@ class EgressProbeTest :
         }
 
         test("a group declared direct whose profiles use a proxy is a mismatch") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1")),
                     mapOf("p1" to "203.0.113.7"),
@@ -361,7 +361,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups =
                         listOf(
                             EgressGroup(
@@ -377,7 +377,7 @@ class EgressProbeTest :
         }
 
         test("a group whose declared proxy is the one its profiles use is fine") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1")),
                     mapOf("p1" to "203.0.113.7"),
@@ -386,7 +386,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups =
                         listOf(
                             EgressGroup(
@@ -403,7 +403,7 @@ class EgressProbeTest :
         }
 
         test("a declared address that is not the one AdsPower shows is a mismatch") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1")),
                     mapOf("p1" to "203.0.113.7"),
@@ -412,7 +412,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups =
                         listOf(
                             EgressGroup(
@@ -433,7 +433,7 @@ class EgressProbeTest :
         }
 
         test("a declared address that is the one AdsPower shows is fine") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1")),
                     mapOf("p1" to "203.0.113.7"),
@@ -442,7 +442,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups =
                         listOf(
                             EgressGroup(
@@ -463,7 +463,7 @@ class EgressProbeTest :
         }
 
         test("a group that declares nothing is not compared with anything") {
-            val (pool, _) =
+            val (pool, api) =
                 poolOf(
                     mapOf("ip-1" to listOf("p1")),
                     mapOf("p1" to "203.0.113.7"),
@@ -472,7 +472,7 @@ class EgressProbeTest :
 
             val report =
                 EgressProbe(
-                    pool = pool,
+                    browser = BrowserAccess(pool = pool, adsPowerApi = api),
                     groups = listOf(EgressGroup("ip-1", listOf("p1"))),
                     config = EgressProbeConfig(echoUrls = listOf("https://echo.invalid/ip")),
                 ).probe()

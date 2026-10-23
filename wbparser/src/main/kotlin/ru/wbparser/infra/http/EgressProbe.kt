@@ -8,7 +8,6 @@ import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
 import ru.wbparser.browser.playwright.BrowserPage
-import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
@@ -108,7 +107,11 @@ data class EgressProbeConfig(
  * unreachable is worse than one that starts and says it does not know its address.
  */
 class EgressProbe(
-    private val pool: BrowserPool,
+    /**
+     * The browser stack this probe works with: the pool that lends a page and the
+     * AdsPower client that says what each profile is behind.
+     */
+    private val browser: BrowserAccess,
     private val groups: List<EgressGroup>,
     private val config: EgressProbeConfig = EgressProbeConfig(),
     private val meterRegistry: MeterRegistry? = null,
@@ -158,7 +161,7 @@ class EgressProbe(
      */
     private fun readConfiguredProxies(): Map<String, AdsPowerProfileProxy> {
         val listed =
-            runCatching { pool.adsPowerApi.listProfileProxies() }.getOrElse {
+            runCatching { browser.adsPowerApi.listProfileProxies() }.getOrElse {
                 log.warn("Could not read the AdsPower profile list: {}", it.message)
                 emptyList()
             }
@@ -313,7 +316,7 @@ class EgressProbe(
      */
     private suspend fun probeGroup(group: EgressGroup): String? {
         val page =
-            pool.tryBorrowPage(group.id, includeFlagged = true) ?: run {
+            browser.pool.tryBorrowPage(group.id, includeFlagged = true) ?: run {
                 log.warn("Egress group {} has no free profile to probe with", group.id)
                 return null
             }

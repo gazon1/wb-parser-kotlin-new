@@ -18,6 +18,7 @@ import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.testing.FakeBrowserPage
 import ru.wbparser.infra.db.DatabaseHandle
+import ru.wbparser.infra.http.BrowserAccess
 import ru.wbparser.infra.http.EgressGroupProbe
 import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressReport
@@ -104,14 +105,15 @@ class EgressProbeServiceTest :
 
         fun service(router: EgressRouter): EgressProbeService {
             val profiles = listOf(BrowserProfileConfig("p1", "ws://p1", "ip-1"))
+            val api = FakeAdsPower()
             val pool =
                 BrowserPool(
                     profiles = profiles,
-                    adsPower = AdsPowerConfig(api = FakeAdsPower()),
+                    adsPower = AdsPowerConfig(api = api),
                     browserAutomations = profiles.map { FakeBrowser(page()) },
                 )
             return EgressProbeService(
-                browserPool = pool,
+                browser = BrowserAccess(pool = pool, adsPowerApi = api),
                 properties =
                     CrawlProperties(
                         worker = Worker(enabled = true),

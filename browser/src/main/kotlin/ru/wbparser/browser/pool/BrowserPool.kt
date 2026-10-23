@@ -2,9 +2,8 @@ package ru.wbparser.browser.pool
 
 import org.slf4j.LoggerFactory
 import ru.wbparser.browser.adspower.AdsPowerApi
-import ru.wbparser.browser.adspower.AdsPowerApiResolver
+import ru.wbparser.browser.adspower.AdsPowerClients
 import ru.wbparser.browser.adspower.AdsPowerConfig
-import ru.wbparser.browser.adspower.RealAdsPowerApi
 import ru.wbparser.browser.endpoint.discoverChromeEndpoints
 import ru.wbparser.browser.playwright.BrowserAutomation
 import ru.wbparser.browser.playwright.CdpAutomation
@@ -47,6 +46,16 @@ import java.util.concurrent.atomic.AtomicInteger
  */
 class BrowserPool(
     private val profiles: List<BrowserProfileConfig>,
+    /**
+     * The AdsPower configuration of this pool.
+     *
+     * It carries the client as well as the endpoint and the timeout: one process
+     * talks to one AdsPower runtime, and the pre-flight check, the egress probe and
+     * the reconciliation need the *same* client — a second one would resolve a
+     * different port and could disagree with the pool about whether AdsPower is up.
+     * The pool keeps that client and does not give it away; the deployment creates
+     * it once (see [AdsPowerClients]) and hands it to everyone who needs it.
+     */
     private val adsPower: AdsPowerConfig = AdsPowerConfig(),
     /**
      * Optional list of [BrowserAutomation] instances, one per [profiles] entry.
@@ -71,7 +80,16 @@ class BrowserPool(
      * [SessionPolicy] for why every limit is zero until the measurement decides it.
      */
     private val sessionPolicy: SessionPolicy = SessionPolicy(),
-) : SessionSource {
+) : SessionSource,
+    BrowserLifecycle {
+    /**
+     * The AdsPower client this pool talks to.
+     *
+     * The one the configuration names, or a real one made here. Either way it is the
+     * pool's own, and the pool does not hand it out.
+     */
+    private val adsPowerApi: AdsPowerApi = AdsPowerClients.create(adsPower)
+
     /**
      * The groups this pool serves.
      *
@@ -89,27 +107,26 @@ class BrowserPool(
     private val cursor = AtomicInteger(0)
 
     /**
-     * The AdsPower client this pool talks to.
+     * The rule for closing a browser nobody asked for.
      *
-     * Exposed so the startup pre-flight check can ask the same client the pool
-     * uses — a separate client would resolve a different port and could disagree
-     * with the pool about whether AdsPower is up.
+     * Not the pool's decision: the pool decides which profile to hand out and when.
+     * This is a policy about the machine, and it lives in its own class so that the
+     * deployment can hold the rule rather than the pool.
      */
-    val adsPowerApi: AdsPowerApi
+    val idleSweeper: BrowserIdleSweeper
 
-    private var profileStates: List<BrowserProfileState>
+    /**
+     * The rule for closing the browsers when the process is gone.
+     *
+     * The one decision with no second chance: after the process ends, nothing else
+     * will ever close these browsers.
+     */
+    val shutdown: BrowserShutdown
+
+    private val profileStates: List<BrowserProfileState>
 
     init {
         require(profiles.isNotEmpty()) { "At least one profile is required" }
-        adsPowerApi =
-            adsPower.api ?: RealAdsPowerApi(
-                baseUrlProvider = { AdsPowerApiResolver.resolve(adsPower.apiBase) },
-                mapper = jsonMapper,
-                // The resolver caches the discovered port for the process; a failed
-                // call must drop that cache too, or discovery would keep returning
-                // the dead endpoint.
-                onBaseUrlInvalidated = { AdsPowerApiResolver.invalidate() },
-            )
         val allProfileIds = profiles.map { it.profileId }
         profileStates =
             profiles.mapIndexed { index, profile ->
@@ -128,6 +145,8 @@ class BrowserPool(
                         ),
                 )
             }
+        idleSweeper = BrowserIdleSweeper(profileStates)
+        shutdown = BrowserShutdown(profileStates)
     }
 
     /**
@@ -329,7 +348,7 @@ class BrowserPool(
 
     /** Cleanly shuts down all profiles. */
     fun close() {
-        profileStates.forEach { it.close() }
+        shutdown.closeConnections()
     }
 
     /**
@@ -339,12 +358,12 @@ class BrowserPool(
      * knows about": the first is stopped under the pool's permit, the second is
      * nobody's business in this process.
      */
-    val profileIds: List<String> get() = profiles.map { it.profileId }
+    override val managedProfileIds: List<String> get() = profiles.map { it.profileId }
 
     /**
      * Whether this pool manages the profile [profileId].
      */
-    fun manages(profileId: String): Boolean = profiles.any { it.profileId == profileId }
+    override fun manages(profileId: String): Boolean = profiles.any { it.profileId == profileId }
 
     /**
      * Stops the browser of one of this pool's profiles, if it is a leftover.
@@ -355,11 +374,8 @@ class BrowserPool(
      *
      * The permit is taken for the whole operation, so a profile that is in use right
      * now is left alone — the crawl's own work is never a leftover.
-     *
-     * @throws IllegalStateException when AdsPower does not confirm the stop. The
-     *   browser may still be running, and the caller has to be able to say so.
      */
-    internal fun reconcileProfile(profileId: String): ProfileReconciliation {
+    override fun reconcileProfile(profileId: String): ProfileReconciliation {
         val state =
             checkNotNull(profileStates.firstOrNull { it.profileConfig.profileId == profileId }) {
                 "the pool does not manage the profile $profileId"
@@ -367,95 +383,33 @@ class BrowserPool(
         if (!state.lock.tryAcquire()) return ProfileReconciliation.OWN
         try {
             if (state.wasStartedByPool() || state.wasUsed()) return ProfileReconciliation.OWN
-            // AdsPower is the only one that knows: the local fact dies with the
-            // process, and a browser left behind by an earlier run was never seen
-            // by this one.
-            val running = adsPowerApi.checkActiveV2(state.profileConfig.profileId) != null
-            if (!running) return ProfileReconciliation.NOT_RUNNING
-            check(state.closeAndStop(stopInAdsPower = true)) { "AdsPower did not confirm the stop" }
-            return ProfileReconciliation.STOPPED
+            return stopLeftover(state)
         } finally {
             state.lock.release()
         }
     }
 
     /**
-     * Closes the browsers that have not been used for [idleTimeoutMs].
+     * Stops the browser of a leftover, if it is still there.
      *
-     * A browser nobody asked for is a browser holding a window, a profile lock and
-     * its share of the machine's memory. Between two crawls — or between two targets
-     * of the same crawl — the profiles sit idle, and an idle browser is a browser
-     * that serves nothing.
-     *
-     * The next borrower reopens it: the pool connects lazily, and AdsPower starts
-     * the profile again. Closing an idle browser costs a start-up, and buys back a
-     * fresh session — which is not a bad trade against WB's rate limiter.
-     *
-     * @param now the current time in epoch milliseconds
-     * @param idleTimeoutMs how long a profile may rest before it is closed; zero or
-     *   less disables the closing
-     * @return how many browsers were closed
+     * A browser that is shutting down asynchronously is not a refusal: the profile is
+     * asked once more whether it is still there, and a browser that has gone needs no
+     * stop.
      */
-    fun closeIdleBrowsers(
-        now: Long,
-        idleTimeoutMs: Long,
-    ): Int {
-        if (idleTimeoutMs <= 0) return 0
-        var closed = 0
-        for (state in profileStates) {
-            // A profile in use is not idle. The lock is the same one the borrower
-            // holds, so tryLock tells us without waiting.
-            if (!state.lock.tryAcquire()) continue
-            try {
-                if (!state.isIdleSince(now, idleTimeoutMs)) continue
-                // "A browser may still be running", not "we are connected": a browser
-                // whose CDP connection died is still holding a window and a profile
-                // lock, and it is exactly the one that would otherwise never close.
-                if (!state.browserMayBeRunning()) continue
-                state.closeAndStop(stopInAdsPower = true)
-                closed++
-            } finally {
-                state.lock.release()
-            }
+    private fun stopLeftover(state: BrowserProfileState): ProfileReconciliation {
+        val profileId = state.profileConfig.profileId
+        // AdsPower is the only one that knows: the local fact dies with the
+        // process, and a browser left behind by an earlier run was never seen
+        // by this one.
+        if (adsPowerApi.checkActiveV2(profileId) == null) return ProfileReconciliation.NOT_RUNNING
+        if (state.closeAndStop(stopInAdsPower = true)) return ProfileReconciliation.STOPPED
+        // AdsPower did not confirm the stop. It may be shutting the browser down
+        // asynchronously, so the browser is asked once more whether it is still there.
+        return if (adsPowerApi.checkActiveV2(profileId) == null) {
+            ProfileReconciliation.NOT_RUNNING
+        } else {
+            ProfileReconciliation.REFUSED
         }
-        if (closed > 0) {
-            log.info("Closed {} idle browser(s) — they were not used for {} ms", closed, idleTimeoutMs)
-        }
-        return closed
-    }
-
-    /**
-     * Closes every browser this pool has used, and stops it in AdsPower.
-     *
-     * Called when the application exits. A browser left running after the crawler
-     * is gone keeps its window open on the machine and its profile locked — and the
-     * next run attaches to a session that is older than the one it would have
-     * created for itself.
-     *
-     * @return how many browsers were closed
-     */
-    fun closeAllBrowsers(): Int {
-        var closed = 0
-        for (state in profileStates) {
-            // A profile that is still in use is closed anyway: this is the way out of
-            // the process, and a browser that outlives the crawler is the thing we are
-            // fixing. A page that was borrowed and never released is a leak of its own,
-            // and it must not keep a browser alive.
-            val locked = state.lock.tryAcquire()
-            try {
-                // The same fact as in the idle sweep: a browser may still be running,
-                // whether or not we are still connected to it.
-                if (!state.browserMayBeRunning()) continue
-                state.closeAndStop(stopInAdsPower = true)
-                closed++
-            } finally {
-                if (locked) state.lock.release()
-            }
-        }
-        if (closed > 0) {
-            log.info("Closed {} browser(s) on shutdown", closed)
-        }
-        return closed
     }
 
     companion object {
@@ -467,12 +421,5 @@ class BrowserPool(
          * profiles are flagged at once.
          */
         const val DEFAULT_ANTIBOT_COOLDOWN_MS: Long = 180_000L
-
-        /** AdsPower's default DevTools port, used when `ss` is unavailable. */
-
-        @JvmStatic
-        private val jsonMapper =
-            com.fasterxml.jackson.databind
-                .ObjectMapper()
     }
 }

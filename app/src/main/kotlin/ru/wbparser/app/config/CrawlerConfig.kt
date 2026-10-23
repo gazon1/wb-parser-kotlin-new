@@ -4,7 +4,6 @@ import io.micrometer.core.instrument.MeterRegistry
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import ru.wbparser.browser.pool.BrowserPool
-import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
@@ -45,31 +44,6 @@ class CrawlerConfig {
      */
     @Bean
     fun egressGroups(properties: CrawlProperties): EgressGroups.Resolved = EgressGroups.resolve(properties.spider)
-
-    @Bean
-    fun browserPool(
-        properties: CrawlProperties,
-        groups: EgressGroups.Resolved,
-    ): BrowserPool {
-        // No hardcoded CDP WS URLs — BrowserPool.resolveCdpUrl() will call the
-        // AdsPower V2 /active endpoint, and if no browser is running it will call
-        // V2 /start to launch one with --remote-allow-origins=* so Playwright's
-        // CDP-over-WebSocket connection is accepted.
-        return BrowserPool(
-            profiles = groups.profiles,
-            // The budget of a group is not the pool's business: it belongs to the
-            // pacer registry, and every group already carries its own resolved
-            // pacing — its own, or the deployment's default.
-            // The session's limits are the deployment's, and they reach every session
-            // the pool creates. They are zero by default — see [Session] for why.
-            sessionPolicy =
-                SessionPolicy(
-                    requestsPerSession = properties.spider.session.requestsPerSession,
-                    maxAgeMs = properties.spider.session.maxAgeMs,
-                    retireOnRefusal = properties.spider.session.retireOnRefusal,
-                ),
-        )
-    }
 
     /**
      * The key the crawl's advisory lock is taken under.

@@ -57,7 +57,7 @@ class BrowserPoolLifecycleTest :
 
             // An hour after the use, the profile is idle.
             val closed =
-                pool.closeIdleBrowsers(
+                pool.idleSweeper.closeIdle(
                     now = System.currentTimeMillis() + 3_600_000L,
                     idleTimeoutMs = 300_000L,
                 )
@@ -74,7 +74,7 @@ class BrowserPoolLifecycleTest :
             pool.borrowPage().close()
 
             val closed =
-                pool.closeIdleBrowsers(
+                pool.idleSweeper.closeIdle(
                     now = System.currentTimeMillis(),
                     idleTimeoutMs = 300_000L,
                 )
@@ -90,7 +90,7 @@ class BrowserPoolLifecycleTest :
 
             pool.borrowPage().close()
 
-            pool.closeIdleBrowsers(now = System.currentTimeMillis() + 3_600_000L, idleTimeoutMs = 0L) shouldBe 0
+            pool.idleSweeper.closeIdle(now = System.currentTimeMillis() + 3_600_000L, idleTimeoutMs = 0L) shouldBe 0
             api.stoppedProfiles shouldBe emptyList()
         }
 
@@ -105,7 +105,7 @@ class BrowserPoolLifecycleTest :
             pool.borrowPage().close()
 
             val closed =
-                pool.closeIdleBrowsers(
+                pool.idleSweeper.closeIdle(
                     now = System.currentTimeMillis() + 3_600_000L,
                     idleTimeoutMs = 300_000L,
                 )
@@ -123,7 +123,7 @@ class BrowserPoolLifecycleTest :
             pool.borrowPage().close()
             pool.borrowPage().close()
 
-            val closed = pool.closeAllBrowsers()
+            val closed = pool.shutdown.closeAll()
 
             closed shouldBe 2
             api.stoppedProfiles.toSet() shouldBe setOf("p1", "p2")
@@ -136,7 +136,7 @@ class BrowserPoolLifecycleTest :
 
             // The pool never borrowed the profile: the browser it would have opened
             // was never opened, so there is nothing to stop.
-            pool.closeAllBrowsers() shouldBe 0
+            pool.shutdown.closeAll() shouldBe 0
             api.stoppedProfiles shouldBe emptyList()
         }
 
@@ -150,7 +150,7 @@ class BrowserPoolLifecycleTest :
 
             // AdsPower refused to close the profile. The crawler must still shut down:
             // a browser we cannot stop is a nuisance, not a reason to hang.
-            pool.closeAllBrowsers() shouldBe 1
+            pool.shutdown.closeAll() shouldBe 1
         }
 
         // ─── the browser whose connection died ─────────────────────────────────
@@ -176,7 +176,7 @@ class BrowserPoolLifecycleTest :
             automation.disconnect()
 
             val closed =
-                pool.closeIdleBrowsers(
+                pool.idleSweeper.closeIdle(
                     now = System.currentTimeMillis() + 3_600_000L,
                     idleTimeoutMs = 300_000L,
                 )
@@ -199,7 +199,7 @@ class BrowserPoolLifecycleTest :
             pool.borrowPage().close()
             automation.disconnect()
 
-            pool.closeAllBrowsers() shouldBe 1
+            pool.shutdown.closeAll() shouldBe 1
             api.stoppedProfiles shouldBe listOf("p1")
         }
 
@@ -213,11 +213,11 @@ class BrowserPoolLifecycleTest :
 
             // AdsPower did not confirm the stop, so the browser may still be running:
             // the fact that it may is kept, and the next attempt tries again.
-            pool.closeIdleBrowsers(
+            pool.idleSweeper.closeIdle(
                 now = System.currentTimeMillis() + 3_600_000L,
                 idleTimeoutMs = 300_000L,
             ) shouldBe 1
-            pool.closeIdleBrowsers(
+            pool.idleSweeper.closeIdle(
                 now = System.currentTimeMillis() + 3_600_000L,
                 idleTimeoutMs = 300_000L,
             ) shouldBe 1
