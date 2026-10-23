@@ -164,4 +164,109 @@ class PipelineBatchTest :
                 metrics.count { it.name == "requests" } shouldBe 1
             }
         }
+
+        test("a stage that throws does not swallow the error") {
+            runTest {
+                val p =
+                    pipeline(
+                        download = Stage { throw IllegalStateException("the stage blew up") },
+                    )
+                val batch = PipelineBatch(p, Coordinator(p.retryPolicy) { })
+
+                val result = batch.run(task("1", "/one"), mutableListOf(), concurrency = 1)
+
+                // The page is not a page: the stage never produced one.
+                result.donePages shouldBe emptyList()
+                // The error is not swallowed either — it comes back as the batch's
+                // failure, and it carries the message of the exception that caused it.
+                // An error nobody can read is an error nobody can act on.
+                val error = result.failureError.shouldBeInstanceOf<ru.wbparser.domain.error.NetworkError>()
+                error.message shouldBe "Unexpected: the stage blew up"
+            }
+        }
+
+        test("a parse that fails is reported with the parse's error") {
+            runTest {
+                val p =
+                    pipeline(
+                        download =
+                            Stage { task ->
+                                Step.Done(Fetched(task, CrawlHttpStatusCode(200), "{}", emptyMap(), 1))
+                            },
+                        parse =
+                            Stage { fetched ->
+                                Step.Fail(StageFailure.ParseFailure("the page was not a catalog", fetched.task.url.toString()))
+                            },
+                    )
+                val batch = PipelineBatch(p, Coordinator(p.retryPolicy) { })
+
+                val result = batch.run(task("1", "/one"), mutableListOf(), concurrency = 1)
+
+                result.donePages shouldBe emptyList()
+                val error = result.failureError.shouldBeInstanceOf<ru.wbparser.domain.error.ParseError>()
+                error.message shouldBe "the page was not a catalog"
+            }
+        }
+
+        test("a parse that asks for a retry comes back as a retryable task") {
+            runTest {
+                val p =
+                    pipeline(
+                        download =
+                            Stage { task ->
+                                Step.Done(Fetched(task, CrawlHttpStatusCode(200), "{}", emptyMap(), 1))
+                            },
+                        parse = Stage { Step.Retry(Retry.ServerError(attempt = 0)) },
+                        retryPolicy = RetryPolicy(maxAttempts = 3, baseDelayMs = 100, jitterPercent = 0.0),
+                    )
+                val batch = PipelineBatch(p, Coordinator(p.retryPolicy) { })
+
+                val result = batch.run(task("1", "/one"), mutableListOf(), concurrency = 1)
+
+                // The parse asked for a retry, so the task is handed back — it is not a
+                // failure, and it is not a page either.
+                result.retryableTasks.size shouldBe 1
+                result.retryableTasks.first().backoffMs shouldBe 100
+                result.donePages shouldBe emptyList()
+                result.failureError shouldBe null
+            }
+        }
+
+        test("a stage that answers Cont is a failure, not a page") {
+            runTest {
+                val p =
+                    pipeline(
+                        // No stage of this pipeline answers Cont — the branch is the
+                        // guard against a stage that starts doing it.
+                        download = Stage { task -> Step.Cont(task) },
+                    )
+                val batch = PipelineBatch(p, Coordinator(p.retryPolicy) { })
+
+                val result = batch.run(task("1", "/one"), mutableListOf(), concurrency = 1)
+
+                result.donePages shouldBe emptyList()
+                val error = result.failureError.shouldBeInstanceOf<ru.wbparser.domain.error.NetworkError>()
+                error.message shouldBe "Unexpected Cont"
+            }
+        }
+
+        test("a parse that answers Cont is a failure, not a page") {
+            runTest {
+                val p =
+                    pipeline(
+                        download =
+                            Stage { task ->
+                                Step.Done(Fetched(task, CrawlHttpStatusCode(200), "{}", emptyMap(), 1))
+                            },
+                        parse = Stage { fetched -> Step.Cont(fetched) },
+                    )
+                val batch = PipelineBatch(p, Coordinator(p.retryPolicy) { })
+
+                val result = batch.run(task("1", "/one"), mutableListOf(), concurrency = 1)
+
+                result.donePages shouldBe emptyList()
+                val error = result.failureError.shouldBeInstanceOf<ru.wbparser.domain.error.NetworkError>()
+                error.message shouldBe "Unexpected Cont"
+            }
+        }
     })
