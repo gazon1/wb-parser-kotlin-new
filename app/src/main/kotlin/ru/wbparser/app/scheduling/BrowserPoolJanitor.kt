@@ -38,6 +38,18 @@ class BrowserPoolJanitor(
     private val log = LoggerFactory.getLogger(BrowserPoolJanitor::class.java)
 
     /**
+     * What time it is, as far as the idle rule is concerned.
+     *
+     * This is a seam, not a knob: the deployment does not set it, and a test asks the
+     * janitor a different question — "what time is it an hour later?" — so that the
+     * answer does not depend on how fast the machine is. The idle rule is measured
+     * against the real clock, and a test that sweeps in the same millisecond as the
+     * borrow is asking whether a millisecond has passed: on a fast runner it has not,
+     * and the test would fail on speed rather than on behaviour.
+     */
+    internal var clock: () -> Long = System::currentTimeMillis
+
+    /**
      * Closes the browsers that have been idle for longer than the timeout.
      *
      * A tick, not a policy: the timeout decides what "idle" means. The interval only
@@ -48,7 +60,7 @@ class BrowserPoolJanitor(
     fun closeIdleBrowsers() {
         val idleTimeoutMs = properties.spider.browserIdleTimeoutMs
         if (idleTimeoutMs <= 0) return
-        val closed = idleSweeper.closeIdle(System.currentTimeMillis(), idleTimeoutMs)
+        val closed = idleSweeper.closeIdle(clock(), idleTimeoutMs)
         if (closed > 0) {
             log.info("Closed {} idle AdsPower browser(s) — unused for {} ms", closed, idleTimeoutMs)
         }

@@ -99,6 +99,14 @@ class BrowserPoolJanitorTest :
             // count starts here rather than at zero.
             val closesBefore = browser.closeCalls
             val janitor = BrowserPoolJanitor(pool.idleSweeper, pool.shutdown, properties(idleTimeoutMs = 1L, closeOnExit = true))
+            // The rule is measured against the clock: the pool recorded the moment of
+            // the last use, and the tick asks what time it is now. The test asks what
+            // time it is an hour later — the same idiom the pool's own lifecycle test
+            // uses — so the answer does not depend on how fast the machine is. On a
+            // fast runner the tick lands in the same millisecond as the borrow, the
+            // browser has not been idle for a millisecond yet, and the test would fail
+            // on speed rather than on behaviour.
+            janitor.clock = { System.currentTimeMillis() + 3_600_000L }
 
             janitor.closeIdleBrowsers()
 
