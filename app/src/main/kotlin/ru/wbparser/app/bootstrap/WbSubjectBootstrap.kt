@@ -47,6 +47,15 @@ class WbSubjectBootstrap(
 
     private val json = Json { ignoreUnknownKeys = true }
 
+    /**
+     * Where WB's subject dictionary is fetched from.
+     *
+     * This is a seam, not a knob: the deployment does not set it, and a test points it
+     * at a local server instead of WB's CDN — the same seam
+     * [ru.wbparser.app.scheduling.AdsPowerPreflightRunner.profileCacheDir] has.
+     */
+    internal var subjectsUrl: String = SUBJECTS_URL
+
     override fun run(args: ApplicationArguments) {
         val existing =
             runCatching { db.ds.countSubjects() }
@@ -60,7 +69,7 @@ class WbSubjectBootstrap(
             return
         }
 
-        log.info("Subject dictionary is empty — downloading it from {}", SUBJECTS_URL)
+        log.info("Subject dictionary is empty — downloading it from {}", subjectsUrl)
         val subjects =
             try {
                 fetchSubjects()
@@ -72,7 +81,7 @@ class WbSubjectBootstrap(
                     "Could not download WB's subject dictionary from {} ({}). " +
                         "Products will be stored without category names. " +
                         "Run scripts/wb-catalog/load_subjects.py to fill it.",
-                    SUBJECTS_URL,
+                    subjectsUrl,
                     describeJsonFailure(e),
                 )
                 return
@@ -107,7 +116,7 @@ class WbSubjectBootstrap(
                 .build()
         val request =
             HttpRequest
-                .newBuilder(URI.create(SUBJECTS_URL))
+                .newBuilder(URI.create(subjectsUrl))
                 .timeout(Duration.ofSeconds(60))
                 .header("Accept-Encoding", "gzip")
                 .GET()

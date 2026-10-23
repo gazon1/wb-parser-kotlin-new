@@ -45,7 +45,7 @@
 #   checked against a real Chrome: `app` 93% against 95.0%, `browser` 95% against
 #   96.5%, `merged` 94% against 95.4%, `wbparser` 94% against 95.3% (2026-10-23).
 
-app 93
+app 94
 browser 95
-merged 94
+merged 95
 wbparser 95
