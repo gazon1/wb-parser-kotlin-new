@@ -10,8 +10,8 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import org.slf4j.Logger
-import ru.wbparser.domain.pipeline.CrawlJobsTable
 import ru.wbparser.domain.value.JobStatus
+import ru.wbparser.infra.db.CrawlJobsTable
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.db.exposedOnce
 import ru.wbparser.infra.db.repositories.CrawlJobQueries

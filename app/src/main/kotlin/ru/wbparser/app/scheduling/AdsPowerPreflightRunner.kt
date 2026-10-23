@@ -129,7 +129,7 @@ class AdsPowerPreflightRunner(
                     "or the crawler will treat one address as several budgets.",
             )
             if (strict) {
-                throw IllegalStateException(
+                error(
                     "Egress groups are misconfigured and crawler.spider.require-isolated-egress-groups is on",
                 )
             }

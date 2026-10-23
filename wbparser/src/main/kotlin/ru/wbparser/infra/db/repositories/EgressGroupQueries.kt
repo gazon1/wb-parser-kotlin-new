@@ -3,7 +3,7 @@ package ru.wbparser.infra.db.repositories
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
-import ru.wbparser.domain.pipeline.CrawlEgressGroupsTable
+import ru.wbparser.infra.db.CrawlEgressGroupsTable
 import ru.wbparser.infra.db.exposedOnce
 import java.time.Instant
 import java.time.ZoneOffset

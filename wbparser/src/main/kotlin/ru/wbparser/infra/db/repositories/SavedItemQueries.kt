@@ -8,8 +8,8 @@ import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.model.SavedItem
-import ru.wbparser.domain.pipeline.CategoryMappingsTable
-import ru.wbparser.domain.pipeline.ScrapedItemsTable
+import ru.wbparser.infra.db.CategoryMappingsTable
+import ru.wbparser.infra.db.ScrapedItemsTable
 import ru.wbparser.infra.db.exposedOnce
 import java.math.BigDecimal
 import java.sql.Connection

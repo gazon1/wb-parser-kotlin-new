@@ -1,8 +1,7 @@
 package ru.wbparser.browser.testing
 
-import com.microsoft.playwright.Page
-import io.mockk.mockk
 import ru.wbparser.browser.playwright.BrowserAutomation
+import ru.wbparser.browser.playwright.BrowserPage
 
 /**
  * A fake [BrowserAutomation] that records calls and returns configurable responses.
@@ -13,15 +12,19 @@ import ru.wbparser.browser.playwright.BrowserAutomation
 class FakeBrowserAutomation(
     private var _isConnected: Boolean = false,
     private var _healthCheckResult: Boolean = true,
-    private var _currentPage: Page? = null,
+    private var _currentPage: BrowserPage? = null,
     /**
      * Thrown by [connect] — stands for a browser that cannot be opened.
      *
      * A profile whose browser does not come up must not take the crawl with it: the pool
      * closes it and hands out the next one. That path needs a browser that fails to open,
      * which is what this is.
+     *
+     * It is a `var` so that a test can let a browser fail once and then recover: the
+     * question "does a profile that failed to open stay in the rotation?" can only be
+     * asked of a browser that fails once and works afterwards.
      */
-    private val connectFailure: Throwable? = null,
+    var connectFailure: Throwable? = null,
 ) : BrowserAutomation {
     private val _connectCalls = mutableListOf<String>()
     val connectCalls: List<String> get() = _connectCalls.toList()
@@ -33,18 +36,18 @@ class FakeBrowserAutomation(
     val closeCalls: List<Unit> get() = _closeCalls.toList()
 
     override val isConnected: Boolean get() = _isConnected
-    override val currentPage: Page? get() = _currentPage
+    override val currentPage: BrowserPage? get() = _currentPage
 
     override fun healthCheck(): Boolean {
         _healthCheckCalls += Unit
         return _healthCheckResult
     }
 
-    override fun connect(cdpUrl: String): Page {
+    override fun connect(cdpUrl: String): BrowserPage {
         _connectCalls += cdpUrl
         connectFailure?.let { throw it }
         _isConnected = true
-        val page = _currentPage ?: mockk<Page>(relaxed = true)
+        val page = _currentPage ?: FakeBrowserPage()
         _currentPage = page
         return page
     }

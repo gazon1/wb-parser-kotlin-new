@@ -4,14 +4,14 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
-import io.mockk.every
-import io.mockk.mockk
 import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
+import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.testing.FakeAdsPowerApi
 import ru.wbparser.browser.testing.FakeBrowserAutomation
+import ru.wbparser.browser.testing.FakeBrowserPage
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
 
 /**
@@ -28,14 +28,7 @@ class EgressProbeTest :
         /**
          * A page that answers every echo request with [answer].
          */
-        fun pageAnswering(answer: String): com.microsoft.playwright.Page {
-            val page = mockk<com.microsoft.playwright.Page>(relaxed = true)
-            // The one-argument form is a default method that delegates to the
-            // two-argument one — and a mock intercepts it before the delegation
-            // happens, so the stub has to be on the form the probe calls.
-            every { page.evaluate(any<String>()) } returns answer
-            return page
-        }
+        fun pageAnswering(answer: String): BrowserPage = FakeBrowserPage(evaluateAnswer = answer)
 
         fun poolOf(
             groups: Map<String, List<String>>,

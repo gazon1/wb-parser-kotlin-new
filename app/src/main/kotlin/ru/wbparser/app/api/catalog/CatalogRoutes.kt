@@ -84,7 +84,7 @@ class CatalogRoutes(
             try {
                 UUID.fromString(id)
             } catch (e: IllegalArgumentException) {
-                throw CatalogBadRequestException("id is not a UUID")
+                throw CatalogBadRequestException("id is not a UUID", e)
             }
         return queries.getItem(parsed) ?: throw CatalogNotFoundException("no such product")
     }

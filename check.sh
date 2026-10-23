@@ -40,58 +40,79 @@ fail() { echo -e "${RED}$1${NC}"; exit 1; }
 step 1 "static gates (the shared registry)"
 bash scripts/ci/static-gates.sh || fail "a static gate failed — see scripts/ci/static-gates.sh"
 
-# --- [2] merged module unit tests --------------------------------------------
+# --- [2] dependency health (DAGP) ---------------------------------------------
+# The dependency-analysis plugin compares what the build declares against what
+# the bytecode uses, and fails the build on every finding that is not in the
+# accepted-findings list in build.gradle.kts. That list is the baseline: it may
+# only shrink, one entry per fixed problem.
+#
+# It needs a JVM and build output, so it cannot live in scripts/ci/static-gates.sh
+# (the registry for gates that need neither). It runs here and in ci.yml's
+# `dependency-health` job — the same task on both surfaces, which is what Part E
+# of check-gate-wiring.py compares.
+#
+# It runs second, before the tests, on purpose. A missing declaration is a fact
+# about the bytecode, and the bytecode is there long before the test suite has
+# finished: in CI this gate is its own parallel job and fails in two minutes,
+# while here it used to run tenth, after eleven minutes of tests. A gate that
+# answers in two minutes and one that answers in thirteen are not the same gate.
+step 2 "dependency health (DAGP)"
+./gradlew buildHealth --quiet || fail "dependency analysis FAILED — a new finding, or the plugin did not run"
+echo -e "${GREEN}dependency health passed${NC}"
+
+
+# --- [3] merged module unit tests --------------------------------------------
 # The wbparser module (domain + infrastructure merged) carries no Spring, no I/O.
 # If its tests fail, every failure above it is downstream, so they run first.
 #
 # The browser module runs in the same step: it carries no Spring and no I/O either,
 # and its suites cover the AdsPower client, the CDP overlay and the profile pool —
 # the code the crawler leans on hardest.
-step 2 "wbparser:test + browser:test"
+step 3 "wbparser:test + browser:test"
 ./gradlew :wbparser:test :browser:test --quiet || fail "wbparser:test / browser:test FAILED"
 echo -e "${GREEN}wbparser:test + browser:test passed${NC}"
 
-# --- [3] integration tests ----------------------------------------------------
+# --- [4] integration tests ----------------------------------------------------
 if [[ "$SKIP_DB" == "1" ]]; then
-    step 3 "tests:test — SKIPPED (SKIP_DB=1)"
+    step 4 "tests:test — SKIPPED (SKIP_DB=1)"
     echo -e "${YELLOW}    skipped: these suites start Testcontainers${NC}"
 else
-    step 3 "tests:test (Testcontainers)"
+    step 4 "tests:test (Testcontainers)"
     ./gradlew :tests:test --quiet || fail "tests:test FAILED"
     echo -e "${GREEN}tests:test passed${NC}"
 fi
 
-# --- [4] application compiles and its own tests run ----------------------------
+# --- [5] application compiles and its own tests run ----------------------------
 # The app module has its own test source set, and the executed-test floor in
-# config/gates/test-runs-floor.txt records it: step 6 reads the JUnit XML the run
+# config/gates/test-runs-floor.txt records it: step 7 reads the JUnit XML the run
 # produced, and a module whose XML directory is missing is a failure, not a module
 # without tests. The local loop ran only :wbparser:test and :tests:test, so the app
 # suite never produced its XML here — while CI runs `./gradlew test`, which covers
 # every module. The same tests, the same floor, one gap fewer.
-step 4 "app:compileKotlin + app:test"
+step 5 "app:compileKotlin + app:test"
 ./gradlew :app:compileKotlin --quiet || fail "app:compileKotlin FAILED"
 ./gradlew :app:test --quiet || fail "app:test FAILED"
 echo -e "${GREEN}app:compileKotlin + app:test passed${NC}"
 
-# --- [5] compileOnly/runtime classpath ----------------------------------------
+# --- [6] compileOnly/runtime classpath ----------------------------------------
 # A compileOnly dep missing at runtime causes NoClassDefFoundError at startup —
 # tests pass because the test classpath includes it, but bootJar crashes.
 # bootJar transitively resolves the full runtime classpath and fails fast.
-step 5 "compileOnly/runtime gate (bootJar)"
+step 6 "compileOnly/runtime gate (bootJar)"
 chmod +x scripts/ci/check-compileonly-runtime.sh
 bash scripts/ci/check-compileonly-runtime.sh || fail "compileOnly/runtime gate FAILED"
 echo -e "${GREEN}compileOnly/runtime gate passed${NC}"
 
-# --- [6] executed test counts -------------------------------------------------
+# --- [7] executed test counts -------------------------------------------------
 # "Tests passed" is not "the tests ran". Gradle reports BUILD SUCCESSFUL whether a
 # suite executed 227 tests or none, and a task that is UP-TO-DATE does not
 # rewrite its results directory at all. A floor compared against a committed
 # count is the only thing that notices. Run this AFTER the test steps, never
 # before — it reads the XML they produced.
-step 6 "executed test counts"
+step 7 "executed test counts"
 python3 scripts/check-test-runs.py || fail "a test source set ran fewer tests than its recorded floor"
 
-# --- [7] line coverage --------------------------------------------------------
+# --- [8] line coverage --------------------------------------------------------
 # The floor lives in config/gates/coverage-floor.txt, one `<module> <percent>` row per
 # module, and scripts/check-coverage.py is the gate: it reads the report the build
 # produced and compares it with the floor. The floor used to live in the build script
@@ -101,21 +122,21 @@ python3 scripts/check-test-runs.py || fail "a test source set ran fewer tests th
 #
 # The report task is not skipped on failure: a missing report means "the coverage task
 # did not run", which is not the same as "no coverage".
-step 7 "line coverage ≥ floor (config/gates/coverage-floor.txt)"
+step 8 "line coverage ≥ floor (config/gates/coverage-floor.txt)"
 ./gradlew koverXmlReport --quiet || fail "coverage report was not produced"
 python3 scripts/check-coverage.py || fail "coverage below floor (see config/gates/coverage-floor.txt)"
 
-# --- [8] lint ------------------------------------------------------------------
+# --- [9] lint ------------------------------------------------------------------
 # ktlint and detekt are applied in the root build's `subprojects { }` block, so
 # every module has both tasks. They were declared in the version catalogue and
 # never applied, which is why ci.yml's `lint` job could only ever fail with
 # "Task not found" — a gate that reports success forever because it cannot run
 # is the class of defect Part A of check-gate-wiring.py now prevents.
-step 8 "ktlint + detekt (all modules)"
+step 9 "ktlint + detekt (all modules)"
 ./gradlew ktlintCheck detekt --quiet || fail "lint reported violations"
 echo -e "${GREEN}lint passed${NC}"
 
-# --- [9] gates are reachable and can fail -------------------------------------
+# --- [10] gates are reachable and can fail -------------------------------------
 # Part A2 asks whether every Gradle task a gate names actually exists — the direct
 # guard on the "Task not found" failure that let ktlintCheck and detekt report
 # success forever. Part A3 asks the follow-up a static scan cannot: whether
@@ -128,23 +149,9 @@ echo -e "${GREEN}lint passed${NC}"
 # deliberately broken input. It lives here rather than in the static registry
 # because Parts A2/A3 need a JVM, and a gate that proves another gate works
 # inherits that gate's preconditions and runs at its own time.
-step 9 "gates are reachable, in the lifecycle, and can fail"
+step 10 "gates are reachable, in the lifecycle, and can fail"
 python3 scripts/check-gate-wiring.py --tasks-exist --can-fail \
     || fail "gate wiring check FAILED — an unreachable gate, or one that cannot fail"
-
-# --- [10] dependency health (DAGP) ---------------------------------------------
-# The dependency-analysis plugin compares what the build declares against what
-# the bytecode uses, and fails the build on every finding that is not in the
-# accepted-findings list in build.gradle.kts. That list is the baseline: it may
-# only shrink, one entry per fixed problem.
-#
-# It needs a JVM and build output, so it cannot live in scripts/ci/static-gates.sh
-# (the registry for gates that need neither). It runs here and in ci.yml's
-# `dependency-health` job — the same task on both surfaces, which is what Part E
-# of check-gate-wiring.py compares.
-step 10 "dependency health (DAGP)"
-./gradlew buildHealth --quiet || fail "dependency analysis FAILED — a new finding, or the plugin did not run"
-echo -e "${GREEN}dependency health passed${NC}"
 
 # --- [11] runtime classpath --------------------------------------------------
 # The build believes one classpath; the image ships another. Nothing compared

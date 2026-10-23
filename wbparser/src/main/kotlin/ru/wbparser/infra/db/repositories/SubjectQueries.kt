@@ -2,7 +2,7 @@ package ru.wbparser.infra.db.repositories
 
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.transactions.transaction
-import ru.wbparser.domain.pipeline.WbSubjectsTable
+import ru.wbparser.infra.db.WbSubjectsTable
 import ru.wbparser.infra.db.exposedOnce
 import javax.sql.DataSource
 

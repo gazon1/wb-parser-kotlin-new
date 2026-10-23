@@ -1,4 +1,4 @@
-package ru.wbparser.domain.pipeline
+package ru.wbparser.infra.db
 
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -24,9 +24,14 @@ private val json = Json { ignoreUnknownKeys = true }
 /**
  * Exposed table definitions mirroring the Flyway migrations.
  *
- * These live in `domain/` so the DSL is close to the domain model.  Exposed table
- * objects are pure metadata — no runtime framework coupling — which is why they are
- * safe to include as `compileOnly` dependencies.
+ * These live next to the queries that use them, in the infrastructure layer: they are
+ * the mapping of the database schema, not of the domain model. The domain model
+ * (`SavedItem`, `Crawling`, `Target`) is a set of Kotlin types that know nothing about
+ * the database, and this file is where the two meet.
+ *
+ * They used to live in `domain/`, which put the Exposed DSL inside the one package
+ * that is supposed to be free of it. The purity gate had to exempt this file by
+ * name; now it does not have to.
  *
  * ## Schema contract
  *

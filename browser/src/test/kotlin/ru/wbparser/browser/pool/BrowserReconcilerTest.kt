@@ -3,8 +3,11 @@ package ru.wbparser.browser.pool
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import ru.wbparser.browser.adspower.AdsPowerConfig
+import ru.wbparser.browser.adspower.AdsPowerProfileProxy
 import ru.wbparser.browser.adspower.AdsPowerUnavailableException
 import ru.wbparser.browser.testing.FakeAdsPowerApi
+import ru.wbparser.browser.testing.FakeBrowserAutomation
 
 /**
  * The reconciliation that stops the browsers a killed crawler left behind.
@@ -14,24 +17,36 @@ import ru.wbparser.browser.testing.FakeAdsPowerApi
  * The next run finds them, and the rule "the crawler closes the browsers it used"
  * cannot close them on its own, because this run did not open them.
  *
- * These tests pin the two things that matter: a browser that is running gets
- * stopped, and a reconciliation that could not run says so instead of pretending
- * there was nothing to do.
+ * These tests pin four things: a browser that is running gets stopped, a browser of
+ * this run is left alone, a profile the configuration forgot is still stopped, and a
+ * reconciliation that could not run says so instead of pretending there was nothing
+ * to do.
  */
 class BrowserReconcilerTest :
     FunSpec({
 
         val wsUrl = "ws://127.0.0.1:9222/devtools/browser/abc"
 
+        /** A pool of one profile, with fakes for everything it talks to. */
+        fun poolWith(
+            api: FakeAdsPowerApi,
+            vararg profileIds: String,
+        ): BrowserPool =
+            BrowserPool(
+                profiles = profileIds.map { BrowserProfileConfig(it, null) },
+                adsPower = AdsPowerConfig(api = api),
+                browserAutomations = profileIds.map { FakeBrowserAutomation(_isConnected = false) },
+            )
+
         test("a browser left running by the previous run is stopped") {
             val api = FakeAdsPowerApi()
             api.whenCheckActive("p1", wsUrl)
 
-            val outcome = BrowserReconciler(api, listOf("p1")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1")).reconcile()
 
             val reconciled = outcome as ReconcileOutcome.Reconciled
             reconciled.stopped shouldContainExactly listOf("p1")
-            reconciled.alreadyClosed shouldBe emptyList()
+            reconciled.notRunning shouldBe emptyList()
             reconciled.failures shouldBe emptyMap()
             api.stoppedProfiles shouldContainExactly listOf("p1")
         }
@@ -39,19 +54,51 @@ class BrowserReconcilerTest :
         test("a browser that is not running is left alone") {
             val api = FakeAdsPowerApi()
 
-            val outcome = BrowserReconciler(api, listOf("p1")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1")).reconcile()
 
             val reconciled = outcome as ReconcileOutcome.Reconciled
             reconciled.stopped shouldBe emptyList()
-            reconciled.alreadyClosed shouldContainExactly listOf("p1")
+            reconciled.notRunning shouldContainExactly listOf("p1")
             api.stoppedProfiles shouldBe emptyList()
+        }
+
+        test("a browser of this run is not stopped by the reconciliation") {
+            val api = FakeAdsPowerApi()
+            api.whenCheckActive("p1", wsUrl)
+            val pool = poolWith(api, "p1")
+
+            // The run borrows the profile: the browser is ours now, and the
+            // reconciliation is about the browsers of the *previous* run.
+            pool.borrowPage().close()
+
+            val outcome = BrowserReconciler(pool).reconcile()
+
+            val reconciled = outcome as ReconcileOutcome.Reconciled
+            reconciled.stopped shouldBe emptyList()
+            reconciled.ours shouldContainExactly listOf("p1")
+            api.stoppedProfiles shouldBe emptyList()
+        }
+
+        test("a profile AdsPower knows about and the configuration does not is stopped too") {
+            val api = FakeAdsPowerApi()
+            api.whenCheckActive("gone", wsUrl)
+            api.profileProxies = listOf(AdsPowerProfileProxy(profileId = "gone", proxyHost = null, proxyPort = null, proxyType = null))
+
+            // The pool knows one profile; AdsPower knows two. The one that was taken
+            // out of the configuration left its browser behind too, and a
+            // reconciliation that only looked at the configuration would never see it.
+            val outcome = BrowserReconciler(poolWith(api, "p1")).reconcile()
+
+            val reconciled = outcome as ReconcileOutcome.Reconciled
+            reconciled.stopped shouldContainExactly listOf("gone")
+            api.stoppedProfiles shouldContainExactly listOf("gone")
         }
 
         test("an unreachable Local API skips the reconciliation and says why") {
             val api = FakeAdsPowerApi()
             api.apiAvailable = false
 
-            val outcome = BrowserReconciler(api, listOf("p1")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1")).reconcile()
 
             // Not "there was nothing to do": the question could not be asked.
             outcome shouldBe
@@ -67,7 +114,7 @@ class BrowserReconcilerTest :
             api.whenCheckActive("p2", wsUrl)
             api.stopSucceeds = false
 
-            val outcome = BrowserReconciler(api, listOf("p1", "p2")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1", "p2")).reconcile()
 
             val reconciled = outcome as ReconcileOutcome.Reconciled
             reconciled.stopped shouldBe emptyList()
@@ -80,18 +127,9 @@ class BrowserReconcilerTest :
             api.whenCheckActive("p1", wsUrl)
             api.checkActiveFailure = AdsPowerUnavailableException("the runtime went away")
 
-            val outcome = BrowserReconciler(api, listOf("p1")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1")).reconcile()
 
             val reconciled = outcome as ReconcileOutcome.Reconciled
             reconciled.failures.getValue("p1") shouldBe "the runtime went away"
-        }
-
-        test("no profiles means nothing to reconcile, and nothing is reported") {
-            val api = FakeAdsPowerApi()
-
-            val outcome = BrowserReconciler(api, emptyList()).reconcile()
-
-            outcome shouldBe ReconcileOutcome.Reconciled(emptyList(), emptyList(), emptyMap())
-            api.calls shouldBe emptyList()
         }
     })

@@ -1,12 +1,9 @@
 package ru.wbparser.app.scheduling
 
-import com.microsoft.playwright.Page
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
-import io.mockk.every
-import io.mockk.mockk
 import org.jetbrains.exposed.sql.Database
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.EgressGroupConfig
@@ -18,7 +15,9 @@ import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
 import ru.wbparser.browser.playwright.BrowserAutomation
+import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
+import ru.wbparser.browser.testing.FakeBrowserPage
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressRouter
@@ -42,21 +41,17 @@ class AdsPowerPreflightRunnerTest :
         /**
          * A page that answers every echo request with [answer].
          */
-        fun pageAnswering(answer: String): Page {
-            val page = mockk<Page>(relaxed = true)
-            every { page.evaluate(any<String>()) } returns answer
-            return page
-        }
+        fun pageAnswering(answer: String): BrowserPage = FakeBrowserPage(evaluateAnswer = answer)
 
         class FakeBrowser(
-            private val page: Page,
+            private val page: BrowserPage,
         ) : BrowserAutomation {
             override var isConnected: Boolean = true
-            override val currentPage: Page? get() = page
+            override val currentPage: BrowserPage? get() = page
 
             override fun healthCheck(): Boolean = true
 
-            override fun connect(cdpUrl: String): Page = page
+            override fun connect(cdpUrl: String): BrowserPage = page
 
             override fun close() {
                 isConnected = false

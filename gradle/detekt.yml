@@ -9,6 +9,10 @@ style:
   active: true
   MagicNumber:
     active: false
+  # `check`/`require` say what the code expects; a bare `throw IllegalStateException`
+  # says only that something was wrong.
+  UseCheckOrError:
+    active: true
   ReturnCount:
     active: true
     max: 4
@@ -59,5 +63,11 @@ potential-bugs:
 
 exceptions:
   active: true
+  # A caught exception that is never used is an error nobody can see. The
+  # repository's own rule says so — the error must reach a StageFailure or a log —
+  # and the rule was only ever prose until now.
   SwallowedException:
-    active: false
+    active: true
+  # A `throw RuntimeException(...)` tells the reader nothing about what to catch.
+  TooGenericExceptionThrown:
+    active: true

@@ -6,8 +6,8 @@ import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
-import ru.wbparser.domain.pipeline.CrawlJobsTable
 import ru.wbparser.domain.value.JobStatus
+import ru.wbparser.infra.db.CrawlJobsTable
 import ru.wbparser.infra.db.exposedOnce
 import java.time.Duration
 import java.time.OffsetDateTime

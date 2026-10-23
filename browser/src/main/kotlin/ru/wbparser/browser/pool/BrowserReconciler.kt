@@ -1,8 +1,21 @@
 package ru.wbparser.browser.pool
 
 import org.slf4j.LoggerFactory
-import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerUnavailableException
+
+/**
+ * What one profile's browser looked like during the reconciliation.
+ */
+enum class ProfileReconciliation {
+    /** A browser left behind by an earlier run was stopped. */
+    STOPPED,
+
+    /** No browser was running for this profile. */
+    NOT_RUNNING,
+
+    /** The browser is this process's own — it is in use, or this process opened it. */
+    OWN,
+}
 
 /**
  * What a reconciliation found.
@@ -16,12 +29,14 @@ sealed interface ReconcileOutcome {
      * The reconciliation ran.
      *
      * @param stopped the profiles whose browser was running and has been stopped.
-     * @param alreadyClosed the profiles that were not running.
+     * @param notRunning the profiles that had no browser running.
+     * @param ours the profiles this process is using — left alone, on purpose.
      * @param failures the profiles that could not be stopped, and why.
      */
     data class Reconciled(
         val stopped: List<String>,
-        val alreadyClosed: List<String>,
+        val notRunning: List<String>,
+        val ours: List<String>,
         val failures: Map<String, String>,
     ) : ReconcileOutcome
 
@@ -51,6 +66,18 @@ sealed interface ReconcileOutcome {
  * first request of each profile pays the warm-up again — and that is the trade the
  * crawler already makes every time it closes an idle browser.
  *
+ * ## The scope is every profile AdsPower knows about
+ *
+ * Not only the profiles the configuration names. A profile that was taken out of
+ * the configuration leaves its browser behind too, and a reconciliation that only
+ * looked at the current configuration would never see it: the crawler would not
+ * even know the profile exists.
+ *
+ * The crawler owns the AdsPower runtime it talks to — in the deployment the
+ * runtime is a container of the crawler's own — so every profile in it is the
+ * crawler's to close. A deployment that shares one AdsPower runtime between two
+ * crawlers turns the reconciliation off (`crawler.spider.reconcile-browsers-on-start`).
+ *
  * ## What it does not do
  *
  * It does not fail the startup. The AdsPower runtime may legitimately come up after
@@ -58,20 +85,18 @@ sealed interface ReconcileOutcome {
  * not a reason to refuse to start.
  */
 class BrowserReconciler(
-    private val api: AdsPowerApi,
-    private val profileIds: List<String>,
+    private val pool: BrowserPool,
 ) {
     private val log = LoggerFactory.getLogger(BrowserReconciler::class.java)
 
+    private val api get() = pool.adsPowerApi
+
     /**
-     * Stops every browser that is still running for the configured profiles.
+     * Stops every browser that is still running and does not belong to this run.
      *
      * Never throws: every failure becomes a line in the report.
      */
     fun reconcile(): ReconcileOutcome {
-        if (profileIds.isEmpty()) {
-            return ReconcileOutcome.Reconciled(emptyList(), emptyList(), emptyMap())
-        }
         if (!api.isAvailable()) {
             return ReconcileOutcome.Skipped(
                 "the AdsPower Local API did not answer — the browsers of the previous run " +
@@ -79,36 +104,63 @@ class BrowserReconciler(
             )
         }
 
+        val scope = scope()
+
         val stopped = mutableListOf<String>()
-        val alreadyClosed = mutableListOf<String>()
+        val notRunning = mutableListOf<String>()
+        val ours = mutableListOf<String>()
         val failures = mutableMapOf<String, String>()
 
-        for (profileId in profileIds) {
-            val running =
+        for (profileId in scope) {
+            val result =
                 try {
-                    api.checkActiveV2(profileId) != null
-                } catch (e: AdsPowerUnavailableException) {
-                    failures[profileId] = e.message ?: "the AdsPower Local API did not answer"
-                    continue
-                }
-            if (!running) {
-                alreadyClosed += profileId
-                continue
-            }
-            val stoppedOk =
-                try {
-                    api.stopProfileV2(profileId)
+                    reconcileOne(profileId)
                 } catch (e: Exception) {
                     failures[profileId] = e.message ?: "the browser could not be stopped"
                     continue
                 }
-            if (stoppedOk) {
-                stopped += profileId
-            } else {
-                failures[profileId] = "AdsPower did not confirm the stop"
+            when (result) {
+                ProfileReconciliation.STOPPED -> stopped += profileId
+                ProfileReconciliation.NOT_RUNNING -> notRunning += profileId
+                ProfileReconciliation.OWN -> ours += profileId
             }
         }
 
-        return ReconcileOutcome.Reconciled(stopped, alreadyClosed, failures)
+        return ReconcileOutcome.Reconciled(stopped, notRunning, ours, failures)
     }
+
+    /**
+     * Every profile this reconciliation is about.
+     *
+     * The pool's own profiles, plus every profile AdsPower knows about.
+     */
+    private fun scope(): List<String> {
+        val ids = linkedSetOf<String>()
+        ids += pool.profileIds
+        try {
+            api.listProfileProxies().forEach { ids += it.profileId }
+        } catch (e: AdsPowerUnavailableException) {
+            log.warn("The list of AdsPower profiles could not be read: {}", e.message)
+        }
+        return ids.toList()
+    }
+
+    /**
+     * What one profile's browser is: a leftover to stop, nothing running, or ours.
+     */
+    private fun reconcileOne(profileId: String): ProfileReconciliation =
+        if (pool.manages(profileId)) {
+            // The pool knows the profile: it holds its permit, and it knows whether
+            // this process is the one using the browser.
+            pool.reconcileProfile(profileId)
+        } else {
+            // A profile this deployment does not manage: nobody here will ever start
+            // it, so there is nothing to race with.
+            if (api.checkActiveV2(profileId) == null) {
+                ProfileReconciliation.NOT_RUNNING
+            } else {
+                check(api.stopProfileV2(profileId)) { "AdsPower did not confirm the stop" }
+                ProfileReconciliation.STOPPED
+            }
+        }
 }

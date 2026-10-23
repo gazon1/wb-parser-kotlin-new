@@ -422,6 +422,22 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** останавливать краулер из-за недоступного эхо-сервиса: это «проверка не выполнилась», а не «проверка провалилась». _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **Never** переносить накопленное старым адресом на новый: circuit, книги и штраф. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **Never** считать `crawl_targets` историей прогонов: это агрегат цели, а не журнал. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Always** keep the surface of a contract to what the consumer actually calls. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
+- **Always** translate the failures of the hidden library into the module's own type, keeping the message: the caller decides what the failure means. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
+- **Never** let a consumer of a module declare the module's hidden dependency. DAGP reports it, and the report is right. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
+- **Never** let a public type of a module name a type the module hides. The boundary is enforced by the compiler, not by a convention. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
+- **Always** reconcile every profile AdsPower knows, not only the configured ones. A profile removed from the configuration is the one that leaks. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
+- **Always** retry the reconciliation until it is confirmed. A skipped reconciliation is a browser nobody looked for. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
+- **Never** fail the startup because the reconciliation could not run. The AdsPower runtime may legitimately come up later; that is a fact to report, not a reason to refuse to start. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
+- **Never** let the reconciliation close a browser of this run. The permit, the `startedByPool` fact and the "has been borrowed" fact are the three answers to "is it ours". _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
+- **Never** share one AdsPower runtime between two crawlers with the reconciliation on. The second one would stop the first one's browsers. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
+- **Always** measure a rule before enabling it, and record the rules that were measured and left off. _(from `2026-10-23-the-rules-live-where-they-are-enforced`)
+- **Always** put a rule where it is enforced: a pattern in a check, a judgement in `CODING_STANDARDS.md`, and neither in `AGENTS.md`. _(from `2026-10-23-the-rules-live-where-they-are-enforced`)
+- **Never** duplicate a rule between the check and the standards file. The copy goes stale silently, and the stale copy is the one that is read. _(from `2026-10-23-the-rules-live-where-they-are-enforced`)
+- **Never** write a rule into `AGENTS.md` that only a reviewer could enforce. _(from `2026-10-23-the-rules-live-where-they-are-enforced`)
+- **Always** keep the domain free of `org.jetbrains.exposed` — the gate now checks it. _(from `2026-10-23-the-schema-metadata-left-the-domain`)
+- **Always** put the schema metadata next to the code that queries it. _(from `2026-10-23-the-schema-metadata-left-the-domain`)
+- **Never** exempt a file from the purity gate by name. An exemption is a hole in a rule; the answer to "this file needs it" is to move the file, not to widen the rule. _(from `2026-10-23-the-schema-metadata-left-the-domain`)
 - **Always** отличать «нечего делать» от «провалилось»: отдельный исход, а не `Failure` с текстом. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
 - **Always** показывать состояние egress в health-ответе. _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
 - **Always** считать, что недоступный эхо-сервис — это «проверка не выполнилась», а не «проверка провалилась». _(from `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault`)
@@ -1198,6 +1214,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-22-the-gaps-are-closed-or-written-down` — testing  coverage  seams  playwright
 - `2026-10-22-the-table-of-runs-has-a-reader` — reporting  operations  egress  api
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
+- `2026-10-23-the-browser-module-owns-the-page-contract` — browser  architecture  dependencies  playwright
+- `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed` — browser  adspower  lifecycle  operations
+- `2026-10-23-the-rules-live-where-they-are-enforced` — process  gates  standards  tooling
+- `2026-10-23-the-schema-metadata-left-the-domain` — architecture  database  domain  gates
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
 - `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — architecture  database  concurrency  antibot
 - `2026-10-26-the-catalog-reads-from-a-replica` — architecture  database  operations  catalog
@@ -1319,6 +1339,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-22-the-gaps-are-closed-or-written-down` — Пробелы покрытия закрыты, а непокрываемый — записан
 - `2026-10-22-the-table-of-runs-has-a-reader` — Таблица прогонов получает читателя
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
+- `2026-10-23-the-browser-module-owns-the-page-contract` — The browser module owns the page contract, and Playwright stops at its edge
+- `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed` — The reconciliation covers every profile AdsPower knows and is retried until it is confirmed
+- `2026-10-23-the-rules-live-where-they-are-enforced` — The rules live where they are enforced: the mechanical ones in a check, the rest in a review-time file
+- `2026-10-23-the-schema-metadata-left-the-domain` — The schema metadata left the domain, and the purity gate lost its exemption
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна
 - `2026-10-25-the-work-and-the-budget-belong-where-they-are-known` — Работа и бюджет живут там, где про них известно
 - `2026-10-26-the-catalog-reads-from-a-replica` — Каталог читает с реплики, краулер пишет в primary

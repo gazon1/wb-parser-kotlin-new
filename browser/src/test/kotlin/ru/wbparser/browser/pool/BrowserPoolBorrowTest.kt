@@ -78,6 +78,51 @@ class BrowserPoolBorrowTest :
             pool.close()
         }
 
+        // ─── the profile that failed to open ───────────────────────────────────
+        //
+        // The permit of a profile is released by the borrowed page's `onClose` hook.
+        // A profile that failed to open has no page, so nothing released its permit:
+        // the profile left the rotation for the rest of the process's life, and the
+        // pool emptied itself one failure at a time until the crawl died of exhaustion
+        // with healthy profiles sitting idle.
+
+        test("a profile that failed to open goes back into the rotation") {
+            val flaky = FakeBrowserAutomation(connectFailure = IllegalStateException("the browser died"))
+            val pool =
+                BrowserPool(
+                    profiles = listOf(profile("only")),
+                    adsPower = AdsPowerConfig(api = FakeAdsPowerApi(), borrowTimeoutMs = 50),
+                    browserAutomations = listOf(flaky),
+                )
+
+            // The first borrow fails: the browser does not come up.
+            shouldThrow<BrowserPoolExhaustedException> { pool.borrowPage() }
+
+            // The failure did not take the profile out of the pool: the next borrow
+            // reaches it again instead of waiting for a permit that is never coming.
+            flaky.connectFailure = null
+            val second = pool.borrowPage()
+            second.close()
+            pool.close()
+        }
+
+        test("a profile that failed to open goes back into the rotation without waiting too") {
+            val flaky = FakeBrowserAutomation(connectFailure = IllegalStateException("the browser died"))
+            val pool =
+                BrowserPool(
+                    profiles = listOf(profile("only")),
+                    adsPower = AdsPowerConfig(api = FakeAdsPowerApi(), borrowTimeoutMs = 50),
+                    browserAutomations = listOf(flaky),
+                )
+
+            // The non-blocking path reports "nothing free right now" rather than waiting.
+            pool.tryBorrowPage(groupId = "default", includeFlagged = false) shouldBe null
+
+            flaky.connectFailure = null
+            pool.tryBorrowPage(groupId = "default", includeFlagged = false) shouldNotBe null
+            pool.close()
+        }
+
         test("the endpoints are discovered once and remembered for the pool's lifetime") {
             var discoveries = 0
             val api = FakeAdsPowerApi().apply { apiAvailable = false }

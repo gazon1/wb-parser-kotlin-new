@@ -2,10 +2,10 @@ package ru.wbparser.infra.http
 
 import arrow.core.Either
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.microsoft.playwright.Page
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import ru.wbparser.browser.playwright.BrowserPageException
 import ru.wbparser.browser.pool.BorrowedPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.domain.error.NetworkError
@@ -245,15 +245,9 @@ open class BrowserDownloader(
             // Step 1: Pay the anti-bot navigation cost only on a cold profile.
             if (!borrowed.isWarm) {
                 log.info("[{}] Cold profile — navigating to {} to establish WB session", borrowed.profileId, catalogUrl)
-                page.navigate(
-                    catalogUrl,
-                    Page.NavigateOptions().apply {
-                        timeout = timing.pageNavTimeoutMs.toDouble()
-                        waitUntil = com.microsoft.playwright.options.WaitUntilState.LOAD
-                    },
-                )
+                page.navigate(catalogUrl, timing.pageNavTimeoutMs)
                 // Let the anti-bot challenge iframe finish before the API call.
-                page.waitForTimeout(timing.warmupMs.toDouble())
+                page.waitFor(timing.warmupMs)
                 borrowed.markWarm()
             }
 
@@ -264,9 +258,7 @@ open class BrowserDownloader(
             // Step 3: Extract cookies from the page context so they can be sent
             // with the API fetch call (credentials: 'include' alone is insufficient
             // for cross-domain XHR cookies — we explicitly pass them as a header).
-            val cookies: List<com.microsoft.playwright.options.Cookie> =
-                page.context().cookies(listOf(catalogUrl))
-            val cookieMap = cookies.associate { it.name to it.value }
+            val cookieMap = page.cookies(catalogUrl)
             val headersWithCookies = headersWithMeta + ("__cookies" to objectMapper.writeValueAsString(cookieMap))
             val headersJson = objectMapper.writeValueAsString(headersWithCookies)
 
@@ -304,8 +296,8 @@ open class BrowserDownloader(
                     FetchResult.Success(body)
                 }
             }
-        } catch (e: com.microsoft.playwright.PlaywrightException) {
-            val msg = e.message ?: "Playwright error"
+        } catch (e: BrowserPageException) {
+            val msg = e.message ?: "the browser reported an error"
             // Check for common antibot indicators.
             //
             // The comparison is case-insensitive because Chrome writes them in upper

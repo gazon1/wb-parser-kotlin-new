@@ -1,5 +1,7 @@
 package ru.wbparser.browser.adspower
 
+import org.slf4j.LoggerFactory
+
 /**
  * Production implementation of [AdsPowerApi] — calls the real AdsPower Local API.
  *
@@ -22,6 +24,8 @@ internal class RealAdsPowerApi(
     private val mapper: com.fasterxml.jackson.databind.ObjectMapper,
     private val onBaseUrlInvalidated: () -> Unit = {},
 ) : AdsPowerApi {
+    private val log = LoggerFactory.getLogger(RealAdsPowerApi::class.java)
+
     @Volatile
     private var resolvedBaseUrl: String? = null
 
@@ -63,10 +67,16 @@ internal class RealAdsPowerApi(
         return envelope.puppeteerWs?.takeIf { it.isNotBlank() }
     }
 
+    // The probe answers with a boolean and never throws: "the runtime is not there"
+    // is what it is asked. Finding the runtime at all can still fail — there may be
+    // no AdsPower on this machine — and that failure is the same answer.
     override fun isAvailable(): Boolean =
         try {
             client().probe()
         } catch (e: AdsPowerUnavailableException) {
+            // The answer is "no", but the reason is a failure of a call, and a call
+            // that fails without a trace cannot be debugged.
+            log.debug("The AdsPower Local API is not available: {}", e.message)
             false
         }
 

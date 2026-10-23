@@ -92,10 +92,15 @@ Gradle, поэтому переезд меняет видимость: то, ч�
 этот репозиторий, а публикация требует политики `group`/`version` и целевого реестра.
 Решение принимается, когда появится второй потребитель.
 
-**Тестовые двойники — в fixtures.** `FakeBrowserAutomation`, `FakePlaywrightPage` и
+**Тестовые двойники — в fixtures.** `FakeBrowserAutomation`, `FakeBrowserPage` и
 `FakeAdsPowerApi` публикуются как `java-test-fixtures` модуля `browser`: они нужны и
 самому модулю, и `wbparser` (тесты egress и `BrowserDownloaderTest`). Двойники,
 реализующие `internal` интерфейсы (`FakeCdpSession`), остаются в тест-сорсете модуля.
+
+> **Уточнение (2026-10-23).** `FakeBrowserPage` назывался `FakePlaywrightPage`, пока
+> модуль отдавал наружу Playwright'овский `Page`. Модуль теперь владеет контрактом
+> страницы сам, и двойник переименован: имя, в котором лежит чужое имя, врёт о том,
+> чем этот двойник является (ADR `2026-10-23-the-browser-module-owns-the-page-contract`).
 
 ## Rationale
 

@@ -1,10 +1,7 @@
 package ru.wbparser.app.scheduling
 
-import com.microsoft.playwright.Page
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import io.mockk.every
-import io.mockk.mockk
 import org.jetbrains.exposed.sql.Database
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.EgressGroupConfig
@@ -16,8 +13,10 @@ import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
 import ru.wbparser.browser.playwright.BrowserAutomation
+import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
+import ru.wbparser.browser.testing.FakeBrowserPage
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.EgressGroupProbe
 import ru.wbparser.infra.http.EgressPacerRegistry
@@ -55,14 +54,14 @@ class EgressProbeServiceTest :
         }
 
         class FakeBrowser(
-            private val page: Page,
+            private val page: BrowserPage,
         ) : BrowserAutomation {
             override var isConnected: Boolean = true
-            override val currentPage: Page? get() = page
+            override val currentPage: BrowserPage? get() = page
 
             override fun healthCheck(): Boolean = true
 
-            override fun connect(cdpUrl: String): Page = page
+            override fun connect(cdpUrl: String): BrowserPage = page
 
             override fun close() {
                 isConnected = false
@@ -101,11 +100,7 @@ class EgressProbeServiceTest :
                 override fun isWrapperFor(iface: Class<*>?): Boolean = false
             }
 
-        fun page(): Page {
-            val page = mockk<Page>(relaxed = true)
-            every { page.evaluate(any<String>()) } returns "203.0.113.9"
-            return page
-        }
+        fun page(): BrowserPage = FakeBrowserPage(evaluateAnswer = "203.0.113.9")
 
         fun service(router: EgressRouter): EgressProbeService {
             val profiles = listOf(BrowserProfileConfig("p1", "ws://p1", "ip-1"))

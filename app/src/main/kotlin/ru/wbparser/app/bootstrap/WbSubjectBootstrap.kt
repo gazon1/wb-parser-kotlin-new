@@ -114,9 +114,7 @@ class WbSubjectBootstrap(
                 .build()
 
         val response = client.send(request, HttpResponse.BodyHandlers.ofByteArray())
-        if (response.statusCode() !in 200..299) {
-            throw IllegalStateException("HTTP ${response.statusCode()}")
-        }
+        check(response.statusCode() in 200..299) { "HTTP ${response.statusCode()}" }
 
         val body = decodeBody(response.body(), response.headers().firstValue("content-encoding").orElse(""))
         val entries = json.parseToJsonElement(body).jsonArray

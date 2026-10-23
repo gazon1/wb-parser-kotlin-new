@@ -42,8 +42,12 @@ class CdpAutomationTest :
 
             // The page the caller works with is the one the session opened — a second
             // page would be a second tab in the profile the caller never asked for.
-            page shouldBe connector.session.page
-            automation.currentPage shouldBe connector.session.page
+            //
+            // The caller gets a `BrowserPage`, and the Playwright page is behind it:
+            // the crawler never sees Playwright's type, and this test is inside the
+            // module, so it can still look at what is behind the seam.
+            (page as PlaywrightBrowserPage).playwrightPage shouldBe connector.session.page
+            (automation.currentPage as PlaywrightBrowserPage).playwrightPage shouldBe connector.session.page
             automation.isConnected shouldBe true
         }
 

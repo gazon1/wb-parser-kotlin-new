@@ -7,7 +7,7 @@ import io.kotest.matchers.shouldBe
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.testcontainers.containers.PostgreSQLContainer
-import ru.wbparser.domain.pipeline.CrawlTargetsTable
+import ru.wbparser.infra.db.CrawlTargetsTable
 import ru.wbparser.testing.ModelDatabase
 import java.time.OffsetDateTime
 import java.time.ZoneOffset

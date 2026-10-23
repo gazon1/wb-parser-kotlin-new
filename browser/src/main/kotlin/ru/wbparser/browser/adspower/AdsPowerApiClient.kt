@@ -98,6 +98,10 @@ internal class AdsPowerApiClient(
             get("/api/v2/browser-profile/active?profile_id=$PROBE_PROFILE_ID", PROBE_TIMEOUT_MS)
             true
         } catch (e: AdsPowerUnavailableException) {
+            // "The runtime is not there" is the answer the probe asks for, but it is
+            // still a failure of a call, and a call that fails without a trace is a
+            // failure nobody can debug.
+            log.debug("The AdsPower Local API did not answer the probe: {}", e.message)
             false
         }
 

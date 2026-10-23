@@ -59,10 +59,8 @@ class CatalogApiKeyFilter(
     private val keyIds: List<String>
 
     init {
-        if (acceptedKeys.isEmpty()) {
-            throw IllegalStateException(
-                "CATALOG_API_KEY is not set. The catalog API must not be reachable without a key.",
-            )
+        check(acceptedKeys.isNotEmpty()) {
+            "CATALOG_API_KEY is not set. The catalog API must not be reachable without a key."
         }
         digests = acceptedKeys.map { digestOf(it) }
         keyIds = acceptedKeys.map { keyIdOf(it) }
@@ -157,10 +155,8 @@ class CatalogApiKeyFilter(
                     ?.map { it.trim() }
                     ?.filter { it.isNotEmpty() }
                     ?: emptyList()
-            if (keys.isEmpty()) {
-                throw IllegalStateException(
-                    "CATALOG_API_KEY is not set. The catalog API must not be reachable without a key.",
-                )
+            check(keys.isNotEmpty()) {
+                "CATALOG_API_KEY is not set. The catalog API must not be reachable without a key."
             }
             return CatalogApiKeyFilter(keys)
         }

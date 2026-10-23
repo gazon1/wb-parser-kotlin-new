@@ -55,9 +55,9 @@ dependencies {
     implementation(libs.ktor.http)
     implementation(libs.ktor.serialization)
 
-    // Exposed. `exposed-core` is `api`: the public API hands out Exposed types
-    // (DatabaseHandle, ExposedTables). The rest are `implementation` or
-    // `runtimeOnly` — they are loaded, but no consumer names them.
+    // Exposed. The schema metadata and the queries that use it live in the
+    // infrastructure layer, and the domain names no Exposed type at all. The rest are
+    // `implementation` or `runtimeOnly` — they are loaded, but no consumer names them.
     //
     // Every module below is `implementation` or `runtimeOnly`, never `compileOnly`:
     // a compileOnly dependency is absent from the runtime classpath, and these
@@ -66,7 +66,7 @@ dependencies {
     runtimeOnly(libs.exposed.dao)
     runtimeOnly(libs.exposed.jdbc)
     implementation(libs.exposed.json)
-    // `datetime()` in ExposedTables.kt resolves to JavaDateColumnTypeKt in this
+    // `datetime()` in the schema metadata resolves to JavaDateColumnTypeKt in this
     // module. Declared compileOnly, the whole suite passed and the crawler died
     // on its first query with NoClassDefFoundError — the tests module added it
     // back as a test dependency, so only a real run against a real database ever
@@ -85,16 +85,10 @@ dependencies {
     implementation(libs.resilience4j.core)
     api(libs.resilience4j.circuitbreaker)
 
-    // Browser automation (Playwright — requires native binaries).
-    //
-    // The browser stack lives in its own module, but the crawler's own sources name
-    // Playwright's types too: `BrowserDownloader` drives a `Page`, and `EgressProbe`
-    // reads the address from one. They are named in private signatures, so `implementation`
-    // is the right configuration — a consumer of the crawler reaches Playwright through
-    // the `api` edge to `:browser` above.
-    implementation(libs.playwright) {
-        exclude(group = "org.slf4j")
-    }
+    // Browser automation lives in the browser module, and the crawler reaches it
+    // through the `api` edge above. The crawler names the browser module's own types —
+    // `BrowserPage`, not Playwright's `Page` — so it does not declare Playwright at
+    // all: the boundary is enforced by the compiler, not by a convention.
 
     // Logging
     // The binding is a runtime concern: no source file names it, and the

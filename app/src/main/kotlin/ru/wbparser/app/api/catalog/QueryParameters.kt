@@ -109,7 +109,7 @@ class QueryParameters private constructor(
             try {
                 UUID.fromString(it)
             } catch (e: IllegalArgumentException) {
-                throw CatalogBadRequestException("$name is not a UUID")
+                throw CatalogBadRequestException("$name is not a UUID", e)
             }
         }
 

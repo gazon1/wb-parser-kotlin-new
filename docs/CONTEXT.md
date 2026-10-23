@@ -99,6 +99,33 @@ AdsPower — отдельный контейнер, и браузеры прод
 `app/src/main/kotlin/ru/wbparser/app/scheduling/AdsPowerBrowserReconciler.kt` — вызов на старте;
 `app/src/main/kotlin/ru/wbparser/app/config/CrawlProperties.kt` — `Spider.reconcileBrowsersOnStart` (ключ `crawler.spider.reconcile-browsers-on-start`).
 
+## Кто владеет закрытием браузера
+
+Гарантия «браузер закрывается всегда» держится на шести местах, и правило, которое их
+связывает, одно: **permit, браузер и сессия освобождаются на каждом пути** — включая
+путь, где работа провалилась.
+
+| Место | Что делает |
+|---|---|
+| `BrowserProfileState.browserMayBeRunning` | факт «возможно, ещё работает»; ставится успешным `checkActiveV2`/`startProfileV2`, снимается только подтверждённым `stopProfileV2` |
+| `BrowserPool.borrowWithPermit` | permit возвращается, даже когда аренда провалилась |
+| `BrowserPool.closeIdleBrowsers` | уборщик простоя: закрывает то, что «возможно, ещё работает» |
+| `BrowserPool.closeAllBrowsers` | путь выхода: закрывает всё, что осталось |
+| `BrowserReconciler` | сверка на старте: то, что пережило умерший процесс |
+| `AdsPowerBrowserReconciler` | вызов сверки на старте и повтор, пока сверка не подтверждена |
+
+Правило, из которого растёт остальное: **закрытие спрашивает «может, ещё работает»,
+а не «жива ли CDP-связь»**. Браузер с оборванной связью — это всё ещё браузер: он
+держит окно, профиль и свою долю памяти.
+
+**Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserPool.kt` — `borrowWithPermit`,
+`closeIdleBrowsers`, `closeAllBrowsers`, `reconcileProfile`;
+`browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserProfileState.kt` — `browserMayBeRunning`, `closeAndStop`;
+`browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserReconciler.kt` — `BrowserReconciler`;
+`app/src/main/kotlin/ru/wbparser/app/scheduling/AdsPowerBrowserReconciler.kt` — вызов и повтор;
+`app/src/main/kotlin/ru/wbparser/app/scheduling/BrowserPoolJanitor.kt` — уборщик простоя;
+`docs/decisions/2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed.md`.
+
 ## Заимствованная страница (BorrowedPage)
 
 Страница Playwright вместе с id профиля, из которого она взята. Несёт `egressGroup` — адрес,
@@ -289,7 +316,7 @@ circuit группы не спрашивается, пока другие отв
 ним — после рестарта каждая цель выглядела непрочитанной, и краулер заново читал весь каталог. `last_crawled_at` двигается только у цели, которую действительно прочитали:
 упавшая цель сохраняет старое значение и остаётся due.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/domain/pipeline/ExposedTables.kt` — `CrawlTargetsTable.lastCrawledAt`, `CrawlTargetsTable.nextAttemptAt`,
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/db/ExposedTables.kt` — `CrawlTargetsTable.lastCrawledAt`, `CrawlTargetsTable.nextAttemptAt`,
 `CrawlTargetsTable.consecutiveFailures`, `CrawlTargetsTable.egressFailureCount`, `CrawlTargetsTable.anomalyGroup`;
 `wbparser/src/main/kotlin/ru/wbparser/infra/db/repositories/TargetQueries.kt` — `markTargetCrawled`, `markTargetFailed`, `markTargetRequeued`;
 `app/src/main/resources/db/migration/V9__crawl_target_state.sql`.
@@ -328,7 +355,7 @@ circuit группы не спрашивается, пока другие отв
 | `category_mappings` | Дерево категорий, увиденное при обходе: категория, в которой видели товар, и её родитель | `app/src/main/resources/db/migration/V1__init.sql` |
 | `wb_subjects` | Словарь предметов WB: id, который присылает API каталога, и имя, которое этому id соответствует | `app/src/main/resources/db/migration/V5__wb_subjects.sql` |
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/domain/pipeline/ExposedTables.kt` — `CrawlTargetsTable`, `CrawlJobsTable`, `ScrapedItemsTable`,
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/db/ExposedTables.kt` — `CrawlTargetsTable`, `CrawlJobsTable`, `ScrapedItemsTable`,
 `CategoryMappingsTable`, `WbSubjectsTable`, `CrawlEgressGroupsTable`; `app/src/main/resources/db/migration/` — миграции Flyway, владеющие схемой.
 
 ## Метрики

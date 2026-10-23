@@ -1,13 +1,13 @@
 package ru.wbparser.infra.http
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.microsoft.playwright.Page
 import io.micrometer.core.instrument.Gauge
 import io.micrometer.core.instrument.MeterRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
+import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.infra.db.repositories.EgressGroupRecord
 import java.util.concurrent.ConcurrentHashMap
@@ -327,14 +327,11 @@ class EgressProbe(
     /**
      * Reads the address from the first echo service that answers.
      */
-    private suspend fun readAddress(page: Page): String? {
+    private suspend fun readAddress(page: BrowserPage): String? {
         for (url in config.echoUrls) {
             val text =
                 try {
-                    page.navigate(
-                        url,
-                        Page.NavigateOptions().apply { timeout = config.timeoutMs.toDouble() },
-                    )
+                    page.navigate(url, config.timeoutMs)
                     page.evaluate("() => document.body ? document.body.innerText : ''") as? String
                 } catch (e: Exception) {
                     log.debug("Echo service {} did not answer: {}", url, e.message)
