@@ -552,6 +552,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** give a path that fetches from the outside a seam for its address, and check it against a local server. The address is not the decision; the answers are. _(from `2026-11-09-the-test-asks-a-local-server-for-the-dictionary`)
 - **Always** test a boot path with the answers it must survive, not only the happy one. The happy answer is the one that arrives by itself; the others are the ones that decide whether a deployment starts. _(from `2026-11-09-the-test-asks-a-local-server-for-the-dictionary`)
 - **Never** let a test depend on a third party's CDN. It fails when the third party is down, and it cannot arrange the answers that break the code. _(from `2026-11-09-the-test-asks-a-local-server-for-the-dictionary`)
+- **Always** let the application own the pools it uses, and let the module wrap the `DataSource` it is given. _(from `2026-11-10-the-pool-belongs-to-the-application`)
+- **Always** remove a dependency when the module stops naming its class. A declaration nobody needs is a promise that somebody maintains it. _(from `2026-11-10-the-pool-belongs-to-the-application`)
+- **Never** keep a second copy of a decision that lives in the configuration. The copy is the one that rots: it changes on its own schedule, and nobody reads it. _(from `2026-11-10-the-pool-belongs-to-the-application`)
+- **Never** raise coverage by testing a function that should not exist. The number goes up; the code stays. _(from `2026-11-10-the-pool-belongs-to-the-application`)
 
 ## Per-tag
 
@@ -1276,6 +1280,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-07-the-measurement-is-published` — ci  coverage  measurement
 - `2026-11-08-the-test-asks-the-clock-a-different-question` — testing  reliability  browser
 - `2026-11-09-the-test-asks-a-local-server-for-the-dictionary` — testing  coverage  architecture
+- `2026-11-10-the-pool-belongs-to-the-application` — architecture  cleanup  database
 
 ## Active entries
 
@@ -1409,3 +1414,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-07-the-measurement-is-published` — The measurement the gate reads is the measurement that is published
 - `2026-11-08-the-test-asks-the-clock-a-different-question` — The test asks the clock a different question
 - `2026-11-09-the-test-asks-a-local-server-for-the-dictionary` — The test asks a local server for the dictionary, not WB's CDN
+- `2026-11-10-the-pool-belongs-to-the-application` — The pool belongs to the application, and the application says so in one place
