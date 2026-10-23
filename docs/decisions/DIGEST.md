@@ -542,6 +542,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** test the path where a stage throws. The stage that talks to the outside world throws instead of answering, and the exception has to become a failure the retry loop understands. _(from `2026-11-06-the-crawler-answers-its-own-failures`)
 - **Never** call a drop of a failed stage a `Filtered` drop without saying that the stage failed — the reason set is read by the dashboards, and the message is read by the operator. _(from `2026-11-06-the-crawler-answers-its-own-failures`)
 - **Never** let a stage failure and a decided drop look the same to the operator. _(from `2026-11-06-the-crawler-answers-its-own-failures`)
+- **Always** give a test that measures against the clock a way to choose what time it is. The rule stays real; the question becomes the test's. _(from `2026-11-08-the-test-asks-the-clock-a-different-question`)
+- **Always** read a CI failure in a test unrelated to the change as a finding about the test. It cost a red run; the next one would have cost the same. _(from `2026-11-08-the-test-asks-the-clock-a-different-question`)
+- **Never** change a production rule to make a test pass. The rule is the behaviour; the test is the question. _(from `2026-11-08-the-test-asks-the-clock-a-different-question`)
+- **Never** let a test's result depend on how fast the machine is. A test that fails on a fast runner and passes on a loaded one is measuring the runner. _(from `2026-11-08-the-test-asks-the-clock-a-different-question`)
 
 ## Per-tag
 
@@ -1263,6 +1267,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-04-the-refusal-is-a-count-against-the-session` — antibot  egress  architecture  measurement
 - `2026-11-05-the-router-file-holds-the-routing` — architecture  refactoring  infrastructure
 - `2026-11-06-the-crawler-answers-its-own-failures` — coverage  testing  domain
+- `2026-11-08-the-test-asks-the-clock-a-different-question` — testing  reliability  browser
 
 ## Active entries
 
@@ -1393,3 +1398,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-04-the-refusal-is-a-count-against-the-session` — Отказ — это счётчик, и код считает его по сессии
 - `2026-11-05-the-router-file-holds-the-routing` — Файл роутера содержит только маршрутизацию, а типы состояния живут по одному на файл
 - `2026-11-06-the-crawler-answers-its-own-failures` — The crawler answers its own failures
+- `2026-11-08-the-test-asks-the-clock-a-different-question` — The test asks the clock a different question
