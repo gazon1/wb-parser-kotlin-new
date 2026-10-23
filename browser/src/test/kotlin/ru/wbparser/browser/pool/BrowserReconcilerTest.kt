@@ -17,10 +17,10 @@ import ru.wbparser.browser.testing.FakeBrowserAutomation
  * The next run finds them, and the rule "the crawler closes the browsers it used"
  * cannot close them on its own, because this run did not open them.
  *
- * These tests pin four things: a browser that is running gets stopped, a browser of
- * this run is left alone, a profile the configuration forgot is still stopped, and a
+ * These tests pin five things: a browser that is running gets stopped, a browser of
+ * this run is left alone, a profile the configuration forgot is still stopped, a
  * reconciliation that could not run says so instead of pretending there was nothing
- * to do.
+ * to do, and a browser AdsPower *refuses* to close is not a failure to retry.
  */
 class BrowserReconcilerTest :
     FunSpec({
@@ -42,7 +42,7 @@ class BrowserReconcilerTest :
             val api = FakeAdsPowerApi()
             api.whenCheckActive("p1", wsUrl)
 
-            val outcome = BrowserReconciler(poolWith(api, "p1")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1"), api).reconcile()
 
             val reconciled = outcome as ReconcileOutcome.Reconciled
             reconciled.stopped shouldContainExactly listOf("p1")
@@ -54,7 +54,7 @@ class BrowserReconcilerTest :
         test("a browser that is not running is left alone") {
             val api = FakeAdsPowerApi()
 
-            val outcome = BrowserReconciler(poolWith(api, "p1")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1"), api).reconcile()
 
             val reconciled = outcome as ReconcileOutcome.Reconciled
             reconciled.stopped shouldBe emptyList()
@@ -71,7 +71,7 @@ class BrowserReconcilerTest :
             // reconciliation is about the browsers of the *previous* run.
             pool.borrowPage().close()
 
-            val outcome = BrowserReconciler(pool).reconcile()
+            val outcome = BrowserReconciler(pool, api).reconcile()
 
             val reconciled = outcome as ReconcileOutcome.Reconciled
             reconciled.stopped shouldBe emptyList()
@@ -87,7 +87,7 @@ class BrowserReconcilerTest :
             // The pool knows one profile; AdsPower knows two. The one that was taken
             // out of the configuration left its browser behind too, and a
             // reconciliation that only looked at the configuration would never see it.
-            val outcome = BrowserReconciler(poolWith(api, "p1")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1"), api).reconcile()
 
             val reconciled = outcome as ReconcileOutcome.Reconciled
             reconciled.stopped shouldContainExactly listOf("gone")
@@ -98,7 +98,7 @@ class BrowserReconcilerTest :
             val api = FakeAdsPowerApi()
             api.apiAvailable = false
 
-            val outcome = BrowserReconciler(poolWith(api, "p1")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1"), api).reconcile()
 
             // Not "there was nothing to do": the question could not be asked.
             outcome shouldBe
@@ -108,18 +108,36 @@ class BrowserReconcilerTest :
                 )
         }
 
-        test("a profile that cannot be stopped is reported, and the rest still are") {
+        test("a refusal is not a failure to retry: the reconciliation is confirmed") {
             val api = FakeAdsPowerApi()
             api.whenCheckActive("p1", wsUrl)
             api.whenCheckActive("p2", wsUrl)
             api.stopSucceeds = false
 
-            val outcome = BrowserReconciler(poolWith(api, "p1", "p2")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1", "p2"), api).reconcile()
 
             val reconciled = outcome as ReconcileOutcome.Reconciled
             reconciled.stopped shouldBe emptyList()
-            reconciled.failures.keys shouldContainExactly setOf("p1", "p2")
-            reconciled.failures.getValue("p1") shouldBe "AdsPower did not confirm the stop"
+            reconciled.refused.keys shouldContainExactly setOf("p1", "p2")
+            reconciled.failures shouldBe emptyMap()
+            // The runtime answered and said no. Asking again every minute does not
+            // change the answer, so there is nothing left to look for.
+            reconciled.isConfirmed shouldBe true
+        }
+
+        test("a browser that went away while AdsPower was stopping it needs no stop") {
+            val api = FakeAdsPowerApi()
+            // Running, then gone: AdsPower may be shutting the browser down
+            // asynchronously, and a browser that is already away needs no stop.
+            api.whenCheckActiveThen("p1", wsUrl, null)
+            api.stopSucceeds = false
+
+            val outcome = BrowserReconciler(poolWith(api, "p1"), api).reconcile()
+
+            val reconciled = outcome as ReconcileOutcome.Reconciled
+            reconciled.notRunning shouldContainExactly listOf("p1")
+            reconciled.refused shouldBe emptyMap()
+            reconciled.isConfirmed shouldBe true
         }
 
         test("a Local API that dies mid-way is reported per profile, and never throws") {
@@ -127,9 +145,12 @@ class BrowserReconcilerTest :
             api.whenCheckActive("p1", wsUrl)
             api.checkActiveFailure = AdsPowerUnavailableException("the runtime went away")
 
-            val outcome = BrowserReconciler(poolWith(api, "p1")).reconcile()
+            val outcome = BrowserReconciler(poolWith(api, "p1"), api).reconcile()
 
             val reconciled = outcome as ReconcileOutcome.Reconciled
             reconciled.failures.getValue("p1") shouldBe "the runtime went away"
+            // The question is still open: the runtime may come back, and the browser
+            // of the previous run is still out there.
+            reconciled.isConfirmed shouldBe false
         }
     })

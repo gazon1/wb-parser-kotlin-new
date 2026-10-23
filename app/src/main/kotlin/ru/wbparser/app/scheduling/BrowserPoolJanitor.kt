@@ -5,7 +5,8 @@ import org.springframework.beans.factory.DisposableBean
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import ru.wbparser.app.config.CrawlProperties
-import ru.wbparser.browser.pool.BrowserPool
+import ru.wbparser.browser.pool.BrowserIdleSweeper
+import ru.wbparser.browser.pool.BrowserShutdown
 
 /**
  * Closes the AdsPower browsers that are not needed any more.
@@ -30,7 +31,8 @@ import ru.wbparser.browser.pool.BrowserPool
  */
 @Component
 class BrowserPoolJanitor(
-    private val pool: BrowserPool,
+    private val idleSweeper: BrowserIdleSweeper,
+    private val shutdown: BrowserShutdown,
     private val properties: CrawlProperties,
 ) : DisposableBean {
     private val log = LoggerFactory.getLogger(BrowserPoolJanitor::class.java)
@@ -46,7 +48,7 @@ class BrowserPoolJanitor(
     fun closeIdleBrowsers() {
         val idleTimeoutMs = properties.spider.browserIdleTimeoutMs
         if (idleTimeoutMs <= 0) return
-        val closed = pool.closeIdleBrowsers(System.currentTimeMillis(), idleTimeoutMs)
+        val closed = idleSweeper.closeIdle(System.currentTimeMillis(), idleTimeoutMs)
         if (closed > 0) {
             log.info("Closed {} idle AdsPower browser(s) — unused for {} ms", closed, idleTimeoutMs)
         }
@@ -62,10 +64,10 @@ class BrowserPoolJanitor(
     override fun destroy() {
         if (!properties.spider.closeBrowsersOnExit) {
             log.info("Leaving the AdsPower browsers running (close-browsers-on-exit is off)")
-            pool.close()
+            shutdown.closeConnections()
             return
         }
-        val closed = pool.closeAllBrowsers()
+        val closed = shutdown.closeAll()
         log.info("Stopped {} AdsPower browser(s) on shutdown", closed)
     }
 }

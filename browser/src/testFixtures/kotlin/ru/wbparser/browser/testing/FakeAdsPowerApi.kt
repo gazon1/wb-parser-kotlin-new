@@ -39,6 +39,23 @@ class FakeAdsPowerApi private constructor(
         checkActiveResponses[profileId] = wsUrl
     }
 
+    /**
+     * What [checkActiveV2] answers, in order.
+     *
+     * The browser that is shutting down: the first answer says it is running, the
+     * second says it is gone. A fixed answer cannot express that, and the case
+     * matters — a browser that went away on its own needs no stop, and reporting it
+     * as a refusal would say the runtime refused something it never was asked twice.
+     */
+    fun whenCheckActiveThen(
+        profileId: String,
+        vararg wsUrls: String?,
+    ) {
+        checkActiveSequences[profileId] = wsUrls.toMutableList()
+    }
+
+    private val checkActiveSequences = mutableMapOf<String, MutableList<String?>>()
+
     fun whenStartProfile(
         profileId: String,
         wsUrl: String?,
@@ -49,6 +66,11 @@ class FakeAdsPowerApi private constructor(
     override fun checkActiveV2(profileId: String): String? {
         _calls += AdsPowerCall(profileId, "checkActiveV2")
         checkActiveFailure?.let { throw it }
+        val sequence = checkActiveSequences[profileId]
+        if (sequence != null && sequence.isNotEmpty()) {
+            // The last answer repeats: a sequence of one is a fixed answer.
+            return if (sequence.size == 1) sequence[0] else sequence.removeAt(0)
+        }
         return checkActiveResponses[profileId]
     }
 

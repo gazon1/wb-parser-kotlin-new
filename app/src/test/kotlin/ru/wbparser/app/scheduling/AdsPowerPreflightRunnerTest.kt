@@ -19,6 +19,7 @@ import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.testing.FakeBrowserPage
 import ru.wbparser.infra.db.DatabaseHandle
+import ru.wbparser.infra.http.BrowserAccess
 import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressRouter
 import java.io.PrintWriter
@@ -127,12 +128,12 @@ class AdsPowerPreflightRunnerTest :
                 )
             val database = DatabaseHandle(brokenDatabase, Database.connect(brokenDatabase))
             return AdsPowerPreflightRunner(
-                browserPool = pool,
+                adsPowerApi = api,
                 properties = properties,
                 groups = groups,
                 probeService =
                     EgressProbeService(
-                        browserPool = pool,
+                        browser = BrowserAccess(pool = pool, adsPowerApi = api),
                         properties = properties,
                         groups = groups,
                         database = database,

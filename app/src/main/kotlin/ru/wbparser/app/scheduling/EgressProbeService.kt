@@ -5,11 +5,11 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.EgressGroups
-import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.db.repositories.fetchEgressGroups
 import ru.wbparser.infra.db.repositories.releaseEgressPenalty
 import ru.wbparser.infra.db.repositories.upsertEgressGroup
+import ru.wbparser.infra.http.BrowserAccess
 import ru.wbparser.infra.http.EgressGroupProbe
 import ru.wbparser.infra.http.EgressProbe
 import ru.wbparser.infra.http.EgressProbeConfig
@@ -32,7 +32,7 @@ import ru.wbparser.infra.http.EgressRouter
  */
 @Component
 class EgressProbeService(
-    private val browserPool: BrowserPool,
+    private val browser: BrowserAccess,
     private val properties: CrawlProperties,
     private val groups: EgressGroups.Resolved,
     private val database: DatabaseHandle,
@@ -49,7 +49,7 @@ class EgressProbeService(
         val spider = properties.spider
         val probe =
             EgressProbe(
-                pool = browserPool,
+                browser = browser,
                 groups = groups.groups,
                 config =
                     EgressProbeConfig(
