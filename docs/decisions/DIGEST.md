@@ -440,6 +440,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** bound the age of test results outside a workspace that may be reused. _(from `2026-10-23-the-measurement-must-describe-this-run`)
 - **Never** compare against a part that is older than the union. _(from `2026-10-23-the-measurement-must-describe-this-run`)
 - **Never** treat the age of a report or of a result as staleness; treat its distance from the run it describes, or leave it to Gradle. _(from `2026-10-23-the-measurement-must-describe-this-run`)
+- **Always** move a type to a file of its own when the package works that way. _(from `2026-10-23-the-probe-asks-three-questions`)
+- **Always** split a class by the decisions it holds, not by its size. _(from `2026-10-23-the-probe-asks-three-questions`)
+- **MUST** keep the behaviour of a split identical: a split that changes what is asked, or in what order, is a new decision and needs its own record. _(from `2026-10-23-the-probe-asks-three-questions`)
+- **Never** keep a metric registry inside the class that produces the measurement: the measurement and its reporting are two decisions. _(from `2026-10-23-the-probe-asks-three-questions`)
 - **Always** reconcile every profile AdsPower knows, not only the configured ones. A profile removed from the configuration is the one that leaks. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
 - **Always** retry the reconciliation until it is confirmed. A skipped reconciliation is a browser nobody looked for. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
 - **Never** fail the startup because the reconciliation could not run. The AdsPower runtime may legitimately come up later; that is a fact to report, not a reason to refuse to start. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
@@ -1231,6 +1235,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-23-the-browser-module-owns-the-page-contract` — browser  architecture  dependencies  playwright
 - `2026-10-23-the-browser-module-stops-handing-out-what-it-holds` — architecture  boundaries  browser
 - `2026-10-23-the-measurement-must-describe-this-run` — gates  coverage  boundaries
+- `2026-10-23-the-probe-asks-three-questions` — architecture  coverage
 - `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed` — browser  adspower  lifecycle  operations
 - `2026-10-23-the-rules-live-where-they-are-enforced` — process  gates  standards  tooling
 - `2026-10-23-the-schema-metadata-left-the-domain` — architecture  database  domain  gates
@@ -1358,6 +1363,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-23-the-browser-module-owns-the-page-contract` — The browser module owns the page contract, and Playwright stops at its edge
 - `2026-10-23-the-browser-module-stops-handing-out-what-it-holds` — The browser module stops handing out what it holds
 - `2026-10-23-the-measurement-must-describe-this-run` — The measurement must describe this run — the union is not behind its parts
+- `2026-10-23-the-probe-asks-three-questions` — The probe asks three questions, and each is answered by its own class
 - `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed` — The reconciliation covers every profile AdsPower knows and is retried until it is confirmed
 - `2026-10-23-the-rules-live-where-they-are-enforced` — The rules live where they are enforced: the mechanical ones in a check, the rest in a review-time file
 - `2026-10-23-the-schema-metadata-left-the-domain` — The schema metadata left the domain, and the purity gate lost its exemption
