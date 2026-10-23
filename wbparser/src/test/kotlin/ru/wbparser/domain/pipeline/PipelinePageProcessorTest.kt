@@ -64,16 +64,16 @@ class PipelinePageProcessorTest :
             }
 
         fun pipeline(
-            filter: Stage<ParsedItem, ParsedItem?> = Stage { Step.Done(it) },
-            enrich: Stage<ParsedItem, SavedItem> = Stage { Step.Done(SavedItem.from(it, targetId)) },
-            save: Stage<List<SavedItem>, Unit> = Stage { Step.Done(Unit) },
+            filter: Stage<ParsedItem, ParsedItem?> = stage("filter") { done(it) },
+            enrich: Stage<ParsedItem, SavedItem> = stage("enrich") { done(SavedItem.from(it, targetId)) },
+            save: Stage<List<SavedItem>, Unit> = stage("save") { done() },
             stopAt: (pages: Int, depth: Int) -> Stop? = { _, _ -> null },
             waiter: Waiter = Waiter { },
             retryPolicy: RetryPolicy = RetryPolicy(),
         ): Pipeline =
             Pipeline(
-                download = Stage { Step.Done(fetched(it)) },
-                parse = Stage { Step.Done(ParsedPage(it, emptyList(), null, false)) },
+                download = stage("download") { done(fetched(it)) },
+                parse = stage("parse") { done(ParsedPage(it, emptyList(), null, false)) },
                 filter = filter,
                 enrich = enrich,
                 save = save,
@@ -307,10 +307,8 @@ class PipelinePageProcessorTest :
                 val p =
                     pipeline(
                         filter =
-                            Stage {
-                                Step.Fail<ParsedItem, ParsedItem?>(
-                                    StageFailure.ParseFailure("the rules could not be read", null),
-                                )
+                            stage("rules") {
+                                fail(StageFailure.ParseFailure("the rules could not be read", null))
                             },
                     )
                 val processor = PipelinePageProcessor(p)
@@ -328,12 +326,16 @@ class PipelinePageProcessorTest :
                 sides.any { it is Side.Drop } shouldBe true
                 val logs = sides.filterIsInstance<Side.Log>()
                 logs.any { it.level == LogLevel.ERROR && it.message.contains("the rules could not be read") } shouldBe true
+                // The name in the line is the stage's own: the stage was called "rules",
+                // and the report says "rules" — the processor does not keep a list of
+                // names of its own.
+                logs.any { it.message.contains("rules stage failed") } shouldBe true
             }
         }
 
         test("a filter that asks for a retry drops the item and says why") {
             runTest {
-                val p = pipeline(filter = Stage { Step.Retry<ParsedItem, ParsedItem?>(Retry.Database()) })
+                val p = pipeline(filter = stage("filter") { retry(Retry.Database()) })
                 val processor = PipelinePageProcessor(p)
                 val sides = mutableListOf<Side>()
                 val done =
@@ -353,7 +355,7 @@ class PipelinePageProcessorTest :
 
         test("a filter that asks to continue drops the item and says why") {
             runTest {
-                val p = pipeline(filter = Stage { Step.Cont<ParsedItem, ParsedItem?>(it) })
+                val p = pipeline(filter = stage("filter") { Step.Cont<ParsedItem, ParsedItem?>(it) })
                 val processor = PipelinePageProcessor(p)
                 val sides = mutableListOf<Side>()
                 val done =
@@ -376,10 +378,8 @@ class PipelinePageProcessorTest :
                 val p =
                     pipeline(
                         enrich =
-                            Stage {
-                                Step.Fail<ParsedItem, SavedItem>(
-                                    StageFailure.ParseFailure("the price history could not be read", null),
-                                )
+                            stage("enrich") {
+                                fail(StageFailure.ParseFailure("the price history could not be read", null))
                             },
                     )
                 val processor = PipelinePageProcessor(p)
@@ -402,7 +402,7 @@ class PipelinePageProcessorTest :
 
         test("an enrich that asks for a retry drops the item and says why") {
             runTest {
-                val p = pipeline(enrich = Stage { Step.Retry<ParsedItem, SavedItem>(Retry.Database()) })
+                val p = pipeline(enrich = stage("enrich") { retry(Retry.Database()) })
                 val processor = PipelinePageProcessor(p)
                 val sides = mutableListOf<Side>()
                 val done =
@@ -422,7 +422,7 @@ class PipelinePageProcessorTest :
 
         test("an enrich that asks to continue drops the item and says why") {
             runTest {
-                val p = pipeline(enrich = Stage { Step.Cont<ParsedItem, SavedItem>(it) })
+                val p = pipeline(enrich = stage("enrich") { Step.Cont<ParsedItem, SavedItem>(it) })
                 val processor = PipelinePageProcessor(p)
                 val sides = mutableListOf<Side>()
                 val done =
@@ -452,10 +452,10 @@ class PipelinePageProcessorTest :
                 val p =
                     pipeline(
                         save =
-                            Stage {
+                            stage("save") {
                                 attempts++
                                 if (attempts == 1) error("connection reset by peer")
-                                Step.Done(Unit)
+                                done()
                             },
                         waiter = Waiter { waits++ },
                         retryPolicy = RetryPolicy(maxAttempts = 5, baseDelayMs = 10, jitterPercent = 0.0),
@@ -486,7 +486,7 @@ class PipelinePageProcessorTest :
                 val p =
                     pipeline(
                         save =
-                            Stage {
+                            stage("save") {
                                 attempts++
                                 error("connection reset by peer")
                             },
@@ -514,7 +514,7 @@ class PipelinePageProcessorTest :
 
         test("a save that asks to continue saves nothing") {
             runTest {
-                val p = pipeline(save = Stage { Step.Cont<List<SavedItem>, Unit>(it) })
+                val p = pipeline(save = stage("save") { Step.Cont<List<SavedItem>, Unit>(it) })
                 val processor = PipelinePageProcessor(p)
                 val sides = mutableListOf<Side>()
                 val done =
