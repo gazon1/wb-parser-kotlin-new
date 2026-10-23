@@ -59,6 +59,25 @@ tasks.test {
     useJUnitPlatform()
 }
 
+/**
+ * Installs the browser Playwright drives.
+ *
+ * The adapters that speak to Playwright are the seam itself: Playwright's `Browser`,
+ * `Page` and `Playwright` are final classes, and no double can stand in for them. The
+ * only way to check them is a real Chrome, and the browser is installed once per
+ * machine.
+ *
+ * The CI runs this before the tests. A developer runs it once, the same way they
+ * install a JDK.
+ */
+val playwrightInstall by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Installs the browser Playwright drives, for the tests that need a real Chrome."
+    classpath = sourceSets["test"].runtimeClasspath
+    mainClass.set("com.microsoft.playwright.CLI")
+    args("install", "chromium")
+}
+
 kover {
     // The report only. The floor lives in config/gates/coverage-floor.txt and is
     // enforced by scripts/check-coverage.py, so there is one number in one place.

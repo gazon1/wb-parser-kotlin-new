@@ -135,6 +135,16 @@ jobs:
           echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
           echo "org.gradle.caching=true" >> ~/.gradle/gradle.properties
 
+      # The browser Playwright drives.
+      #
+      # The adapters that speak to Playwright are the seam itself — Playwright's types
+      # are final and no double can stand in for them — so they are checked against a
+      # real Chrome. The browser is installed once per machine; the CI installs it
+      # before anything that runs the tests, and the test fails loudly when it is
+      # missing.
+      - name: Install the browser Playwright drives
+        run: ./gradlew playwrightInstall --no-daemon
+
       - name: Build with Gradle
         run: ./gradlew build --no-daemon -x ktlintCheck -x detekt
 
@@ -200,6 +210,14 @@ jobs:
           echo "org.gradle.jvmargs=-Xmx2g" >> ~/.gradle/gradle.properties
           echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
           echo "org.gradle.caching=true" >> ~/.gradle/gradle.properties
+
+      # The browser Playwright drives — see the build job. The coverage report is the
+      # union of the modules' reports, and the browser module's own report is part of
+      # it: without the browser, the adapters that speak to Playwright would be
+      # missing from the union, and the floor would be measured against less than the
+      # repository actually has.
+      - name: Install the browser Playwright drives
+        run: ./gradlew playwrightInstall --no-daemon
 
       # `test koverXmlReport`, not `koverXmlReport`: the merged report is the union of
       # the modules' reports, and the union can be built before the part it is made of
