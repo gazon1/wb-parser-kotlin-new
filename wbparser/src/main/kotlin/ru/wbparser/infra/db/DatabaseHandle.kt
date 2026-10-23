@@ -1,9 +1,6 @@
 package ru.wbparser.infra.db
 
-import com.zaxxer.hikari.HikariConfig
-import com.zaxxer.hikari.HikariDataSource
 import org.jetbrains.exposed.sql.Database
-import ru.wbparser.infra.http.HttpConstants
 import java.util.Collections
 import java.util.WeakHashMap
 import javax.sql.DataSource
@@ -17,36 +14,19 @@ data class DatabaseHandle(
 )
 
 /**
- * Connect to PostgreSQL and return a DatabaseHandle, creating a new HikariCP pool.
- */
-fun connect(
-    url: String,
-    user: String,
-    password: String,
-    poolSize: Int = 10,
-): DatabaseHandle {
-    val config =
-        HikariConfig().apply {
-            jdbcUrl = url
-            username = user
-            this.password = password
-            maximumPoolSize = poolSize
-            minimumIdle = 2
-            connectionTimeout = HttpConstants.DEFAULT_HTTP_TIMEOUT_MS
-            idleTimeout = 600_000
-        }
-
-    val ds: DataSource = HikariDataSource(config)
-    val db = Database.connect(ds)
-    return DatabaseHandle(ds, db)
-}
-
-/**
  * Wrap an existing [DataSource] in a [DatabaseHandle].
  *
  * Use this when the [DataSource] is already configured (e.g. Spring Boot auto-configures
  * one from `spring.datasource.*`). Exposed's [Database] is a thin wrapper that adds
  * DSL capabilities — it does not open its own connections.
+ *
+ * ## Who owns the pool
+ *
+ * The caller does. This module does not build connection pools: the crawler's pool is
+ * Spring Boot's, configured in `application.yml`, and the catalog's own read-only pool
+ * is built by the application that owns it. A second place that decides the pool's size
+ * is a second number for one guarantee, and the two disagree the moment one of them is
+ * changed.
  */
 fun connect(ds: DataSource): DatabaseHandle {
     val db = Database.connect(ds)

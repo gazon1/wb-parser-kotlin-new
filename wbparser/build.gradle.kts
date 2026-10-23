@@ -78,8 +78,13 @@ dependencies {
     // The driver is loaded by name at runtime; no source file names it, so it is
     // `runtimeOnly` here and `testImplementation` for the suite below, which
     // builds a DataSource against the Testcontainers instance.
+    //
+    // HikariCP is not declared here, and that is the point: this module does not
+    // build connection pools. The crawler's pool belongs to the application (Spring
+    // Boot, `application.yml`), and the catalog's own read-only pool is built by
+    // the application as well. A module that names a class has to declare its
+    // dependency — and this one names none.
     runtimeOnly(libs.postgresql)
-    implementation(libs.hikaricp)
 
     // Resilience
     implementation(libs.resilience4j.core)
