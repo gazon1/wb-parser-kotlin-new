@@ -298,7 +298,8 @@ internal class PipelinePageProcessor(
                 is Fail -> {
                     val signal = Retry.Database()
                     if (!step.failure.isRetryable) {
-                        sides += Side.Log(LogLevel.ERROR, "${pipeline.save.info.name} stage failed (non-retryable): ${step.failure.message}")
+                        sides +=
+                            Side.Log(LogLevel.ERROR, "${pipeline.save.info.name} stage failed (non-retryable): ${step.failure.message}")
                         return 0
                     }
                     if (!shouldRetry(attempt + 1, pipeline.retryPolicy)) {
