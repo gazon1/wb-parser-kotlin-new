@@ -422,6 +422,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** останавливать краулер из-за недоступного эхо-сервиса: это «проверка не выполнилась», а не «проверка провалилась». _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **Never** переносить накопленное старым адресом на новый: circuit, книги и штраф. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **Never** считать `crawl_targets` историей прогонов: это агрегат цели, а не журнал. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
+- **Always** check the adapters below a seam against the real thing, when the seam exists because the real thing cannot be faked. _(from `2026-10-23-the-adapters-are-checked-against-a-real-chrome`)
+- **Always** declare an asymmetry between the local loop and CI, with the reason. _(from `2026-10-23-the-adapters-are-checked-against-a-real-chrome`)
+- **MUST** install the browser before the tests in every CI job that runs them — including the one that only measures coverage. _(from `2026-10-23-the-adapters-are-checked-against-a-real-chrome`)
+- **Never** let a test skip silently because a resource is missing: it must fail with the command that fixes it. _(from `2026-10-23-the-adapters-are-checked-against-a-real-chrome`)
 - **Always** keep the surface of a contract to what the consumer actually calls. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
 - **Always** translate the failures of the hidden library into the module's own type, keeping the message: the caller decides what the failure means. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
 - **Never** let a consumer of a module declare the module's hidden dependency. DAGP reports it, and the report is right. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
@@ -1228,6 +1232,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-22-the-gaps-are-closed-or-written-down` — testing  coverage  seams  playwright
 - `2026-10-22-the-table-of-runs-has-a-reader` — reporting  operations  egress  api
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
+- `2026-10-23-the-adapters-are-checked-against-a-real-chrome` — architecture  coverage  ci
 - `2026-10-23-the-browser-module-owns-the-page-contract` — browser  architecture  dependencies  playwright
 - `2026-10-23-the-browser-module-stops-handing-out-what-it-holds` — architecture  boundaries  browser
 - `2026-10-23-the-measurement-must-describe-this-run` — gates  coverage  boundaries
@@ -1355,6 +1360,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-22-the-gaps-are-closed-or-written-down` — Пробелы покрытия закрыты, а непокрываемый — записан
 - `2026-10-22-the-table-of-runs-has-a-reader` — Таблица прогонов получает читателя
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
+- `2026-10-23-the-adapters-are-checked-against-a-real-chrome` — The adapters that speak to Playwright are checked against a real Chrome
 - `2026-10-23-the-browser-module-owns-the-page-contract` — The browser module owns the page contract, and Playwright stops at its edge
 - `2026-10-23-the-browser-module-stops-handing-out-what-it-holds` — The browser module stops handing out what it holds
 - `2026-10-23-the-measurement-must-describe-this-run` — The measurement must describe this run — the union is not behind its parts

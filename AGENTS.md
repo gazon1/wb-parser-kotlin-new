@@ -52,6 +52,11 @@ just t                 # алиас
 # Toolchain сам скачивает нужный JDK (foojay-резолвер в settings.gradle.kts), ставить
 # ничего не нужно. CI и Docker-образы пинят 22 явно.
 
+# Браузер, который водит Playwright: ставится один раз на машину, как JDK.
+# Нужен тестам адаптеров Playwright — им нужен настоящий Chrome (ADR
+# 2026-10-23-the-adapters-are-checked-against-a-real-chrome). CI ставит его сам.
+./gradlew playwrightInstall
+
 # Модульные тесты
 just wbparser::test    # crawler module unit tests
 just browser::test     # browser stack unit tests
