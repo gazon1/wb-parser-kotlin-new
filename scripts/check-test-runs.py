@@ -36,6 +36,18 @@ If a module's XML directory is missing, this fails. It does not treat "no
 results" as "no tests", because that is how a green build hides a suite that
 never started.
 
+## The age of a result says nothing about whether it is current
+
+There was a `--max-age` here with a six-hour window, and it fired on a
+repository that had not changed in seven hours: the test tasks were UP-TO-DATE,
+Gradle did not rewrite the results, and the gate declared a stale artifact that
+was in fact the truth about the code.
+
+So the age bound is off by default, and CI — where the workspace may be reused
+and a task that never ran leaves yesterday's XML behind — passes it explicitly.
+Everywhere else the evidence that the results match the code is Gradle's own
+up-to-date check, which compares content hashes rather than clocks.
+
 Usage
 -----
     python3 scripts/check-test-runs.py [--update] [--max-age SECONDS]
@@ -68,6 +80,17 @@ RESULT_DIRS = {
 }
 
 _TESTCASE_RE = re.compile(r"<(?:testcase|testCase)\b")
+
+#: How old a result may be before it counts as stale. Off by default.
+#:
+#: A UP-TO-DATE test task does not rewrite its results, so the age of an XML says
+#: nothing about whether it is current: a repository that has not changed in a week
+#: has a week-old result that is still the truth about the code. Gradle's own
+#: up-to-date check compares content hashes and is the real evidence.
+#:
+#: A bound belongs where the workspace may be reused and a task that never ran
+#: leaves yesterday's results behind — that is CI, and CI passes the flag.
+DEFAULT_MAX_AGE = 0
 
 
 def rel(path: Path) -> str:
@@ -151,6 +174,25 @@ def results_age_seconds(directory: Path) -> float | None:
     return time.time() - newest
 
 
+def staleness_error(directory: Path, max_age: int) -> str | None:
+    """The error when the results are too old to be about this run, if they are.
+
+    `max_age` of zero means no bound: the age of a result is not evidence that it
+    is stale, and a gate that calls a current result stale teaches people to
+    ignore it.
+    """
+    if not max_age:
+        return None
+    age = results_age_seconds(directory)
+    if age is None or age <= max_age:
+        return None
+    return (
+        f"{rel(directory)} is {int(age // 3600)}h old (limit {max_age // 3600}h). "
+        "A stale directory means the test task did not run — re-run the tests: "
+        "./gradlew test --rerun-tasks"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -161,9 +203,14 @@ def main() -> int:
     parser.add_argument(
         "--max-age",
         type=int,
-        default=21600,
-        help="maximum age in seconds of the XML (default 6h). A UP-TO-DATE task does "
-        "not rewrite its results, so a window is used rather than a run stamp.",
+        default=DEFAULT_MAX_AGE,
+        help="maximum age in seconds of the XML (default: no bound). The age of a "
+        "result says nothing about whether it is current: a UP-TO-DATE task does not "
+        "rewrite its results, so a repository that has not changed in a week has a "
+        "week-old XML that is still the truth about the code. Gradle's own up-to-date "
+        "check is the evidence that the results match the code. A bound belongs where "
+        "the workspace may be reused and a task that never ran leaves yesterday's "
+        "results behind — that is CI, and CI passes this flag explicitly.",
     )
     args = parser.parse_args()
 
@@ -213,14 +260,9 @@ def main() -> int:
             problems.append(f"{module}: no readable results")
             continue
 
-        age = results_age_seconds(directory)
-        if age is not None and age > args.max_age:
-            print(
-                f"❌ {module}: results are {int(age // 3600)}h old (limit {args.max_age // 3600}h). "
-                "A stale directory means the test task did not run — re-run the tests: "
-                "./gradlew test --rerun-tasks",
-                file=sys.stderr,
-            )
+        stale = staleness_error(directory, args.max_age)
+        if stale is not None:
+            print(f"❌ {stale}", file=sys.stderr)
             problems.append(f"{module}: results are stale")
 
         measured[module] = count

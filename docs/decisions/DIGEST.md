@@ -426,6 +426,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** translate the failures of the hidden library into the module's own type, keeping the message: the caller decides what the failure means. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
 - **Never** let a consumer of a module declare the module's hidden dependency. DAGP reports it, and the report is right. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
 - **Never** let a public type of a module name a type the module hides. The boundary is enforced by the compiler, not by a convention. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
+- **Always** ask a measurement whether it describes this run before comparing it with a floor. _(from `2026-10-23-the-measurement-must-describe-this-run`)
+- **Always** compare the union with its parts. _(from `2026-10-23-the-measurement-must-describe-this-run`)
+- **Always** declare a boundary from both sides, or say which side is checked. _(from `2026-10-23-the-measurement-must-describe-this-run`)
+- **Always** run the tests and the coverage report in one invocation. _(from `2026-10-23-the-measurement-must-describe-this-run`)
+- **MUST** answer "what is not covered" with `scripts/coverage-gaps.py`, not with a fresh script. _(from `2026-10-23-the-measurement-must-describe-this-run`)
+- **Never** bound the age of test results outside a workspace that may be reused. _(from `2026-10-23-the-measurement-must-describe-this-run`)
+- **Never** compare against a part that is older than the union. _(from `2026-10-23-the-measurement-must-describe-this-run`)
+- **Never** treat the age of a report or of a result as staleness; treat its distance from the run it describes, or leave it to Gradle. _(from `2026-10-23-the-measurement-must-describe-this-run`)
 - **Always** reconcile every profile AdsPower knows, not only the configured ones. A profile removed from the configuration is the one that leaks. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
 - **Always** retry the reconciliation until it is confirmed. A skipped reconciliation is a browser nobody looked for. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
 - **Never** fail the startup because the reconciliation could not run. The AdsPower runtime may legitimately come up later; that is a fact to report, not a reason to refuse to start. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
@@ -1215,6 +1223,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-22-the-table-of-runs-has-a-reader` — reporting  operations  egress  api
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
 - `2026-10-23-the-browser-module-owns-the-page-contract` — browser  architecture  dependencies  playwright
+- `2026-10-23-the-measurement-must-describe-this-run` — gates  coverage  boundaries
 - `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed` — browser  adspower  lifecycle  operations
 - `2026-10-23-the-rules-live-where-they-are-enforced` — process  gates  standards  tooling
 - `2026-10-23-the-schema-metadata-left-the-domain` — architecture  database  domain  gates
@@ -1340,6 +1349,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-22-the-table-of-runs-has-a-reader` — Таблица прогонов получает читателя
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
 - `2026-10-23-the-browser-module-owns-the-page-contract` — The browser module owns the page contract, and Playwright stops at its edge
+- `2026-10-23-the-measurement-must-describe-this-run` — The measurement must describe this run — the union is not behind its parts
 - `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed` — The reconciliation covers every profile AdsPower knows and is retried until it is confirmed
 - `2026-10-23-the-rules-live-where-they-are-enforced` — The rules live where they are enforced: the mechanical ones in a check, the rest in a review-time file
 - `2026-10-23-the-schema-metadata-left-the-domain` — The schema metadata left the domain, and the purity gate lost its exemption
