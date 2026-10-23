@@ -549,6 +549,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** read a CI failure in a test unrelated to the change as a finding about the test. It cost a red run; the next one would have cost the same. _(from `2026-11-08-the-test-asks-the-clock-a-different-question`)
 - **Never** change a production rule to make a test pass. The rule is the behaviour; the test is the question. _(from `2026-11-08-the-test-asks-the-clock-a-different-question`)
 - **Never** let a test's result depend on how fast the machine is. A test that fails on a fast runner and passes on a loaded one is measuring the runner. _(from `2026-11-08-the-test-asks-the-clock-a-different-question`)
+- **Always** give a path that fetches from the outside a seam for its address, and check it against a local server. The address is not the decision; the answers are. _(from `2026-11-09-the-test-asks-a-local-server-for-the-dictionary`)
+- **Always** test a boot path with the answers it must survive, not only the happy one. The happy answer is the one that arrives by itself; the others are the ones that decide whether a deployment starts. _(from `2026-11-09-the-test-asks-a-local-server-for-the-dictionary`)
+- **Never** let a test depend on a third party's CDN. It fails when the third party is down, and it cannot arrange the answers that break the code. _(from `2026-11-09-the-test-asks-a-local-server-for-the-dictionary`)
 
 ## Per-tag
 
@@ -1272,6 +1275,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-06-the-crawler-answers-its-own-failures` — coverage  testing  domain
 - `2026-11-07-the-measurement-is-published` — ci  coverage  measurement
 - `2026-11-08-the-test-asks-the-clock-a-different-question` — testing  reliability  browser
+- `2026-11-09-the-test-asks-a-local-server-for-the-dictionary` — testing  coverage  architecture
 
 ## Active entries
 
@@ -1404,3 +1408,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-06-the-crawler-answers-its-own-failures` — The crawler answers its own failures
 - `2026-11-07-the-measurement-is-published` — The measurement the gate reads is the measurement that is published
 - `2026-11-08-the-test-asks-the-clock-a-different-question` — The test asks the clock a different question
+- `2026-11-09-the-test-asks-a-local-server-for-the-dictionary` — The test asks a local server for the dictionary, not WB's CDN
