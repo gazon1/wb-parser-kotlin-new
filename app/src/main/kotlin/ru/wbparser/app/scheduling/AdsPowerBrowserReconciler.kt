@@ -4,12 +4,13 @@ import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.core.annotation.Order
+import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import ru.wbparser.app.config.CrawlProperties
-import ru.wbparser.app.config.EgressGroups
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserReconciler
 import ru.wbparser.browser.pool.ReconcileOutcome
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Stops the browsers that survived the previous run.
@@ -33,6 +34,17 @@ import ru.wbparser.browser.pool.ReconcileOutcome
  * It runs **before** the pre-flight check, so that the check looks at a machine
  * whose browsers are in the state this run expects.
  *
+ * ## Why it runs again
+ *
+ * The AdsPower runtime may come up after the crawler does — the two are separate
+ * containers, and the order is not ours to decide. A reconciliation that could not
+ * run is not "there was nothing to do": it is a browser nobody looked for, and it
+ * stays open for the whole run.
+ *
+ * So the reconciliation is retried until it is confirmed — until every profile it
+ * knows about has either been closed or reported as a failure. After that there is
+ * nothing left to look for, and the retry stops.
+ *
  * ## When it does not
  *
  * It never fails the startup. The AdsPower runtime may legitimately come up after
@@ -43,26 +55,49 @@ import ru.wbparser.browser.pool.ReconcileOutcome
 class AdsPowerBrowserReconciler(
     private val browserPool: BrowserPool,
     private val properties: CrawlProperties,
-    private val groups: EgressGroups.Resolved,
 ) : ApplicationRunner {
     private val log = LoggerFactory.getLogger(AdsPowerBrowserReconciler::class.java)
 
+    /**
+     * The reconciliation has been confirmed: every profile it knows about has been
+     * closed or reported, and there is nothing left to look for.
+     */
+    private val settled = AtomicBoolean(false)
+
     override fun run(args: ApplicationArguments) {
-        if (!properties.worker.enabled || !properties.spider.useBrowserFetch) return
-        if (!properties.spider.reconcileBrowsersOnStart) {
-            log.info(
-                "Not reconciling the browsers of the previous run — " +
-                    "crawler.spider.reconcile-browsers-on-start is off",
-            )
-            return
-        }
+        if (!enabled()) return
+        reconcile()
+    }
 
-        val profileIds = groups.profiles.map { it.profileId }
-        if (profileIds.isEmpty()) return
+    /**
+     * Retries the reconciliation until it is confirmed.
+     *
+     * A tick, not a policy: the interval decides how quickly a crawler that started
+     * before its AdsPower runtime still gets rid of the browsers of the run before
+     * it. The confirmation decides when the retries stop.
+     */
+    @Scheduled(fixedDelayString = "\${crawler.spider.reconcile-browsers-interval-ms:60000}")
+    fun retryReconciliation() {
+        if (settled.get()) return
+        if (!enabled()) return
+        reconcile()
+    }
 
+    /**
+     * Whether this instance owns browsers at all.
+     */
+    private fun enabled(): Boolean =
+        properties.worker.enabled &&
+            properties.spider.useBrowserFetch &&
+            properties.spider.reconcileBrowsersOnStart
+
+    /**
+     * Runs the reconciliation once and reports what it found.
+     */
+    private fun reconcile() {
         val outcome =
             runCatching {
-                BrowserReconciler(browserPool.adsPowerApi, profileIds).reconcile()
+                BrowserReconciler(browserPool).reconcile()
             }.getOrElse {
                 log.warn("Could not reconcile the browsers of the previous run: {}", it.message)
                 return
@@ -83,6 +118,16 @@ class AdsPowerBrowserReconciler(
                 for ((profileId, reason) in outcome.failures) {
                     log.warn("Could not stop the browser of profile {}: {}", profileId, reason)
                 }
+                if (outcome.ours.isNotEmpty()) {
+                    log.info(
+                        "Left {} profile(s) of this run alone — their browser is ours: {}",
+                        outcome.ours.size,
+                        outcome.ours,
+                    )
+                }
+                // Confirmed: every profile has been closed or reported. There is
+                // nothing left to look for, and the retries stop.
+                if (outcome.failures.isEmpty()) settled.set(true)
             }
         }
     }

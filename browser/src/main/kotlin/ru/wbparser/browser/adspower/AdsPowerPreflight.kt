@@ -211,7 +211,8 @@ object AdsPowerPreflight {
                     profileId,
                     ProfileHealth.Problem.STALE_LOCK_CHECK_FAILED,
                     "there is a leftover lock at $lock, but the AdsPower Local API could not be " +
-                        "reached, so whether a browser is running for this profile is unknown",
+                        "reached (${e.message}), so whether a browser is running for this " +
+                        "profile is unknown",
                 )
             }
         if (running) return null

@@ -74,7 +74,7 @@ internal class PlaywrightCdpSession(
     override fun isPageClosed(): Boolean = page?.isClosed ?: true
 
     override fun title(): String {
-        val currentPage = page ?: throw IllegalStateException("No page in the CDP session")
+        val currentPage = checkNotNull(page) { "No page in the CDP session" }
         return currentPage.title()
     }
 
@@ -119,7 +119,7 @@ internal class CdpAutomation(
     private val createConnector: () -> CdpConnector = { PlaywrightCdpConnector() },
 ) : BrowserAutomation {
     private var session: CdpSession? = null
-    private var pageImpl: Page? = null
+    private var pageImpl: BrowserPage? = null
 
     override val isConnected: Boolean
         get() {
@@ -128,7 +128,7 @@ internal class CdpAutomation(
             return !currentSession.isPageClosed()
         }
 
-    override val currentPage: Page?
+    override val currentPage: BrowserPage?
         get() = pageImpl
 
     override fun healthCheck(): Boolean {
@@ -141,7 +141,7 @@ internal class CdpAutomation(
         }.getOrElse { false }
     }
 
-    override fun connect(cdpUrl: String): Page {
+    override fun connect(cdpUrl: String): BrowserPage {
         // Shut down any previous session before connecting fresh.
         session?.close()
         session = null
@@ -158,12 +158,16 @@ internal class CdpAutomation(
             }
 
         val page =
-            newSession.openPage()
-                ?: throw IllegalStateException("No browser context in CDP session for url=$cdpUrl")
+            checkNotNull(newSession.openPage()) {
+                "No browser context in CDP session for url=$cdpUrl"
+            }
 
+        // The Playwright page becomes a BrowserPage here, and the Playwright type
+        // stops at this line: nothing above it names the library.
+        val browserPage = PlaywrightBrowserPage(page)
         session = newSession
-        pageImpl = page
-        return page
+        pageImpl = browserPage
+        return browserPage
     }
 
     override fun close() {

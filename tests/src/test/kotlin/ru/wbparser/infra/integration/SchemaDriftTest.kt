@@ -8,10 +8,10 @@ import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.testcontainers.containers.PostgreSQLContainer
-import ru.wbparser.domain.pipeline.CrawlEgressGroupsTable
-import ru.wbparser.domain.pipeline.CrawlTargetRunsTable
-import ru.wbparser.domain.pipeline.CrawlTargetsTable
-import ru.wbparser.domain.pipeline.ScrapedItemsTable
+import ru.wbparser.infra.db.CrawlEgressGroupsTable
+import ru.wbparser.infra.db.CrawlTargetRunsTable
+import ru.wbparser.infra.db.CrawlTargetsTable
+import ru.wbparser.infra.db.ScrapedItemsTable
 import ru.wbparser.testing.PostgresFixture
 
 /**

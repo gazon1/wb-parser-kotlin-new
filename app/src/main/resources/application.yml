@@ -219,6 +219,10 @@ crawler:
     # Off for a deployment where several crawlers share one AdsPower runtime — the
     # second one would stop the first one's browsers.
     reconcile-browsers-on-start: true
+    # How often the reconciliation is retried while it has not been confirmed. The AdsPower
+    # runtime may come up after the crawler does, and a reconciliation that could not run
+    # is a browser nobody looked for — so it is asked again until the answer is confirmed.
+    reconcile-browsers-interval-ms: 60000
 
 # ==============================================================================
 # Catalog read API

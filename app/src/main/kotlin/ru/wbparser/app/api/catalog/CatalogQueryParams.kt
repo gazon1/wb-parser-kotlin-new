@@ -13,7 +13,8 @@ import java.util.UUID
  */
 class CatalogBadRequestException(
     message: String,
-) : RuntimeException(message)
+    cause: Throwable? = null,
+) : RuntimeException(message, cause)
 
 /**
  * The parsed and validated parameters of `/items`.

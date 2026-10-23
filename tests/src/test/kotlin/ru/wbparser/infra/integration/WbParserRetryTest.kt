@@ -47,7 +47,7 @@ class WbParserRetryTest :
             javaClass.classLoader
                 .getResource("wb-fixtures/page-5-products.json")
                 ?.readText()
-                ?: throw IllegalStateException("Fixture not found")
+                ?: error("Fixture not found")
 
         val catalogUrl: String by lazy { "${server.baseUrl}/catalog" }
 

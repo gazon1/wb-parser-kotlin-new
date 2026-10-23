@@ -1,9 +1,9 @@
 package ru.wbparser.browser.pool
 
-import com.microsoft.playwright.Page
+import ru.wbparser.browser.playwright.BrowserPage
 
 /**
- * A borrowed [Page] paired with the [profileId] it came from.
+ * A borrowed [BrowserPage] paired with the [profileId] it came from.
  *
  * [isWarm] reports whether this profile has already established a WB session. It is a
  * snapshot taken while the profile's lock was held, so it is safe to branch on. Call
@@ -17,7 +17,7 @@ import com.microsoft.playwright.Page
  * Dispose by calling [close].
  */
 class BorrowedPage(
-    val page: Page,
+    val page: BrowserPage,
     val profileId: String,
     val isWarm: Boolean,
     val egressGroup: String = BrowserProfileConfig.DEFAULT_EGRESS_GROUP,

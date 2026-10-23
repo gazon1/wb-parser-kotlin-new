@@ -22,8 +22,9 @@ import ru.wbparser.browser.pool.BrowserPool
  * closes the browsers it used" cannot close them on its own, because this run did
  * not open them.
  *
- * These tests pin the two decisions: the reconciliation runs where the crawler owns
- * browsers, and it does not run where it does not.
+ * These tests pin four decisions: the reconciliation runs where the crawler owns
+ * browsers, it does not run where it does not, it is retried until it is confirmed,
+ * and it stops when there is nothing left to look for.
  */
 class AdsPowerBrowserReconcilerTest :
     FunSpec({
@@ -32,6 +33,7 @@ class AdsPowerBrowserReconcilerTest :
             var available: Boolean = true
             val running = mutableSetOf<String>()
             val stopped = mutableListOf<String>()
+            var knownProfiles: List<AdsPowerProfileProxy> = emptyList()
 
             override fun checkActiveV2(profileId: String): String? =
                 if (profileId in running) "ws://127.0.0.1:9222/devtools/browser/$profileId" else null
@@ -44,7 +46,7 @@ class AdsPowerBrowserReconcilerTest :
                 return true
             }
 
-            override fun listProfileProxies(): List<AdsPowerProfileProxy> = emptyList()
+            override fun listProfileProxies(): List<AdsPowerProfileProxy> = knownProfiles
 
             override fun isAvailable(): Boolean = available
         }
@@ -86,7 +88,6 @@ class AdsPowerBrowserReconcilerTest :
                         worker = Worker(enabled = workerEnabled),
                         spider = spider,
                     ),
-                groups = groups,
             )
         }
 
@@ -105,6 +106,17 @@ class AdsPowerBrowserReconcilerTest :
             runner(api).run(ApplicationArgumentsStub)
 
             api.stopped shouldBe emptyList()
+        }
+
+        test("a profile the configuration forgot is stopped too") {
+            val api = FakeAdsPower()
+            api.running += "gone"
+            api.knownProfiles =
+                listOf(AdsPowerProfileProxy(profileId = "gone", proxyHost = null, proxyPort = null, proxyType = null))
+
+            runner(api).run(ApplicationArgumentsStub)
+
+            api.stopped shouldBe listOf("gone")
         }
 
         test("an instance that only serves the catalog stops nobody's browser") {
@@ -148,6 +160,39 @@ class AdsPowerBrowserReconcilerTest :
             runner(api).run(ApplicationArgumentsStub)
 
             api.stopped shouldBe emptyList()
+        }
+
+        test("a reconciliation that could not run is retried until it is confirmed") {
+            val api = FakeAdsPower()
+            api.available = false
+            api.running += "p1"
+            val reconciler = runner(api)
+
+            // The startup could not ask the question.
+            reconciler.run(ApplicationArgumentsStub)
+            api.stopped shouldBe emptyList()
+
+            // The runtime came up. The next tick asks again, and this time it can.
+            api.available = true
+            reconciler.retryReconciliation()
+
+            api.stopped shouldBe listOf("p1")
+        }
+
+        test("a confirmed reconciliation is not repeated") {
+            val api = FakeAdsPower()
+            api.running += "p1"
+            val reconciler = runner(api)
+
+            reconciler.run(ApplicationArgumentsStub)
+            api.stopped shouldBe listOf("p1")
+
+            // There is nothing left to look for: a browser that appears later belongs
+            // to this run, not to the previous one.
+            api.running += "p2"
+            reconciler.retryReconciliation()
+
+            api.stopped shouldBe listOf("p1")
         }
     })
 

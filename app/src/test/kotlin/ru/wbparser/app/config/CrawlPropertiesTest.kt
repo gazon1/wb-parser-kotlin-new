@@ -130,9 +130,6 @@ class CrawlPropertiesTest :
 private fun bind(vararg entries: Pair<String, Any>): CrawlProperties {
     val source = MapConfigurationPropertySource(entries.toMap())
     val result = Binder(source).bind("crawler", Bindable.of(CrawlProperties::class.java))
-    return try {
-        result.get()
-    } catch (e: NoSuchElementException) {
-        CrawlProperties()
-    }
+    // Nothing bound is a value — the defaults — not a failure.
+    return result.orElseGet { CrawlProperties() }
 }

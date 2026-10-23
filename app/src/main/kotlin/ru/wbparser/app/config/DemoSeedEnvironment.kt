@@ -1,5 +1,6 @@
 package ru.wbparser.app.config
 
+import org.slf4j.LoggerFactory
 import java.sql.Connection
 import java.sql.SQLException
 
@@ -22,6 +23,8 @@ import java.sql.SQLException
  * identity.
  */
 class DemoSeedEnvironment {
+    private val log = LoggerFactory.getLogger(DemoSeedEnvironment::class.java)
+
     /**
      * Prepare the environment: the marker table, and the marker in it.
      */
@@ -51,6 +54,10 @@ class DemoSeedEnvironment {
                 }
             }
         } catch (e: SQLException) {
+            // The table is created by prepare(), so a missing table is the state of a
+            // fresh database and not an error — but it is still a failure of a query,
+            // and a query that fails without a trace cannot be debugged.
+            log.debug("The demo marker could not be read: {}", e.message)
             null
         }
 

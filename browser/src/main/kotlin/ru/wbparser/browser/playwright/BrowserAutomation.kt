@@ -1,7 +1,5 @@
 package ru.wbparser.browser.playwright
 
-import com.microsoft.playwright.Page
-
 /**
  * Contract for the Playwright CDP browser lifecycle.
  *
@@ -24,10 +22,10 @@ interface BrowserAutomation {
     val isConnected: Boolean
 
     /**
-     * The currently open [Page], or null if [isConnected] is false.
+     * The currently open [BrowserPage], or null if [isConnected] is false.
      * Valid for reading immediately after [connect] returns, and until [close] is called.
      */
-    val currentPage: Page?
+    val currentPage: BrowserPage?
 
     /**
      * Quick CDP roundtrip to verify the browser process is still alive.
@@ -47,10 +45,10 @@ interface BrowserAutomation {
      * only interface callers receive; the underlying [Browser] is managed internally.
      *
      * @param cdpUrl WebSocket URL of the Chrome DevTools endpoint (e.g. `ws://localhost:36931/...`)
-     * @return the opened [Page]
+     * @return the opened [BrowserPage]
      * @throws Exception if the connection fails — callers should treat it as a reconnect signal
      */
-    fun connect(cdpUrl: String): Page
+    fun connect(cdpUrl: String): BrowserPage
 
     /** Closes the browser session. Idempotent. */
     fun close()

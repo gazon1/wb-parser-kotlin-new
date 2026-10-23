@@ -49,7 +49,7 @@ class WbParserEmptyPageTest :
             javaClass.classLoader
                 .getResource("wb-fixtures/page-empty.json")
                 ?.readText()
-                ?: throw IllegalStateException("Fixture not found")
+                ?: error("Fixture not found")
 
         test("empty page results in Stop.EmptyPage and no DB rows") {
             runTest {

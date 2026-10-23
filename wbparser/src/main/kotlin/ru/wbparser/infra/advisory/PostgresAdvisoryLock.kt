@@ -1,9 +1,8 @@
 package ru.wbparser.infra.advisory
 
 import arrow.core.Either
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import java.sql.Connection
 import javax.sql.DataSource
 import kotlin.time.Duration.Companion.milliseconds
@@ -106,14 +105,12 @@ private suspend fun PostgresAdvisoryLock.acquire(conn: Connection): Acquisition 
         while (!tryAcquire(conn)) delay(POLL_INTERVAL_MS)
         return Acquisition.HELD
     }
-    return try {
-        withTimeout(lockTimeoutMs.milliseconds) {
+    val acquired =
+        withTimeoutOrNull(lockTimeoutMs.milliseconds) {
             while (!tryAcquire(conn)) delay(POLL_INTERVAL_MS)
             Acquisition.HELD
         }
-    } catch (e: TimeoutCancellationException) {
-        Acquisition.TIMED_OUT
-    }
+    return acquired ?: Acquisition.TIMED_OUT
 }
 
 private fun PostgresAdvisoryLock.tryAcquire(conn: Connection): Boolean =

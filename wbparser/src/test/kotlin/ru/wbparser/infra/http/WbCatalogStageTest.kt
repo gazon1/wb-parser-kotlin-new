@@ -12,6 +12,7 @@ import ru.wbparser.domain.model.ParsedPage
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
+import java.io.IOException
 import java.util.UUID
 
 /**
@@ -149,7 +150,7 @@ class WbCatalogStageTest :
         test("download exceptions are caught and converted to StageFailure.Network") {
             runTest {
                 val crashingDownloader: suspend (Crawling) -> Either<NetworkError, Fetched> = {
-                    throw RuntimeException("Unexpected network error")
+                    throw IOException("Unexpected network error")
                 }
                 val stage = WbCatalogStage(crashingDownloader)
                 val result = stage.stage.run(crawling("https://www.wildberries.ru/catalog/123/list.aspx?search=menu_v3_123 тест"))

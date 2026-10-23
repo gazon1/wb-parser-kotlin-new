@@ -4,7 +4,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import org.testcontainers.containers.PostgreSQLContainer
-import ru.wbparser.domain.pipeline.CrawlEgressGroupsTable
+import ru.wbparser.infra.db.CrawlEgressGroupsTable
 import ru.wbparser.testing.ModelDatabase
 import javax.sql.DataSource
 

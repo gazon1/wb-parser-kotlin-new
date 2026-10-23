@@ -1,17 +1,17 @@
 package ru.wbparser.app.scheduling
 
-import com.microsoft.playwright.Page
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import io.mockk.mockk
 import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.app.config.Spider
 import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
 import ru.wbparser.browser.playwright.BrowserAutomation
+import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
+import ru.wbparser.browser.testing.FakeBrowserPage
 
 /**
  * The janitor closes the AdsPower browsers that are not needed any more.
@@ -33,13 +33,13 @@ class BrowserPoolJanitorTest :
          */
         class FakeBrowser : BrowserAutomation {
             override var isConnected: Boolean = false
-            override var currentPage: Page? = null
+            override var currentPage: BrowserPage? = null
             var closeCalls: Int = 0
 
             override fun healthCheck(): Boolean = true
 
-            override fun connect(cdpUrl: String): Page =
-                mockk<Page>(relaxed = true).also {
+            override fun connect(cdpUrl: String): BrowserPage =
+                FakeBrowserPage().also {
                     isConnected = true
                     currentPage = it
                 }

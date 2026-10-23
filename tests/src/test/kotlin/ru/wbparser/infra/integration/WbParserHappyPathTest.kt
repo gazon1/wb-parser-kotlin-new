@@ -50,7 +50,7 @@ class WbParserHappyPathTest :
             javaClass.classLoader
                 .getResource("wb-fixtures/page-5-products.json")
                 ?.readText()
-                ?: throw IllegalStateException("Fixture not found")
+                ?: error("Fixture not found")
 
         test("pipeline writes the priced products to sqlite and drops the one without a price") {
             runTest {

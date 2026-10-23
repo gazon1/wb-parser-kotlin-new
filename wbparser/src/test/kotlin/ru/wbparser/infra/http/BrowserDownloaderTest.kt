@@ -2,9 +2,6 @@ package ru.wbparser.infra.http
 
 import arrow.core.getOrElse
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.microsoft.playwright.Page
-import com.microsoft.playwright.PlaywrightException
-import com.microsoft.playwright.options.Cookie
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -13,10 +10,12 @@ import io.kotest.matchers.string.shouldNotContain
 import kotlinx.coroutines.runBlocking
 import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.playwright.BrowserAutomation
+import ru.wbparser.browser.playwright.BrowserPage
+import ru.wbparser.browser.playwright.BrowserPageException
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.testing.FakeAdsPowerApi
-import ru.wbparser.browser.testing.FakePlaywrightPage
+import ru.wbparser.browser.testing.FakeBrowserPage
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.value.CrawlUrl
 import java.util.UUID
@@ -30,18 +29,18 @@ import java.util.UUID
  * warm/cold bookkeeping depends on it.
  */
 class FakePageAutomation(
-    private val page: Page,
+    private val page: BrowserPage,
 ) : BrowserAutomation {
     private var connected = false
-    private var current: Page? = null
+    private var current: BrowserPage? = null
 
     override val isConnected: Boolean get() = connected
 
-    override val currentPage: Page? get() = current
+    override val currentPage: BrowserPage? get() = current
 
     override fun healthCheck(): Boolean = connected
 
-    override fun connect(cdpUrl: String): Page {
+    override fun connect(cdpUrl: String): BrowserPage {
         connected = true
         current = page
         return page
@@ -61,7 +60,7 @@ class FakePageAutomation(
  * is what a refused request looks like from the outside. The tests below pin the
  * difference — an empty catalog is a page, and every refusal is an error.
  *
- * A real Chrome is not available in CI, so the page is a [FakePlaywrightPage]: it
+ * A real Chrome is not available in CI, so the page is a [FakeBrowserPage]: it
  * answers the four calls the downloader makes and refuses the rest.
  */
 class BrowserDownloaderTest :
@@ -80,7 +79,7 @@ class BrowserDownloaderTest :
             )
 
         fun poolOf(
-            page: FakePlaywrightPage,
+            page: FakeBrowserPage,
             borrowTimeoutMs: Long = 120_000,
         ): BrowserPool =
             BrowserPool(
@@ -112,7 +111,7 @@ class BrowserDownloaderTest :
         // ─── the happy path ─────────────────────────────────────────────────────
 
         test("a catalog page with products becomes a fetched page") {
-            val page = FakePlaywrightPage(evaluateAnswer = answer())
+            val page = FakeBrowserPage(evaluateAnswer = answer())
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
 
@@ -127,8 +126,8 @@ class BrowserDownloaderTest :
 
         test("the request carries the catalog API URL, the referer and the profile's cookies") {
             val page =
-                FakePlaywrightPage(
-                    cookies = listOf(Cookie("wb_session", "abc")),
+                FakeBrowserPage(
+                    cookies = mapOf("wb_session" to "abc"),
                     evaluateAnswer = answer(),
                 )
             val pool = poolOf(page)
@@ -146,7 +145,7 @@ class BrowserDownloaderTest :
         }
 
         test("the catalog page is loaded once per profile, not once per request") {
-            val page = FakePlaywrightPage(evaluateAnswer = answer())
+            val page = FakeBrowserPage(evaluateAnswer = answer())
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
 
@@ -165,7 +164,7 @@ class BrowserDownloaderTest :
         // ─── the empty page ─────────────────────────────────────────────────────
 
         test("an empty catalog is a page, not a failure") {
-            val page = FakePlaywrightPage(evaluateAnswer = answer(body = """{"products":[]}"""))
+            val page = FakeBrowserPage(evaluateAnswer = answer(body = """{"products":[]}"""))
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
 
@@ -179,7 +178,7 @@ class BrowserDownloaderTest :
         // ─── the failures that must not look like an empty page ────────────────
 
         test("an anti-bot answer is a failure, not an empty page") {
-            val page = FakePlaywrightPage(evaluateAnswer = answer(status = 498, body = ""))
+            val page = FakeBrowserPage(evaluateAnswer = answer(status = 498, body = ""))
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
 
@@ -195,7 +194,7 @@ class BrowserDownloaderTest :
             // WB's anti-bot challenge is an HTML page: it is not the catalog JSON, and
             // it must not be handed on as if it were one.
             val page =
-                FakePlaywrightPage(
+                FakeBrowserPage(
                     evaluateAnswer = answer(status = 200, body = "<html><body>Are you human?</body></html>"),
                 )
             val pool = poolOf(page)
@@ -211,7 +210,7 @@ class BrowserDownloaderTest :
         test("a fetch that answers without a body is a failure, not an empty page") {
             // The page answered, but the answer carries no body: there is nothing to
             // parse and nothing to report as a catalog.
-            val page = FakePlaywrightPage(evaluateAnswer = mapOf("status" to 200))
+            val page = FakeBrowserPage(evaluateAnswer = mapOf("status" to 200))
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
 
@@ -231,7 +230,7 @@ class BrowserDownloaderTest :
             // page with no products is how a failed fetch becomes a successful
             // crawl of nothing — the failure is invisible, the counters stay at
             // zero, and the report is green.
-            val page = FakePlaywrightPage(evaluateAnswer = answer(status = 200, body = ""))
+            val page = FakeBrowserPage(evaluateAnswer = answer(status = 200, body = ""))
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
 
@@ -244,8 +243,8 @@ class BrowserDownloaderTest :
 
         test("a script that failed in the page is a failure") {
             val page =
-                FakePlaywrightPage(
-                    evaluateFailure = PlaywrightException("Cannot read properties of undefined"),
+                FakeBrowserPage(
+                    evaluateFailure = BrowserPageException("Cannot read properties of undefined"),
                 )
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
@@ -260,8 +259,8 @@ class BrowserDownloaderTest :
 
         test("a request the browser refused with 403 is an anti-bot answer") {
             val page =
-                FakePlaywrightPage(
-                    evaluateFailure = PlaywrightException("Response 403"),
+                FakeBrowserPage(
+                    evaluateFailure = BrowserPageException("Response 403"),
                 )
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
@@ -280,8 +279,8 @@ class BrowserDownloaderTest :
             // and the profile cooldown that belong to it happen. A case-sensitive
             // comparison turned every one of them into a plain script error.
             val page =
-                FakePlaywrightPage(
-                    evaluateFailure = PlaywrightException("net::ERR_ABORTED"),
+                FakeBrowserPage(
+                    evaluateFailure = BrowserPageException("net::ERR_ABORTED"),
                 )
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
@@ -294,7 +293,7 @@ class BrowserDownloaderTest :
         }
 
         test("a browser that died is a failure, not an empty page") {
-            val page = FakePlaywrightPage(evaluateFailure = IllegalStateException("Target closed"))
+            val page = FakeBrowserPage(evaluateFailure = IllegalStateException("Target closed"))
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
 
@@ -307,7 +306,7 @@ class BrowserDownloaderTest :
         }
 
         test("a URL that is not a WB catalog page is a failure") {
-            val page = FakePlaywrightPage(evaluateAnswer = answer())
+            val page = FakeBrowserPage(evaluateAnswer = answer())
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
 
@@ -319,7 +318,7 @@ class BrowserDownloaderTest :
         }
 
         test("an exhausted pool is a capacity problem, not an anti-bot ban") {
-            val page = FakePlaywrightPage(evaluateAnswer = answer())
+            val page = FakeBrowserPage(evaluateAnswer = answer())
             val pool = poolOf(page, borrowTimeoutMs = 50)
             val downloader = downloaderOf(pool)
             // Hold the only slot: the downloader cannot borrow a page.
@@ -344,7 +343,7 @@ class BrowserDownloaderTest :
         // ─── what a refusal does to the profile ────────────────────────────────
 
         test("a profile that was refused is cold again and reloads the catalog page") {
-            val page = FakePlaywrightPage(evaluateAnswer = answer(status = 498, body = ""))
+            val page = FakeBrowserPage(evaluateAnswer = answer(status = 498, body = ""))
             val pool = poolOf(page)
             val downloader = downloaderOf(pool)
 

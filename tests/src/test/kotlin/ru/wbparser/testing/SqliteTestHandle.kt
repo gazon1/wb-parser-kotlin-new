@@ -33,7 +33,7 @@ class SqliteTestHandle : AutoCloseable {
                 javaClass.classLoader
                     .getResource("db/sqlite/V1__sqlite_init.sql")
                     ?.readText()
-                    ?: throw IllegalStateException("Migration not found: db/sqlite/V1__sqlite_init.sql")
+                    ?: error("Migration not found: db/sqlite/V1__sqlite_init.sql")
             for (statement in sql.split(";").filter { it.isNotBlank() }) {
                 s.execute(statement.trim())
             }

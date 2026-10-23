@@ -73,9 +73,15 @@ gate blocking "the CI workflows are wired" python3 scripts/ci/check-ci-workflows
 # --- domain purity -------------------------------------------------------------
 # After the module merge (domain + infrastructure → wbparser) these checks run against
 # the merged tree.  Before the merge they guard the current domain/ independently.
-# ExposedTables.kt is compileOnly schema metadata — org.jetbrains.exposed imports there
-# are intentional and safe; all other org.jetbrains.exposed imports in domain/ are forbidden.
+# The schema metadata moved to the infrastructure layer, so there is no exemption left:
+# the domain names no Exposed type, and the gate says so.
 gate blocking "domain purity: no infra imports in domain" bash scripts/ci/check-domain-purity.sh
+
+# --- the repository's own rules --------------------------------------------------
+# The rules that a machine can decide are decided by a machine. They used to live in
+# AGENTS.md, where they cost context on every turn and enforced nothing; the ones a
+# machine cannot decide moved to CODING_STANDARDS.md, where a reviewer reads them.
+gate blocking "the repository's rules" python3 scripts/ci/check-repo-rules.py
 
 # --- the catalog measurement ---------------------------------------------------
 # `known_pages_limit` is a number about a catalog, and a number without its evidence

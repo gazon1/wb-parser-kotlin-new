@@ -30,7 +30,9 @@ dependencies {
     // `BorrowedPage` and `CdpAutomation`, so a consumer's code that drives a browser
     // names the type. This is the one dependency a consumer of this module cannot
     // avoid — and the reason the module exists separately from the crawler.
-    api(libs.playwright) {
+    // Playwright is an implementation detail of this module: the public API speaks
+    // `BrowserPage`, and Playwright's own types stop at `PlaywrightBrowserPage`.
+    implementation(libs.playwright) {
         exclude(group = "org.slf4j")
     }
 
@@ -46,9 +48,9 @@ dependencies {
     testImplementation(libs.mockk)
 
     // The fixtures are their own compilation: they need the test libraries too.
-    // Playwright is `api` here for the same reason it is `api` above: `FakePlaywrightPage`
-    // hands a `Page` to its caller, so a consumer of the fixtures names the type.
-    testFixturesApi(libs.playwright)
+    // The fixtures hand out a `BrowserPage`, which is this module's own type — so
+    // there is no third-party type for a consumer of the fixtures to name, and
+    // Playwright does not have to be declared here either.
     testFixturesImplementation(libs.kotest.assertions.core)
     testFixturesImplementation(libs.mockk)
 }

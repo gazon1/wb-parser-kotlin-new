@@ -203,6 +203,7 @@ private fun answerKeys(body: String): Set<String> =
     } catch (e: Exception) {
         // The answer has already been decoded, so it is valid JSON; if it is not an object
         // there are no keys to name, and that is the answer to the question.
+        log.debug("The answer is not a JSON object, so it has no keys: {}", e.message)
         emptySet()
     }
 

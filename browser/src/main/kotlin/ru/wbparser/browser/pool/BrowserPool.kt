@@ -15,14 +15,14 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Manages a pool of Playwright [com.microsoft.playwright.Browser] connections to pre-opened
+ * Manages a pool of browser connections to pre-opened
  * AdsPower Chrome profiles, with round-robin selection.
  *
  * ## Usage
  *
  * 1. Open browser profiles in AdsPower UI or via API.
  * 2. Create [BrowserPool] with one [BrowserProfileConfig] per profile.
- * 3. Call [borrowPage] to get a [Page][com.microsoft.playwright.Page] from the next
+ * 3. Call [borrowPage] to get a [BrowserPage][ru.wbparser.browser.playwright.BrowserPage] from the next
  *    profile in the pool.
  * 4. Call `close` on the borrowed page when done (returns the profile to the pool).
  *
@@ -147,7 +147,7 @@ class BrowserPool(
     override val retiredSessionCount: Int get() = profileStates.count { it.isRetired() }
 
     /**
-     * Borrows the next available [com.microsoft.playwright.Page] from the pool
+     * Borrows the next available [BrowserPage][ru.wbparser.browser.playwright.BrowserPage] from the pool
      * (round-robin), waiting for a free slot.
      *
      * The caller MUST call [BorrowedPage.close] when done with the page.
@@ -213,12 +213,8 @@ class BrowserPool(
             if (state.isRetired()) continue
             val acquired = state.lock.tryAcquire(adsPower.borrowTimeoutMs, TimeUnit.MILLISECONDS)
             if (acquired) {
-                try {
-                    return borrowLocked(state)
-                } catch (e: Exception) {
-                    state.close()
-                    log.warn("Profile {} unusable after waiting: {}", state.profileConfig.profileId, e.message)
-                }
+                val page = borrowWithPermit(state, "Profile {} unusable after waiting: {}")
+                if (page != null) return page
             }
         }
         throw BrowserPoolExhaustedException(
@@ -250,16 +246,46 @@ class BrowserPool(
                 val flagged = state.isFlagged()
                 if (flagged != (pass == 1)) continue
                 if (state.lock.tryAcquire()) {
-                    try {
-                        return borrowLocked(state)
-                    } catch (e: Exception) {
-                        state.close()
-                        log.warn("Profile {} unusable, trying next: {}", state.profileConfig.profileId, e.message)
-                    }
+                    val page = borrowWithPermit(state, "Profile {} unusable, trying next: {}")
+                    if (page != null) return page
                 }
             }
         }
         return null
+    }
+
+    /**
+     * Borrows [state] under the permit the caller has already taken.
+     *
+     * Returns null when the profile could not be borrowed, and **releases the permit**
+     * in that case.
+     *
+     * The permit is normally released by the borrowed page's `onClose` hook. On the
+     * failure path there is no page, so nobody would ever release it: the profile would
+     * leave the rotation for the rest of the process's life. One transient failure — a
+     * CDP timeout, a profile AdsPower could not start — would cost a profile for good,
+     * and the pool would empty itself one failure at a time until the crawl died of
+     * exhaustion with profiles idle and healthy.
+     *
+     * A profile that failed to open goes back into the rotation. The pool's caller
+     * decides what to do about a pool that cannot open any browser; the pool's job is
+     * to keep its own bookkeeping straight.
+     */
+    private fun borrowWithPermit(
+        state: BrowserProfileState,
+        failureMessage: String,
+    ): BorrowedPage? {
+        try {
+            return borrowLocked(state)
+        } catch (e: Exception) {
+            try {
+                state.close()
+            } finally {
+                state.lock.release()
+            }
+            log.warn(failureMessage, state.profileConfig.profileId, e.message)
+            return null
+        }
     }
 
     private fun borrowLocked(state: BrowserProfileState): BorrowedPage {
@@ -304,6 +330,53 @@ class BrowserPool(
     /** Cleanly shuts down all profiles. */
     fun close() {
         profileStates.forEach { it.close() }
+    }
+
+    /**
+     * The ids of the profiles this pool manages.
+     *
+     * The reconciliation needs to tell "a profile of ours" from "a profile AdsPower
+     * knows about": the first is stopped under the pool's permit, the second is
+     * nobody's business in this process.
+     */
+    val profileIds: List<String> get() = profiles.map { it.profileId }
+
+    /**
+     * Whether this pool manages the profile [profileId].
+     */
+    fun manages(profileId: String): Boolean = profiles.any { it.profileId == profileId }
+
+    /**
+     * Stops the browser of one of this pool's profiles, if it is a leftover.
+     *
+     * A leftover is a browser that is running in AdsPower and that this process did
+     * not start and has never borrowed. Those are the browsers an earlier run left
+     * behind: this process never opened them, so nothing else will ever close them.
+     *
+     * The permit is taken for the whole operation, so a profile that is in use right
+     * now is left alone — the crawl's own work is never a leftover.
+     *
+     * @throws IllegalStateException when AdsPower does not confirm the stop. The
+     *   browser may still be running, and the caller has to be able to say so.
+     */
+    internal fun reconcileProfile(profileId: String): ProfileReconciliation {
+        val state =
+            checkNotNull(profileStates.firstOrNull { it.profileConfig.profileId == profileId }) {
+                "the pool does not manage the profile $profileId"
+            }
+        if (!state.lock.tryAcquire()) return ProfileReconciliation.OWN
+        try {
+            if (state.wasStartedByPool() || state.wasUsed()) return ProfileReconciliation.OWN
+            // AdsPower is the only one that knows: the local fact dies with the
+            // process, and a browser left behind by an earlier run was never seen
+            // by this one.
+            val running = adsPowerApi.checkActiveV2(state.profileConfig.profileId) != null
+            if (!running) return ProfileReconciliation.NOT_RUNNING
+            check(state.closeAndStop(stopInAdsPower = true)) { "AdsPower did not confirm the stop" }
+            return ProfileReconciliation.STOPPED
+        } finally {
+            state.lock.release()
+        }
     }
 
     /**

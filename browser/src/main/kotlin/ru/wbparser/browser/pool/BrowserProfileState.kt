@@ -1,9 +1,9 @@
 package ru.wbparser.browser.pool
 
-import com.microsoft.playwright.Page
 import org.slf4j.Logger
 import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.playwright.BrowserAutomation
+import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.session.BrowserSession
 import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.browser.session.SessionState
@@ -55,6 +55,14 @@ internal class BrowserProfileState(
     sessionPolicy: SessionPolicy = SessionPolicy(),
 ) {
     /**
+     * Where the browser of this profile is.
+     *
+     * A collaborator of its own: "which browser is this profile's" is a decision
+     * with three answers, and it is not a part of the profile's bookkeeping.
+     */
+    private val cdpUrlResolver = CdpUrlResolver(profileConfig, api, context)
+
+    /**
      * The WB session of this profile.
      *
      * The profile owns it, because the profile is what the session lives in: its
@@ -99,6 +107,15 @@ internal class BrowserProfileState(
      * and the rule "close the browsers you used" covers both.
      */
     private val startedByPool = AtomicBoolean(false)
+
+    /**
+     * Whether this process has ever borrowed this profile.
+     *
+     * A profile this process has used is not a leftover of an earlier run, even if
+     * its browser is not running right now: the reconciliation that stops the
+     * browsers of the previous run must not touch the work of this one.
+     */
+    fun wasUsed(): Boolean = lastUsedAtMs.get() > 0L
 
     /**
      * Whether a Chrome window may still be running for this profile.
@@ -194,7 +211,7 @@ internal class BrowserProfileState(
      */
     fun isRetired(): Boolean = session.shouldRetire()
 
-    fun getOrCreatePage(): Page {
+    fun getOrCreatePage(): BrowserPage {
         if (automation.isConnected) {
             // Defensively ping the browser: a dead Chrome can show isConnected=true
             // until Playwright discovers the truth on the next call.
@@ -203,8 +220,16 @@ internal class BrowserProfileState(
                 automation.close()
                 session.onCold()
             } else {
-                // Page is still open and healthy.
-                return automation.currentPage!!
+                // The page is still open and healthy — unless the automation says
+                // it is connected and has no page, which the contract does not
+                // allow. A force-unwrap there would turn a broken promise into a
+                // crash in the middle of a crawl, so the broken promise is handled
+                // instead: the connection is dropped and a fresh one is made.
+                val current = automation.currentPage
+                if (current != null) return current
+                logForProfile("The browser is connected but has no page — forcing reconnect")
+                automation.close()
+                session.onCold()
             }
         }
 
@@ -214,7 +239,16 @@ internal class BrowserProfileState(
         // by navigating it to a WB page before the internal API will return products.
         session.onCold()
 
-        val cdpUrl = resolveCdpUrl()
+        val resolution = cdpUrlResolver.resolve()
+        // Two facts follow from where the browser was found: one that may be running,
+        // and — when we started it — one that is ours to close.
+        if (resolution.alreadyRunning || resolution.startedByUs) {
+            browserMayBeRunning.set(true)
+        }
+        if (resolution.startedByUs) {
+            startedByPool.set(true)
+        }
+        val cdpUrl = resolution.url
         logForProfile("Connecting via CDP: {}", cdpUrl)
 
         return try {
@@ -227,100 +261,6 @@ internal class BrowserProfileState(
             )
             throw e
         }
-    }
-
-    /**
-     * The CDP URL of this profile's browser.
-     *
-     * The configured URL wins; then the AdsPower Local API; and only when the API is
-     * unreachable does the port scan answer.
-     */
-    private fun resolveCdpUrl(): String {
-        val configured = profileConfig.cdpWsUrl?.takeIf { it.isNotBlank() }
-        if (configured != null) return configured
-
-        val fromApi = askAdsPowerForCdpUrl()
-        if (fromApi != null) return fromApi
-
-        if (api.isAvailable()) {
-            // The API is up and this profile is not available. Falling back to the
-            // scan would silently attach this profile to an arbitrary browser, so
-            // report the real problem instead of hiding it behind a wrong browser.
-            throw IllegalStateException(
-                "AdsPower Local API is reachable but profile '${profileConfig.profileId}' could not be " +
-                    "started. Open the profile in AdsPower, and check that its profile " +
-                    "directory is writable by the user running the AdsPower runtime.",
-            )
-        }
-
-        // The API is down: the DevTools port scan is the only way left to find a browser.
-        logForProfile("AdsPower Local API is unreachable — falling back to the DevTools port scan")
-        return scanForCdpUrl()
-    }
-
-    /**
-     * The CDP URL the AdsPower Local API reports, or null when it does not know one.
-     *
-     * The Local API is asked first, and unconditionally.
-     *
-     * It used to be gated on ADSPOWER_API_KEY being set. But the Local API
-     * listens on loopback and answers unauthenticated — the key was never sent
-     * anywhere, it only decided whether we tried. Without it the crawler
-     * skipped the API entirely and fell back to a blind port scan, which
-     * assigns browsers to profiles by index and can hand two profiles the
-     * same one: one anti-bot session wearing two names.
-     */
-    private fun askAdsPowerForCdpUrl(): String? {
-        val profileId = profileConfig.profileId
-        return try {
-            val running = api.checkActiveV2(profileId)
-            if (running != null) {
-                // A browser is already running for this profile — ours from an earlier
-                // borrow, or one that survived the previous run. Either way it is
-                // running, and it has to be stopped when we are done with it.
-                browserMayBeRunning.set(true)
-                return running
-            }
-            api.startProfileV2(profileId)?.also {
-                // We started this browser, so we are the ones who may close it
-                // again. A profile that was already running when we arrived
-                // belongs to whoever started it.
-                startedByPool.set(true)
-                browserMayBeRunning.set(true)
-            }
-        } catch (e: Exception) {
-            logForProfile("AdsPower Local API call failed: {}", e.message)
-            null
-        }
-    }
-
-    /**
-     * Endpoint for this profile, assigned by its index among the discovered browsers.
-     *
-     * This used to return the *first* Chrome found on any port, for every profile. With
-     * five profiles configured and five browsers open that still handed all five the same
-     * lowest-numbered one, so "parallel across profiles" silently ran five CDP clients
-     * against a single browser — one anti-bot session wearing five names. Assigning by
-     * index makes the mapping distinct whenever the distinct browsers exist, and makes
-     * the collapse *visible* when they do not.
-     */
-    private fun scanForCdpUrl(): String {
-        val endpoints = context.resolveEndpoints()
-        val index = context.index.coerceAtLeast(0)
-        if (endpoints.size < context.profileCount) {
-            // Loud on purpose. Fewer browsers than profiles means fewer real sessions
-            // than the configuration implies, and every result derived from it — throughput
-            // and anti-bot load spreading alike — is bounded by the smaller number.
-            context.log.warn(
-                "Only {} AdsPower browser(s) reachable but {} profile(s) configured; " +
-                    "profiles [{}] share a browser. Open more profiles, or set ADSPOWER_API_KEY " +
-                    "so each profile resolves to its own browser.",
-                endpoints.size,
-                context.profileCount,
-                context.allProfileIds.joinToString(", "),
-            )
-        }
-        return endpoints[index % endpoints.size]
     }
 
     fun close() {
@@ -338,10 +278,13 @@ internal class BrowserProfileState(
      * @param stopInAdsPower whether the browser may be stopped in AdsPower. The
      *   crawler stops the browsers it used — see [browserMayBeRunning] for why
      *   "only the ones we started" is not the rule.
+     * @return whether the browser is known to be gone. AdsPower confirming the stop
+     *   is the only thing that makes it known: a refusal leaves the browser running,
+     *   and the caller has to be able to say so instead of assuming.
      */
-    fun closeAndStop(stopInAdsPower: Boolean) {
+    fun closeAndStop(stopInAdsPower: Boolean): Boolean {
         close()
-        if (!stopInAdsPower) return
+        if (!stopInAdsPower) return false
         val profileId = profileConfig.profileId
         val stopped =
             try {
@@ -363,6 +306,7 @@ internal class BrowserProfileState(
             // tries again instead of pretending the browser was closed.
             logForProfile("Browser was not stopped in AdsPower")
         }
+        return stopped
     }
 
     /** Writes one line about this profile. */

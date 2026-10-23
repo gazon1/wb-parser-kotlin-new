@@ -4,9 +4,9 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
-import io.mockk.mockk
 import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.browser.testing.FakeBrowserAutomation
+import ru.wbparser.browser.testing.FakeBrowserPage
 
 /**
  * The pool's capacity, counted in sessions.
@@ -28,7 +28,7 @@ class BrowserPoolSessionTest :
                     FakeBrowserAutomation(
                         _isConnected = true,
                         _healthCheckResult = true,
-                        _currentPage = mockk(relaxed = true),
+                        _currentPage = FakeBrowserPage(),
                     )
                 }
             return BrowserPool(
