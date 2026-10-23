@@ -168,15 +168,18 @@ internal class PipelinePageProcessor(
                     is Fail<ParsedItem, ParsedItem?> -> {
                         // Filter stage failed — report as drop so the runner can count/metric it.
                         sides += r.sides()
+                        unusableStage("filter", item, "failed: ${r.failure.message}", LogLevel.ERROR, sides)
                         null
                     }
                     is Step.Retry<ParsedItem, ParsedItem?> -> {
                         // Retry from a pure filter stage is impossible; treat as drop.
                         sides += r.sides()
+                        unusableStage("filter", item, "asked for a retry", LogLevel.WARN, sides)
                         null
                     }
                     is Cont<ParsedItem, ParsedItem?> -> {
                         // Cont from a pure filter stage is impossible; treat as drop.
+                        unusableStage("filter", item, "asked to continue", LogLevel.WARN, sides)
                         null
                     }
                 }
@@ -200,15 +203,18 @@ internal class PipelinePageProcessor(
                     is Fail<ParsedItem, SavedItem> -> {
                         // Enrich stage failed — report as drop so the runner can count/metric it.
                         sides += r.sides()
+                        unusableStage("enrich", item, "failed: ${r.failure.message}", LogLevel.ERROR, sides)
                         null
                     }
                     is Step.Retry<ParsedItem, SavedItem> -> {
                         // Retry from a pure enrich stage is impossible; treat as drop.
                         sides += r.sides()
+                        unusableStage("enrich", item, "asked for a retry", LogLevel.WARN, sides)
                         null
                     }
                     is Cont<ParsedItem, SavedItem> -> {
                         // Cont from a pure enrich stage is impossible; treat as drop.
+                        unusableStage("enrich", item, "asked to continue", LogLevel.WARN, sides)
                         null
                     }
                 }
@@ -225,6 +231,39 @@ internal class PipelinePageProcessor(
         } else {
             saveBatch(toSave, sides)
         }
+    }
+
+    /**
+     * A stage answered something a pure stage cannot do.
+     *
+     * A filter or an enrich stage is pure: it cannot retry and it cannot continue, so an
+     * answer of either kind means the stage failed. The item is dropped — but the reason
+     * is stated, because a drop that says only "filtered" cannot be told apart from a
+     * drop the filter decided on, and the two need different repairs.
+     *
+     * The stage's own message is carried when it failed: `Step.sides()` is empty for
+     * anything that is not a `Done`, so a failure's message reaches nobody unless it is
+     * written down here.
+     *
+     * @param stage which stage answered — "filter" or "enrich".
+     * @param item the item that is being dropped.
+     * @param what the stage answered, in words.
+     * @param level how loudly the answer is reported: a failure is an error, an answer a
+     *   pure stage cannot give is a warning.
+     * @param sides where the report goes.
+     */
+    private fun unusableStage(
+        stage: String,
+        item: ParsedItem,
+        what: String,
+        level: LogLevel,
+        sides: MutableList<Side>,
+    ) {
+        sides +=
+            Side.Log(
+                level,
+                "$stage stage $what for product ${item.productId} — the item is dropped",
+            )
     }
 
     /**
