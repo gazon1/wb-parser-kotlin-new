@@ -34,10 +34,15 @@ data class Stage<I, O>(
     val run: suspend (I) -> Step<I, O>,
 ) {
     /**
-     * Secondary constructor for stages without metadata (backward-compatibility with typealias era).
-     * The [info] field uses a blank [StageInfo] as a default.
+     * Secondary constructor for a stage without metadata.
+     *
+     * It is **internal** on purpose. A stage that carries no name cannot be named in a
+     * log line, and a log line that cannot name the stage is a log line that says
+     * "something failed" — so a stage outside this module has to say what it is. The
+     * tests inside the module use it freely: a test stage's name is not read by
+     * anybody.
      */
-    constructor(run: suspend (I) -> Step<I, O>) : this(StageInfo("unnamed"), run)
+    internal constructor(run: suspend (I) -> Step<I, O>) : this(StageInfo("unnamed"), run)
 
     /**
      * Invokes the stage — syntactic sugar so `stage(input)` works the same way
@@ -47,7 +52,11 @@ data class Stage<I, O>(
 }
 
 /**
- * DSL builder for a named [Stage].
+ * A named [Stage], built with a body that reads like the domain.
+ *
+ * The name is not decoration: it travels with the stage, so the code that reports
+ * what the stage did — a failure, a retry, a drop — can say *which* stage it was
+ * without keeping its own list of names.
  *
  * Example:
  * ```kotlin
@@ -57,7 +66,8 @@ data class Stage<I, O>(
  * }
  * ```
  *
- * Inside the lambda, use [done], [fail], or [retry] to return a [Step]:
+ * Inside the lambda, use [StageBuilder.done], [StageBuilder.fail], [StageBuilder.retry]
+ * or [StageBuilder.doneIf] to return a [Step]:
  * ```kotlin
  * val download = stage<Crawling, Fetched>("download", "HTTP GET") { task ->
  *     when (val result = httpClient.get(task.url)) {
@@ -67,7 +77,7 @@ data class Stage<I, O>(
  * }
  * ```
  *
- * For stages that return `Unit`, call [done] with no arguments:
+ * For stages that return `Unit`, call [StageBuilder.done] with no arguments:
  * ```kotlin
  * val save = stage<List<SavedItem>, Unit>("save", "Persists items to DB") {
  *     db.upsert(it)
@@ -75,10 +85,10 @@ data class Stage<I, O>(
  * }
  * ```
  */
-inline fun <I, O> stage(
+fun <I, O> stage(
     name: String,
     description: String = "",
-    crossinline body: suspend StageBuilder<I>.(I) -> Step<I, O>,
+    body: suspend StageBuilder<I>.(I) -> Step<I, O>,
 ): Stage<I, O> =
     Stage(StageInfo(name, description)) { input ->
         val builder = StageBuilder<I>()

@@ -552,6 +552,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** give a path that fetches from the outside a seam for its address, and check it against a local server. The address is not the decision; the answers are. _(from `2026-11-09-the-test-asks-a-local-server-for-the-dictionary`)
 - **Always** test a boot path with the answers it must survive, not only the happy one. The happy answer is the one that arrives by itself; the others are the ones that decide whether a deployment starts. _(from `2026-11-09-the-test-asks-a-local-server-for-the-dictionary`)
 - **Never** let a test depend on a third party's CDN. It fails when the third party is down, and it cannot arrange the answers that break the code. _(from `2026-11-09-the-test-asks-a-local-server-for-the-dictionary`)
+- **Always** name the stages of a pipeline. A stage without a name cannot be reported. _(from `2026-11-11-a-stage-says-its-own-name`)
+- **Always** put the name on the thing the report talks about. A report that repeats a name from a list is a copy that drifts. _(from `2026-11-11-a-stage-says-its-own-name`)
+- **Never** inline a function whose coverage the report has to show. An inlined body is executed in the caller, and the report cannot see it. _(from `2026-11-11-a-stage-says-its-own-name`)
+- **Never** keep a stage's name in the code that calls it. The caller knows what it asked for; the stage knows what it is. _(from `2026-11-11-a-stage-says-its-own-name`)
+- **Never** read a report that names a stage as a list of strings: the list is where the lie lives. _(from `2026-11-11-a-stage-says-its-own-name`)
 
 ## Per-tag
 
@@ -1276,6 +1281,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-07-the-measurement-is-published` — ci  coverage  measurement
 - `2026-11-08-the-test-asks-the-clock-a-different-question` — testing  reliability  browser
 - `2026-11-09-the-test-asks-a-local-server-for-the-dictionary` — testing  coverage  architecture
+- `2026-11-11-a-stage-says-its-own-name` — architecture  refactoring  observability
 
 ## Active entries
 
@@ -1409,3 +1415,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-07-the-measurement-is-published` — The measurement the gate reads is the measurement that is published
 - `2026-11-08-the-test-asks-the-clock-a-different-question` — The test asks the clock a different question
 - `2026-11-09-the-test-asks-a-local-server-for-the-dictionary` — The test asks a local server for the dictionary, not WB's CDN
+- `2026-11-11-a-stage-says-its-own-name` — A stage says its own name
