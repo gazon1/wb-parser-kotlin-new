@@ -13,12 +13,12 @@ import ru.wbparser.domain.pipeline.Pipeline
 import ru.wbparser.domain.pipeline.Retry
 import ru.wbparser.domain.pipeline.RetryPolicy
 import ru.wbparser.domain.pipeline.Side
-import ru.wbparser.domain.pipeline.Stage
 import ru.wbparser.domain.pipeline.StageFailure
 import ru.wbparser.domain.pipeline.Step
 import ru.wbparser.domain.pipeline.Stop
 import ru.wbparser.domain.pipeline.Waiter
 import ru.wbparser.domain.pipeline.dropIfInvalid
+import ru.wbparser.domain.pipeline.stage
 import ru.wbparser.domain.time.Clock
 import ru.wbparser.domain.time.SystemClock
 import java.util.UUID
@@ -86,7 +86,7 @@ fun buildParserPipeline(
 ): Pipeline =
     Pipeline(
         download =
-            Stage<Crawling, Fetched> { task: Crawling ->
+            stage<Crawling, Fetched>("download", "Fetches a catalog page from WB") { task: Crawling ->
                 downloader(task).fold(
                     ifLeft = { error ->
                         // An anti-bot refusal is not a hiccup: WB is refusing this
@@ -95,12 +95,12 @@ fun buildParserPipeline(
                         // signal, its own back-off (ten seconds, see [RetryPolicy]),
                         // and its own counter.
                         if (error.isAntibot) {
-                            Step.Retry(Retry.Antibot())
+                            retry(Retry.Antibot())
                         } else {
                             // Both connection failures and HTTP 5xx errors are retryable.
                             // HTTP 4xx errors from KtorDownloader are non-retryable but KtorDownloader
                             // returns them as NetworkError too — they will be retried once before failing.
-                            Step.Retry(
+                            retry(
                                 Retry.ServerError(
                                     attempt = 0, // actual attempt count is managed by stageWithRetry
                                     delayMs = null, // use policy defaults
@@ -108,41 +108,38 @@ fun buildParserPipeline(
                             )
                         }
                     },
-                    ifRight = { fetched -> Step.Done(fetched) },
+                    ifRight = { fetched -> done(fetched) },
                 )
             },
         parse =
-            Stage<Fetched, ParsedPage> { fetched: Fetched ->
+            stage<Fetched, ParsedPage>("parse", "Turns a WB answer into a catalog page") { fetched: Fetched ->
                 parser(fetched).fold(
                     ifLeft = { error ->
                         // An answer that does not fit the model is a failed stage, not an
                         // empty page. An empty page is the end of the catalog, and a failed
                         // stage ends the crawl of this target as a failure — the run says so,
                         // and the target is put aside instead of being reported as crawled.
-                        Step.Fail(StageFailure.ParseFailure(error.message, error.url, error.cause))
+                        fail(StageFailure.ParseFailure(error.message, error.url, error.cause))
                     },
-                    ifRight = { page -> Step.Done(page) },
+                    ifRight = { page -> done(page) },
                 )
             },
         filter =
-            Stage<ParsedItem, ParsedItem?> { item: ParsedItem ->
+            stage<ParsedItem, ParsedItem?>("filter", "Drops the items the rules reject") { item: ParsedItem ->
                 val reason = item.dropIfInvalid(config.rules)
                 if (reason == null) {
-                    Step.Done<ParsedItem, ParsedItem?>(item)
+                    done(item)
                 } else {
                     // The reason travels as a side so the log says *why* an item vanished,
                     // rather than every rejection reading as "filtered".
-                    Step.Done<ParsedItem, ParsedItem?>(
-                        output = null,
-                        sides = listOf(Side.Drop(reason, item)),
-                    )
+                    doneIf(null, sides = listOf(Side.Drop(reason, item)))
                 }
             },
         enrich =
-            Stage<ParsedItem, SavedItem> { item: ParsedItem ->
-                Step.Done(SavedItem.from(item, targetId))
+            stage<ParsedItem, SavedItem>("enrich", "Turns a parsed item into one to store") { item: ParsedItem ->
+                done(SavedItem.from(item, targetId))
             },
-        save = Stage(save),
+        save = stage<List<SavedItem>, Unit>("save", "Writes a page's items into the database") { items -> save(items) },
         retryPolicy = config.retryPolicy,
         stopAt = config.stopAt,
         clock = config.clock,

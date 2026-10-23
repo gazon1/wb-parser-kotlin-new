@@ -168,18 +168,18 @@ internal class PipelinePageProcessor(
                     is Fail<ParsedItem, ParsedItem?> -> {
                         // Filter stage failed — report as drop so the runner can count/metric it.
                         sides += r.sides()
-                        unusableStage("filter", item, "failed: ${r.failure.message}", LogLevel.ERROR, sides)
+                        unusableStage(pipeline.filter.info.name, item, "failed: ${r.failure.message}", LogLevel.ERROR, sides)
                         null
                     }
                     is Step.Retry<ParsedItem, ParsedItem?> -> {
                         // Retry from a pure filter stage is impossible; treat as drop.
                         sides += r.sides()
-                        unusableStage("filter", item, "asked for a retry", LogLevel.WARN, sides)
+                        unusableStage(pipeline.filter.info.name, item, "asked for a retry", LogLevel.WARN, sides)
                         null
                     }
                     is Cont<ParsedItem, ParsedItem?> -> {
                         // Cont from a pure filter stage is impossible; treat as drop.
-                        unusableStage("filter", item, "asked to continue", LogLevel.WARN, sides)
+                        unusableStage(pipeline.filter.info.name, item, "asked to continue", LogLevel.WARN, sides)
                         null
                     }
                 }
@@ -203,18 +203,18 @@ internal class PipelinePageProcessor(
                     is Fail<ParsedItem, SavedItem> -> {
                         // Enrich stage failed — report as drop so the runner can count/metric it.
                         sides += r.sides()
-                        unusableStage("enrich", item, "failed: ${r.failure.message}", LogLevel.ERROR, sides)
+                        unusableStage(pipeline.enrich.info.name, item, "failed: ${r.failure.message}", LogLevel.ERROR, sides)
                         null
                     }
                     is Step.Retry<ParsedItem, SavedItem> -> {
                         // Retry from a pure enrich stage is impossible; treat as drop.
                         sides += r.sides()
-                        unusableStage("enrich", item, "asked for a retry", LogLevel.WARN, sides)
+                        unusableStage(pipeline.enrich.info.name, item, "asked for a retry", LogLevel.WARN, sides)
                         null
                     }
                     is Cont<ParsedItem, SavedItem> -> {
                         // Cont from a pure enrich stage is impossible; treat as drop.
-                        unusableStage("enrich", item, "asked to continue", LogLevel.WARN, sides)
+                        unusableStage(pipeline.enrich.info.name, item, "asked to continue", LogLevel.WARN, sides)
                         null
                     }
                 }
@@ -245,7 +245,8 @@ internal class PipelinePageProcessor(
      * anything that is not a `Done`, so a failure's message reaches nobody unless it is
      * written down here.
      *
-     * @param stage which stage answered — "filter" or "enrich".
+     * @param stage the name the stage gives itself — the stage knows what it is, and the
+     *   code that reports its answer does not keep a list of names.
      * @param item the item that is being dropped.
      * @param what the stage answered, in words.
      * @param level how loudly the answer is reported: a failure is an error, an answer a
@@ -285,7 +286,7 @@ internal class PipelinePageProcessor(
                 } catch (e: Exception) {
                     Step.Fail(
                         StageFailure.Database(
-                            "save stage threw ${e::class.simpleName}: ${e.message}",
+                            "${pipeline.save.info.name} stage threw ${e::class.simpleName}: ${e.message}",
                         ),
                     )
                 }
@@ -297,14 +298,18 @@ internal class PipelinePageProcessor(
                 is Fail -> {
                     val signal = Retry.Database()
                     if (!step.failure.isRetryable) {
-                        sides += Side.Log(LogLevel.ERROR, "Save stage failed (non-retryable): ${step.failure.message}")
+                        sides +=
+                            Side.Log(
+                                LogLevel.ERROR,
+                                "${pipeline.save.info.name} stage failed (non-retryable): ${step.failure.message}",
+                            )
                         return 0
                     }
                     if (!shouldRetry(attempt + 1, pipeline.retryPolicy)) {
                         sides +=
                             Side.Log(
                                 LogLevel.ERROR,
-                                "Save stage retry exhausted after ${pipeline.retryPolicy.maxAttempts} attempts: ${step.failure.message}",
+                                "${pipeline.save.info.name} stage retry exhausted after ${pipeline.retryPolicy.maxAttempts} attempts: ${step.failure.message}",
                             )
                         return 0
                     }
@@ -317,7 +322,7 @@ internal class PipelinePageProcessor(
                         sides +=
                             Side.Log(
                                 LogLevel.ERROR,
-                                "Save stage retry exhausted after ${pipeline.retryPolicy.maxAttempts} attempts",
+                                "${pipeline.save.info.name} stage retry exhausted after ${pipeline.retryPolicy.maxAttempts} attempts",
                             )
                         return 0
                     }
