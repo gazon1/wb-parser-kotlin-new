@@ -106,6 +106,9 @@ class BrowserReconcilerTest :
                     "the AdsPower Local API did not answer — the browsers of the previous run " +
                         "could not be looked for",
                 )
+            // Nothing was looked for, so nothing is confirmed. The runtime may come up
+            // after the crawler does, and the reconciliation is worth repeating.
+            outcome.isConfirmed shouldBe false
         }
 
         test("a refusal is not a failure to retry: the reconciliation is confirmed") {
@@ -152,5 +155,75 @@ class BrowserReconcilerTest :
             // The question is still open: the runtime may come back, and the browser
             // of the previous run is still out there.
             reconciled.isConfirmed shouldBe false
+        }
+
+        test("a profile this deployment does not manage, and which is not running, is left alone") {
+            val api = FakeAdsPowerApi()
+            api.profileProxies =
+                listOf(AdsPowerProfileProxy(profileId = "idle", proxyHost = null, proxyPort = null, proxyType = null))
+
+            val outcome = BrowserReconciler(poolWith(api, "p1"), api).reconcile()
+
+            val reconciled = outcome as ReconcileOutcome.Reconciled
+            reconciled.notRunning shouldContainExactly listOf("p1", "idle")
+            reconciled.stopped shouldBe emptyList()
+            reconciled.refused shouldBe emptyMap()
+            api.stoppedProfiles shouldBe emptyList()
+        }
+
+        test(
+            "a profile this deployment does not manage, and which went away while AdsPower " +
+                "was stopping it, needs no stop",
+        ) {
+            val api = FakeAdsPowerApi()
+            // Running, then gone: the browser may be shutting down asynchronously, and
+            // one that is already away needs no stop. Reporting it as a refusal would
+            // say the runtime refused something it was never asked twice.
+            api.whenCheckActiveThen("gone", wsUrl, null)
+            api.stopSucceeds = false
+            api.profileProxies =
+                listOf(AdsPowerProfileProxy(profileId = "gone", proxyHost = null, proxyPort = null, proxyType = null))
+
+            val outcome = BrowserReconciler(poolWith(api, "p1"), api).reconcile()
+
+            val reconciled = outcome as ReconcileOutcome.Reconciled
+            reconciled.notRunning shouldContainExactly listOf("p1", "gone")
+            reconciled.refused shouldBe emptyMap()
+            reconciled.isConfirmed shouldBe true
+        }
+
+        test(
+            "a profile this deployment does not manage, and which AdsPower refuses to close, " +
+                "is a refusal and not a failure",
+        ) {
+            val api = FakeAdsPowerApi()
+            // Running, and still running after the refusal: the runtime answered and
+            // said no. The same rule as for a profile of this run — a refusal closes
+            // the question instead of opening it again every minute.
+            api.whenCheckActiveThen("stubborn", wsUrl, wsUrl)
+            api.stopSucceeds = false
+            api.profileProxies =
+                listOf(AdsPowerProfileProxy(profileId = "stubborn", proxyHost = null, proxyPort = null, proxyType = null))
+
+            val outcome = BrowserReconciler(poolWith(api, "p1"), api).reconcile()
+
+            val reconciled = outcome as ReconcileOutcome.Reconciled
+            reconciled.refused.keys shouldContainExactly setOf("stubborn")
+            reconciled.failures shouldBe emptyMap()
+            reconciled.isConfirmed shouldBe true
+        }
+
+        test("a list of profiles that cannot be read is reported, and the known ones are still reconciled") {
+            val api = FakeAdsPowerApi()
+            api.whenCheckActive("p1", wsUrl)
+            api.profileProxiesFailure = AdsPowerUnavailableException("the runtime went away")
+
+            val outcome = BrowserReconciler(poolWith(api, "p1"), api).reconcile()
+
+            // The profiles of the pool are still reconciled — the list of the unknown
+            // ones is a loss, not a reason to stop looking for the known ones.
+            val reconciled = outcome as ReconcileOutcome.Reconciled
+            reconciled.stopped shouldContainExactly listOf("p1")
+            reconciled.failures shouldBe emptyMap()
         }
     })

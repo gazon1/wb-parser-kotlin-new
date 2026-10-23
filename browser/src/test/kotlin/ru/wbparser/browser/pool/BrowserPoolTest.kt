@@ -148,4 +148,18 @@ class BrowserPoolTest :
             ex.message shouldContain "250"
             ex.message shouldContain "3 configured"
         }
+
+        test("a profile the pool does not manage cannot be reconciled") {
+            val pool =
+                BrowserPool(
+                    profiles = listOf(BrowserProfileConfig("p1", null)),
+                    adsPower = AdsPowerConfig(api = FakeAdsPowerApi()),
+                )
+
+            // The lifecycle answers for the profiles it holds. A profile it does not
+            // hold is a programming error, not a runtime fact to swallow.
+            shouldThrow<IllegalStateException> {
+                pool.reconcileProfile("p2")
+            }.message shouldContain "the pool does not manage the profile p2"
+        }
     })

@@ -23,6 +23,8 @@ import ru.wbparser.infra.http.BrowserAccess
 import ru.wbparser.infra.http.EgressPacerRegistry
 import ru.wbparser.infra.http.EgressRouter
 import java.io.PrintWriter
+import java.nio.file.Files
+import java.nio.file.Path
 import java.sql.Connection
 import java.sql.SQLException
 import javax.sql.DataSource
@@ -63,7 +65,13 @@ class AdsPowerPreflightRunnerTest :
             var available: Boolean = true
             var proxies: List<AdsPowerProfileProxy> = emptyList()
 
-            override fun checkActiveV2(profileId: String): String? = null
+            /** When set, [checkActiveV2] throws this instead of answering. */
+            var checkActiveFailure: RuntimeException? = null
+
+            override fun checkActiveV2(profileId: String): String? {
+                checkActiveFailure?.let { throw it }
+                return null
+            }
 
             override fun startProfileV2(profileId: String): String? = null
 
@@ -106,6 +114,25 @@ class AdsPowerPreflightRunnerTest :
 
                 override fun isWrapperFor(iface: Class<*>?): Boolean = false
             }
+
+        /**
+         * A cache directory with one profile in it.
+         *
+         * The pre-flight reads the real AdsPower directory, and a test that depends
+         * on the machine's AdsPower installation is a test that says nothing about
+         * the code. This is the fixture: a directory named the way AdsPower names a
+         * profile, with whatever the check is supposed to find inside it.
+         */
+        fun cacheDirWithProfile(
+            profileId: String,
+            prepare: (Path) -> Unit = {},
+        ): Path {
+            val cacheDir = Files.createTempDirectory("adspower-cache")
+            val profileDir = cacheDir.resolve("${profileId}_fixture")
+            Files.createDirectories(profileDir)
+            prepare(profileDir)
+            return cacheDir
+        }
 
         fun runner(
             api: FakeAdsPower,
@@ -266,6 +293,112 @@ class AdsPowerPreflightRunnerTest :
                 }
 
             failure.message!! shouldContain "declared proxy"
+        }
+
+        test(
+            "a group whose profiles are behind different proxies stops the crawler when the " +
+                "guarantee was asked for",
+        ) {
+            val api = FakeAdsPower()
+            // Two profiles, two proxies, one group. A group is one address, and the
+            // crawler would pace one address as if it were several.
+            api.proxies =
+                listOf(
+                    AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "http"),
+                    AdsPowerProfileProxy("p2", "proxy-b.invalid", "1080", "http"),
+                )
+            val spider =
+                Spider(
+                    useBrowserFetch = true,
+                    egressProbeUrls = listOf("https://echo.invalid/ip"),
+                    requireIsolatedEgressGroups = true,
+                )
+            val groups =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(
+                                    id = "ip-1",
+                                    profiles = listOf("p1", "p2"),
+                                    // The kind alone: the declaration says "this group
+                                    // leaves through an http proxy", and both profiles
+                                    // do. Which http proxy is another question — and
+                                    // the answer to it is the problem here.
+                                    proxy = ProxyConfig(type = "http"),
+                                ),
+                            ),
+                    ),
+                )
+
+            val failure =
+                shouldThrow<IllegalStateException> {
+                    runner(api, groups, spider = spider).run(ApplicationArgumentsStub)
+                }
+
+            failure.message!! shouldContain "misconfigured"
+        }
+
+        test(
+            "a group whose profiles are behind different proxies is a warning when the " +
+                "guarantee was not asked for",
+        ) {
+            val api = FakeAdsPower()
+            api.proxies =
+                listOf(
+                    AdsPowerProfileProxy("p1", "proxy-a.invalid", "1080", "http"),
+                    AdsPowerProfileProxy("p2", "proxy-b.invalid", "1080", "http"),
+                )
+            val spider =
+                Spider(
+                    useBrowserFetch = true,
+                    egressProbeUrls = listOf("https://echo.invalid/ip"),
+                )
+            val groups =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(
+                                    id = "ip-1",
+                                    profiles = listOf("p1", "p2"),
+                                    // The kind alone: the declaration says "this group
+                                    // leaves through an http proxy", and both profiles
+                                    // do. Which http proxy is another question — and
+                                    // the answer to it is the problem here.
+                                    proxy = ProxyConfig(type = "http"),
+                                ),
+                            ),
+                    ),
+                )
+
+            // The crawl still works — it just does not get the extra budget the
+            // configuration promised. The operator was told, and the operator decides.
+            runner(api, groups, spider = spider).run(ApplicationArgumentsStub)
+
+            api.available shouldBe true
+        }
+
+        test("a pre-flight check that could not run does not stop the crawler") {
+            val api = FakeAdsPower()
+            // The runtime answers the wrong question, and the check cannot be done.
+            api.checkActiveFailure = RuntimeException("the runtime went away")
+            val groups =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups = listOf(EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none"))),
+                    ),
+                )
+            val cacheDir = cacheDirWithProfile("p1") { dir -> Files.createFile(dir.resolve("SingletonLock")) }
+
+            val runner = runner(api, groups)
+            runner.profileCacheDir = cacheDir
+
+            // AdsPower may legitimately come up after the crawler does. A check that
+            // could not run is a fact to report, not a reason to refuse to start.
+            runner.run(ApplicationArgumentsStub)
+
+            api.available shouldBe true
         }
     })
 

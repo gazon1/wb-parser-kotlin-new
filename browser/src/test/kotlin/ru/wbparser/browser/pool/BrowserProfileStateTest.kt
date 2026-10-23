@@ -2,6 +2,7 @@ package ru.wbparser.browser.pool
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.slf4j.LoggerFactory
 import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.playwright.BrowserAutomation
@@ -147,5 +148,51 @@ class BrowserProfileStateTest :
 
             // The stop was attempted; the failure is logged, not thrown.
             api.stoppedProfiles shouldBe listOf("p0")
+        }
+
+        test(
+            "an AdsPower that dies while the browser is being stopped leaves the browser behind, " +
+                "and says so",
+        ) {
+            val api = FakeAdsPowerApi()
+            api.stopFailure = RuntimeException("the AdsPower runtime is gone")
+            val state = state(api = api)
+
+            // Not true: the browser is still out there, and the caller has to be able
+            // to say so instead of assuming the window went away.
+            state.closeAndStop(stopInAdsPower = true) shouldBe false
+            api.stoppedProfiles shouldBe listOf("p0")
+        }
+
+        test("a browser that fails its health check is dropped and connected again") {
+            val api = FakeAdsPowerApi()
+            api.whenCheckActive("p0", "ws://localhost:36931/devtools/browser/one")
+            // A dead Chrome can still say it is connected: the health check is the
+            // only thing that tells the truth.
+            val automation = FakeBrowserAutomation(_isConnected = true, _healthCheckResult = false)
+            val state = state(api = api, automation = automation)
+
+            val page = state.getOrCreatePage()
+
+            page shouldNotBe null
+            automation.healthCheckCalls.size shouldBe 1
+            // The dead connection is dropped, and a fresh one is made.
+            automation.closeCalls.size shouldBe 2
+            automation.connectCalls shouldBe listOf("ws://localhost:36931/devtools/browser/one")
+        }
+
+        test("a browser that is connected but has no page is dropped and connected again") {
+            val api = FakeAdsPowerApi()
+            api.whenCheckActive("p0", "ws://localhost:36931/devtools/browser/one")
+            // The contract does not allow this, and a force-unwrap would turn a broken
+            // promise into a crash in the middle of a crawl.
+            val automation = FakeBrowserAutomation(_isConnected = true, _currentPage = null)
+            val state = state(api = api, automation = automation)
+
+            val page = state.getOrCreatePage()
+
+            page shouldNotBe null
+            automation.closeCalls.size shouldBe 2
+            automation.connectCalls shouldBe listOf("ws://localhost:36931/devtools/browser/one")
         }
     })
