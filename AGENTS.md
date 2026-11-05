@@ -42,7 +42,7 @@ wb-parser-kotlin/
 
 ```bash
 # Полная проверка (перед каждым commit)
-just tests::check      # или: ./check.sh — единственная точка входа
+mise run check         # или: ./check.sh, или: just tests::check
 just t                 # алиас
 
 # ./check.sh — 11 нумерованных шагов. Шаг [1] вызывает scripts/ci/static-gates.sh,
@@ -295,6 +295,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 
 ## Dev Quality Gates (adopted 2026-11-05)
 
-- Aggregate check: `./check.sh` (also `just tests::check`). CI runs the same command.
+- Aggregate check: `mise run check`, `./check.sh`, or `just tests::check` (all run `./check.sh`). CI runs the same command.
+- Git hooks (developer convenience, not a gate): `hk.pkl` runs fast staged checks (secret detection, formatters). Install with `hk install`; CI remains the only gate.
 - New quality tools are pinned in `mise.toml`; install with `mise install`.
-- Lint rules are never disabled to get a change through. An exception is narrow (path + rule), carries a reason and (for security/risk findings) a review date. agnix lints this file and the SKILL.md files.
+- Lint rules are never disabled to get a change through. An exception is narrow (path + rule), carries a reason and (for security/risk findings) a review date. agnix lints instruction files (`AGENTS.md`, `SKILL.md`); do not hand-edit generated files.
