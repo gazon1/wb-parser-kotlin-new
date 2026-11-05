@@ -1,0 +1,22 @@
+amends "package://github.com/jdx/hk/releases/download/v2.11.1/hk@2.11.1#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.11.1/hk@2.11.1#/Builtins.pkl"
+// Staged-file checks for developer convenience. CI (./check.sh) remains the only gate.
+local linters = new Mapping<String, Step> {
+    ["detect_private_key"] = Builtins.detect_private_key
+    ["betterleaks"] = Builtins.betterleaks
+    ["ruff"] = Builtins.ruff
+    ["ruff_format"] = Builtins.ruff_format
+    ["shellcheck"] = Builtins.shellcheck
+    ["shfmt"] = Builtins.shfmt
+    ["just_format"] = Builtins.just_format
+    ["typos"] = Builtins.typos
+}
+hooks {
+    ["pre-commit"] {
+        fix = true
+        stash = "git"
+        steps = linters
+    }
+    ["check"] { steps = linters }
+    ["fix"] { fix = true; steps = linters }
+}
