@@ -27,8 +27,8 @@ runs do not hit the CDN again.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 import click
 import yaml
@@ -124,8 +124,7 @@ def fill_root_categories(yaml_path: Path, menu_url: str, menu: Path | None, dry_
     if unresolved:
         click.echo(
             f"warning: {len(unresolved)} page(s) are not in the menu tree: "
-            f"{', '.join(unresolved[:10])}"
-            + ("…" if len(unresolved) > 10 else "")
+            f"{', '.join(unresolved[:10])}" + ("…" if len(unresolved) > 10 else "")
         )
 
     click.echo(f"pages: {len(pages)}, root_category_name filled: {filled}")

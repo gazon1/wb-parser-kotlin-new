@@ -31,8 +31,7 @@ browser, the file and the terminal.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Dict, List, Optional, Tuple
+from datetime import UTC, datetime
 
 # The measurement statuses a report record can carry. Only the first one carries
 # a number; the others carry the reason there is none.
@@ -41,7 +40,7 @@ STATUS_BLOCKED = "blocked"
 STATUS_ERROR = "error"
 
 
-def parse_measured_at(value: object) -> Optional[datetime]:
+def parse_measured_at(value: object) -> datetime | None:
     """The instant a measurement was taken, or None.
 
     The report writes ISO-8601 with an offset (`2026-10-20T13:34:31+00:00`). A `Z`
@@ -60,14 +59,15 @@ def parse_measured_at(value: object) -> Optional[datetime]:
         return None
     if parsed.tzinfo is None:
         return None
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 class Change:
     """One target whose `known_pages_limit` changes."""
 
-    def __init__(self, catalog_id: str, name: str, old: Optional[int], new: int,
-                 boundary: str, pages_available: int) -> None:
+    def __init__(
+        self, catalog_id: str, name: str, old: int | None, new: int, boundary: str, pages_available: int
+    ) -> None:
         self.catalog_id = catalog_id
         self.name = name
         self.old = old
@@ -83,7 +83,7 @@ class Change:
         )
 
 
-def measured_limits(report: dict) -> Dict[str, dict]:
+def measured_limits(report: dict) -> dict[str, dict]:
     """The catalogs the report actually measured, `id -> record`.
 
     A record that was not measured is not here: the report of a failed or blocked
@@ -103,7 +103,7 @@ def measured_limits(report: dict) -> Dict[str, dict]:
     survives that is broken by the order of the report, so the result never depends on
     a dictionary's iteration order.
     """
-    limits: Dict[str, dict] = {}
+    limits: dict[str, dict] = {}
     for record in report.get("catalogs") or []:
         if record.get("status") != STATUS_MEASURED:
             continue
@@ -139,9 +139,9 @@ def _is_better(candidate: dict, current: dict) -> bool:
     return True
 
 
-def plan_changes(pages: List[dict], limits: Dict[str, dict]) -> Tuple[List[Change], List[str]]:
+def plan_changes(pages: list[dict], limits: dict[str, dict]) -> tuple[list[Change], list[str]]:
     """What would change in the YAML, and which measured catalogs are not in it."""
-    changes: List[Change] = []
+    changes: list[Change] = []
     seen = set()
 
     for page in pages:

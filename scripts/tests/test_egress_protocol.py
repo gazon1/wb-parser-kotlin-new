@@ -134,12 +134,8 @@ class TheEvaluationTest(unittest.TestCase):
     def test_three_repeats_on_one_address_pass_the_rules(self):
         records = []
         for repeat in range(1, 4):
-            records.append(
-                a_record("A1", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:00:00Z")
-            )
-            records.append(
-                a_record("A2", "IP2", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:30:00Z")
-            )
+            records.append(a_record("A1", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:00:00Z"))
+            records.append(a_record("A2", "IP2", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:30:00Z"))
         findings = runner.evaluate(records, self.plan, [["A2", "A1"], ["A2", "A1"], ["A2", "A1"]])
         failed = [finding["rule"] for finding in findings if not finding["ok"]]
         self.assertEqual(failed, [])
@@ -153,12 +149,8 @@ class TheEvaluationTest(unittest.TestCase):
         """
         records = []
         for repeat in range(1, 4):
-            records.append(
-                a_record("A6", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:00:00Z")
-            )
-            records.append(
-                a_record("A6", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:00:00Z")
-            )
+            records.append(a_record("A6", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:00:00Z"))
+            records.append(a_record("A6", repeat=repeat, started_at=f"2026-10-21T{repeat:02d}:00:00Z"))
         findings = runner.evaluate(records, self.plan, [["A6-a"], ["A6-a"], ["A6-a"]])
         pause = next(finding for finding in findings if finding["rule"].startswith("пауза 30–60"))
         self.assertTrue(pause["ok"], pause["detail"])
@@ -230,9 +222,7 @@ class TheEvaluationTest(unittest.TestCase):
         """A cold session is refused by WB — the run measures the challenge, not the address."""
         records = [a_record("A1", warmup_ok=False)]
         findings = runner.evaluate(records, self.plan, [["A1"]])
-        warmup = next(
-            finding for finding in findings if finding["rule"].startswith("сессия была прогрета")
-        )
+        warmup = next(finding for finding in findings if finding["rule"].startswith("сессия была прогрета"))
         self.assertFalse(warmup["ok"])
 
     def test_a_class_that_is_not_the_combat_one_fails_the_class_rule(self):
@@ -280,9 +270,7 @@ class TheGateTest(unittest.TestCase):
         raw = block / "raw" / "b"
         raw.mkdir(parents=True, exist_ok=True)
         for index, record in enumerate(records):
-            (raw / f"{record['label']}-{index}.json").write_text(
-                json.dumps(record), encoding="utf-8"
-            )
+            (raw / f"{record['label']}-{index}.json").write_text(json.dumps(record), encoding="utf-8")
         if meta is not None:
             (raw / "block.json").write_text(json.dumps(meta), encoding="utf-8")
         target = block / "b.md"

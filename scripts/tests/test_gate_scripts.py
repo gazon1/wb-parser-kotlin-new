@@ -105,10 +105,7 @@ class TestBaselineParsing(unittest.TestCase):
             path = write(
                 tmp,
                 "detekt-baseline.xml",
-                '<?xml version="1.0" ?>\n'
-                "<SmellBaseline>\n"
-                "  <Current issues />\n"
-                "</SmellBaseline>\n",
+                '<?xml version="1.0" ?>\n<SmellBaseline>\n  <Current issues />\n</SmellBaseline>\n',
             )
             with self.assertRaises(ValueError):
                 BASELINE.parse_baseline(path)
@@ -118,10 +115,7 @@ class TestBaselineParsing(unittest.TestCase):
             path = write(
                 tmp,
                 "detekt-baseline.xml",
-                '<?xml version="1.0" ?>\n'
-                "<SmellBaseline>\n"
-                "  <CurrentIssues></CurrentIssues>\n"
-                "</SmellBaseline>\n",
+                '<?xml version="1.0" ?>\n<SmellBaseline>\n  <CurrentIssues></CurrentIssues>\n</SmellBaseline>\n',
             )
             self.assertEqual(BASELINE.parse_baseline(path).count, 0)
 
@@ -172,9 +166,8 @@ class TestFloorFileParsing(unittest.TestCase):
         # An empty floor map would make every module report "no floor recorded"
         # and fail loudly — but a *silently* empty map that reads as "nothing to
         # check" is the failure mode this avoids.
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(FileNotFoundError):
-                TEST_RUNS.parse_floor_file(Path(tmp) / "absent.txt")
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(FileNotFoundError):
+            TEST_RUNS.parse_floor_file(Path(tmp) / "absent.txt")
 
 
 class TestJUnitCounting(unittest.TestCase):
@@ -198,16 +191,14 @@ class TestJUnitCounting(unittest.TestCase):
             results.mkdir()
             for index in range(3):
                 (results / f"TEST-{index}.xml").write_text(
-                    '<?xml version="1.0" ?>\n'
-                    '<testsuite name="s">\n  <testcase name="a"/>\n</testsuite>\n',
+                    '<?xml version="1.0" ?>\n<testsuite name="s">\n  <testcase name="a"/>\n</testsuite>\n',
                     encoding="utf-8",
                 )
             self.assertEqual(TEST_RUNS.count_in_dir(results), (3, 3))
 
     def test_missing_directory_raises(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(FileNotFoundError):
-                TEST_RUNS.count_in_dir(Path(tmp) / "absent")
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(FileNotFoundError):
+            TEST_RUNS.count_in_dir(Path(tmp) / "absent")
 
     def test_directory_without_xml_raises(self):
         """An empty results directory is not "zero tests" — it is no run."""
@@ -236,10 +227,7 @@ class TestTheAgeOfAResultIsNotStaleness(unittest.TestCase):
         results.mkdir()
         xml = results / "TEST-one.xml"
         xml.write_text(
-            '<?xml version="1.0" ?>\n'
-            '<testsuite name="one" tests="1">\n'
-            '  <testcase name="a"/>\n'
-            "</testsuite>\n",
+            '<?xml version="1.0" ?>\n<testsuite name="one" tests="1">\n  <testcase name="a"/>\n</testsuite>\n',
             encoding="utf-8",
         )
         old = (xml.stat().st_mtime - 86400, xml.stat().st_mtime - 86400)
@@ -288,9 +276,8 @@ class TestCoverageFloorParsing(unittest.TestCase):
                 COVERAGE.parse_floor_file(path)
 
     def test_missing_file_raises_rather_than_returning_empty(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(FileNotFoundError):
-                COVERAGE.parse_floor_file(Path(tmp) / "absent.txt")
+        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(FileNotFoundError):
+            COVERAGE.parse_floor_file(Path(tmp) / "absent.txt")
 
 
 class TestCoverageReportParsing(unittest.TestCase):
@@ -371,7 +358,9 @@ class TestCoverageGateCanFail(unittest.TestCase):
     that never runs where the gate runs.
     """
 
-    def _run(self, floor_text: str, report_text: str | None, report_name: str = "report.xml") -> subprocess.CompletedProcess:
+    def _run(
+        self, floor_text: str, report_text: str | None, report_name: str = "report.xml"
+    ) -> subprocess.CompletedProcess:
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp, True)
         floor_path = Path(tmp) / "floor.txt"
@@ -426,9 +415,7 @@ class TestCoverageReportIsNotBehindItsRun(unittest.TestCase):
     def test_a_report_newer_than_the_run_is_not_stale(self):
         with tempfile.TemporaryDirectory() as tmp:
             report = self._report(tmp)
-            self.assertIsNone(
-                COVERAGE.staleness_error(report, report.stat().st_mtime + 10, 3600)
-            )
+            self.assertIsNone(COVERAGE.staleness_error(report, report.stat().st_mtime + 10, 3600))
 
     def test_a_report_behind_the_run_is_stale(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -440,9 +427,7 @@ class TestCoverageReportIsNotBehindItsRun(unittest.TestCase):
     def test_a_report_within_the_bound_is_not_stale(self):
         with tempfile.TemporaryDirectory() as tmp:
             report = self._report(tmp)
-            self.assertIsNone(
-                COVERAGE.staleness_error(report, report.stat().st_mtime + 60, 3600)
-            )
+            self.assertIsNone(COVERAGE.staleness_error(report, report.stat().st_mtime + 60, 3600))
 
 
 class TestCoverageUnionIsNotBehindItsParts(unittest.TestCase):
@@ -510,7 +495,7 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
 
     GOOD = {
         "codeql.yml": (
-            "on:\n  schedule:\n    - cron: \"17 3 * * 1\"\n"
+            'on:\n  schedule:\n    - cron: "17 3 * * 1"\n'
             "permissions:\n  contents: read\n"
             "jobs:\n  analyze:\n    permissions:\n      security-events: write\n"
             "    steps:\n      - uses: github/codeql-action/init@0123456789abcdef0123456789abcdef01234567\n"
@@ -540,14 +525,14 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         ),
         "nightly.yml": (
             "name: CI (nightly)\n"
-            "on:\n  schedule:\n    - cron: \"0 3 * * *\"\n"
+            'on:\n  schedule:\n    - cron: "0 3 * * *"\n'
             "permissions:\n  contents: read\n"
             "jobs:\n"
             "  nightly:\n    uses: ./.github/workflows/ci.yml\n"
         ),
         "watchdog.yml": (
             "name: Nightly watchdog\n"
-            "on:\n  schedule:\n    - cron: \"0 9 * * 1\"\n"
+            'on:\n  schedule:\n    - cron: "0 9 * * 1"\n'
             "permissions:\n  actions: read\n  contents: read\n  issues: write\n"
             "jobs:\n"
             "  watchdog:\n    steps:\n"
@@ -589,17 +574,13 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
 
     def test_codeql_without_the_upload_permission_is_a_finding(self):
         workflows = dict(self.GOOD)
-        workflows["codeql.yml"] = workflows["codeql.yml"].replace(
-            "security-events: write", "contents: read"
-        )
+        workflows["codeql.yml"] = workflows["codeql.yml"].replace("security-events: write", "contents: read")
         findings = self._check(self._fixture(workflows))
         self.assertTrue(any("security-events: write" in f for f in findings), findings)
 
     def test_scorecard_without_the_oidc_permission_is_a_finding(self):
         workflows = dict(self.GOOD)
-        workflows["scorecard.yml"] = workflows["scorecard.yml"].replace(
-            "id-token: write", "contents: read"
-        )
+        workflows["scorecard.yml"] = workflows["scorecard.yml"].replace("id-token: write", "contents: read")
         findings = self._check(self._fixture(workflows))
         self.assertTrue(any("id-token: write" in f for f in findings), findings)
 
@@ -614,10 +595,7 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         satisfies it, whichever workflow that is. This case removes the
         schedule from every workflow, which is the actual defect.
         """
-        workflows = {
-            name: text.replace("schedule:", "pull_request:")
-            for name, text in self.GOOD.items()
-        }
+        workflows = {name: text.replace("schedule:", "pull_request:") for name, text in self.GOOD.items()}
         findings = self._check(self._fixture(workflows))
         self.assertTrue(any("schedule" in f for f in findings), findings)
 
@@ -674,7 +652,7 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         """
         workflows = dict(self.GOOD)
         workflows["ci.yml"] = workflows["ci.yml"].replace(
-            "name: CI\n", "name: CI\non:\n  schedule:\n    - cron: \"0 4 * * *\"\n"
+            "name: CI\n", 'name: CI\non:\n  schedule:\n    - cron: "0 4 * * *"\n'
         )
         findings = self._check(self._fixture(workflows))
         self.assertTrue(any("schedule" in f for f in findings), findings)
@@ -717,9 +695,7 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         right: a job that does not declare its own inherits the caller's grant.
         """
         workflows = dict(self.GOOD)
-        workflows["nightly.yml"] = workflows["nightly.yml"].replace(
-            "permissions:\n  contents: read\n", ""
-        )
+        workflows["nightly.yml"] = workflows["nightly.yml"].replace("permissions:\n  contents: read\n", "")
         findings = self._check(self._fixture(workflows))
         self.assertTrue(any("no top-level permissions" in f for f in findings), findings)
 
@@ -730,9 +706,7 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         nothing calls is a pin nothing checks.
         """
         workflows = dict(self.GOOD)
-        workflows["ci.yml"] = workflows["ci.yml"].replace(
-            "      - run: python3 scripts/ci/check-action-pins.py\n", ""
-        )
+        workflows["ci.yml"] = workflows["ci.yml"].replace("      - run: python3 scripts/ci/check-action-pins.py\n", "")
         findings = self._check(self._fixture(workflows))
         self.assertTrue(any("no workflow calls" in f for f in findings), findings)
 
@@ -790,7 +764,7 @@ def _kover_report(covered: int, missed: int) -> str:
     """A kover XML report with one LINE counter, as the plugin writes it."""
     return (
         '<?xml version="1.0" ?>\n'
-        "<report name=\"fixture\">\n"
+        '<report name="fixture">\n'
         f'  <counter type="LINE" missed="{missed}" covered="{covered}"/>\n'
         "</report>\n"
     )
@@ -804,7 +778,7 @@ def _two_package_report() -> str:
     """
     return (
         '<?xml version="1.0" ?>\n'
-        "<report name=\"fixture\">\n"
+        '<report name="fixture">\n'
         '  <package name="ru/wbparser/app">\n'
         '    <class name="ru/wbparser/app/A">\n'
         '      <counter type="LINE" missed="2" covered="8"/>\n'
@@ -888,12 +862,7 @@ class TestActionPinsGateCanFail(unittest.TestCase):
     def test_a_pin_to_a_tag_object_is_a_finding(self):
         root = self._root(
             {
-                "ci.yml": (
-                    "jobs:\n"
-                    "  a:\n"
-                    "    steps:\n"
-                    "      - uses: ossf/scorecard-action@" + self.SHA + " # v2.5.0\n"
-                ),
+                "ci.yml": ("jobs:\n  a:\n    steps:\n      - uses: ossf/scorecard-action@" + self.SHA + " # v2.5.0\n"),
             },
         )
         findings = ACTION_PINS.check(
@@ -906,12 +875,7 @@ class TestActionPinsGateCanFail(unittest.TestCase):
     def test_a_pin_to_a_commit_is_quiet(self):
         root = self._root(
             {
-                "ci.yml": (
-                    "jobs:\n"
-                    "  a:\n"
-                    "    steps:\n"
-                    "      - uses: ossf/scorecard-action@" + self.SHA + " # v2.5.0\n"
-                ),
+                "ci.yml": ("jobs:\n  a:\n    steps:\n      - uses: ossf/scorecard-action@" + self.SHA + " # v2.5.0\n"),
             },
         )
         findings = ACTION_PINS.check(
@@ -924,12 +888,7 @@ class TestActionPinsGateCanFail(unittest.TestCase):
         """A tag is a different kind of defect, and another gate reports it."""
         root = self._root(
             {
-                "ci.yml": (
-                    "jobs:\n"
-                    "  a:\n"
-                    "    steps:\n"
-                    "      - uses: ossf/scorecard-action@v2.5.0\n"
-                ),
+                "ci.yml": ("jobs:\n  a:\n    steps:\n      - uses: ossf/scorecard-action@v2.5.0\n"),
             },
         )
         self.assertEqual(ACTION_PINS.pinned_actions(root), [])
@@ -937,12 +896,7 @@ class TestActionPinsGateCanFail(unittest.TestCase):
     def test_a_local_workflow_reference_needs_no_pin(self):
         root = self._root(
             {
-                "ci.yml": (
-                    "jobs:\n"
-                    "  a:\n"
-                    "    steps:\n"
-                    "      - uses: ./.github/workflows/other.yml\n"
-                ),
+                "ci.yml": ("jobs:\n  a:\n    steps:\n      - uses: ./.github/workflows/other.yml\n"),
             },
         )
         self.assertEqual(ACTION_PINS.pinned_actions(root), [])

@@ -1,0 +1,6 @@
+[default.extend-words]
+childs = "childs"
+mis = "mis"
+
+[files]
+extend-exclude = ["*.lock", "uv.lock", "catalog_measurements.json"]

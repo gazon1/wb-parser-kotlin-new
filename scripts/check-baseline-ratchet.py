@@ -130,10 +130,7 @@ def committed_ids(path: Path) -> set[str]:
         # rest. `git show` failing means the file is not in HEAD at all.
         return set()
 
-    return {
-        m.group(0)
-        for m in _ID_RE.finditer(completed.stdout)
-    }
+    return {m.group(0) for m in _ID_RE.finditer(completed.stdout)}
 
 
 def rel(path: Path) -> str:
@@ -207,8 +204,7 @@ def run_self_test() -> int:
 
     if not added:
         print(
-            "self-test FAILED: an added entry was not detected — the ratchet is not reading "
-            "what it writes",
+            "self-test FAILED: an added entry was not detected — the ratchet is not reading what it writes",
             file=sys.stderr,
         )
         return 1

@@ -51,8 +51,6 @@ The metadata of a report record
 
 from __future__ import annotations
 
-from typing import Dict, List
-
 from catalog_report import measured_limits, parse_measured_at  # noqa: F401  (re-exported)
 
 # The YAML field names. They are also the database column names: the loader writes
@@ -112,7 +110,7 @@ def metadata_of(record: dict) -> dict:
     return metadata
 
 
-def metadata_for_catalog(limits: Dict[str, dict], catalog_id: object) -> dict:
+def metadata_for_catalog(limits: dict[str, dict], catalog_id: object) -> dict:
     """The measurement metadata of one catalog, or an empty dict.
 
     An empty dict means "this catalog was not measured" — and a target that was not
@@ -125,7 +123,7 @@ def metadata_for_catalog(limits: Dict[str, dict], catalog_id: object) -> dict:
     return metadata_of(record)
 
 
-def best_measurements(records: List[dict]) -> Dict[str, dict]:
+def best_measurements(records: list[dict]) -> dict[str, dict]:
     """The best record per catalog, plus the subject id any pass observed.
 
     The limit, its boundary and its date belong to one measurement, and the best
@@ -198,7 +196,7 @@ def artifact_record(record: dict) -> dict:
     return reduced
 
 
-def artifact_records(limits: Dict[str, dict]) -> List[dict]:
+def artifact_records(limits: dict[str, dict]) -> list[dict]:
     """The artifact of a measurement run: one reduced record per measured target.
 
     The targets are ordered by their numeric id, so that regenerating the artifact
@@ -218,14 +216,13 @@ def _catalog_sort_key(record: dict) -> tuple:
 def has_metadata(page: dict) -> bool:
     """Whether a YAML page carries measurement metadata at all."""
     return any(
-        page.get(field) is not None
-        for field in (FIELD_MEASURED_AT, FIELD_BOUNDARY, FIELD_SOURCE, FIELD_SUBJECT_ID)
+        page.get(field) is not None for field in (FIELD_MEASURED_AT, FIELD_BOUNDARY, FIELD_SOURCE, FIELD_SUBJECT_ID)
     )
 
 
-def compare_page(catalog_id: str, page: dict, record: dict) -> List[str]:
+def compare_page(catalog_id: str, page: dict, record: dict) -> list[str]:
     """The findings about one target: what the YAML says and what was measured."""
-    findings: List[str] = []
+    findings: list[str] = []
 
     yaml_limit = page.get(FIELD_LIMIT)
     measured_limit = record.get(FIELD_LIMIT)
@@ -268,7 +265,7 @@ def compare_page(catalog_id: str, page: dict, record: dict) -> List[str]:
     return findings
 
 
-def compare(pages: List[dict], artifact: dict) -> List[str]:
+def compare(pages: list[dict], artifact: dict) -> list[str]:
     """The findings about the whole catalog: the YAML against the measurement artifact.
 
     Three kinds of disagreement are a finding:
@@ -279,7 +276,7 @@ def compare(pages: List[dict], artifact: dict) -> List[str]:
     - a YAML target that carries measurement metadata the artifact does not have —
       the metadata was written by hand, or the artifact is stale.
     """
-    findings: List[str] = []
+    findings: list[str] = []
     records = {str(record.get("id")): record for record in artifact.get("catalogs") or []}
 
     if not records:

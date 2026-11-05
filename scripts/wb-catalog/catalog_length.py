@@ -29,8 +29,6 @@ into the YAML lives in `apply_measured_limits.py`.
 
 from __future__ import annotations
 
-from typing import Optional
-
 # WB serves ~100 products per page. The observed page size varies slightly (99 or
 # 100), which is why the estimate is computed from the *observed* page size and then
 # verified against the API instead of being trusted.
@@ -45,7 +43,7 @@ BOUNDARY_UNKNOWN = "unknown"
 # report: `catalog_report.py`.
 
 
-def read_total(data: object) -> Optional[int]:
+def read_total(data: object) -> int | None:
     """The number of products WB says the catalog holds, or None.
 
     WB puts it in `total`, and some responses carry it in `metadata.total`. A
@@ -133,7 +131,7 @@ def is_page_refusal(data: object) -> bool:
     return "page param" in message
 
 
-def read_subject_id(products: object) -> Optional[int]:
+def read_subject_id(products: object) -> int | None:
     """The WB subject id the products of a page carry.
 
     The products of one catalog carry a single `subjectId` — the subject the category
@@ -160,12 +158,12 @@ def read_subject_id(products: object) -> Optional[int]:
 
 
 def plan_limit(
-    total: Optional[int],
+    total: int | None,
     observed_page_size: int,
     boundary: str,
     pages_available: int,
-    page_cap: Optional[int] = None,
-    subject_id: Optional[int] = None,
+    page_cap: int | None = None,
+    subject_id: int | None = None,
 ) -> dict:
     """The measured result of one catalog, as the report records it.
 

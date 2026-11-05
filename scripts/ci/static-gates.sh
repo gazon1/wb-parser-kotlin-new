@@ -19,7 +19,7 @@
 # it here, so a gate cannot be quietly softened by pasting an idiom instead of
 # declaring the mode.
 set -o pipefail
-cd "$(dirname "$0")/../.."
+cd "$(dirname "$0")/../.." || exit 1
 
 PASSED=() FAILED=() WARNED=()
 in_ci="${GITHUB_ACTIONS:-}"
@@ -121,6 +121,19 @@ gate blocking "every table is decided about in the catalogue role" python3 scrip
 # nothing about the cause. A base-image bump that breaks the build is a pull
 # request to review — and this gate is what makes the review mean something.
 gate blocking "the images carry the JDK the build asks for" python3 scripts/ci/check-docker-jdk.py
+
+# --- dev-quality-gates (adopted from mokevnin/dev-quality-gates) --------------
+gate blocking "jactionlint (GitHub Actions)" jactionlint .github/workflows/*.yml
+gate blocking "betterleaks (secrets)" betterleaks detect --source . --no-git --baseline-path .betterleaks-baseline.json
+gate blocking "hadolint (Dockerfiles)" hadolint Dockerfile.app Dockerfile.debug deploy/docker.adspower/Dockerfile
+gate blocking "shellcheck (shell scripts)" bash -c 'shellcheck --severity=warning $(find . -name "*.sh" -not -path "./.git/*")'
+gate blocking "typos (spelling)" typos
+gate blocking "rumdl (Markdown)" rumdl check . --exclude .agents,docs/decisions
+gate blocking "ruff (Python)" ruff check scripts/
+gate blocking "ruff format (Python)" ruff format --check scripts/
+gate blocking "vacuum (OpenAPI)" vacuum lint contract/catalog-v1.openapi.yaml
+gate advisory "squawk (PostgreSQL migrations)" squawk app/src/main/resources/db/migration/*.sql
+gate blocking "agnix (agent config)" agnix .
 
 # --- report ------------------------------------------------------------------
 echo

@@ -1,5 +1,5 @@
 ---
-name: grill-me-RETIRED
+name: grill-me-retired
 status: retired
 description: RETIRED. Formerly a relentless interview to sharpen a plan or design. Superseded by `grilling` skill (singularity-todo-grilling). Load that skill instead.
 disable-model-invocation: true

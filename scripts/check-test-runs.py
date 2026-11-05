@@ -274,9 +274,7 @@ def main() -> int:
                 problems.append(f"{module}: no floor recorded in {FLOOR_FILE.relative_to(ROOT)}")
             continue
         if count < floor:
-            problems.append(
-                f"{module}: ran {count} tests, floor is {floor} ({files} result files)"
-            )
+            problems.append(f"{module}: ran {count} tests, floor is {floor} ({files} result files)")
         else:
             print(f"  ·  {module}: {count} tests (floor {floor}, {files} files)")
 
@@ -305,7 +303,7 @@ def main() -> int:
             lines.append(f"{module} {measured[module]}")
         FLOOR_FILE.parent.mkdir(parents=True, exist_ok=True)
         FLOOR_FILE.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        print(f"✅ floor file updated from the current run")
+        print("✅ floor file updated from the current run")
         return 0
 
     if problems:

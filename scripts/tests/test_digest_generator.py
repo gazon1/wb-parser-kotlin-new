@@ -79,9 +79,7 @@ class DigestGeneratorTest(unittest.TestCase):
         shutil.copy(GENERATOR, scripts / GENERATOR.name)
         decisions = self._tmp / "docs" / "decisions"
         decisions.mkdir(parents=True)
-        (decisions / "2026-10-21-a-wrapped-rule.md").write_text(
-            WRAPPED_ADR, encoding="utf-8"
-        )
+        (decisions / "2026-10-21-a-wrapped-rule.md").write_text(WRAPPED_ADR, encoding="utf-8")
         (decisions / "2026-10-21-a-plain-rule.md").write_text(PLAIN_ADR, encoding="utf-8")
         self.digest = decisions / "DIGEST.md"
 
@@ -122,18 +120,13 @@ class DigestGeneratorTest(unittest.TestCase):
     def test_a_wrapped_rule_stays_one_line(self) -> None:
         # Свойство, на котором держится Critical: одна строка — одно правило.
         digest = self.generate()
-        wrapped = [
-            line
-            for line in self.critical_lines(digest)
-            if line.startswith("- **Always** отделять антибот")
-        ]
+        wrapped = [line for line in self.critical_lines(digest) if line.startswith("- **Always** отделять антибот")]
         self.assertEqual(1, len(wrapped), wrapped)
 
     def test_a_one_line_rule_is_unchanged(self) -> None:
         digest = self.generate()
         self.assertIn(
-            "- **Never** писать правило в две строки. "
-            "_(from `2026-10-21-a-wrapped-rule`)",
+            "- **Never** писать правило в две строки. _(from `2026-10-21-a-wrapped-rule`)",
             digest,
         )
 
@@ -142,8 +135,7 @@ class DigestGeneratorTest(unittest.TestCase):
         # целым — иначе Critical починен, а Per-tag остался с обрывками.
         digest = self.generate()
         self.assertIn(
-            "- Переносить это правило на следующую строку тоже можно. "
-            "_(from `2026-10-21-a-plain-rule`)_",
+            "- Переносить это правило на следующую строку тоже можно. _(from `2026-10-21-a-plain-rule`)_",
             digest,
         )
 
@@ -151,9 +143,7 @@ class DigestGeneratorTest(unittest.TestCase):
         # Перенос — это ширина исходника, а не свойство digest: правило собирает
         # генератор, и менять ADR ради него не нужно.
         self.generate()
-        source = (self._tmp / "docs" / "decisions" / "2026-10-21-a-wrapped-rule.md").read_text(
-            encoding="utf-8"
-        )
+        source = (self._tmp / "docs" / "decisions" / "2026-10-21-a-wrapped-rule.md").read_text(encoding="utf-8")
         self.assertIn("в любом\n  счёте отказов", source)
 
     def test_the_generator_is_idempotent(self) -> None:

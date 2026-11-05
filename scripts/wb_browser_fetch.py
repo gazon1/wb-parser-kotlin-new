@@ -19,7 +19,11 @@ Usage:
     uv run python scripts/wb_browser_fetch.py --catalog 9467 --menu-file /tmp/menu.json --pages 1
 """
 
-import argparse, asyncio, json, sys, time
+import argparse
+import asyncio
+import json
+import sys
+import time
 from pathlib import Path
 from urllib.parse import quote, urlencode
 
@@ -44,7 +48,7 @@ DEFAULT_HEADERS = {
     "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
     "x-userid": "0",
     "x-spa-version": "14.28.3",
-    "accept": "*/*"
+    "accept": "*/*",
 }
 
 # Задержка прогрева сессии: антибот-челлендж WB живёт несколько секунд.
@@ -121,8 +125,7 @@ def resolve_query(catalog_id, query=None, menu_file=None):
         if node and node.get("searchQuery"):
             return node["searchQuery"], f"--menu-file ({menu_file})", node
         print(
-            f"Warning: в меню нет узла с id={catalog_id} и searchQuery; "
-            f"используется fallback из id каталога.",
+            f"Warning: в меню нет узла с id={catalog_id} и searchQuery; используется fallback из id каталога.",
             file=sys.stderr,
         )
 
@@ -184,37 +187,37 @@ async def fetch_products_page(page, query: str, page_num: int, headers: dict) ->
 
 
 def extract_product_fields(prod: dict) -> dict:
-    sizes = prod.get('sizes') or []
+    sizes = prod.get("sizes") or []
     primary = sizes[0] if sizes else {}
-    price = primary.get('price') or {}
+    price = primary.get("price") or {}
     return {
-        "nm_id": prod.get('id'),
-        "name": prod.get('name', ''),
-        "brand": prod.get('brand', ''),
-        "brand_id": prod.get('brandId'),
-        "supplier": prod.get('supplier', ''),
-        "supplier_id": prod.get('supplierId'),
-        "supplier_rating": prod.get('supplierRating'),
-        "root": prod.get('root'),
-        "subject_id": prod.get('subjectId'),
-        "subject_parent_id": prod.get('subjectParentId'),
-        "rating": prod.get('rating'),
-        "review_rating": prod.get('reviewRating'),
-        "feedbacks": prod.get('feedbacks'),
-        "pics": prod.get('pics'),
+        "nm_id": prod.get("id"),
+        "name": prod.get("name", ""),
+        "brand": prod.get("brand", ""),
+        "brand_id": prod.get("brandId"),
+        "supplier": prod.get("supplier", ""),
+        "supplier_id": prod.get("supplierId"),
+        "supplier_rating": prod.get("supplierRating"),
+        "root": prod.get("root"),
+        "subject_id": prod.get("subjectId"),
+        "subject_parent_id": prod.get("subjectParentId"),
+        "rating": prod.get("rating"),
+        "review_rating": prod.get("reviewRating"),
+        "feedbacks": prod.get("feedbacks"),
+        "pics": prod.get("pics"),
         # Цены WB — числа в копейках; *_rub — то же в рублях.
-        "price_basic": price.get('basic'),
-        "price_basic_rub": kopecks_to_rubles(price.get('basic')),
-        "price_product": price.get('product'),
-        "price_product_rub": kopecks_to_rubles(price.get('product')),
-        "price_logistics": price.get('logistics'),
-        "price_logistics_rub": kopecks_to_rubles(price.get('logistics')),
-        "price_cashback": price.get('cashback'),
-        "price_cashback_rub": kopecks_to_rubles(price.get('cashback')),
-        "total_quantity": prod.get('totalQuantity'),
-        "wh": prod.get('wh'),
-        "warehouse_id": primary.get('wh') if primary else None,
-        "preset_type": prod.get('preset_type'),
+        "price_basic": price.get("basic"),
+        "price_basic_rub": kopecks_to_rubles(price.get("basic")),
+        "price_product": price.get("product"),
+        "price_product_rub": kopecks_to_rubles(price.get("product")),
+        "price_logistics": price.get("logistics"),
+        "price_logistics_rub": kopecks_to_rubles(price.get("logistics")),
+        "price_cashback": price.get("cashback"),
+        "price_cashback_rub": kopecks_to_rubles(price.get("cashback")),
+        "total_quantity": prod.get("totalQuantity"),
+        "wh": prod.get("wh"),
+        "warehouse_id": primary.get("wh") if primary else None,
+        "preset_type": prod.get("preset_type"),
     }
 
 
@@ -376,10 +379,10 @@ async def fetch_catalog(
                             await asyncio.sleep(delay_between_pages)
                         continue
 
-                    if not isinstance(data, dict) or 'products' not in data:
+                    if not isinstance(data, dict) or "products" not in data:
                         # WB на антиботе/ошибке отдаёт конверт без `products` —
                         # пустой список здесь означал бы «каталог кончился», а это ложь.
-                        reason = (data or {}).get('message') or (data or {}).get('msg') or data
+                        reason = (data or {}).get("message") or (data or {}).get("msg") or data
                         outcome["error"] = f"unexpected response: {str(reason)[:200]}"
                         outcomes.append(outcome)
                         if count is None:
@@ -387,7 +390,7 @@ async def fetch_catalog(
                         if attempt + 1 < total_requests:
                             await asyncio.sleep(delay_between_pages)
                         continue
-                    page_products = data.get('products') or []
+                    page_products = data.get("products") or []
 
                     if not page_products:
                         print(f"  No products on page {page_num}.", file=sys.stderr)
@@ -400,13 +403,13 @@ async def fetch_catalog(
                             await asyncio.sleep(delay_between_pages)
                         continue
 
-                    meta_total = (data.get('metadata') or {}).get('total') or data.get('total')
+                    meta_total = (data.get("metadata") or {}).get("total") or data.get("total")
                     if isinstance(meta_total, int):
                         catalog_total = meta_total
 
                     for prod in page_products:
                         extracted = extract_product_fields(prod)
-                        extracted['page'] = page_num
+                        extracted["page"] = page_num
                         products.append(extracted)
 
                     page_counts.append(len(page_products))
@@ -415,13 +418,15 @@ async def fetch_catalog(
 
                 except Exception as e:
                     print(f"  Error on request {label}: {e}", file=sys.stderr)
-                    outcomes.append({
-                        "n": attempt + 1,
-                        "page": page_num,
-                        "status": 0,
-                        "refused": False,
-                        "error": str(e)[:200],
-                    })
+                    outcomes.append(
+                        {
+                            "n": attempt + 1,
+                            "page": page_num,
+                            "status": 0,
+                            "refused": False,
+                            "error": str(e)[:200],
+                        }
+                    )
                     if count is None:
                         break
 
@@ -452,9 +457,7 @@ async def fetch_catalog(
 
 def price_stats_rub(products: list[dict]) -> dict:
     """Минимум/максимум/медиана по ценам в рублях (цены WB — копейки)."""
-    values = sorted(
-        p["price_basic_rub"] for p in products if p.get("price_basic_rub") is not None
-    )
+    values = sorted(p["price_basic_rub"] for p in products if p.get("price_basic_rub") is not None)
     if not values:
         return {"min": None, "max": None, "median": None, "count": 0}
     mid = len(values) // 2
@@ -589,7 +592,7 @@ async def main():
         print(
             f"Error: не удалось получить CDP URL профиля '{args.profile}'. "
             f"Открой его в AdsPower или проверь Local API.",
-            file=sys.stderr
+            file=sys.stderr,
         )
         sys.exit(1)
 
@@ -607,7 +610,7 @@ async def main():
 
     products = result["products"]
     for prod in products:
-        prod['catalog_id'] = args.catalog
+        prod["catalog_id"] = args.catalog
 
     measurement = measurement_of(result["outcomes"], args.label)
     measurement["warmup_ok"] = bool(result.get("warmup_ok"))
@@ -633,11 +636,11 @@ async def main():
         "catalog_total": result["catalog_total"],
         "total_products": len(products),
         "measurement": measurement,
-        "products": products
+        "products": products,
     }
 
     if args.output:
-        with open(args.output, 'w') as f:
+        with open(args.output, "w") as f:
             json.dump(output, f, indent=2, ensure_ascii=False)
         print(f"Written {len(products)} products to {args.output}", file=sys.stderr)
     elif args.json:

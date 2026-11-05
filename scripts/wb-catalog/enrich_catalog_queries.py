@@ -43,7 +43,6 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
 
 import httpx
 import yaml
@@ -51,10 +50,10 @@ import yaml
 DEFAULT_MENU_URL = "https://static-basket-01.wbbasket.ru/vol0/data/main-menu-by-ru-v3.json"
 
 
-def fetch_menu(menu_path: Path | None, menu_url: str, timeout: float = 30.0) -> List[dict]:
+def fetch_menu(menu_path: Path | None, menu_url: str, timeout: float = 30.0) -> list[dict]:
     """Load WB's menu from a local file or from the public static basket."""
     if menu_path is not None:
-        with open(menu_path, "r", encoding="utf-8") as f:
+        with open(menu_path, encoding="utf-8") as f:
             return json.load(f)
     with httpx.Client(timeout=timeout, follow_redirects=True) as client:
         response = client.get(menu_url)
@@ -62,11 +61,11 @@ def fetch_menu(menu_path: Path | None, menu_url: str, timeout: float = 30.0) -> 
         return response.json()
 
 
-def index_menu(nodes: List[dict]) -> Dict[str, dict]:
+def index_menu(nodes: list[dict]) -> dict[str, dict]:
     """Flatten the menu tree into `id -> node`."""
-    index: Dict[str, dict] = {}
+    index: dict[str, dict] = {}
 
-    def walk(items: List[dict]) -> None:
+    def walk(items: list[dict]) -> None:
         for node in items:
             node_id = node.get("id")
             if node_id is not None:
@@ -77,7 +76,7 @@ def index_menu(nodes: List[dict]) -> Dict[str, dict]:
     return index
 
 
-def enrich(pages: List[dict], menu_index: Dict[str, dict]) -> Dict[str, int]:
+def enrich(pages: list[dict], menu_index: dict[str, dict]) -> dict[str, int]:
     """Write the menu fields into every page that has a token. Returns counters."""
     stats = {"enriched": 0, "missing": 0, "no_token": 0}
 
@@ -103,7 +102,7 @@ def enrich(pages: List[dict], menu_index: Dict[str, dict]) -> Dict[str, int]:
     return stats
 
 
-def main(argv: List[str]) -> int:
+def main(argv: list[str]) -> int:
     yaml_path = Path(argv[1]) if len(argv) > 1 else Path("wb_catalog_targets.yaml")
     dry_run = "--dry-run" in argv
     menu_path: Path | None = None
@@ -114,7 +113,7 @@ def main(argv: List[str]) -> int:
         print(f"Catalog YAML not found: {yaml_path}", file=sys.stderr)
         return 1
 
-    with open(yaml_path, "r", encoding="utf-8") as f:
+    with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
 
     pages = data.get("pages")

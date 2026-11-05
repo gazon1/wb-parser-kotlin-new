@@ -156,11 +156,7 @@ class MeasuredLimitsTest(unittest.TestCase):
         self.assertEqual(record["wb_subject_id"], 1260)
 
     def test_a_successful_measurement_clears_the_error_of_the_previous_one(self):
-        existing = {
-            "catalogs": [
-                {"id": "9467", "status": "blocked", "error": "challenge", "known_pages_limit": None}
-            ]
-        }
+        existing = {"catalogs": [{"id": "9467", "status": "blocked", "error": "challenge", "known_pages_limit": None}]}
         fresh = {"catalogs": [measured_record(limit=60)]}
 
         merged = catalog_report.merge_report(existing, fresh)
@@ -294,9 +290,7 @@ class CompareTest(unittest.TestCase):
         self.assertIn("edited by hand", findings[0])
 
     def test_an_edited_boundary_is_a_finding(self):
-        findings = catalog_measurements.compare(
-            self.pages(known_pages_limit_boundary="catalog_end"), self.artifact()
-        )
+        findings = catalog_measurements.compare(self.pages(known_pages_limit_boundary="catalog_end"), self.artifact())
 
         self.assertEqual(len(findings), 1)
         self.assertIn("boundary", findings[0])
@@ -405,9 +399,7 @@ class GateTest(unittest.TestCase):
         self.assertEqual(check_measurements.run_self_test(), 0)
 
     def test_the_gate_passes_on_the_committed_catalog(self):
-        findings = check_measurements.check(
-            REPO / "wb_catalog_targets.yaml", REPO / "catalog_measurements.json"
-        )
+        findings = check_measurements.check(REPO / "wb_catalog_targets.yaml", REPO / "catalog_measurements.json")
 
         self.assertEqual(findings, [])
 
@@ -421,9 +413,7 @@ class GateTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            findings = check_measurements.check(
-                yaml_path, REPO / "catalog_measurements.json"
-            )
+            findings = check_measurements.check(yaml_path, REPO / "catalog_measurements.json")
 
         self.assertTrue(findings)
         self.assertTrue(any("edited by hand" in finding for finding in findings))

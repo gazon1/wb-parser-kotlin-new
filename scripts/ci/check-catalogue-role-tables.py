@@ -79,10 +79,7 @@ def role_lists(root: Path) -> dict[str, set[str]]:
         if match is None:
             lists[name] = set()
             continue
-        lists[name] = {
-            quoted.strip("'\" ")
-            for quoted in re.findall(r"'([^']*)'", match.group(1))
-        }
+        lists[name] = {quoted.strip("'\" ") for quoted in re.findall(r"'([^']*)'", match.group(1))}
     return lists
 
 

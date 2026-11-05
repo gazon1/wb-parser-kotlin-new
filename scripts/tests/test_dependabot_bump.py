@@ -80,11 +80,7 @@ class BumpTest(unittest.TestCase):
         # Тело pull request'а — это не только список обновлений: там есть
         # таблицы, и в их заголовке «from» и «to» стоят без всяких версий.
         # Такая пара не является бампом и не должна решать его.
-        body = (
-            "| Dependency | from | to |\n"
-            "|---|---|---|\n"
-            "- [foo] updates from 1.0.0 to 1.0.1\n"
-        )
+        body = "| Dependency | from | to |\n|---|---|---|\n- [foo] updates from 1.0.0 to 1.0.1\n"
         self.assertEqual(BUMP.classify(body), BUMP.PATCH)
 
     def test_a_version_the_script_reads_only_partly_stops_the_merge(self) -> None:

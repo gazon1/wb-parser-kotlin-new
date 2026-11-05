@@ -221,9 +221,6 @@ pool_gauge() {
         | grep -o '"value":[0-9.eE+-]*' | head -1 | cut -d: -f2
 }
 
-ACTIVE_BEFORE="$(pool_gauge hikaricp.connections.active)"
-PENDING_BEFORE="$(pool_gauge hikaricp.connections.pending)"
-
 TOTAL_PAGES=$(( (ROWS + PAGE_SIZE - 1) / PAGE_SIZE ))
 echo "→ $REQUESTS requests, $CONCURRENCY at a time, over $TOTAL_PAGES pages"
 

@@ -29,7 +29,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import List
 
 #: A plain scalar that is a number is a number. The file quotes ids on purpose
 #: (`id: '9463'`), so a quoted value stays a string.
@@ -59,7 +58,7 @@ class YamlSubsetError(ValueError):
     """The file is not the shape this reader understands."""
 
 
-def parse_pages(text: str) -> List[dict]:
+def parse_pages(text: str) -> list[dict]:
     """The `pages:` list of a catalog YAML.
 
     Raises [YamlSubsetError] on anything that is not a flat list of flat mappings:
@@ -67,7 +66,7 @@ def parse_pages(text: str) -> List[dict]:
     this file, and a reader that had to understand them would be a second YAML
     implementation with all the bugs of one.
     """
-    pages: List[dict] = []
+    pages: list[dict] = []
     current: dict = {}
     seen_list = False
 
@@ -80,9 +79,7 @@ def parse_pages(text: str) -> List[dict]:
 
         if not seen_list:
             if line.strip() != "pages:":
-                raise YamlSubsetError(
-                    f"line {lineno}: expected the file to start with 'pages:', got {line.strip()!r}"
-                )
+                raise YamlSubsetError(f"line {lineno}: expected the file to start with 'pages:', got {line.strip()!r}")
             seen_list = True
             continue
 
@@ -105,7 +102,7 @@ def parse_pages(text: str) -> List[dict]:
     return pages
 
 
-def read_pages(path: Path) -> List[dict]:
+def read_pages(path: Path) -> list[dict]:
     """The `pages:` list of the catalog YAML at `path`."""
     return parse_pages(Path(path).read_text(encoding="utf-8"))
 

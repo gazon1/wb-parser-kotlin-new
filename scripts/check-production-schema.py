@@ -84,7 +84,6 @@ holds real data, and a check that could modify what it checks is not a check.
 from __future__ import annotations
 
 import argparse
-import os
 import re
 import shutil
 import subprocess
@@ -486,9 +485,7 @@ def tables_in_sql(sql: str) -> set[str]:
     return {
         name.lower()
         for name in READ_SOURCE.findall(sql)
-        if name.lower() not in ctes
-        and name.lower() not in aliases
-        and name.lower() not in NOT_A_TABLE
+        if name.lower() not in ctes and name.lower() not in aliases and name.lower() not in NOT_A_TABLE
     }
 
 
@@ -706,9 +703,7 @@ def self_test_finds_a_table_a_part_reads() -> int:
         script = root / "scripts" / Path(__file__).name
         shutil.copy(Path(__file__).resolve(), script)
 
-        package = (
-            root / "app" / "src" / "main" / "kotlin" / "ru" / "wbparser" / "app" / "api" / "catalog"
-        )
+        package = root / "app" / "src" / "main" / "kotlin" / "ru" / "wbparser" / "app" / "api" / "catalog"
         package.mkdir(parents=True)
         (package / "CatalogQueries.kt").write_text(FIXTURE_FACADE, encoding="utf-8")
         (package / "CatalogItemQueries.kt").write_text(FIXTURE_PART, encoding="utf-8")
@@ -769,11 +764,18 @@ def self_test() -> int:
     try:
         subprocess.run(
             [
-                "docker", "run", "-d", "--rm",
-                "--name", container,
-                "-p", f"127.0.0.1:{port}:5432",
-                "-e", f"POSTGRES_PASSWORD={password}",
-                "-e", "POSTGRES_DB=wbparser",
+                "docker",
+                "run",
+                "-d",
+                "--rm",
+                "--name",
+                container,
+                "-p",
+                f"127.0.0.1:{port}:5432",
+                "-e",
+                f"POSTGRES_PASSWORD={password}",
+                "-e",
+                "POSTGRES_DB=wbparser",
                 "postgres:16-alpine",
             ],
             capture_output=True,

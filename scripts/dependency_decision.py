@@ -75,9 +75,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-TABLE = Path(
-    os.environ.get("DEPENDENCY_DECISIONS", ROOT / "config" / "gates" / "dependency-decisions.tsv")
-)
+TABLE = Path(os.environ.get("DEPENDENCY_DECISIONS", ROOT / "config" / "gates" / "dependency-decisions.tsv"))
 
 DECISIONS = ("taken", "deferred", "unnecessary")
 
@@ -133,14 +131,10 @@ def _rows(path: Path):
         dependency, decision, versions = parts[0].strip(), parts[1].strip(), parts[2].strip()
         why = "\t".join(parts[3:]).strip()
         if decision not in DECISIONS:
-            broken.append(
-                (number, f"'{decision}' is not a decision: expected one of {', '.join(DECISIONS)}")
-            )
+            broken.append((number, f"'{decision}' is not a decision: expected one of {', '.join(DECISIONS)}"))
             continue
         if _parse_range(versions) is None:
-            broken.append(
-                (number, f"'{versions}' is not a version range: expected `22 → 25` or `{ANY}`")
-            )
+            broken.append((number, f"'{versions}' is not a version range: expected `22 → 25` or `{ANY}`"))
             continue
         good.append((dependency, decision, versions, why))
     return good, broken
@@ -192,7 +186,7 @@ def _side_matches(pattern: str, version: str) -> bool:
     actual = _concrete(version)
     if actual is None or len(actual) < len(expected):
         return False
-    for wanted, got in zip(expected, actual):
+    for wanted, got in zip(expected, actual, strict=False):
         if wanted == "x":
             continue
         if wanted != got:
@@ -225,9 +219,7 @@ def _matching(rows, dependency: str):
     exact = [row for row in rows if row[0] == dependency]
     if exact:
         return exact
-    globs = [
-        row for row in rows if row[0].endswith("*") and dependency.startswith(row[0][:-1])
-    ]
+    globs = [row for row in rows if row[0].endswith("*") and dependency.startswith(row[0][:-1])]
     globs.sort(key=lambda row: len(row[0]), reverse=True)
     return globs
 

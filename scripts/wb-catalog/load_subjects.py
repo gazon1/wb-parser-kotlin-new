@@ -141,7 +141,7 @@ def load_subjects(
         if conn:
             conn.rollback()
         click.echo(f"\nDB error: {e}", err=True)
-        raise click.Abort()
+        raise click.Abort() from None
     finally:
         if conn:
             conn.close()

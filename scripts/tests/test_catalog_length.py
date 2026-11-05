@@ -245,7 +245,7 @@ class TestApplyToYaml(unittest.TestCase):
                 "  known_pages_limit: 5\n",
                 encoding="utf-8",
             )
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 loaded = yaml.safe_load(f)["pages"]
             changes, _ = REPORT.plan_changes(loaded, limits)
             by_id = {c.catalog_id: c for c in changes}
@@ -256,7 +256,7 @@ class TestApplyToYaml(unittest.TestCase):
             with open(path, "w", encoding="utf-8") as f:
                 yaml.dump({"pages": loaded}, f, allow_unicode=True, sort_keys=False)
 
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 result = yaml.safe_load(f)["pages"]
 
         self.assertEqual(result[0]["known_pages_limit"], 60)
@@ -315,7 +315,7 @@ class TestReportShape(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "report.json"
             path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 loaded = json.load(f)
 
         limits = REPORT.measured_limits(loaded)

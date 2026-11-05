@@ -140,9 +140,7 @@ def bump_of(old: str, new: str) -> str:
 
 def pairs(text: str) -> list[tuple[str, str]]:
     """Все пары «откуда → куда» из текста."""
-    return [
-        (_clean(match.group(1)), _clean(match.group(2))) for match in PAIR.finditer(text)
-    ]
+    return [(_clean(match.group(1)), _clean(match.group(2))) for match in PAIR.finditer(text)]
 
 
 def classify(text: str) -> str:
@@ -171,10 +169,7 @@ def classify(text: str) -> str:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) > 1:
-        body = Path(argv[1]).read_text(encoding="utf-8")
-    else:
-        body = sys.stdin.read()
+    body = Path(argv[1]).read_text(encoding="utf-8") if len(argv) > 1 else sys.stdin.read()
 
     bump = classify(body)
     print(bump)

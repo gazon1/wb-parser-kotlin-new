@@ -103,6 +103,7 @@ jobs:
       # its own outputs through `needs` — `needs` is what the *next* job reads.
       image: ${{ steps.image.outputs.image }}
       digest: ${{ steps.image.outputs.digest }}
+      superseded: ${{ steps.image.outputs.superseded }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
