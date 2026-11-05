@@ -37,7 +37,6 @@ The classpath file is written by the `:app:writeRuntimeClasspath` Gradle task.
 from __future__ import annotations
 
 import argparse
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -144,9 +143,7 @@ def check_classpath_agrees(libs: list[str], classpath: list[Path]) -> list[str]:
         findings.append(f"{name} is on the resolved runtime classpath but not in the image")
 
     for directory in resolved_dirs:
-        findings.append(
-            f"{directory} is a directory on the runtime classpath; the image can only ship files"
-        )
+        findings.append(f"{directory} is a directory on the runtime classpath; the image can only ship files")
     for path in missing_files:
         findings.append(f"{path} is on the runtime classpath but does not exist on disk")
     return findings
@@ -160,13 +157,10 @@ def check_no_duplicate_classes(jar: Path, classes: set[str]) -> list[str]:
             if not (entry.startswith("BOOT-INF/lib/") and entry.endswith(".jar")):
                 continue
             library = entry.removeprefix("BOOT-INF/lib/")
-            with archive.open(entry) as nested:
-                with zipfile.ZipFile(nested) as inner:
-                    for name in inner.namelist():
-                        if name.endswith(".class") and name in classes:
-                            findings.append(
-                                f"{name} is in BOOT-INF/classes and also inside {library}"
-                            )
+            with archive.open(entry) as nested, zipfile.ZipFile(nested) as inner:
+                for name in inner.namelist():
+                    if name.endswith(".class") and name in classes:
+                        findings.append(f"{name} is in BOOT-INF/classes and also inside {library}")
     return findings
 
 
@@ -233,8 +227,7 @@ def main() -> int:
         return 1
 
     print(
-        f"runtime classpath gate: {len(libs)} artifacts, "
-        f"{len(classes)} application classes, every reference resolves"
+        f"runtime classpath gate: {len(libs)} artifacts, {len(classes)} application classes, every reference resolves"
     )
     return 0
 

@@ -74,7 +74,7 @@
 
 | Что | Адрес | Контейнер |
 |---|---|---|
-| Приложение | http://localhost:8082 | `wb-parser-debug` |
+| Приложение | <http://localhost:8082> | `wb-parser-debug` |
 | PostgreSQL | localhost:5433 | `wb-parser-debug-postgres` |
 | Отладчик (JDWP) | localhost:5005 | — |
 | Логи и heapdump | `deploy/logs` (монтируется в `/logs`) | — |
@@ -504,7 +504,6 @@ python3 scripts/check-measurements.py
 - **Проверить гейт вручную:** `python3 scripts/check-measurements.py` и
   `python3 scripts/check-measurements.py --self-test` (второй доказывает, что гейт
   умеет падать на сломанном фикстуре).
-
 
 ---
 

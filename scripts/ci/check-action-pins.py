@@ -48,7 +48,6 @@ Exit codes
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import re
 import sys
@@ -141,7 +140,7 @@ def check(root: Path, token: str = "", opener=urllib.request.urlopen) -> list[st
             f"{path.name} pins `{action}` to {sha}, which is not a commit of "
             f"{owner_repo}. It is the SHA of an annotated tag object, and the "
             "action's own release rules reject it — the Scorecard API answers "
-            "\"imposter commit\" and refuses the publication, so the analysis "
+            '"imposter commit" and refuses the publication, so the analysis '
             "is computed and thrown away. Pin the commit the tag points at "
             "instead, and keep the version in the comment."
         )
@@ -161,12 +160,7 @@ def run_self_test() -> int:
         workflows = root / ".github" / "workflows"
         workflows.mkdir(parents=True)
         (workflows / "ci.yml").write_text(
-            "jobs:\n"
-            "  a:\n"
-            "    steps:\n"
-            "      - uses: ossf/scorecard-action@"
-            + "a" * 40
-            + " # v2.5.0\n",
+            "jobs:\n  a:\n    steps:\n      - uses: ossf/scorecard-action@" + "a" * 40 + " # v2.5.0\n",
             encoding="utf-8",
         )
 
@@ -217,7 +211,7 @@ class _FakeResponse:
     def read(self) -> bytes:
         return self._body
 
-    def __enter__(self) -> "_FakeResponse":
+    def __enter__(self) -> _FakeResponse:
         return self
 
     def __exit__(self, *args: object) -> None:

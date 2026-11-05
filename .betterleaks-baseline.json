@@ -1,0 +1,266 @@
+[
+ {
+  "RuleID": "generic-password",
+  "Description": "Detected a potential hardcoded password literal, which may expose account credentials.",
+  "StartLine": 757,
+  "EndLine": 757,
+  "StartColumn": 5,
+  "EndColumn": 37,
+  "Match": "password = \"schema-gate-password\"",
+  "Secret": "schema-gate-password",
+  "Attributes": {
+   "confidence": "low",
+   "path": "scripts/check-production-schema.py",
+   "resource": "fs.content"
+  },
+  "Tags": [],
+  "Fingerprint": "scripts/check-production-schema.py:generic-password:757",
+  "File": "scripts/check-production-schema.py",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 3.6464393,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": ""
+ },
+ {
+  "RuleID": "generic-password",
+  "Description": "Detected a potential hardcoded password literal, which may expose account credentials.",
+  "StartLine": 33,
+  "EndLine": 33,
+  "StartColumn": 17,
+  "EndColumn": 36,
+  "Match": "password = \"nothing\"",
+  "Secret": "nothing",
+  "Attributes": {
+   "confidence": "medium",
+   "path": "wbparser/src/test/kotlin/ru/wbparser/infra/db/ExposedOnceTest.kt",
+   "resource": "fs.content"
+  },
+  "Tags": [],
+  "ComponentSets": [
+   {
+    "components": [
+     {
+      "RuleID": "generic-username",
+      "Optional": true,
+      "StartLine": 32,
+      "EndLine": 32,
+      "StartColumn": 16,
+      "EndColumn": 31,
+      "Match": " user = \"nobody\"",
+      "Secret": "nobody"
+     }
+    ]
+   }
+  ],
+  "Fingerprint": "wbparser/src/test/kotlin/ru/wbparser/infra/db/ExposedOnceTest.kt:generic-password:33",
+  "File": "wbparser/src/test/kotlin/ru/wbparser/infra/db/ExposedOnceTest.kt",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 2.5216405,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": ""
+ },
+ {
+  "RuleID": "generic-password",
+  "Description": "Detected a potential hardcoded password literal, which may expose account credentials.",
+  "StartLine": 22,
+  "EndLine": 22,
+  "StartColumn": 16,
+  "EndColumn": 33,
+  "Match": "PASSWORD: postgres",
+  "Secret": "postgres",
+  "Attributes": {
+   "confidence": "medium",
+   "path": "deploy/docker-compose.adspower.yml",
+   "resource": "fs.content"
+  },
+  "Tags": [],
+  "ComponentSets": [
+   {
+    "components": [
+     {
+      "RuleID": "generic-username",
+      "Optional": true,
+      "StartLine": 21,
+      "EndLine": 21,
+      "StartColumn": 15,
+      "EndColumn": 29,
+      "Match": "_USER: postgres",
+      "Secret": "postgres"
+     }
+    ]
+   }
+  ],
+  "Fingerprint": "deploy/docker-compose.adspower.yml:generic-password:22",
+  "File": "deploy/docker-compose.adspower.yml",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 2.75,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": ""
+ },
+ {
+  "RuleID": "generic-password",
+  "Description": "Detected a potential hardcoded password literal, which may expose account credentials.",
+  "StartLine": 76,
+  "EndLine": 76,
+  "StartColumn": 10,
+  "EndColumn": 27,
+  "Match": "PASSWORD: postgres",
+  "Secret": "postgres",
+  "Attributes": {
+   "confidence": "medium",
+   "path": "deploy/docker-compose.adspower.yml",
+   "resource": "fs.content"
+  },
+  "Tags": [],
+  "ComponentSets": [
+   {
+    "components": [
+     {
+      "RuleID": "generic-username",
+      "Optional": true,
+      "StartLine": 75,
+      "EndLine": 75,
+      "StartColumn": 9,
+      "EndColumn": 23,
+      "Match": "_USER: postgres",
+      "Secret": "postgres"
+     }
+    ]
+   }
+  ],
+  "Fingerprint": "deploy/docker-compose.adspower.yml:generic-password:76",
+  "File": "deploy/docker-compose.adspower.yml",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 2.75,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": ""
+ },
+ {
+  "RuleID": "generic-password",
+  "Description": "Detected a potential hardcoded password literal, which may expose account credentials.",
+  "StartLine": 67,
+  "EndLine": 67,
+  "StartColumn": 29,
+  "EndColumn": 63,
+  "Match": "password = \"catalog-test-password\",",
+  "Secret": "catalog-test-password",
+  "Attributes": {
+   "confidence": "medium",
+   "path": "tests/src/test/kotlin/ru/wbparser/app/catalog/DemoSeedGuardTest.kt",
+   "resource": "fs.content"
+  },
+  "Tags": [],
+  "ComponentSets": [
+   {
+    "components": [
+     {
+      "RuleID": "generic-username",
+      "Optional": true,
+      "StartLine": 66,
+      "EndLine": 66,
+      "StartColumn": 28,
+      "EndColumn": 55,
+      "Match": " username = \"wb_catalog_ro\",",
+      "Secret": "wb_catalog_ro"
+     }
+    ]
+   }
+  ],
+  "Fingerprint": "tests/src/test/kotlin/ru/wbparser/app/catalog/DemoSeedGuardTest.kt:generic-password:67",
+  "File": "tests/src/test/kotlin/ru/wbparser/app/catalog/DemoSeedGuardTest.kt",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 3.5225716,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": ""
+ },
+ {
+  "RuleID": "generic-password",
+  "Description": "Detected a potential hardcoded password literal, which may expose account credentials.",
+  "StartLine": 73,
+  "EndLine": 73,
+  "StartColumn": 31,
+  "EndColumn": 62,
+  "Match": "Password = \"seed-test-password\",",
+  "Secret": "seed-test-password",
+  "Attributes": {
+   "confidence": "low",
+   "path": "tests/src/test/kotlin/ru/wbparser/app/catalog/DemoSeedGuardTest.kt",
+   "resource": "fs.content"
+  },
+  "Tags": [],
+  "Fingerprint": "tests/src/test/kotlin/ru/wbparser/app/catalog/DemoSeedGuardTest.kt:generic-password:73",
+  "File": "tests/src/test/kotlin/ru/wbparser/app/catalog/DemoSeedGuardTest.kt",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 3.127987,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": ""
+ },
+ {
+  "RuleID": "generic-password",
+  "Description": "Detected a potential hardcoded password literal, which may expose account credentials.",
+  "StartLine": 54,
+  "EndLine": 54,
+  "StartColumn": 9,
+  "EndColumn": 42,
+  "Match": "PASSWORD=\"rollback-drill-password\"",
+  "Secret": "rollback-drill-password",
+  "Attributes": {
+   "confidence": "low",
+   "path": "scripts/rollback-drill.sh",
+   "resource": "fs.content"
+  },
+  "Tags": [],
+  "Fingerprint": "scripts/rollback-drill.sh:generic-password:54",
+  "File": "scripts/rollback-drill.sh",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 3.534219,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": ""
+ },
+ {
+  "RuleID": "generic-password",
+  "Description": "Detected a potential hardcoded password literal, which may expose account credentials.",
+  "StartLine": 58,
+  "EndLine": 58,
+  "StartColumn": 9,
+  "EndColumn": 45,
+  "Match": "PASSWORD=\"load-test-catalog-password\"",
+  "Secret": "load-test-catalog-password",
+  "Attributes": {
+   "confidence": "low",
+   "path": "scripts/load-catalog.sh",
+   "resource": "fs.content"
+  },
+  "Tags": [],
+  "Fingerprint": "scripts/load-catalog.sh:generic-password:58",
+  "File": "scripts/load-catalog.sh",
+  "SymlinkFile": "",
+  "Commit": "",
+  "Entropy": 3.50738,
+  "Author": "",
+  "Email": "",
+  "Date": "",
+  "Message": ""
+ }
+]

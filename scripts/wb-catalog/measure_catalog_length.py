@@ -55,9 +55,8 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 import click
 
@@ -68,14 +67,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from adspower_utils import get_cdp_ws_url  # noqa: E402
-from wb_browser_fetch import (  # noqa: E402
-    DEFAULT_HEADERS,
-    DEFAULT_WARMUP_DELAY,
-    default_warmup_url,
-    fetch_products_page,
-    resolve_cdp_ws_url,
-)
-
 from catalog_length import (  # noqa: E402
     BOUNDARY_API_CAP,
     BOUNDARY_CATALOG_END,
@@ -89,6 +80,13 @@ from catalog_report import (  # noqa: E402
     STATUS_ERROR,
     STATUS_MEASURED,
     merge_report,
+)
+from wb_browser_fetch import (  # noqa: E402
+    DEFAULT_HEADERS,
+    DEFAULT_WARMUP_DELAY,
+    default_warmup_url,
+    fetch_products_page,
+    resolve_cdp_ws_url,
 )
 
 DEFAULT_CATALOG_YAML = Path(__file__).resolve().parent.parent.parent / "wb_catalog_targets.yaml"
@@ -107,12 +105,12 @@ class BlockedError(MeasureError):
     """WB refused to answer — an anti-bot challenge, not a measurement."""
 
 
-def load_catalog(yaml_path: Path) -> Dict[str, dict]:
+def load_catalog(yaml_path: Path) -> dict[str, dict]:
     """Read the catalog YAML into `id -> page`."""
     import yaml
 
     try:
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     except (OSError, yaml.YAMLError) as e:
         raise click.ClickException(f"Cannot parse {yaml_path}: {e}") from e
@@ -124,8 +122,7 @@ def load_catalog(yaml_path: Path) -> Dict[str, dict]:
     return {str(page.get("id")): page for page in pages}
 
 
-def resolve_token(catalog_id: str, page: Optional[dict], query: Optional[str],
-                  yaml_path: Path) -> str:
+def resolve_token(catalog_id: str, page: dict | None, query: str | None, yaml_path: Path) -> str:
     """The token this measurement will use, and where it came from."""
     if query:
         return query
@@ -145,7 +142,7 @@ def resolve_token(catalog_id: str, page: Optional[dict], query: Optional[str],
     return token
 
 
-async def fetch_page(page, query: str, page_num: int) -> Tuple[str, object]:
+async def fetch_page(page, query: str, page_num: int) -> tuple[str, object]:
     """Ask WB for one page and say what came back.
 
     Three answers are possible and they are not interchangeable:
@@ -173,7 +170,7 @@ async def fetch_page(page, query: str, page_num: int) -> Tuple[str, object]:
     return "ok", data
 
 
-async def find_last_full_page(fetch, low: int, high: int, delay: float) -> Tuple[int, str]:
+async def find_last_full_page(fetch, low: int, high: int, delay: float) -> tuple[int, str]:
     """The last page WB still fills with products, and the boundary that follows it.
 
     Pages are full up to the end of the catalog and then stop being full: either the
@@ -239,7 +236,7 @@ async def measure_catalog(
         # read it — which is slow, but honest.
         return await measure_by_reading(page, query, delay, max_pages, page_cap, subject_id)
 
-    async def fetch(number: int) -> Tuple[str, object]:
+    async def fetch(number: int) -> tuple[str, object]:
         return await fetch_page(page, query, number)
 
     # The highest page WB is willing to serve is the best first guess: a catalog
@@ -280,7 +277,7 @@ async def measure_by_reading(
     delay: float,
     max_pages: int,
     page_cap: int,
-    subject_id: Optional[int] = None,
+    subject_id: int | None = None,
 ) -> dict:
     """Fallback for a catalog whose length WB does not report: read it page by page."""
     pages_available = 0
@@ -306,7 +303,7 @@ async def measure_one(
     page_cap: int,
     delay: float,
     max_pages: int,
-    warmup_url: Optional[str],
+    warmup_url: str | None,
     warmup_delay: float,
 ) -> dict:
     """Warm the session up, measure the catalog, close only our own tab."""
@@ -344,8 +341,8 @@ def report_for(
     token: str,
     profile: str,
     status: str,
-    plan: Optional[dict] = None,
-    error: Optional[str] = None,
+    plan: dict | None = None,
+    error: str | None = None,
 ) -> dict:
     """One row of the report: what was measured, and how it ended."""
     record = {
@@ -354,7 +351,7 @@ def report_for(
         "search_query": token,
         "profile": profile,
         "status": status,
-        "measured_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "measured_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "error": error,
     }
     if plan:
@@ -370,7 +367,7 @@ def write_report(path: Path, report: dict) -> dict:
     """
     if path.exists():
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 existing = json.load(f)
         except (OSError, json.JSONDecodeError):
             existing = {}
@@ -444,17 +441,17 @@ def write_report(path: Path, report: dict) -> dict:
     help="Measure the remaining catalogs after a failure instead of stopping",
 )
 def measure_catalog_length(
-    catalog_ids: List[str],
+    catalog_ids: list[str],
     measure_all: bool,
-    query: Optional[str],
+    query: str | None,
     yaml_path: Path,
-    profiles: List[str],
+    profiles: list[str],
     page_cap: int,
     max_pages: int,
     delay: float,
     warmup_delay: float,
-    warmup_url: Optional[str],
-    report_path: Optional[Path],
+    warmup_url: str | None,
+    report_path: Path | None,
     keep_going: bool,
 ) -> None:
     """Measure how many pages a WB catalog has, through a real browser."""
@@ -467,10 +464,7 @@ def measure_catalog_length(
 
     catalog = load_catalog(yaml_path)
 
-    if measure_all:
-        wanted = list(catalog.keys())
-    else:
-        wanted = [str(c) for c in catalog_ids]
+    wanted = list(catalog.keys()) if measure_all else [str(c) for c in catalog_ids]
     if query and len(wanted) > 1:
         raise click.ClickException("--query applies to a single catalog")
 
@@ -486,11 +480,11 @@ def measure_catalog_length(
         targets.append((str(catalog_id), name, token, source))
 
     profile_list = list(profiles) if profiles else [DEFAULT_PROFILE]
-    ws_urls: Dict[str, str] = {}
+    ws_urls: dict[str, str] = {}
 
     report = {
         "version": REPORT_VERSION,
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "settings": {
             "page_cap": page_cap,
             "delay": delay,
@@ -507,13 +501,13 @@ def measure_catalog_length(
     run_number = 1
     if report_path and report_path.exists():
         try:
-            with open(report_path, "r", encoding="utf-8") as f:
+            with open(report_path, encoding="utf-8") as f:
                 run_number = int(json.load(f).get("runs") or 1) + 1
         except (OSError, json.JSONDecodeError, TypeError, ValueError):
             run_number = 1
     report["runs"] = run_number
 
-    for index, (catalog_id, name, token, source) in enumerate(targets):
+    for index, (catalog_id, name, token, _source) in enumerate(targets):
         profile = profile_list[index % len(profile_list)]
         click.echo("")
         click.echo(f"Measuring catalog {catalog_id} ({name}) with profile {profile}...", err=True)

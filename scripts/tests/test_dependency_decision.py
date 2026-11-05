@@ -78,9 +78,7 @@ class DependencyDecisionTest(unittest.TestCase):
         Номер PR — часть причины, но не ключ: следующий pull request по той же
         зависимости находит то же решение.
         """
-        self.write(
-            "eclipse-temurin\tdeferred\t22 → 25\tPR #97 и PR #169: взяли и сломали.\n"
-        )
+        self.write("eclipse-temurin\tdeferred\t22 → 25\tPR #97 и PR #169: взяли и сломали.\n")
         for number in ("97", "169", "200"):
             found = decision.decision_for("eclipse-temurin", ("22", "25"), self.table)
             self.assertIn("deferred", found)
@@ -124,9 +122,7 @@ class DependencyDecisionTest(unittest.TestCase):
         """Решение, привязанное к бампу, не отвечает за другой бамп."""
         self.write("eclipse-temurin\tdeferred\t22 → 25\tPR #97: взяли и сломали.\n")
         self.assertIn("deferred", decision.decision_for("eclipse-temurin", ("22", "25"), self.table))
-        self.assertEqual(
-            decision.NONE, decision.decision_for("eclipse-temurin", ("25", "26"), self.table)
-        )
+        self.assertEqual(decision.NONE, decision.decision_for("eclipse-temurin", ("25", "26"), self.table))
 
     def test_a_decision_without_a_version_answers_for_any_bump(self) -> None:
         self.write("tailwindcss\tdeferred\t*\tPR #33: сборка падает.\n")
@@ -204,17 +200,13 @@ class PullRequestDecisionTest(unittest.TestCase):
 
     def test_the_next_pull_request_of_the_same_dependency_finds_the_decision(self) -> None:
         """Тот самый случай: решение принято под PR #97, а пришло PR #169."""
-        self.write(
-            "eclipse-temurin\tdeferred\t22 → 25\tPR #97: взяли и сломали.\n"
-        )
+        self.write("eclipse-temurin\tdeferred\t22 → 25\tPR #97: взяли и сломали.\n")
         found = decision.decision_for_pull_request(BODY, self.table)
         self.assertIn("deferred", found)
         self.assertIn("взяли и сломали", found)
 
     def test_a_group_finds_the_decision_of_one_of_its_dependencies(self) -> None:
-        self.write(
-            "org.springframework:*\tdeferred\t6.2.1 → 7.0.9\tPR #99: миграция.\n"
-        )
+        self.write("org.springframework:*\tdeferred\t6.2.1 → 7.0.9\tPR #99: миграция.\n")
         found = decision.decision_for_pull_request(GROUP_BODY, self.table)
         self.assertIn("deferred", found)
 
@@ -234,12 +226,8 @@ class DockerJdkGateExplainsADecisionTest(unittest.TestCase):
         self.addCleanup(self._dir.cleanup)
 
         (self.root / "build.gradle.kts").write_text("    jvmToolchain(22)\n", encoding="utf-8")
-        (self.root / "Dockerfile.app").write_text(
-            "FROM eclipse-temurin:25-jdk-alpine AS builder\n", encoding="utf-8"
-        )
-        (self.root / "Dockerfile.debug").write_text(
-            "FROM eclipse-temurin:25-jre\n", encoding="utf-8"
-        )
+        (self.root / "Dockerfile.app").write_text("FROM eclipse-temurin:25-jdk-alpine AS builder\n", encoding="utf-8")
+        (self.root / "Dockerfile.debug").write_text("FROM eclipse-temurin:25-jre\n", encoding="utf-8")
 
     def test_a_divergence_without_a_decision_is_a_finding(self) -> None:
         self.table.write_text("# решений нет\n", encoding="utf-8")
@@ -248,9 +236,7 @@ class DockerJdkGateExplainsADecisionTest(unittest.TestCase):
         self.assertEqual([], explanations)
 
     def test_a_divergence_with_a_deferred_decision_is_explained(self) -> None:
-        self.table.write_text(
-            "eclipse-temurin\tdeferred\t22 → 25\tвзяли и сломали.\n", encoding="utf-8"
-        )
+        self.table.write_text("eclipse-temurin\tdeferred\t22 → 25\tвзяли и сломали.\n", encoding="utf-8")
         findings, explanations = jdk_gate.check(self.root, self.table)
         self.assertEqual([], findings)
         self.assertTrue(any("решение отложено" in note for note in explanations))
@@ -258,9 +244,7 @@ class DockerJdkGateExplainsADecisionTest(unittest.TestCase):
 
     def test_a_divergence_with_a_taken_decision_is_still_a_finding(self) -> None:
         """`taken` — решение о бампе принято, и образ всё равно не тот."""
-        self.table.write_text(
-            "eclipse-temurin\ttaken\t22 → 25\tвзяли.\n", encoding="utf-8"
-        )
+        self.table.write_text("eclipse-temurin\ttaken\t22 → 25\tвзяли.\n", encoding="utf-8")
         findings, explanations = jdk_gate.check(self.root, self.table)
         self.assertTrue(findings)
         self.assertEqual([], explanations)

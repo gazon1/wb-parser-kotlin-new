@@ -102,6 +102,8 @@ def set_root(path: Path) -> None:
     GATE_DIR = path / "config" / "gates"
     ASYMMETRY_FILE = GATE_DIR / "asymmetries.tsv"
     CONTROL_EXEMPTIONS = GATE_DIR / "control-exemptions.tsv"
+
+
 REGISTRY = ROOT / "scripts" / "ci" / "static-gates.sh"
 CHECK_SH = ROOT / "check.sh"
 CI_YML = ROOT / ".github" / "workflows" / "ci.yml"
@@ -194,16 +196,12 @@ def code_lines(path: Path) -> list[str]:
     A substring search over the raw file finds the gate's name in the comment
     that explains why the gate must be called. That comment is precisely what
     made this check pass while the call was deleted — the check was satisfied
-    by its own documentation, which is the most embarassingly quiet way a gate
+    by its own documentation, which is the most embarrassingly quiet way a gate
     can stop gating.
 
     Both surfaces use `#` for comments: bash, and YAML at the start of a line.
     """
-    return [
-        line
-        for line in read_text(path).splitlines()
-        if not line.strip().startswith("#")
-    ]
+    return [line for line in read_text(path).splitlines() if not line.strip().startswith("#")]
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +294,9 @@ def configured_check_tasks() -> set[str]:
         for plugin, task in PLUGIN_TASKS.items():
             if re.search(rf'apply\(plugin\s*=\s*"{re.escape(plugin)}"\)', source) and task:
                 found.add(task)
-        for match in re.finditer(r'tasks\.(?:register|register<[^>]*>|named)\s*\(?\s*"([A-Za-z][A-Za-z0-9_-]*)"', source):
+        for match in re.finditer(
+            r'tasks\.(?:register|register<[^>]*>|named)\s*\(?\s*"([A-Za-z][A-Za-z0-9_-]*)"', source
+        ):
             name = match.group(1)
             if name in CHECK_TASKS:
                 found.add(name)
@@ -508,7 +508,7 @@ def part_b(gates: list[tuple[str, str, list[str]]]) -> list[str]:
     findings: list[str] = []
     ran = 0
 
-    for mode, name, command in gates:
+    for _mode, name, command in gates:
         joined = " ".join(command)
         if "unittest discover" in joined:
             # The unit-test gate proves itself by failing when a test fails.
@@ -575,19 +575,14 @@ def part_a3() -> list[str]:
         check=False,
     )
     if completed.returncode != 0:
-        raise CannotRun(
-            "gradle `check --dry-run` failed; cannot verify the lifecycle:\n"
-            + completed.stderr[-800:]
-        )
+        raise CannotRun("gradle `check --dry-run` failed; cannot verify the lifecycle:\n" + completed.stderr[-800:])
 
     scheduled = set(re.findall(r"^:([A-Za-z0-9:_-]+)", completed.stdout, re.M))
     if not scheduled:
         # `--quiet` can collapse the task graph on some Gradle versions. Reading
         # that as "nothing is wired" would be a false accusation; silently
         # passing on an empty graph would be worse. Neither: say so.
-        raise CannotRun(
-            "gradle `check --dry-run` produced no task graph; cannot verify the lifecycle"
-        )
+        raise CannotRun("gradle `check --dry-run` produced no task graph; cannot verify the lifecycle")
 
     findings: list[str] = []
     for task in LIFECYCLE_TASKS:
@@ -599,7 +594,6 @@ def part_a3() -> list[str]:
     if not findings:
         print(f"  ·  Part A3: check schedules {', '.join(LIFECYCLE_TASKS)}")
     return findings
-
 
 
 def part_a2() -> list[str]:
@@ -623,10 +617,7 @@ def part_a2() -> list[str]:
         check=False,
     )
     if completed.returncode != 0:
-        raise CannotRun(
-            "gradle `tasks --all` failed; cannot verify that gate tasks exist:\n"
-            + completed.stderr[-800:]
-        )
+        raise CannotRun("gradle `tasks --all` failed; cannot verify that gate tasks exist:\n" + completed.stderr[-800:])
 
     # Task lines look like `test - Runs this project's tests.` — or
     # `app:bootJar - …` when `--all` qualifies a subproject task with its
@@ -638,9 +629,7 @@ def part_a2() -> list[str]:
         # bare `app:detekt` with no description (lifecycle tasks from plugins
         # that supply no group description). Requiring the `- …` part made
         # every such task look missing.
-        match = re.match(
-            r"^(?:[A-Za-z0-9_-]+:)?([A-Za-z][A-Za-z0-9_-]*)(?:\s+-\s.*)?$", line.strip()
-        )
+        match = re.match(r"^(?:[A-Za-z0-9_-]+:)?([A-Za-z][A-Za-z0-9_-]*)(?:\s+-\s.*)?$", line.strip())
         if match:
             available.add(match.group(1))
 
@@ -665,12 +654,12 @@ def part_a2() -> list[str]:
 BROKEN_FIXTURE = {
     # Part A: detekt is configured but no gate names it.
     "build.gradle.kts": (
-        'subprojects {\n'
+        "subprojects {\n"
         '    apply(plugin = "io.gitlab.arturbosch.detekt")\n'
         '    apply(plugin = "org.jlleitschuh.gradle.ktlint")\n'
-        '    // Part C: a lint task that cannot fail.\n'
-        '    extensions.configure<DetektExtension> { ignoreFailures = true }\n'
-        '}\n'
+        "    // Part C: a lint task that cannot fail.\n"
+        "    extensions.configure<DetektExtension> { ignoreFailures = true }\n"
+        "}\n"
     ),
     # check.sh names only `test`; ci.yml names `test` and `build` → Part E.
     "check.sh": "#!/usr/bin/env bash\n./gradlew :domain:test\n",
@@ -678,10 +667,7 @@ BROKEN_FIXTURE = {
         "name: CI\njobs:\n  build:\n    steps:\n      - run: ./gradlew build\n      - run: ./gradlew test\n"
     ),
     # Part D: a blocking gate quietly softened. No exemption for it → Part F too.
-    "scripts/ci/static-gates.sh": (
-        "#!/usr/bin/env bash\n"
-        'gate blocking "softened gate" python3 -c "pass" || true\n'
-    ),
+    "scripts/ci/static-gates.sh": ('#!/usr/bin/env bash\ngate blocking "softened gate" python3 -c "pass" || true\n'),
     "config/gates/asymmetries.tsv": "",
     "config/gates/control-exemptions.tsv": "",
 }

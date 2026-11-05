@@ -32,14 +32,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import List
 
 import click
 import yaml
-
 from catalog_report import (  # noqa: E402
-    STATUS_MEASURED,
-    Change,
     measured_limits,
     plan_changes,
 )
@@ -50,16 +46,16 @@ DEFAULT_CATALOG_YAML = Path(__file__).resolve().parent.parent.parent / "wb_catal
 def load_report(path: Path) -> dict:
     """Read the measurement report."""
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
         raise click.ClickException(f"Cannot read the report {path}: {e}") from e
 
 
-def load_pages(yaml_path: Path) -> List[dict]:
+def load_pages(yaml_path: Path) -> list[dict]:
     """Read the `pages` list of the catalog YAML."""
     try:
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     except (OSError, yaml.YAMLError) as e:
         raise click.ClickException(f"Cannot parse {yaml_path}: {e}") from e
@@ -70,7 +66,7 @@ def load_pages(yaml_path: Path) -> List[dict]:
     return pages
 
 
-def write_pages(yaml_path: Path, pages: List[dict]) -> None:
+def write_pages(yaml_path: Path, pages: list[dict]) -> None:
     """Write the catalog YAML back, keeping the field order of the original."""
     with open(yaml_path, "w", encoding="utf-8") as f:
         yaml.dump({"pages": pages}, f, allow_unicode=True, sort_keys=False)

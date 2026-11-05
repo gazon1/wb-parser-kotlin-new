@@ -130,9 +130,7 @@ def check(root: Path, table: Path | None = None) -> tuple[list[str], list[str]]:
                 if note not in explanations:
                     explanations.append(note)
             else:
-                findings.append(
-                    f"{name} carries eclipse-temurin:{version}, but the build asks for JDK {wanted}"
-                )
+                findings.append(f"{name} carries eclipse-temurin:{version}, but the build asks for JDK {wanted}")
 
     if not found_any:
         findings.append("no eclipse-temurin base image was found — the images' JDK is not checked")
@@ -199,8 +197,7 @@ def self_test() -> int:
         # And a version that is only mentioned in a comment must not be read as the
         # version the build asks for.
         (root / "build.gradle.kts").write_text(
-            "    // It used to be repeated as `jvmToolchain(21)` in each module.\n"
-            "    jvmToolchain(22)\n"
+            "    // It used to be repeated as `jvmToolchain(21)` in each module.\n    jvmToolchain(22)\n"
         )
         findings, _ = check(root, empty)
         if findings:

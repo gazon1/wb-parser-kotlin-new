@@ -59,10 +59,10 @@ DEFAULT_ARTIFACT = ROOT / "catalog_measurements.json"
 def load_artifact(path: Path) -> dict:
     """The committed measurement artifact."""
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             return json.load(f)
     except (OSError, json.JSONDecodeError) as e:
-        raise SystemExit(f"❌ cannot read the measurement artifact {path}: {e}")
+        raise SystemExit(f"❌ cannot read the measurement artifact {path}: {e}") from e
 
 
 def check(yaml_path: Path, artifact_path: Path) -> list[str]:
@@ -127,9 +127,7 @@ def run_self_test() -> int:
     with tempfile.TemporaryDirectory() as tmp:
         fixture = Path(tmp)
         artifact_path = fixture / "catalog_measurements.json"
-        artifact_path.write_text(
-            json.dumps(GOOD_ARTIFACT, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        artifact_path.write_text(json.dumps(GOOD_ARTIFACT, ensure_ascii=False, indent=2), encoding="utf-8")
 
         good_yaml = fixture / "good.yaml"
         good_yaml.write_text(GOOD_YAML, encoding="utf-8")
@@ -141,18 +139,11 @@ def run_self_test() -> int:
 
     problems: list[str] = []
     if good_findings:
-        problems.append(
-            "the check reported a finding on a consistent catalog: " + "; ".join(good_findings)
-        )
+        problems.append("the check reported a finding on a consistent catalog: " + "; ".join(good_findings))
     if not broken_findings:
-        problems.append(
-            "the check reported nothing on a catalog whose limit was edited by hand — "
-            "it cannot fail"
-        )
+        problems.append("the check reported nothing on a catalog whose limit was edited by hand — it cannot fail")
     elif not any("limit" in finding for finding in broken_findings):
-        problems.append(
-            "the check did not name the edited limit: " + "; ".join(broken_findings)
-        )
+        problems.append("the check did not name the edited limit: " + "; ".join(broken_findings))
 
     if problems:
         print("self-test FAILED — the check did not detect what it exists to catch:", file=sys.stderr)
@@ -167,9 +158,7 @@ def run_self_test() -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--yaml", type=Path, default=DEFAULT_YAML, help="catalog YAML to check")
-    parser.add_argument(
-        "--artifact", type=Path, default=DEFAULT_ARTIFACT, help="measurement artifact to check against"
-    )
+    parser.add_argument("--artifact", type=Path, default=DEFAULT_ARTIFACT, help="measurement artifact to check against")
     parser.add_argument(
         "--self-test",
         action="store_true",

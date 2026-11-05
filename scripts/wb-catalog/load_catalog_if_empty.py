@@ -73,11 +73,16 @@ def run_load_script(
     cmd = [
         sys.executable,
         str(yaml_path),
-        "--db-host", db_host,
-        "--db-port", str(db_port),
-        "--db-name", db_name,
-        "--db-user", db_user,
-        "--db-password", db_password,
+        "--db-host",
+        db_host,
+        "--db-port",
+        str(db_port),
+        "--db-name",
+        db_name,
+        "--db-user",
+        db_user,
+        "--db-password",
+        db_password,
     ]
     result = subprocess.run(cmd, env={"PGPASSWORD": db_password})
     return result.returncode

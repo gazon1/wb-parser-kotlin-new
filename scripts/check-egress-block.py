@@ -108,7 +108,7 @@ def run_rows(text: str) -> list[dict]:
         for cells in table[1:]:
             if len(cells) < len(header):
                 continue
-            row = dict(zip(header, cells))
+            row = dict(zip(header, cells, strict=False))
             rows.append(row)
         break
     return rows
@@ -124,7 +124,9 @@ def rule_rows(text: str) -> list[dict]:
         for cells in table[1:]:
             if len(cells) < 2:
                 continue
-            rows.append({"rule": cells[0], "verdict": strip_markup(cells[1]), "comment": cells[2] if len(cells) > 2 else ""})
+            rows.append(
+                {"rule": cells[0], "verdict": strip_markup(cells[1]), "comment": cells[2] if len(cells) > 2 else ""}
+            )
         break
     return rows
 
@@ -155,7 +157,7 @@ def load_records(raw_dir: Path) -> tuple[list[dict], dict | None]:
         return records, meta
     for path in sorted(raw_dir.glob("*.json")):
         try:
-            with open(path, "r", encoding="utf-8") as handle:
+            with open(path, encoding="utf-8") as handle:
                 payload = json.load(handle)
         except (OSError, json.JSONDecodeError):
             continue
@@ -266,16 +268,19 @@ def check_block(report: Path) -> tuple[list[str], list[str]]:
             findings.append(f"{report.name}: the report lists the run {label}, which is not in the raw data")
             continue
         raw = totals[label]
-        for cell, key in (("запросов", "requests"), ("отказов", "refused"), ("транспортных", "errored"), ("успешных", "succeeded")):
+        for cell, key in (
+            ("запросов", "requests"),
+            ("отказов", "refused"),
+            ("транспортных", "errored"),
+            ("успешных", "succeeded"),
+        ):
             if cell not in row:
                 continue
             stated = number(row[cell])
             if stated is None:
                 findings.append(f"{report.name}: run {label} has an unreadable {cell}: {row[cell]!r}")
             elif int(stated) != raw[key]:
-                findings.append(
-                    f"{report.name}: run {label} says {int(stated)} {cell}, the raw data says {raw[key]}"
-                )
+                findings.append(f"{report.name}: run {label} says {int(stated)} {cell}, the raw data says {raw[key]}")
         share = number(row.get("доля", ""))
         if share is not None:
             expected = (raw["refused"] / raw["requests"]) if raw["requests"] else 0.0
@@ -318,9 +323,7 @@ def check_block(report: Path) -> tuple[list[str], list[str]]:
             f"{report.name}: the report claims the block passed the protocol gate, "
             f"and lists {len(failed_claims)} rule(s) as not met"
         )
-    if claims_failed and not failed_claims and not any(
-        key in verdicts and not verdicts[key] for key in verdicts
-    ):
+    if claims_failed and not failed_claims and not any(key in verdicts and not verdicts[key] for key in verdicts):
         findings.append(
             f"{report.name}: the report claims the block failed the protocol gate, "
             "but nothing in it says a rule was broken"

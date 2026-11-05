@@ -473,9 +473,7 @@ def main() -> int:
         if not report.is_absolute():
             report = ROOT / relative
         if not report.is_file():
-            errors.append(
-                f"{module}: {rel(report)} does not exist — the coverage task did not run"
-            )
+            errors.append(f"{module}: {rel(report)} does not exist — the coverage task did not run")
             continue
 
         measured_reports.add(report)

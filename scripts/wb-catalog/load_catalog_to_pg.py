@@ -45,9 +45,8 @@ from __future__ import annotations
 import json
 import sys
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Dict, List, Tuple
 
 import click
 import psycopg2
@@ -73,13 +72,14 @@ def validate_json(ctx: click.Context, param: click.Parameter, value: str) -> dic
     try:
         return json.loads(value)
     except json.JSONDecodeError as e:
-        raise click.BadParameter(f"Invalid JSON: {e}")
+        raise click.BadParameter(f"Invalid JSON: {e}") from e
 
 
-def load_yaml_pages(yaml_path: Path) -> List[dict]:
+def load_yaml_pages(yaml_path: Path) -> list[dict]:
     """Load and validate the list of pages from YAML."""
     import yaml
-    with open(yaml_path, "r", encoding="utf-8") as f:
+
+    with open(yaml_path, encoding="utf-8") as f:
         data = yaml.safe_load(f)
 
     if not data or "pages" not in data:
@@ -91,22 +91,22 @@ def load_yaml_pages(yaml_path: Path) -> List[dict]:
 
     for i, page in enumerate(pages):
         if not page.get("name") or not page.get("url"):
-            raise click.ClickException(f"Page #{i+1} is missing 'name' or 'url'.")
+            raise click.ClickException(f"Page #{i + 1} is missing 'name' or 'url'.")
 
     return pages
 
 
-def load_measurements(report_paths: Tuple[Path, ...]) -> Dict[str, dict]:
+def load_measurements(report_paths: tuple[Path, ...]) -> dict[str, dict]:
     """The measurements of the reports, `catalog id -> record`.
 
     An empty dict when there is no report: the metadata then comes from the YAML,
     which is the source of truth of this repository. Several reports can be given —
     the limit is the MAXIMUM over all of them, never the last one.
     """
-    records: List[dict] = []
+    records: list[dict] = []
     for report_path in report_paths:
         try:
-            with open(report_path, "r", encoding="utf-8") as f:
+            with open(report_path, encoding="utf-8") as f:
                 report = json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             raise click.ClickException(f"Cannot read the measurement report {report_path}: {e}") from e
@@ -117,7 +117,7 @@ def load_measurements(report_paths: Tuple[Path, ...]) -> Dict[str, dict]:
 BOUNDARIES = ("catalog_end", "api_cap")
 
 
-def resolve_metadata(page: dict, limits: Dict[str, dict]) -> dict:
+def resolve_metadata(page: dict, limits: dict[str, dict]) -> dict:
     """The measurement metadata of one target: the report first, then the YAML.
 
     The report wins where it has something to say: it is the measurement itself. The
@@ -128,12 +128,16 @@ def resolve_metadata(page: dict, limits: Dict[str, dict]) -> dict:
     not an omission: it is how a target says that nobody checked its limit.
     """
     reported = metadata_for_catalog(limits, page.get("id"))
-    metadata = reported if reported else {
-        FIELD_MEASURED_AT: page.get(FIELD_MEASURED_AT),
-        FIELD_BOUNDARY: page.get(FIELD_BOUNDARY),
-        FIELD_SOURCE: page.get(FIELD_SOURCE),
-        FIELD_SUBJECT_ID: page.get(FIELD_SUBJECT_ID),
-    }
+    metadata = (
+        reported
+        if reported
+        else {
+            FIELD_MEASURED_AT: page.get(FIELD_MEASURED_AT),
+            FIELD_BOUNDARY: page.get(FIELD_BOUNDARY),
+            FIELD_SOURCE: page.get(FIELD_SOURCE),
+            FIELD_SUBJECT_ID: page.get(FIELD_SUBJECT_ID),
+        }
+    )
     boundary = metadata.get(FIELD_BOUNDARY)
     if boundary is not None and boundary not in BOUNDARIES:
         raise click.ClickException(
@@ -301,7 +305,7 @@ def load_catalog_to_pg(
     allowed_domains: str,
     root_category: str | None,
     known_pages_limit: int | None,
-    measurements_paths: Tuple[Path, ...],
+    measurements_paths: tuple[Path, ...],
     batch_size: int,
     dry_run: bool,
     verbose: bool,
@@ -329,10 +333,10 @@ def load_catalog_to_pg(
         if not isinstance(allowed_list, list):
             raise click.ClickException("--allowed-domains must be a JSON array.")
     except json.JSONDecodeError as e:
-        raise click.ClickException(f"--allowed-domains must be valid JSON: {e}")
+        raise click.ClickException(f"--allowed-domains must be valid JSON: {e}") from e
 
-    now = datetime.now(timezone.utc)
-    rows: List[Tuple] = []
+    now = datetime.now(UTC)
+    rows: list[tuple] = []
 
     skipped = 0
 
@@ -351,36 +355,38 @@ def load_catalog_to_pg(
             )
             continue
         metadata = resolve_metadata(page, limits)
-        rows.append((
-            str(uuid.uuid4()),                 # 1  id
-            page["name"],                      # 2  name
-            page["url"],                       # 3  start_url
-            allowed_list,                      # 4  allowed_domains (Python list → TEXT[])
-            max_depth,                         # 5  max_depth
-            None,                              # 6  parsing_rules (NULL)
-            True,                              # 7  is_active
-            # 8  known_pages_limit — the page's own value wins over the CLI default, so
-            # the crawl budget travels with the catalogue in the YAML.
-            page.get("known_pages_limit") if page.get("known_pages_limit") is not None else known_pages_limit,
-            page.get("id"),                    # 9  wb_catalog_id
-            page.get("parent_catalog_id"),    # 10 wb_parent_catalog_id
-            # 11 root_category_name — the CLI value wins for every row; otherwise
-            # each page carries its own root, as written by catalog_selector.py.
-            root_category or page.get("root_category_name"),
-            # 12 wb_search_query — WB's catalog token. Without it the internal API answers
-            # with the rotating popular list instead of the category, so a target without a
-            # token is refused by the crawler rather than filled with unrelated products.
-            page.get("search_query"),
-            now,                               # 13 created_at
-            now,                               # 14 updated_at
-            # 15-18 the measurement metadata — when the limit was measured, where the
-            # pagination ended, where the number came from, and which WB subject the
-            # catalog's products carry. A target that was never measured carries none.
-            measured_at_datetime(metadata.get(FIELD_MEASURED_AT)),
-            metadata.get(FIELD_BOUNDARY),
-            metadata.get(FIELD_SOURCE),
-            metadata.get(FIELD_SUBJECT_ID),
-        ))
+        rows.append(
+            (
+                str(uuid.uuid4()),  # 1  id
+                page["name"],  # 2  name
+                page["url"],  # 3  start_url
+                allowed_list,  # 4  allowed_domains (Python list → TEXT[])
+                max_depth,  # 5  max_depth
+                None,  # 6  parsing_rules (NULL)
+                True,  # 7  is_active
+                # 8  known_pages_limit — the page's own value wins over the CLI default, so
+                # the crawl budget travels with the catalogue in the YAML.
+                page.get("known_pages_limit") if page.get("known_pages_limit") is not None else known_pages_limit,
+                page.get("id"),  # 9  wb_catalog_id
+                page.get("parent_catalog_id"),  # 10 wb_parent_catalog_id
+                # 11 root_category_name — the CLI value wins for every row; otherwise
+                # each page carries its own root, as written by catalog_selector.py.
+                root_category or page.get("root_category_name"),
+                # 12 wb_search_query — WB's catalog token. Without it the internal API answers
+                # with the rotating popular list instead of the category, so a target without a
+                # token is refused by the crawler rather than filled with unrelated products.
+                page.get("search_query"),
+                now,  # 13 created_at
+                now,  # 14 updated_at
+                # 15-18 the measurement metadata — when the limit was measured, where the
+                # pagination ended, where the number came from, and which WB subject the
+                # catalog's products carry. A target that was never measured carries none.
+                measured_at_datetime(metadata.get(FIELD_MEASURED_AT)),
+                metadata.get(FIELD_BOUNDARY),
+                metadata.get(FIELD_SOURCE),
+                metadata.get(FIELD_SUBJECT_ID),
+            )
+        )
 
     if skipped:
         click.echo(
@@ -432,9 +438,7 @@ def load_catalog_to_pg(
         to_update = [row for row in rows if str(row[8]) in existing]
         to_insert = [row for row in rows if str(row[8]) not in existing]
 
-        click.echo(
-            f"  {len(to_update)} target(s) updated in place, {len(to_insert)} inserted"
-        )
+        click.echo(f"  {len(to_update)} target(s) updated in place, {len(to_insert)} inserted")
 
         with click.progressbar(
             length=len(rows),
@@ -466,7 +470,7 @@ def load_catalog_to_pg(
                 bar.update(1)
 
             for i in range(0, len(to_insert), batch_size):
-                batch = to_insert[i:i + batch_size]
+                batch = to_insert[i : i + batch_size]
                 # psycopg2.extras.execute_values handles Python lists as PostgreSQL ARRAYs
                 extras.execute_values(
                     cur,
@@ -496,12 +500,12 @@ def load_catalog_to_pg(
             )
         else:
             click.echo(f"\nDB error: {e}", err=True)
-        raise click.Abort()
+        raise click.Abort() from None
     except Exception as e:
         if conn:
             conn.rollback()
         click.echo(f"\nCritical error: {e}", err=True)
-        raise click.Abort()
+        raise click.Abort() from e
     finally:
         if conn:
             conn.close()

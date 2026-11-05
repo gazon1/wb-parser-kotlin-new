@@ -198,9 +198,11 @@ so they surface in DIGEST.md Critical section.
 ### Refresh workflow
 
 После создания/изменения ADR:
+
 ```bash
 ./scripts/refresh-decisions-digest.sh    # обновить DIGEST.md
 ```
+
 Commit с ADR **всегда** включает обновлённый `DIGEST.md` в том же commit.
 
 ---
@@ -290,3 +292,9 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
   развернуть контур на VPS и указать витрине `DATABASE_URL`.
 
 Полный план: `.zcode/plans/plan-sess_871f29cf-f859-4a72-9002-5bbafd737630.md`
+
+## Dev Quality Gates (adopted 2026-11-05)
+
+- Aggregate check: `./check.sh` (also `just tests::check`). CI runs the same command.
+- New quality tools are pinned in `mise.toml`; install with `mise install`.
+- Lint rules are never disabled to get a change through. An exception is narrow (path + rule), carries a reason and (for security/risk findings) a review date. agnix lints this file and the SKILL.md files.

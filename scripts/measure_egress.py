@@ -44,7 +44,7 @@ import random
 import subprocess
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -60,15 +60,15 @@ MAX_PAUSE_MINUTES = 60
 
 
 def now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def iso(moment: datetime) -> str:
-    return moment.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def parse_iso(text: str) -> datetime:
-    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
 
 class PlanError(Exception):
@@ -77,7 +77,7 @@ class PlanError(Exception):
 
 def load_plan(path: Path) -> dict:
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             plan = json.load(handle)
     except (OSError, json.JSONDecodeError) as error:
         raise PlanError(f"cannot read the plan {path}: {error}") from error
@@ -103,8 +103,7 @@ def validate(plan: dict) -> None:
         mode = run.get("mode", "sequential")
         if mode not in ("sequential", "concurrent"):
             raise PlanError(
-                f"the run {run['label']} has the mode '{mode}' — the modes are "
-                "'sequential' and 'concurrent'"
+                f"the run {run['label']} has the mode '{mode}' — the modes are 'sequential' and 'concurrent'"
             )
     labels = [run["label"] for run in runs]
     if len(set(labels)) != len(labels):
@@ -275,11 +274,7 @@ def evaluate(records: list[dict], plan: dict, orders: list[list[str]]) -> list[d
 
     instances = run_instances(records)
     labels = sorted({instance["label"] for instance in instances})
-    repeats = (
-        min(sum(1 for instance in instances if instance["label"] == label) for label in labels)
-        if labels
-        else 0
-    )
+    repeats = min(sum(1 for instance in instances if instance["label"] == label) for label in labels) if labels else 0
     findings.append(
         {
             "rule": "не менее трёх повторов на прогон",
@@ -317,8 +312,7 @@ def evaluate(records: list[dict], plan: dict, orders: list[list[str]]) -> list[d
             "rule": "пауза 30–60 мин между прогонами на одном адресе",
             "ok": bool(gaps) and not bad,
             "detail": (
-                f"{len(gaps)} разрыв(ов) на одном адресе, "
-                + ", ".join(f"{gap['minutes']} мин" for gap in gaps)
+                f"{len(gaps)} разрыв(ов) на одном адресе, " + ", ".join(f"{gap['minutes']} мин" for gap in gaps)
                 if gaps
                 else "два прогона не делили адрес — правилу нечего было мерить"
             ),
@@ -341,9 +335,7 @@ def evaluate(records: list[dict], plan: dict, orders: list[list[str]]) -> list[d
     # proxy must be residential": it is that a conclusion about one class does
     # not carry over to another. So the block must cover exactly the classes the
     # deployment uses.
-    combat_classes = sorted(
-        [combat] if isinstance(combat, str) else list(combat or [])
-    )
+    combat_classes = sorted([combat] if isinstance(combat, str) else list(combat or []))
     findings.append(
         {
             "rule": "прокси того же класса, что и боевой",
@@ -367,10 +359,7 @@ def evaluate(records: list[dict], plan: dict, orders: list[list[str]]) -> list[d
         }
     )
 
-    separated = all(
-        "refused" in record and "errored" in record and "succeeded" in record
-        for record in records
-    )
+    separated = all("refused" in record and "errored" in record and "succeeded" in record for record in records)
     findings.append(
         {
             "rule": "антибот и транспортный сбой считаются раздельно",
@@ -394,18 +383,11 @@ def aggregate(records: list[dict]) -> list[dict]:
         rows.append(
             {
                 "label": label,
-                "profiles": ", ".join(
-                    dict.fromkeys(record.get("profile", "?") for record in of_label)
-                ),
-                "addresses": ", ".join(
-                    dict.fromkeys(record.get("address", "?") for record in of_label)
-                ),
-                "proxy_class": ", ".join(
-                    sorted({record.get("proxy_class", "unknown") for record in of_label})
-                ),
+                "profiles": ", ".join(dict.fromkeys(record.get("profile", "?") for record in of_label)),
+                "addresses": ", ".join(dict.fromkeys(record.get("address", "?") for record in of_label)),
+                "proxy_class": ", ".join(sorted({record.get("proxy_class", "unknown") for record in of_label})),
                 "delay": ", ".join(
-                    str(delay)
-                    for delay in dict.fromkeys(record.get("delay", 0) for record in of_label)
+                    str(delay) for delay in dict.fromkeys(record.get("delay", 0) for record in of_label)
                 ),
                 "runs": len(of_label),
                 "requests": requests,
@@ -460,9 +442,7 @@ def write_report(
     for row in rows:
         lines.append(
             "| {label} | {profiles} | {addresses} | {proxy_class} | {delay} | {runs} | {requests} | "
-            "{refused} | {share:.1%} | {errored} | {succeeded} |".format(
-                share=row["refusal_ratio"], **row
-            )
+            "{refused} | {share:.1%} | {errored} | {succeeded} |".format(share=row["refusal_ratio"], **row)
         )
     lines += [
         "",
@@ -483,9 +463,7 @@ def write_report(
         "|---|---|---|",
     ]
     for finding in findings:
-        lines.append(
-            f"| {finding['rule']} | {'да' if finding['ok'] else '**нет**'} | {finding['detail']} |"
-        )
+        lines.append(f"| {finding['rule']} | {'да' if finding['ok'] else '**нет**'} | {finding['detail']} |")
     lines += [
         "",
         "## Вердикт",
@@ -576,8 +554,7 @@ def main() -> int:
     pause_rng = random.Random(seed + 7919)
     pause_draws = [
         round(
-            args.pause_minutes
-            + pause_rng.random() * max(0.0, args.pause_max_minutes - args.pause_minutes),
+            args.pause_minutes + pause_rng.random() * max(0.0, args.pause_max_minutes - args.pause_minutes),
             1,
         )
         for _ in range(plan["repeats"])

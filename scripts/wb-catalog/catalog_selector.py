@@ -21,7 +21,7 @@ Usage (standalone):
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import click
 import httpx
@@ -32,13 +32,12 @@ try:
     from loguru import logger
 except ImportError:
     import logging
+
     logger = logging.getLogger(__name__)
 
 # ── Defaults ──────────────────────────────────────────────────────────────────
 
-DEFAULT_CATALOG_URL = (
-    "https://static-basket-01.wbbasket.ru/vol0/data/main-menu-by-ru-v3.json"
-)
+DEFAULT_CATALOG_URL = "https://static-basket-01.wbbasket.ru/vol0/data/main-menu-by-ru-v3.json"
 DEFAULT_BASE_URL = "https://www.wildberries.ru"
 DEFAULT_CONFIG_PATH = Path("wb_catalog_targets.yaml")
 DEFAULT_HOST = "0.0.0.0"
@@ -46,6 +45,7 @@ DEFAULT_PORT = 8089
 
 
 # ── Data helpers ──────────────────────────────────────────────────────────────
+
 
 def fetch_catalog_nodes(
     catalog_url: str = DEFAULT_CATALOG_URL,
@@ -72,10 +72,8 @@ def convert_to_tree_nodes(
     if child_nodes is None:
         return []
 
-    parent_id: Optional[str] = (
-        str(parent_node["id"])
-        if parent_node and isinstance(parent_node, dict) and "id" in parent_node
-        else None
+    parent_id: str | None = (
+        str(parent_node["id"]) if parent_node and isinstance(parent_node, dict) and "id" in parent_node else None
     )
 
     result: list[dict] = []
@@ -147,6 +145,7 @@ def save_config(
 
 
 # ── NiceGUI page ──────────────────────────────────────────────────────────────
+
 
 def build_ui(
     catalog_url: str = DEFAULT_CATALOG_URL,
@@ -245,8 +244,7 @@ def build_ui(
     with ui.column().classes("w-full max-w-4xl mx-auto p-4 gap-4"):
         ui.label("Wildberries Category Selector").classes("text-2xl font-bold")
         ui.label(
-            "Select categories to scrape.  "
-            "Only leaf nodes (no sub-categories) will be written to the config."
+            "Select categories to scrape.  Only leaf nodes (no sub-categories) will be written to the config."
         ).classes("text-gray-500 text-sm")
 
         with ui.card().classes("w-full"):
@@ -271,22 +269,18 @@ def build_ui(
             ui.button(
                 "Clear selection",
                 on_click=lambda: (
-                    checked_ids.clear()
-                    or selected_nodes.clear()
-                    or setattr(tree, "value", [])
-                    or tree.update()
+                    checked_ids.clear() or selected_nodes.clear() or setattr(tree, "value", []) or tree.update()
                 ),
             ).props("color=secondary outline")
 
             ui.label("").bind_text_from(
                 selected_nodes,
-                backward=lambda d: f"{len(d)} categories selected"
-                if d
-                else "No selection",
+                backward=lambda d: f"{len(d)} categories selected" if d else "No selection",
             ).classes("text-sm text-gray-500 self-center")
 
 
 # ── Click CLI entry point ──────────────────────────────────────────────────────
+
 
 @click.command(name="catalog-selector", context_settings={"help_option_names": ["-h", "--help"]})
 @click.option(
@@ -302,7 +296,8 @@ def build_ui(
     help="Wildberries base URL prepended to category paths.",
 )
 @click.option(
-    "-o", "--output",
+    "-o",
+    "--output",
     "config_path",
     type=click.Path(path_type=Path),
     default=DEFAULT_CONFIG_PATH,

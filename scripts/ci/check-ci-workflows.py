@@ -140,12 +140,11 @@ def strip_yaml_comments(text: str) -> str:
                 in_single = not in_single
             elif ch == '"' and not in_single:
                 in_double = not in_double
-            elif ch == "#" and not in_single and not in_double:
+            elif ch == "#" and not in_single and not in_double and (i == 0 or line[i - 1] in " \t"):
                 # A comment starts the line, or follows whitespace. A `#` in
                 # the middle of a word is part of that word.
-                if i == 0 or line[i - 1] in " \t":
-                    cut = i
-                    break
+                cut = i
+                break
             i += 1
         out.append(line[:cut] if cut is not None else line)
     return "\n".join(out)
@@ -225,8 +224,7 @@ def check_required_files(root: Path) -> list[str]:
         for needle in spec["needles"]:
             if needle not in text:
                 findings.append(
-                    f"{name} does not mention `{needle}`. {spec['why']}, and this "
-                    f"is the line that does it."
+                    f"{name} does not mention `{needle}`. {spec['why']}, and this is the line that does it."
                 )
     return findings
 
@@ -317,11 +315,7 @@ def check_scheduled_run(root: Path) -> list[str]:
     """
     findings: list[str] = []
     texts = read_workflows(root)
-    scheduled = [
-        name
-        for name, text in texts.items()
-        if re.search(r"^\s*schedule:\s*$", text, re.M)
-    ]
+    scheduled = [name for name, text in texts.items() if re.search(r"^\s*schedule:\s*$", text, re.M)]
     if not scheduled:
         findings.append(
             "no workflow has a `schedule` trigger. The tests are supposed to run on "
@@ -330,8 +324,7 @@ def check_scheduled_run(root: Path) -> list[str]:
         return findings
     if not any(re.search(r"^\s*-\s*cron:\s*[\"']?\S+", text, re.M) for text in texts.values()):
         findings.append(
-            "a workflow has a `schedule` trigger without a `cron` entry — GitHub "
-            "rejects a schedule that has no time."
+            "a workflow has a `schedule` trigger without a `cron` entry — GitHub rejects a schedule that has no time."
         )
     pipeline = texts.get(PIPELINE, "")
     if re.search(r"^\s*schedule:\s*$", pipeline, re.M):
@@ -382,15 +375,14 @@ def check_wait_list(root: Path) -> list[str]:
     needs = job_needs(text, ALERT_JOB)
     if needs is None:
         return [
-            f".github/workflows/{PIPELINE} has no `{ALERT_JOB}` job. A failed "
-            "scheduled run has nobody to report it."
+            f".github/workflows/{PIPELINE} has no `{ALERT_JOB}` job. A failed scheduled run has nobody to report it."
         ]
     missing = [job for job in jobs if job != ALERT_JOB and job not in needs]
     if missing:
         return [
             f"the `{ALERT_JOB}` job does not wait for: {', '.join(missing)}. The "
             "report is made before those jobs finish, and an issue that says "
-            "\"nothing failed\" while something did is worse than no issue."
+            '"nothing failed" while something did is worse than no issue.'
         ]
     return []
 
@@ -441,10 +433,7 @@ def check_watchdog(root: Path) -> list[str]:
     """
     findings: list[str] = []
     texts = read_workflows(root)
-    watched = {
-        name: set(re.findall(r"actions/workflows/([A-Za-z0-9._-]+\.yml)", text))
-        for name, text in texts.items()
-    }
+    watched = {name: set(re.findall(r"actions/workflows/([A-Za-z0-9._-]+\.yml)", text)) for name, text in texts.items()}
     if not any("nightly.yml" in names for names in watched.values()):
         findings.append(
             "no workflow watches the nightly run. A scheduled workflow that never "
@@ -486,7 +475,7 @@ GOOD_WORKFLOWS = {
         "name: CodeQL\n"
         "on:\n"
         "  schedule:\n"
-        "    - cron: \"17 3 * * 1\"\n"
+        '    - cron: "17 3 * * 1"\n'
         "permissions:\n"
         "  contents: read\n"
         "jobs:\n"
@@ -543,7 +532,7 @@ GOOD_WORKFLOWS = {
         "name: CI (nightly)\n"
         "on:\n"
         "  schedule:\n"
-        "    - cron: \"0 3 * * *\"\n"
+        '    - cron: "0 3 * * *"\n'
         "permissions:\n"
         "  contents: read\n"
         "jobs:\n"
@@ -554,7 +543,7 @@ GOOD_WORKFLOWS = {
         "name: Nightly watchdog\n"
         "on:\n"
         "  schedule:\n"
-        "    - cron: \"0 9 * * 1\"\n"
+        '    - cron: "0 9 * * 1"\n'
         "permissions:\n"
         "  actions: read\n"
         "  contents: read\n"
@@ -612,8 +601,7 @@ def run_self_test() -> int:
         clean = check(root)
         if clean:
             print(
-                "self-test FAILED — the check reports findings on a tree that satisfies "
-                "every requirement:",
+                "self-test FAILED — the check reports findings on a tree that satisfies every requirement:",
                 file=sys.stderr,
             )
             for line in clean:
@@ -629,9 +617,7 @@ def run_self_test() -> int:
             "codeql.yml lost its upload permission": {
                 "workflows": {
                     **GOOD_WORKFLOWS,
-                    "codeql.yml": GOOD_WORKFLOWS["codeql.yml"].replace(
-                        "security-events: write", "contents: read"
-                    ),
+                    "codeql.yml": GOOD_WORKFLOWS["codeql.yml"].replace("security-events: write", "contents: read"),
                 },
                 "expect": "security-events: write",
             },
@@ -647,9 +633,7 @@ def run_self_test() -> int:
             "scorecard.yml lost the id-token permission": {
                 "workflows": {
                     **GOOD_WORKFLOWS,
-                    "scorecard.yml": GOOD_WORKFLOWS["scorecard.yml"].replace(
-                        "id-token: write", "contents: read"
-                    ),
+                    "scorecard.yml": GOOD_WORKFLOWS["scorecard.yml"].replace("id-token: write", "contents: read"),
                 },
                 "expect": "id-token: write",
             },
@@ -666,9 +650,7 @@ def run_self_test() -> int:
             "a workflow declares no top-level permissions": {
                 "workflows": {
                     **GOOD_WORKFLOWS,
-                    "nightly.yml": GOOD_WORKFLOWS["nightly.yml"].replace(
-                        "permissions:\n  contents: read\n", ""
-                    ),
+                    "nightly.yml": GOOD_WORKFLOWS["nightly.yml"].replace("permissions:\n  contents: read\n", ""),
                 },
                 "expect": "declares no top-level permissions",
             },
@@ -706,11 +688,7 @@ def run_self_test() -> int:
                 "expect": "which does not exist",
             },
             "nothing watches the nightly": {
-                "workflows": {
-                    name: text
-                    for name, text in GOOD_WORKFLOWS.items()
-                    if name != "watchdog.yml"
-                },
+                "workflows": {name: text for name, text in GOOD_WORKFLOWS.items() if name != "watchdog.yml"},
                 "expect": "no workflow watches the nightly",
             },
             "the auto-fix script is gone": {
@@ -720,8 +698,7 @@ def run_self_test() -> int:
             },
             "no workflow has a schedule": {
                 "workflows": {
-                    name: text.replace("schedule:", "pull_request:")
-                    for name, text in GOOD_WORKFLOWS.items()
+                    name: text.replace("schedule:", "pull_request:") for name, text in GOOD_WORKFLOWS.items()
                 },
                 "expect": "schedule",
             },
@@ -729,7 +706,7 @@ def run_self_test() -> int:
                 "workflows": {
                     **GOOD_WORKFLOWS,
                     "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
-                        "name: CI\n", "name: CI\non:\n  schedule:\n    - cron: \"0 4 * * *\"\n"
+                        "name: CI\n", 'name: CI\non:\n  schedule:\n    - cron: "0 4 * * *"\n'
                     ),
                 },
                 "expect": "schedule",
@@ -754,9 +731,7 @@ def run_self_test() -> int:
             "the alert job waits for too little": {
                 "workflows": {
                     **GOOD_WORKFLOWS,
-                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
-                        "needs: [static, build]", "needs: [static]"
-                    ),
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace("needs: [static, build]", "needs: [static]"),
                 },
                 "expect": "does not wait for",
             },

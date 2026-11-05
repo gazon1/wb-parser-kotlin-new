@@ -1,5 +1,5 @@
 ---
-name: grill-with-docs-RETIRED
+name: grill-with-docs-retired
 status: retired
 description: RETIRED. Formerly a relentless interview that also creates ADR's and glossary. Superseded by `grilling` + `domain-glossary` combination. Load `grilling` skill instead.
 disable-model-invocation: true

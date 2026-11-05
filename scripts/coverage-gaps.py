@@ -94,9 +94,7 @@ def class_gaps(
     covered_total = 0
     for package in tree.getroot().iter("package"):
         name = package.get("name", "")
-        if packages is not None and not any(
-            name == prefix or name.startswith(prefix + "/") for prefix in packages
-        ):
+        if packages is not None and not any(name == prefix or name.startswith(prefix + "/") for prefix in packages):
             continue
         if any(name == prefix or name.startswith(prefix + "/") for prefix in excluded):
             continue

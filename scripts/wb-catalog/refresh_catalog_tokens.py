@@ -48,7 +48,6 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import click
 import httpx
@@ -90,7 +89,7 @@ class TokenPlan:
         return self.new_token or self.old_token
 
 
-def fetch_menu(menu: Optional[Path], menu_url: str, timeout: float) -> List[dict]:
+def fetch_menu(menu: Path | None, menu_url: str, timeout: float) -> list[dict]:
     """Load WB's menu from a local file or from the public static basket.
 
     A menu that cannot be fetched is a hard error: half a menu would silently strip
@@ -98,7 +97,7 @@ def fetch_menu(menu: Optional[Path], menu_url: str, timeout: float) -> List[dict
     """
     if menu is not None:
         try:
-            with open(menu, "r", encoding="utf-8") as f:
+            with open(menu, encoding="utf-8") as f:
                 nodes = json.load(f)
         except (OSError, json.JSONDecodeError) as e:
             raise click.ClickException(f"Cannot read the menu file {menu}: {e}") from e
@@ -116,12 +115,12 @@ def fetch_menu(menu: Optional[Path], menu_url: str, timeout: float) -> List[dict
     return nodes
 
 
-def index_menu(nodes: List[dict]) -> Dict[str, dict]:
+def index_menu(nodes: list[dict]) -> dict[str, dict]:
     """Flatten the menu tree into `id -> node`."""
 
-    index: Dict[str, dict] = {}
+    index: dict[str, dict] = {}
 
-    def walk(items: List[dict]) -> None:
+    def walk(items: list[dict]) -> None:
         for node in items:
             node_id = node.get("id")
             if node_id is not None:
@@ -132,9 +131,9 @@ def index_menu(nodes: List[dict]) -> Dict[str, dict]:
     return index
 
 
-def plan_tokens(pages: List[dict], menu_index: Dict[str, dict]) -> List[TokenPlan]:
+def plan_tokens(pages: list[dict], menu_index: dict[str, dict]) -> list[TokenPlan]:
     """Compute, for every page of the catalog, the token the menu gives it."""
-    plans: List[TokenPlan] = []
+    plans: list[TokenPlan] = []
 
     for page in pages:
         page_id = str(page.get("id", ""))
@@ -159,7 +158,7 @@ def plan_tokens(pages: List[dict], menu_index: Dict[str, dict]) -> List[TokenPla
     return plans
 
 
-def render_table(plans: List[TokenPlan]) -> str:
+def render_table(plans: list[TokenPlan]) -> str:
     """Render the refresh plan as a table: what each page has, and what it would get."""
     header = f"{'id':<10} {'name':<28} {'old token':<38} {'new token':<38} status"
     lines = [header, "-" * len(header)]
@@ -196,7 +195,7 @@ def set_token(page: dict, token: str) -> None:
     page.update(reordered)
 
 
-def write_yaml(path: Path, pages: List[dict]) -> None:
+def write_yaml(path: Path, pages: list[dict]) -> None:
     """Write the catalog back in the file's own style.
 
     The catalog YAML in the repository was produced by `yaml.dump(..., sort_keys=False)`,
@@ -209,8 +208,9 @@ def write_yaml(path: Path, pages: List[dict]) -> None:
     )
 
 
-def update_db_tokens(plans: List[TokenPlan], db_host: str, db_port: int, db_name: str,
-                    db_user: str, db_password: str) -> int:
+def update_db_tokens(
+    plans: list[TokenPlan], db_host: str, db_port: int, db_name: str, db_user: str, db_password: str
+) -> int:
     """Write the effective tokens into `crawl_targets.wb_search_query`.
 
     Only the rows that really change are touched, and everything is committed as one
@@ -276,7 +276,7 @@ def update_db_tokens(plans: List[TokenPlan], db_host: str, db_port: int, db_name
 @click.option("--db-password", default=None, help="Database password")
 def refresh_catalog_tokens(
     yaml_path: Path,
-    menu: Optional[Path],
+    menu: Path | None,
     menu_url: str,
     timeout: float,
     dry_run: bool,
@@ -284,9 +284,9 @@ def refresh_catalog_tokens(
     update_db: bool,
     db_host: str,
     db_port: int,
-    db_name: Optional[str],
-    db_user: Optional[str],
-    db_password: Optional[str],
+    db_name: str | None,
+    db_user: str | None,
+    db_password: str | None,
 ) -> None:
     """Refresh the WB catalog tokens of a catalog YAML and of the database."""
     if not update_yaml and not update_db and not dry_run:
@@ -294,7 +294,7 @@ def refresh_catalog_tokens(
         dry_run = True
 
     try:
-        with open(yaml_path, "r", encoding="utf-8") as f:
+        with open(yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
     except (OSError, yaml.YAMLError) as e:
         raise click.ClickException(f"Cannot parse {yaml_path}: {e}") from e
@@ -333,7 +333,7 @@ def refresh_catalog_tokens(
         return
 
     if update_yaml:
-        for plan, page in zip(plans, pages):
+        for plan, page in zip(plans, pages, strict=False):
             if plan.new_token:
                 set_token(page, plan.new_token)
         write_yaml(yaml_path, pages)
@@ -343,9 +343,7 @@ def refresh_catalog_tokens(
     if update_db:
         password = db_password or _password_from_env()
         if not password:
-            raise click.ClickException(
-                "--update-db needs a password: pass --db-password or set WBPARSER_DB_PASSWORD"
-            )
+            raise click.ClickException("--update-db needs a password: pass --db-password or set WBPARSER_DB_PASSWORD")
         if not db_name or not db_user:
             raise click.ClickException("--update-db needs --db-name and --db-user")
 
@@ -365,7 +363,7 @@ def refresh_catalog_tokens(
             )
 
 
-def _password_from_env() -> Optional[str]:
+def _password_from_env() -> str | None:
     """Read the database password from the environment.
 
     The password never lives in the source: a literal in a script leaks into every

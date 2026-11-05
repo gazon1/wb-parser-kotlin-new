@@ -76,9 +76,7 @@ FORBIDDEN_IN_BROWSER = (
 #: Without this rule the boundary is only half-declared: Playwright could creep
 #: back into `wbparser` — which is exactly how it got there the first time, and
 #: why the crawler needed `implementation(libs.playwright)` at all.
-FORBIDDEN_OUTSIDE_BROWSER = (
-    "com.microsoft.playwright",
-)
+FORBIDDEN_OUTSIDE_BROWSER = ("com.microsoft.playwright",)
 
 #: The modules whose production sources must not name Playwright.
 MODULES_WITHOUT_PLAYWRIGHT = (
@@ -320,7 +318,7 @@ def check_test_doubles_are_fakes(root: Path) -> list[str]:
                     name = match.group(1)
                     if not name.startswith("Mock"):
                         continue
-                    stood_for = name[len("Mock"):]
+                    stood_for = name[len("Mock") :]
                     if not any(stood_for.startswith(known) for known in our_types):
                         continue
                     findings.append(
@@ -411,43 +409,22 @@ def check(root: Path) -> list[str]:
 #: A tree that breaks every rule, and the check that must notice.
 VIOLATIONS = {
     "app/src/main/kotlin/ru/wbparser/app/Broken.kt": (
-        "package ru.wbparser.app\n"
-        "\n"
-        "fun broken(value: String?): String {\n"
-        "    delay(-1L)\n"
-        "    return value!!\n"
-        "}\n"
+        "package ru.wbparser.app\n\nfun broken(value: String?): String {\n    delay(-1L)\n    return value!!\n}\n"
     ),
     "wbparser/src/main/kotlin/ru/wbparser/Broken.kt": (
-        "package ru.wbparser\n"
-        "\n"
-        "import org.springframework.stereotype.Component\n"
-        "\n"
-        "class Broken\n"
+        "package ru.wbparser\n\nimport org.springframework.stereotype.Component\n\nclass Broken\n"
     ),
     "browser/src/main/kotlin/ru/wbparser/browser/Broken.kt": (
-        "package ru.wbparser.browser\n"
-        "\n"
-        "import org.jetbrains.exposed.sql.Table\n"
-        "\n"
-        "class Broken\n"
+        "package ru.wbparser.browser\n\nimport org.jetbrains.exposed.sql.Table\n\nclass Broken\n"
     ),
     "wbparser/src/main/kotlin/ru/wbparser/infra/http/Leaky.kt": (
-        "package ru.wbparser.infra.http\n"
-        "\n"
-        "import com.microsoft.playwright.Page\n"
-        "\n"
-        "class Leaky\n"
+        "package ru.wbparser.infra.http\n\nimport com.microsoft.playwright.Page\n\nclass Leaky\n"
     ),
     "wbparser/src/test/kotlin/ru/wbparser/infra/http/MockAdsPowerApi.kt": (
-        "package ru.wbparser.infra.http\n"
-        "\n"
-        "class MockAdsPowerApi\n"
+        "package ru.wbparser.infra.http\n\nclass MockAdsPowerApi\n"
     ),
     "browser/src/main/kotlin/ru/wbparser/browser/adspower/AdsPowerApi.kt": (
-        "package ru.wbparser.browser.adspower\n"
-        "\n"
-        "interface AdsPowerApi\n"
+        "package ru.wbparser.browser.adspower\n\ninterface AdsPowerApi\n"
     ),
     "CHANGELOG.md": "# The history that must not be here\n",
     ".github/workflows/ci.yml": "jobs:\n  build:\n    steps:\n      - run: ./gradlew fixDependencies\n",
