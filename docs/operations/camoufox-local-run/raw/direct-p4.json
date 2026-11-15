@@ -1,0 +1,428 @@
+{
+  "profiles_requested": 4,
+  "profiles_measured": 4,
+  "profiles_refused": 1,
+  "shared_address": true,
+  "proxy": "direct",
+  "headless": "True",
+  "delay_s": 3.0,
+  "requests": 41,
+  "ok": 40,
+  "refused": 1,
+  "errored": 0,
+  "statuses": [
+    200,
+    498
+  ],
+  "products": 4000,
+  "products_per_min": 3473.2,
+  "requests_per_min": 35.6,
+  "refusal_ratio": 0.0244,
+  "elapsed_s": 69.1,
+  "p50_latency_ms": 211,
+  "p95_latency_ms": 801,
+  "peak_rss_mb_sum": 6740.7,
+  "cpu_s_sum": 224.0,
+  "first_refusals": {
+    "2": null,
+    "1": 11,
+    "3": null,
+    "4": null
+  },
+  "egress": [
+    "46.138.35.132"
+  ],
+  "fingerprints": [
+    {
+      "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "MacIntel",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
+    },
+    {
+      "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "MacIntel",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
+    },
+    {
+      "ua": "Mozilla/5.0 (X11; Linux x86_64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "Linux x86_64",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
+    },
+    {
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "Win32",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
+    }
+  ],
+  "workers": [
+    {
+      "profile": 2,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 467,
+          "bytes": 131739,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 165,
+          "bytes": 128773,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 412,
+          "bytes": 129457,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 311,
+          "bytes": 128885,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 191,
+          "bytes": 128951,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 203,
+          "bytes": 129768,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 185,
+          "bytes": 129399,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 192,
+          "bytes": 128257,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 225,
+          "bytes": 128249,
+          "n": 9
+        }
+      ],
+      "error": null,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "MacIntel",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
+      },
+      "egress": "46.138.35.132",
+      "stopped": "the shared address was refused by another profile",
+      "cpu_s": 52.4,
+      "elapsed_s": 68.1,
+      "peak_rss_mb": 1805.8
+    },
+    {
+      "profile": 1,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 801,
+          "bytes": 131739,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 211,
+          "bytes": 128773,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 190,
+          "bytes": 129457,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 1816,
+          "bytes": 128885,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 207,
+          "bytes": 128951,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 215,
+          "bytes": 129768,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 196,
+          "bytes": 129399,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 208,
+          "bytes": 128257,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 209,
+          "bytes": 128249,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 221,
+          "bytes": 127802,
+          "n": 10
+        },
+        {
+          "status": 498,
+          "products": 0,
+          "ms": 41,
+          "bytes": 1134,
+          "n": 11
+        }
+      ],
+      "error": null,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "MacIntel",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
+      },
+      "egress": "46.138.35.132",
+      "first_refusal": 11,
+      "stopped": "refused at request 11; the profile stops there",
+      "cpu_s": 59.4,
+      "elapsed_s": 68.2,
+      "peak_rss_mb": 1684.7
+    },
+    {
+      "profile": 3,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 235,
+          "bytes": 131739,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 191,
+          "bytes": 128773,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 197,
+          "bytes": 129457,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 45,
+          "bytes": 128885,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 23,
+          "bytes": 128951,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 50,
+          "bytes": 129768,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 42,
+          "bytes": 129399,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 26,
+          "bytes": 128257,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 225,
+          "bytes": 128249,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 264,
+          "bytes": 127802,
+          "n": 10
+        }
+      ],
+      "error": null,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (X11; Linux x86_64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "Linux x86_64",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
+      },
+      "egress": "46.138.35.132",
+      "stopped": "the shared address was refused by another profile",
+      "cpu_s": 52.9,
+      "elapsed_s": 68.4,
+      "peak_rss_mb": 1714.2
+    },
+    {
+      "profile": 4,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 223,
+          "bytes": 131739,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 232,
+          "bytes": 128773,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 190,
+          "bytes": 129457,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 809,
+          "bytes": 128885,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 234,
+          "bytes": 128951,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 222,
+          "bytes": 129768,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 214,
+          "bytes": 129399,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 187,
+          "bytes": 128257,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 208,
+          "bytes": 128249,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 246,
+          "bytes": 127802,
+          "n": 10
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 247,
+          "bytes": 127874,
+          "n": 11
+        }
+      ],
+      "error": null,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "Win32",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
+      },
+      "egress": "46.138.35.132",
+      "stopped": "the shared address was refused by another profile",
+      "cpu_s": 59.3,
+      "elapsed_s": 69.1,
+      "peak_rss_mb": 1536.0
+    }
+  ],
+  "label": "direct-p4"
+}

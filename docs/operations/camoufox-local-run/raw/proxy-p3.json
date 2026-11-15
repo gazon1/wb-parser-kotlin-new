@@ -1,0 +1,530 @@
+{
+  "profiles_requested": 3,
+  "profiles_measured": 3,
+  "profiles_refused": 0,
+  "shared_address": true,
+  "proxy": "socks5://127.0.0.1:1082",
+  "headless": "True",
+  "delay_s": 3.0,
+  "requests": 60,
+  "ok": 60,
+  "refused": 0,
+  "errored": 0,
+  "statuses": [
+    200
+  ],
+  "products": 6000,
+  "products_per_min": 3079.6,
+  "requests_per_min": 30.8,
+  "refusal_ratio": 0.0,
+  "elapsed_s": 116.9,
+  "p50_latency_ms": 360,
+  "p95_latency_ms": 5125,
+  "peak_rss_mb_sum": 4950.0,
+  "cpu_s_sum": 167.9,
+  "first_refusals": {
+    "3": null,
+    "1": null,
+    "2": null
+  },
+  "egress": [
+    "46.29.162.175"
+  ],
+  "fingerprints": [
+    {
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "Win32",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
+    },
+    {
+      "ua": "Mozilla/5.0 (X11; Linux x86_64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "Linux x86_64",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
+    },
+    {
+      "ua": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "Linux x86_64",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
+    }
+  ],
+  "workers": [
+    {
+      "profile": 3,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 330,
+          "bytes": 131808,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 270,
+          "bytes": 128654,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 2637,
+          "bytes": 129722,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 7825,
+          "bytes": 129128,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 323,
+          "bytes": 129286,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 360,
+          "bytes": 130183,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 344,
+          "bytes": 129420,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 348,
+          "bytes": 129132,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 342,
+          "bytes": 128099,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 338,
+          "bytes": 127982,
+          "n": 10
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 359,
+          "bytes": 127803,
+          "n": 11
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 358,
+          "bytes": 128237,
+          "n": 12
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 375,
+          "bytes": 128709,
+          "n": 13
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 369,
+          "bytes": 129058,
+          "n": 14
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 384,
+          "bytes": 127786,
+          "n": 15
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 353,
+          "bytes": 128034,
+          "n": 16
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 382,
+          "bytes": 128547,
+          "n": 17
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 370,
+          "bytes": 128300,
+          "n": 18
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 392,
+          "bytes": 128671,
+          "n": 19
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 369,
+          "bytes": 128343,
+          "n": 20
+        }
+      ],
+      "error": null,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "Win32",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
+      },
+      "egress": "46.29.162.175",
+      "cpu_s": 59.2,
+      "elapsed_s": 106.4,
+      "peak_rss_mb": 1569.8
+    },
+    {
+      "profile": 1,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 373,
+          "bytes": 131808,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 5125,
+          "bytes": 128654,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 7639,
+          "bytes": 129722,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 310,
+          "bytes": 129128,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 361,
+          "bytes": 129286,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 292,
+          "bytes": 130183,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 328,
+          "bytes": 129420,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 353,
+          "bytes": 129132,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 335,
+          "bytes": 128099,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 350,
+          "bytes": 127982,
+          "n": 10
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 360,
+          "bytes": 127803,
+          "n": 11
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 358,
+          "bytes": 128237,
+          "n": 12
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 360,
+          "bytes": 128709,
+          "n": 13
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 357,
+          "bytes": 129058,
+          "n": 14
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 359,
+          "bytes": 127786,
+          "n": 15
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 381,
+          "bytes": 128034,
+          "n": 16
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 373,
+          "bytes": 128547,
+          "n": 17
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 381,
+          "bytes": 128300,
+          "n": 18
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 392,
+          "bytes": 128671,
+          "n": 19
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 382,
+          "bytes": 128343,
+          "n": 20
+        }
+      ],
+      "error": null,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (X11; Linux x86_64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "Linux x86_64",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
+      },
+      "egress": "46.29.162.175",
+      "cpu_s": 52.6,
+      "elapsed_s": 109.6,
+      "peak_rss_mb": 1744.5
+    },
+    {
+      "profile": 2,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 9300,
+          "bytes": 131808,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 283,
+          "bytes": 128654,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 378,
+          "bytes": 129722,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 350,
+          "bytes": 129128,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 330,
+          "bytes": 129286,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 326,
+          "bytes": 130183,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 395,
+          "bytes": 129420,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 656,
+          "bytes": 129132,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 344,
+          "bytes": 128099,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 333,
+          "bytes": 127982,
+          "n": 10
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 342,
+          "bytes": 127803,
+          "n": 11
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 345,
+          "bytes": 128237,
+          "n": 12
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 313,
+          "bytes": 128709,
+          "n": 13
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 382,
+          "bytes": 129058,
+          "n": 14
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 369,
+          "bytes": 127786,
+          "n": 15
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 370,
+          "bytes": 128034,
+          "n": 16
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 397,
+          "bytes": 128547,
+          "n": 17
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 381,
+          "bytes": 128300,
+          "n": 18
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 441,
+          "bytes": 128671,
+          "n": 19
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 613,
+          "bytes": 128343,
+          "n": 20
+        }
+      ],
+      "error": null,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "Linux x86_64",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
+      },
+      "egress": "46.29.162.175",
+      "cpu_s": 56.1,
+      "elapsed_s": 116.9,
+      "peak_rss_mb": 1635.7
+    }
+  ],
+  "label": "proxy-p3"
+}

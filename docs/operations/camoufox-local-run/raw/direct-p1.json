@@ -1,0 +1,200 @@
+{
+  "profiles_requested": 1,
+  "profiles_measured": 1,
+  "profiles_refused": 0,
+  "shared_address": true,
+  "proxy": "direct",
+  "headless": "True",
+  "delay_s": 3.0,
+  "requests": 20,
+  "ok": 20,
+  "refused": 0,
+  "errored": 0,
+  "statuses": [
+    200
+  ],
+  "products": 2000,
+  "products_per_min": 1362.1,
+  "requests_per_min": 13.6,
+  "refusal_ratio": 0.0,
+  "elapsed_s": 88.1,
+  "p50_latency_ms": 233,
+  "p95_latency_ms": 393,
+  "peak_rss_mb_sum": 1591.8,
+  "cpu_s_sum": 51.9,
+  "first_refusals": {
+    "1": null
+  },
+  "egress": [
+    "46.138.35.132"
+  ],
+  "fingerprints": [
+    {
+      "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "MacIntel",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
+    }
+  ],
+  "workers": [
+    {
+      "profile": 1,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 171,
+          "bytes": 131848,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 183,
+          "bytes": 128773,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 219,
+          "bytes": 129457,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 196,
+          "bytes": 128895,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 206,
+          "bytes": 128929,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 393,
+          "bytes": 129787,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 197,
+          "bytes": 129412,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 201,
+          "bytes": 128224,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 211,
+          "bytes": 128295,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 258,
+          "bytes": 127791,
+          "n": 10
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 231,
+          "bytes": 127910,
+          "n": 11
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 219,
+          "bytes": 127438,
+          "n": 12
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 416,
+          "bytes": 127671,
+          "n": 13
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 233,
+          "bytes": 128140,
+          "n": 14
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 242,
+          "bytes": 128038,
+          "n": 15
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 249,
+          "bytes": 128698,
+          "n": 16
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 250,
+          "bytes": 128855,
+          "n": 17
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 307,
+          "bytes": 128253,
+          "n": 18
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 281,
+          "bytes": 128072,
+          "n": 19
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 255,
+          "bytes": 128241,
+          "n": 20
+        }
+      ],
+      "error": null,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "MacIntel",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
+      },
+      "egress": "46.138.35.132",
+      "cpu_s": 51.9,
+      "elapsed_s": 88.1,
+      "peak_rss_mb": 1591.8
+    }
+  ],
+  "label": "direct-p1"
+}

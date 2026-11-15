@@ -1,0 +1,299 @@
+{
+  "profiles_requested": 2,
+  "profiles_measured": 2,
+  "profiles_refused": 1,
+  "shared_address": true,
+  "proxy": "socks5://127.0.0.1:1082",
+  "headless": "True",
+  "delay_s": 3.0,
+  "requests": 30,
+  "ok": 29,
+  "refused": 1,
+  "errored": 0,
+  "statuses": [
+    200,
+    498
+  ],
+  "products": 2900,
+  "products_per_min": 2051.9,
+  "requests_per_min": 21.2,
+  "refusal_ratio": 0.0333,
+  "elapsed_s": 84.8,
+  "p50_latency_ms": 358,
+  "p95_latency_ms": 713,
+  "peak_rss_mb_sum": 3411.7,
+  "cpu_s_sum": 101.4,
+  "first_refusals": {
+    "2": 15,
+    "1": null
+  },
+  "egress": [
+    "46.29.162.175"
+  ],
+  "fingerprints": [
+    {
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "Win32",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
+    },
+    {
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "Win32",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
+    }
+  ],
+  "workers": [
+    {
+      "profile": 2,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 713,
+          "bytes": 131739,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 297,
+          "bytes": 128773,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 309,
+          "bytes": 129457,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 328,
+          "bytes": 128885,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 341,
+          "bytes": 128951,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 329,
+          "bytes": 129768,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 333,
+          "bytes": 129420,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 339,
+          "bytes": 129132,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 347,
+          "bytes": 128099,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 387,
+          "bytes": 127982,
+          "n": 10
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 363,
+          "bytes": 127803,
+          "n": 11
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 484,
+          "bytes": 128237,
+          "n": 12
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 358,
+          "bytes": 128709,
+          "n": 13
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 363,
+          "bytes": 129058,
+          "n": 14
+        },
+        {
+          "status": 498,
+          "products": 0,
+          "ms": 120,
+          "bytes": 1144,
+          "n": 15
+        }
+      ],
+      "error": null,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "Win32",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
+      },
+      "egress": "46.29.162.175",
+      "first_refusal": 15,
+      "stopped": "refused at request 15; the profile stops there",
+      "cpu_s": 47.8,
+      "elapsed_s": 81.5,
+      "peak_rss_mb": 1644.5
+    },
+    {
+      "profile": 1,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 972,
+          "bytes": 131739,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 301,
+          "bytes": 128773,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 369,
+          "bytes": 129457,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 331,
+          "bytes": 128885,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 364,
+          "bytes": 128951,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 369,
+          "bytes": 129768,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 339,
+          "bytes": 129420,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 343,
+          "bytes": 129132,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 349,
+          "bytes": 128099,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 363,
+          "bytes": 127982,
+          "n": 10
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 359,
+          "bytes": 127803,
+          "n": 11
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 839,
+          "bytes": 128237,
+          "n": 12
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 358,
+          "bytes": 128709,
+          "n": 13
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 360,
+          "bytes": 129058,
+          "n": 14
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "ms": 375,
+          "bytes": 127786,
+          "n": 15
+        }
+      ],
+      "error": null,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "Win32",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
+      },
+      "egress": "46.29.162.175",
+      "stopped": "the shared address was refused by another profile",
+      "cpu_s": 53.6,
+      "elapsed_s": 84.8,
+      "peak_rss_mb": 1767.2
+    }
+  ],
+  "label": "proxy-p2"
+}

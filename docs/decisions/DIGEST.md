@@ -556,6 +556,20 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** remove a dependency when the module stops naming its class. A declaration nobody needs is a promise that somebody maintains it. _(from `2026-11-10-the-pool-belongs-to-the-application`)
 - **Never** keep a second copy of a decision that lives in the configuration. The copy is the one that rots: it changes on its own schedule, and nobody reads it. _(from `2026-11-10-the-pool-belongs-to-the-application`)
 - **Never** raise coverage by testing a function that should not exist. The number goes up; the code stays. _(from `2026-11-10-the-pool-belongs-to-the-application`)
+- **Always** назначать прокси профилю и держать его неизменным: смена адреса — новая личность (ADR `2026-10-23-a-changed-address-is-a-new-identity`). _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Always** называть каталог `user_data_dir` по proxy endpoint и отказывать в его открытии под другим: cookies и storage переезжают вместе с каталогом, и сессия, сменившая адрес, — уже другая сессия. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Always** пинить сборку Camoufox (`~/.cache/camoufox/config.json` → `active_version`): это бета-сборка Firefox, и без пина она обновится молча. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Always** хранить отпечаток профиля явным preset-файлом: `user_data_dir` его не сохраняет, и без файла рестарт — это новый браузер с того же адреса. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **MUST** держать отпечаток стабильным на профиль: два разных отпечатка с одного адреса выглядят как два браузера за одним IP — ровно то, чего egress-группы избегают. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **MUST** запускать Camoufox из Java напрямую (`setExecutablePath` + `setEnv` с `CAMOU_CONFIG_<n>`): Python-обёртка нужна для генерации отпечатка, а он хранится, а не генерируется. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **MUST** останавливать профиль на первом отказе, а при общем адресе — останавливать и остальные профили этого адреса: добивание квоты после 498 добавляет нагрузку к уже закрытой двери и не добавляет знания. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Never** выбирать `headless`-режим по рекомендации: `True` измерен, `virtual`/`virtual-gpu` требуют `Xvfb` и отдельного замера. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Never** добавлять флаг, который переписывает `EGRESS`-маркер на существующем каталоге: профили останутся с cookies и storage прежнего адреса, то есть проверка перестанет защищать от того, ради чего существует. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Never** настраивать аутентифицированный SOCKS5 в Playwright: он отвергается («Browser does not support socks5 proxy authentication»); endpoint либо без пароля с ограничением по CIDR, либо HTTP с Basic-auth. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Never** полагаться на `fingerprint_preset=True` для стабильности: он выбирает случайный пресет при каждом запуске, и identity расходится. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Never** складывать 429 с 498 в один счётчик: 429 — ответ про темп, 498 — про потраченный счётчик сессии; в крауле у них разные причины (`rate_limited` / `antibot`) и разные back-off'ы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Never** считать `EGRESS`-маркер проверкой внешнего адреса: он привязан к endpoint'у, а endpoint может менять egress между запусками; неизменность адреса гарантирует контракт прокси, а `egress` в артефакте — свидетельство, а не защита. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Never** считать статус навигации проверкой антибота: датацентровый адрес даёт 498 на HTML и 200 на API из страницы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 
 ## Per-tag
 
@@ -1281,6 +1295,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-08-the-test-asks-the-clock-a-different-question` — testing  reliability  browser
 - `2026-11-09-the-test-asks-a-local-server-for-the-dictionary` — testing  coverage  architecture
 - `2026-11-10-the-pool-belongs-to-the-application` — architecture  cleanup  database
+- `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — architecture  egress  operations  antibot  browser
 
 ## Active entries
 
@@ -1415,3 +1430,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-08-the-test-asks-the-clock-a-different-question` — The test asks the clock a different question
 - `2026-11-09-the-test-asks-a-local-server-for-the-dictionary` — The test asks a local server for the dictionary, not WB's CDN
 - `2026-11-10-the-pool-belongs-to-the-application` — The pool belongs to the application, and the application says so in one place
+- `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — Camoufox работает локально, адрес приходит прокси, а отпечаток — данные профиля
