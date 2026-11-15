@@ -1,0 +1,402 @@
+{
+  "profiles": 2,
+  "delay_s": 3.0,
+  "headless": true,
+  "requests": 40,
+  "ok": 40,
+  "refused": 0,
+  "errored": 0,
+  "other_status": 0,
+  "statuses": [
+    200
+  ],
+  "products": 4000,
+  "products_per_min": 2771.4,
+  "requests_per_min": 27.7,
+  "refusal_ratio": 0.0,
+  "elapsed_s": 86.6,
+  "p50_latency_ms": 229,
+  "p95_latency_ms": 494,
+  "peak_rss_mb_sum": 2093.5,
+  "cpu_s_sum": 48.5,
+  "first_refusals": {
+    "1": null,
+    "2": null
+  },
+  "egress": [
+    "46.138.35.132"
+  ],
+  "fingerprints": [
+    {
+      "webdriver": false,
+      "plugins": 5,
+      "tz": "Europe/Moscow",
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "lang": "ru-RU"
+    },
+    {
+      "webdriver": false,
+      "plugins": 5,
+      "tz": "Europe/Moscow",
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "lang": "ru-RU"
+    }
+  ],
+  "workers": [
+    {
+      "profile": 1,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 206,
+          "len": 131919,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 154,
+          "len": 128769,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 166,
+          "len": 129407,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 174,
+          "len": 128880,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 194,
+          "len": 129547,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 193,
+          "len": 128556,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 198,
+          "len": 129752,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 226,
+          "len": 129727,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 201,
+          "len": 128175,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 213,
+          "len": 128318,
+          "n": 10
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 222,
+          "len": 127739,
+          "n": 11
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 230,
+          "len": 128272,
+          "n": 12
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 702,
+          "len": 128608,
+          "n": 13
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 254,
+          "len": 127728,
+          "n": 14
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 242,
+          "len": 128434,
+          "n": 15
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 247,
+          "len": 127652,
+          "n": 16
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 239,
+          "len": 127973,
+          "n": 17
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 234,
+          "len": 127679,
+          "n": 18
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 242,
+          "len": 127786,
+          "n": 19
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 265,
+          "len": 128662,
+          "n": 20
+        }
+      ],
+      "error": null,
+      "egress": "46.138.35.132",
+      "fp": {
+        "webdriver": false,
+        "plugins": 5,
+        "tz": "Europe/Moscow",
+        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "lang": "ru-RU"
+      },
+      "cpu_s": 23.9,
+      "elapsed_s": 85.3,
+      "peak_rss_mb": 1056.4
+    },
+    {
+      "profile": 2,
+      "requests": [
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 149,
+          "len": 131919,
+          "n": 1
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 160,
+          "len": 128769,
+          "n": 2
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 177,
+          "len": 129407,
+          "n": 3
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 179,
+          "len": 128880,
+          "n": 4
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 264,
+          "len": 129547,
+          "n": 5
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 194,
+          "len": 128556,
+          "n": 6
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 195,
+          "len": 129752,
+          "n": 7
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 187,
+          "len": 129727,
+          "n": 8
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 201,
+          "len": 128175,
+          "n": 9
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 606,
+          "len": 128318,
+          "n": 10
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 212,
+          "len": 127739,
+          "n": 11
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 229,
+          "len": 128272,
+          "n": 12
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 282,
+          "len": 128608,
+          "n": 13
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 494,
+          "len": 127728,
+          "n": 14
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 268,
+          "len": 128434,
+          "n": 15
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 235,
+          "len": 127652,
+          "n": 16
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 235,
+          "len": 127973,
+          "n": 17
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 259,
+          "len": 127679,
+          "n": 18
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 260,
+          "len": 127786,
+          "n": 19
+        },
+        {
+          "status": 200,
+          "products": 100,
+          "total": 52376,
+          "ms": 253,
+          "len": 128662,
+          "n": 20
+        }
+      ],
+      "error": null,
+      "egress": "46.138.35.132",
+      "fp": {
+        "webdriver": false,
+        "plugins": 5,
+        "tz": "Europe/Moscow",
+        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "lang": "ru-RU"
+      },
+      "cpu_s": 24.6,
+      "elapsed_s": 86.6,
+      "peak_rss_mb": 1037.1
+    }
+  ],
+  "label": "direct-p2"
+}
