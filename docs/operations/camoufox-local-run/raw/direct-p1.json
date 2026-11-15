@@ -1,24 +1,27 @@
 {
-  "profiles": 1,
+  "profiles_requested": 1,
+  "profiles_measured": 1,
+  "profiles_refused": 0,
+  "shared_address": true,
+  "proxy": "direct",
+  "headless": "True",
   "delay_s": 3.0,
-  "headless": true,
   "requests": 20,
   "ok": 20,
   "refused": 0,
   "errored": 0,
-  "other_status": 0,
   "statuses": [
     200
   ],
   "products": 2000,
-  "products_per_min": 1438.8,
-  "requests_per_min": 14.4,
+  "products_per_min": 1362.1,
+  "requests_per_min": 13.6,
   "refusal_ratio": 0.0,
-  "elapsed_s": 83.4,
-  "p50_latency_ms": 209,
-  "p95_latency_ms": 269,
-  "peak_rss_mb_sum": 1005.4,
-  "cpu_s_sum": 23.9,
+  "elapsed_s": 88.1,
+  "p50_latency_ms": 233,
+  "p95_latency_ms": 393,
+  "peak_rss_mb_sum": 1591.8,
+  "cpu_s_sum": 51.9,
   "first_refusals": {
     "1": null
   },
@@ -27,11 +30,11 @@
   ],
   "fingerprints": [
     {
-      "webdriver": false,
-      "plugins": 5,
+      "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
+      "platform": "MacIntel",
       "tz": "Europe/Moscow",
-      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
-      "lang": "ru-RU"
+      "webdriver": false,
+      "plugins": 5
     }
   ],
   "workers": [
@@ -41,176 +44,156 @@
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 150,
-          "len": 131936,
+          "ms": 171,
+          "bytes": 131848,
           "n": 1
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 222,
-          "len": 128669,
+          "ms": 183,
+          "bytes": 128773,
           "n": 2
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 195,
-          "len": 128946,
+          "ms": 219,
+          "bytes": 129457,
           "n": 3
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 164,
-          "len": 130014,
+          "ms": 196,
+          "bytes": 128895,
           "n": 4
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 173,
-          "len": 128302,
+          "ms": 206,
+          "bytes": 128929,
           "n": 5
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 180,
-          "len": 129684,
+          "ms": 393,
+          "bytes": 129787,
           "n": 6
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 195,
-          "len": 129152,
+          "ms": 197,
+          "bytes": 129412,
           "n": 7
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 204,
-          "len": 128367,
+          "ms": 201,
+          "bytes": 128224,
           "n": 8
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 199,
-          "len": 127535,
+          "ms": 211,
+          "bytes": 128295,
           "n": 9
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 194,
-          "len": 128791,
+          "ms": 258,
+          "bytes": 127791,
           "n": 10
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 205,
-          "len": 129696,
+          "ms": 231,
+          "bytes": 127910,
           "n": 11
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 217,
-          "len": 128334,
+          "ms": 219,
+          "bytes": 127438,
           "n": 12
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 228,
-          "len": 128547,
+          "ms": 416,
+          "bytes": 127671,
           "n": 13
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 277,
-          "len": 127775,
+          "ms": 233,
+          "bytes": 128140,
           "n": 14
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 209,
-          "len": 128415,
+          "ms": 242,
+          "bytes": 128038,
           "n": 15
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 216,
-          "len": 127697,
+          "ms": 249,
+          "bytes": 128698,
           "n": 16
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 223,
-          "len": 127995,
+          "ms": 250,
+          "bytes": 128855,
           "n": 17
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 245,
-          "len": 127650,
+          "ms": 307,
+          "bytes": 128253,
           "n": 18
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 269,
-          "len": 127756,
+          "ms": 281,
+          "bytes": 128072,
           "n": 19
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 256,
-          "len": 128697,
+          "ms": 255,
+          "bytes": 128241,
           "n": 20
         }
       ],
       "error": null,
-      "egress": "46.138.35.132",
-      "fp": {
-        "webdriver": false,
-        "plugins": 5,
+      "fingerprint": {
+        "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
+        "platform": "MacIntel",
         "tz": "Europe/Moscow",
-        "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:158.0) Gecko/20100101 Firefox/158.0",
-        "lang": "ru-RU"
+        "webdriver": false,
+        "plugins": 5
       },
-      "cpu_s": 23.9,
-      "elapsed_s": 83.4,
-      "peak_rss_mb": 1005.4
+      "egress": "46.138.35.132",
+      "cpu_s": 51.9,
+      "elapsed_s": 88.1,
+      "peak_rss_mb": 1591.8
     }
   ],
   "label": "direct-p1"

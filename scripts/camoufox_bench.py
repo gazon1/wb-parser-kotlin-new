@@ -17,16 +17,19 @@ Two numbers are kept apart on purpose:
   • **errored** — the request never completed. A refusal is the site answering; an error
     is the request not arriving, and only one of the two is about the address.
 
-A worker stops after three consecutive refusals. The point of the measurement is useful
-throughput, not how many refusals a fixed quota can be made to produce: a run that keeps
-going past a block measures the block, and the fixed quota then says where the block
-started rather than how much work the profile got done.
+A worker stops at the FIRST refusal. The point of the measurement is useful throughput,
+not how many refusals a fixed quota can be made to produce: the session's counter is
+spent by the time WB answers 498, so every further request asks a closed door and adds
+load without adding knowledge. With `--shared-address` the refusal also stops the
+sibling profiles, because one address is what WB counted against.
 
-The session, not the address, is what refuses
----------------------------------------------
-The first refusal lands between the 9th and 19th request of a session, in a burst, and
-moves earlier as more profiles share one address. So `first_refusal` per profile is
-reported next to the totals: it is the number that says whose counter was spent.
+The hypothesis this suggests, and does not prove
+------------------------------------------------
+The first refusal lands between the 9th and 19th request of a session and moves earlier
+as profiles share one address, which is consistent with a **per-session request count**
+rather than a rate. It is a reading, not a demonstrated mechanism: every run here used
+one delay (3.0 s), so rate was never a variable. `first_refusal` per profile is reported
+so the reading can be checked against data, not repeated from the report.
 
 Usage:
     uv run --with camoufox python scripts/camoufox_bench.py --profiles 1 --count 20
@@ -60,9 +63,6 @@ QUERY = "menu_v3_9467 карты памяти"
 
 # The anti-bot answer, kept apart from a transport failure.
 REFUSAL = {498, 403, 401}
-
-# A worker stops here. Three in a row is a block, not a flake.
-CONSECUTIVE_REFUSALS = 3
 
 # The crawler's own headers (`WbCatalogApi`): the request shape must not be the variable.
 HEADERS = {
@@ -108,6 +108,22 @@ def api_url(page: int) -> str:
     return API + "?" + "&".join(f"{key}={quote(str(value))}" for key, value in params.items())
 
 
+def read_stat(pid: int) -> list[str]:
+    """The numeric fields of /proc/<pid>/stat, with `comm` removed.
+
+    `comm` is the second field, it is wrapped in parentheses, and it may itself contain
+    spaces and parentheses ("Web Content", "Isolated Web Co"). Splitting the whole line
+    therefore shifts every later index by however many spaces the name happened to
+    have, and a name with one space is enough to read `ppid` out of the wrong column.
+    The fixed part of the line is what follows the LAST ')'.
+
+    After the removal the list starts at field 3 (state), so field N is at index N - 3:
+    ppid is index 1, utime 11, stime 12.
+    """
+    raw = Path(f"/proc/{pid}/stat").read_text()
+    return raw[raw.rfind(")") + 2 :].split()
+
+
 def process_tree(parents: set[int]) -> set[int]:
     """Every descendant of the given pids, by walking the ppid field of /proc/<pid>/stat."""
     tree = set(parents)
@@ -117,7 +133,7 @@ def process_tree(parents: set[int]) -> set[int]:
             if not entry.name.isdigit():
                 continue
             try:
-                ppid = int((entry / "stat").read_text().split()[3])
+                ppid = int(read_stat(int(entry.name))[1])
             except (OSError, IndexError, ValueError):
                 continue
             if ppid in tree and int(entry.name) not in tree:
@@ -149,12 +165,24 @@ def resources(marker: str) -> tuple[float, int]:
     rss = 0
     for pid in process_tree(roots):
         try:
-            stat = Path(f"/proc/{pid}/stat").read_text().split()
-            cpu += (int(stat[13]) + int(stat[14])) / os.sysconf("SC_CLK_TCK")
+            stat = read_stat(pid)
+            cpu += (int(stat[11]) + int(stat[12])) / os.sysconf("SC_CLK_TCK")
             rss += int(Path(f"/proc/{pid}/statm").read_text().split()[1]) * 4096
         except (OSError, IndexError, ValueError):
             continue
     return cpu, rss
+
+
+def stops_the_run(status: int) -> bool:
+    """Whether an answer ends the profile's run.
+
+    A refusal ends it after the FIRST one. The session's counter is already spent, so
+    every further request asks the same closed door: it adds a refusal to the tally and
+    traffic to the site, and moves the run no closer to knowing what the profile could
+    have done. A run that keeps going past a block measures where the counter ran out,
+    not how much work the profile got done.
+    """
+    return status in REFUSAL
 
 
 class Sampler(threading.Thread):
@@ -193,8 +221,14 @@ def launch_browser() -> type:
     return Camoufox
 
 
-def worker(index: int, args: argparse.Namespace, results: list) -> None:
-    """One persistent profile: warm the session, then issue the catalog calls."""
+def worker(index: int, args: argparse.Namespace, results: list, stop_all: threading.Event) -> None:
+    """One persistent profile: warm the session, then issue the catalog calls.
+
+    A refusal stops this profile at once, and — when every profile shares one address —
+    stops the siblings too. The address is the thing WB counts against, so once it has
+    said no, letting the others keep asking is the runaway load the issue forbids: the
+    only thing left to measure would be how fast refusals arrive.
+    """
     browser_class = launch_browser()
     out: dict = {"profile": index, "requests": [], "error": None}
     data_dir = f"{args.profiles_dir}/profile-{index}"
@@ -227,22 +261,22 @@ def worker(index: int, args: argparse.Namespace, results: list) -> None:
             except Exception as e:  # noqa: BLE001 - the address is a note, not the measurement
                 out["egress_error"] = repr(e)[:200]
 
-            consecutive = 0
             for n in range(1, args.count + 1):
+                if stop_all.is_set():
+                    out["stopped"] = "the shared address was refused by another profile"
+                    break
                 try:
                     answer = page.evaluate(FETCH_JS, [api_url(n), HEADERS])
                 except Exception as e:  # noqa: BLE001 - a transport failure is a datum here
                     answer = {"status": 0, "products": 0, "ms": 0, "bytes": 0, "error": repr(e)[:200]}
                 answer["n"] = n
                 out["requests"].append(answer)
-                if answer["status"] in REFUSAL:
+                if stops_the_run(answer["status"]):
                     out.setdefault("first_refusal", n)
-                    consecutive += 1
-                    if consecutive >= CONSECUTIVE_REFUSALS:
-                        out["stopped"] = f"{CONSECUTIVE_REFUSALS} consecutive refusals at request {n}"
-                        break
-                elif answer["status"] == 200:
-                    consecutive = 0
+                    out["stopped"] = f"refused at request {n}; the profile stops there"
+                    if args.shared_address:
+                        stop_all.set()
+                    break
                 time.sleep(args.delay)
             sampler.stop()
             out["cpu_s"] = round(sampler.cpu_end - sampler.cpu_start, 1)
@@ -265,8 +299,15 @@ def summarise(results: list, args: argparse.Namespace) -> dict:
     elapsed = max((work.get("elapsed_s", 0) for work in results), default=0)
     products = sum(answer.get("products", 0) for answer in ok)
     latencies = sorted(answer["ms"] for answer in ok)
+    # A profile that never got a page (navigation timeout, failed launch) did no work.
+    # Reporting the requested count as though it had run overstates the level: three
+    # profiles of which one timed out are not the same run as three that worked.
+    measured = [work for work in results if work["requests"]]
     return {
-        "profiles": args.profiles,
+        "profiles_requested": args.profiles,
+        "profiles_measured": len(measured),
+        "profiles_refused": sum(1 for work in results if work.get("first_refusal")),
+        "shared_address": bool(args.shared_address),
         "proxy": args.proxy or "direct",
         "headless": str(args.headless),
         "delay_s": args.delay,
@@ -299,6 +340,11 @@ def main() -> None:
     parser.add_argument("--warmup-ms", type=int, default=15000, help="time the session gets to warm up")
     parser.add_argument("--timeout-ms", type=int, default=90000, help="navigation timeout")
     parser.add_argument("--proxy", default=os.environ.get("CAMOUFOX_PROXY", ""), help="Playwright proxy server URL")
+    parser.add_argument(
+        "--shared-address",
+        action="store_true",
+        help="every profile exits through the same address, so one refusal stops them all",
+    )
     parser.add_argument("--headless", default="true", help="true, false, virtual or virtual-gpu")
     parser.add_argument("--profiles-dir", default="/tmp/camoufox-bench", help="where the user_data_dirs live")
     parser.add_argument("--out", default=None, help="write the JSON here as well as to stdout")
@@ -307,7 +353,8 @@ def main() -> None:
         args.headless = args.headless == "true"
 
     results: list = []
-    threads = [threading.Thread(target=worker, args=(i, args, results)) for i in range(1, args.profiles + 1)]
+    stop_all = threading.Event()
+    threads = [threading.Thread(target=worker, args=(i, args, results, stop_all)) for i in range(1, args.profiles + 1)]
     for thread in threads:
         thread.start()
     for thread in threads:

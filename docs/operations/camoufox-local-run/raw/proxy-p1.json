@@ -1,38 +1,40 @@
 {
-  "profiles": 1,
+  "profiles_requested": 1,
+  "profiles_measured": 1,
+  "profiles_refused": 0,
+  "shared_address": true,
+  "proxy": "socks5://127.0.0.1:1082",
+  "headless": "True",
   "delay_s": 3.0,
-  "headless": true,
   "requests": 20,
-  "ok": 18,
-  "refused": 2,
+  "ok": 20,
+  "refused": 0,
   "errored": 0,
-  "other_status": 0,
   "statuses": [
-    200,
-    498
+    200
   ],
-  "products": 1800,
-  "products_per_min": 1276.6,
-  "requests_per_min": 14.2,
-  "refusal_ratio": 0.1,
-  "elapsed_s": 84.6,
-  "p50_latency_ms": 219,
-  "p95_latency_ms": 304,
-  "peak_rss_mb_sum": 1129.1,
-  "cpu_s_sum": 17.3,
+  "products": 2000,
+  "products_per_min": 1243.5,
+  "requests_per_min": 12.4,
+  "refusal_ratio": 0.0,
+  "elapsed_s": 96.5,
+  "p50_latency_ms": 390,
+  "p95_latency_ms": 684,
+  "peak_rss_mb_sum": 1703.3,
+  "cpu_s_sum": 52.6,
   "first_refusals": {
-    "1": 19
+    "1": null
   },
   "egress": [
-    "91.188.212.39"
+    "46.29.162.175"
   ],
   "fingerprints": [
     {
-      "webdriver": false,
-      "plugins": 5,
-      "tz": "Europe/Moscow",
       "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
-      "lang": "ru-RU"
+      "platform": "MacIntel",
+      "tz": "Europe/Moscow",
+      "webdriver": false,
+      "plugins": 5
     }
   ],
   "workers": [
@@ -42,177 +44,156 @@
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 159,
-          "len": 131921,
+          "ms": 307,
+          "bytes": 131739,
           "n": 1
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 171,
-          "len": 128769,
+          "ms": 307,
+          "bytes": 128773,
           "n": 2
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 182,
-          "len": 129407,
+          "ms": 684,
+          "bytes": 129457,
           "n": 3
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 206,
-          "len": 128880,
+          "ms": 334,
+          "bytes": 128885,
           "n": 4
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 171,
-          "len": 129547,
+          "ms": 337,
+          "bytes": 128951,
           "n": 5
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 225,
-          "len": 128556,
+          "ms": 435,
+          "bytes": 129768,
           "n": 6
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 202,
-          "len": 129752,
+          "ms": 506,
+          "bytes": 129399,
           "n": 7
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 211,
-          "len": 129727,
+          "ms": 334,
+          "bytes": 128257,
           "n": 8
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 219,
-          "len": 128175,
+          "ms": 474,
+          "bytes": 128249,
           "n": 9
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 210,
-          "len": 128317,
+          "ms": 377,
+          "bytes": 127802,
           "n": 10
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 218,
-          "len": 127739,
+          "ms": 400,
+          "bytes": 127874,
           "n": 11
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 248,
-          "len": 128272,
+          "ms": 1288,
+          "bytes": 127498,
           "n": 12
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 304,
-          "len": 128608,
+          "ms": 372,
+          "bytes": 127671,
           "n": 13
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 523,
-          "len": 127728,
+          "ms": 373,
+          "bytes": 128140,
           "n": 14
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52374,
-          "ms": 253,
-          "len": 128434,
+          "ms": 412,
+          "bytes": 128038,
           "n": 15
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 265,
-          "len": 127637,
+          "ms": 386,
+          "bytes": 128698,
           "n": 16
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 236,
-          "len": 127856,
+          "ms": 377,
+          "bytes": 128855,
           "n": 17
         },
         {
           "status": 200,
           "products": 100,
-          "total": 52376,
-          "ms": 251,
-          "len": 127839,
+          "ms": 390,
+          "bytes": 128253,
           "n": 18
         },
         {
-          "status": 498,
-          "products": 0,
-          "total": null,
-          "ms": 33,
-          "len": 1134,
+          "status": 200,
+          "products": 100,
+          "ms": 395,
+          "bytes": 128072,
           "n": 19
         },
         {
-          "status": 498,
-          "products": 0,
-          "total": null,
-          "ms": 17,
-          "len": 1134,
+          "status": 200,
+          "products": 100,
+          "ms": 407,
+          "bytes": 128241,
           "n": 20
         }
       ],
       "error": null,
-      "egress": "91.188.212.39",
-      "fp": {
-        "webdriver": false,
-        "plugins": 5,
-        "tz": "Europe/Moscow",
+      "fingerprint": {
         "ua": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0) Gecko/20100101 Firefox/158.0",
-        "lang": "ru-RU"
+        "platform": "MacIntel",
+        "tz": "Europe/Moscow",
+        "webdriver": false,
+        "plugins": 5
       },
-      "first_refusal": 19,
-      "cpu_s": 17.3,
-      "elapsed_s": 84.6,
-      "peak_rss_mb": 1129.1
+      "egress": "46.29.162.175",
+      "cpu_s": 52.6,
+      "elapsed_s": 96.5,
+      "peak_rss_mb": 1703.3
     }
   ],
   "label": "proxy-p1"

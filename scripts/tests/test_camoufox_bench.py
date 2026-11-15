@@ -13,6 +13,7 @@ under the gate (`python3 -m unittest discover -s scripts/tests`) and under pytes
 """
 
 import importlib.util
+import os
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -31,7 +32,7 @@ bench = load_bench()
 
 
 def args(**overrides):
-    base = {"profiles": 1, "proxy": "", "headless": True, "delay": 3.0}
+    base = {"profiles": 1, "proxy": "", "headless": True, "delay": 3.0, "shared_address": False}
     base.update(overrides)
     return SimpleNamespace(**base)
 
@@ -68,6 +69,17 @@ class SummariseTest(unittest.TestCase):
         self.assertIsNone(summary["refusal_ratio"])
         self.assertIsNone(summary["products_per_min"])
 
+    def test_a_profile_that_never_got_a_page_is_not_counted_as_measured(self):
+        """Three requested, one navigation timeout: the level is two, not three."""
+        results = [
+            {"profile": 1, "requests": [answer(200)], "elapsed_s": 30},
+            {"profile": 2, "requests": [answer(200)], "elapsed_s": 30},
+            {"profile": 3, "requests": [], "error": "navigation timeout", "elapsed_s": 30},
+        ]
+        summary = bench.summarise(results, args(profiles=3))
+        self.assertEqual(summary["profiles_requested"], 3)
+        self.assertEqual(summary["profiles_measured"], 2)
+
     def test_first_refusal_is_reported_per_profile(self):
         """Whose counter was spent is the point of the stepped run."""
         results = [
@@ -93,6 +105,45 @@ class RequestShapeTest(unittest.TestCase):
     def test_the_query_is_percent_encoded(self):
         """The catalog token is Cyrillic; an unencoded space would break the call."""
         self.assertIn("query=menu_v3_9467%20", bench.api_url(1))
+
+
+class StopRuleTest(unittest.TestCase):
+    def test_a_refusal_stops_the_run_at_once(self):
+        """The first 498 ends it: a spent counter is not a reason to keep asking."""
+        for status in (498, 403, 401):
+            self.assertTrue(bench.stops_the_run(status), status)
+
+    def test_an_answer_or_a_transport_failure_does_not_stop_it(self):
+        """Only a refusal is the site saying no; a 200 is work and a 0 is the network."""
+        for status in (200, 0, 404, 500):
+            self.assertFalse(bench.stops_the_run(status), status)
+
+
+class ProcStatTest(unittest.TestCase):
+    """`comm` may contain spaces and parentheses, and a naive split then reads the wrong columns."""
+
+    def test_the_field_offsets_are_relative_to_the_last_paren(self):
+        """ppid is index 1, and utime/stime are 11/12, once `comm` is removed."""
+        self.assertEqual(bench.read_stat(os.getpid())[1], str(os.getppid()))
+
+    def test_a_comm_with_spaces_does_not_shift_the_fields(self):
+        """The bug: 'Web Content' splits into two tokens and moves every later index by one."""
+        raw = "1234 (Web Content) S 5678 1234 1234 0 -1 4194560 1 0 0 0 111 222 0 0"
+        fields = raw[raw.rfind(")") + 2 :].split()
+        self.assertEqual(int(fields[1]), 5678)
+        self.assertEqual(int(fields[11]), 111)
+        self.assertEqual(int(fields[12]), 222)
+
+    def test_a_comm_with_parens_inside_does_not_shift_the_fields(self):
+        """`comm` runs to the LAST ')', not the first one."""
+        raw = "9 (Isolated (Web) Co) S 42 9 9 0 -1 0 0 0 0 0 7 8 0 0"
+        fields = raw[raw.rfind(")") + 2 :].split()
+        self.assertEqual(int(fields[1]), 42)
+        self.assertEqual(int(fields[11]), 7)
+
+    def test_the_tree_of_a_live_process_starts_with_itself(self):
+        """A tree that cannot see its own root measures nothing."""
+        self.assertIn(os.getpid(), bench.process_tree({os.getpid()}))
 
 
 if __name__ == "__main__":
