@@ -29,7 +29,7 @@ class BrowserPoolCooldownTest :
                     )
                 }
             return BrowserPool(
-                profiles = profileIds.map { BrowserProfileConfig(it, "ws://$it") },
+                profiles = profileIds.map { BrowserProfileConfig(it) },
                 browserAutomations = automations,
             )
         }

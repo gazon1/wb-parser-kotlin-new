@@ -1,9 +1,10 @@
 package ru.wbparser.app.config
 
 import ru.wbparser.browser.pool.BrowserProfileConfig
-import ru.wbparser.infra.http.DeclaredProxy
+import ru.wbparser.browser.pool.DeclaredProxy
 import ru.wbparser.infra.http.EgressGroup
 import ru.wbparser.infra.http.RequestPacing
+import java.nio.file.Path
 
 /**
  * One egress group, as configured.
@@ -31,14 +32,17 @@ data class EgressGroupConfig(
  *   is checked too.
  * @param port the port of the proxy. It goes with the host: one without the other is
  *   a half-declared address.
- *
- * The password is not here: the crawler never authenticates to the proxy — the
- * browser does, and the browser's credentials live in AdsPower.
+ * @param username the user the browser authenticates as, when the proxy requires it.
+ * @param password the password the browser authenticates with. Its default is the
+ *   environment, not a literal: a credential baked into the repository is a credential
+ *   leaked to every clone of it.
  */
 data class ProxyConfig(
     val type: String = "",
     val host: String = "",
     val port: Int = 0,
+    val username: String = "",
+    val password: String = "",
 )
 
 /**
@@ -97,16 +101,61 @@ object EgressGroups {
 
         val groups = configured.map { it.toGroup(spider) }
         validate(groups)
-        val profiles = groups.flatMap { group -> group.profileIds.map { it to group.id } }
+        val profiles = groups.flatMap { group -> group.profileIds.map { it to group } }
         return Resolved(
             groups = groups,
-            profiles = profiles.map { (profileId, groupId) -> BrowserProfileConfig(profileId = profileId, egressGroup = groupId) },
+            profiles = profiles.map { (profileId, group) -> profileOf(profileId, group, spider) },
             targetConcurrency = profiles.size,
         )
     }
 
-    private fun EgressGroupConfig.toGroup(spider: Spider): EgressGroup =
-        EgressGroup(
+    /**
+     * A profile, with the address it leaves through and the directory it lives in.
+     *
+     * The proxy is the group's: a profile does not choose its own address, and a group
+     * is the unit the configuration names. The directory follows the endpoint
+     * ([BrowserProfileConfig.profileDir]), so a profile cannot be pointed at cookies
+     * that belong to another address.
+     *
+     * This is also where a profile behind an authenticated SOCKS5 endpoint is refused:
+     * the browser cannot authenticate to one, and the refusal belongs at configuration
+     * time rather than at the first launch.
+     */
+    private fun profileOf(
+        profileId: String,
+        group: EgressGroup,
+        spider: Spider,
+    ): BrowserProfileConfig {
+        val declared = group.proxy
+        val dir = spider.profilesDir.takeIf { it.isNotBlank() }?.let { Path.of(it, declared.directoryName(), profileId) }
+        return try {
+            BrowserProfileConfig(
+                profileId = profileId,
+                proxy = declared,
+                profileDir = dir,
+                egressGroup = group.id,
+            )
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("Egress group '${group.id}': ${e.message}", e)
+        }
+    }
+
+    private fun EgressGroupConfig.toGroup(spider: Spider): EgressGroup {
+        val declared =
+            try {
+                DeclaredProxy(
+                    type = proxy.type.trim().lowercase(),
+                    host = proxy.host.trim(),
+                    port = proxy.port,
+                    username = proxy.username.trim(),
+                    password = proxy.password,
+                )
+            } catch (e: IllegalArgumentException) {
+                // The refusal is the proxy's — it knows what Playwright can do — and the
+                // group's name is what the operator needs to find the mistake.
+                throw IllegalArgumentException("Egress group '$id': ${e.message}", e)
+            }
+        return EgressGroup(
             id = id,
             profileIds = profiles,
             pacing =
@@ -115,13 +164,9 @@ object EgressGroups {
                     jitterMinMs = pacing.jitterMinMs ?: spider.browserJitterMinMs,
                     jitterMaxMs = pacing.jitterMaxMs ?: spider.browserJitterMaxMs,
                 ),
-            proxy =
-                DeclaredProxy(
-                    type = proxy.type.trim().lowercase(),
-                    host = proxy.host.trim(),
-                    port = proxy.port,
-                ),
+            proxy = declared,
         )
+    }
 
     private fun validate(groups: List<EgressGroup>) {
         val seen = mutableMapOf<String, String>()

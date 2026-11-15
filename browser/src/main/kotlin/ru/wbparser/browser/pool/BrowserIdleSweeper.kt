@@ -50,7 +50,7 @@ class BrowserIdleSweeper internal constructor(
                 // whose CDP connection died is still holding a window and a profile
                 // lock, and it is exactly the one that would otherwise never close.
                 if (!state.browserMayBeRunning()) continue
-                state.closeAndStop(stopInAdsPower = true)
+                state.stop()
                 closed++
             } finally {
                 state.lock.release()

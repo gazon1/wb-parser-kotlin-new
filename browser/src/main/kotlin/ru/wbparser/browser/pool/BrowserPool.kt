@@ -5,8 +5,8 @@ import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerClients
 import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.endpoint.discoverChromeEndpoints
+import ru.wbparser.browser.playwright.AdsPowerAutomation
 import ru.wbparser.browser.playwright.BrowserAutomation
-import ru.wbparser.browser.playwright.CdpAutomation
 import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.browser.session.SessionSnapshot
 import ru.wbparser.browser.session.SessionSource
@@ -41,8 +41,8 @@ import java.util.concurrent.atomic.AtomicInteger
  * This class is the *pool*: which profile to hand out, and when. The profile's own
  * lifecycle — warm, resting after an anti-bot answer, last used, browser open — belongs
  * to [BrowserProfileState]; the AdsPower contract and its implementation to [AdsPowerApi]
- * and [RealAdsPowerApi]; the Playwright contract and its implementation to
- * [BrowserAutomation] and [CdpAutomation].
+ * and [RealAdsPowerApi]; the browser session — starting it, the health check, ending it —
+ * to [BrowserAutomation], whose current implementation is `AdsPowerAutomation`.
  */
 class BrowserPool(
     private val profiles: List<BrowserProfileConfig>,
@@ -59,7 +59,7 @@ class BrowserPool(
     private val adsPower: AdsPowerConfig = AdsPowerConfig(),
     /**
      * Optional list of [BrowserAutomation] instances, one per [profiles] entry.
-     * When null (the default), each profile gets a fresh [CdpAutomation].
+     * When null (the default), each profile gets its own AdsPower adapter.
      * When supplied, the pool uses the provided instances directly — enabling unit tests
      * to inject a fake automation without any real browser I/O.
      */
@@ -130,23 +130,44 @@ class BrowserPool(
         val allProfileIds = profiles.map { it.profileId }
         profileStates =
             profiles.mapIndexed { index, profile ->
+                val context =
+                    BrowserPoolContext(
+                        index = index,
+                        profileCount = profiles.size,
+                        allProfileIds = allProfileIds,
+                        resolveEndpoints = { discoveredEndpoints.value },
+                        log = log,
+                    )
                 BrowserProfileState(
                     profileConfig = profile,
-                    api = adsPowerApi,
-                    automation = browserAutomations?.getOrNull(index) ?: CdpAutomation(),
+                    automation =
+                        browserAutomations?.getOrNull(index)
+                            ?: adsPowerAutomation(profile, context),
                     sessionPolicy = sessionPolicy,
-                    context =
-                        BrowserPoolContext(
-                            index = index,
-                            profileCount = profiles.size,
-                            allProfileIds = allProfileIds,
-                            resolveEndpoints = { discoveredEndpoints.value },
-                            log = log,
-                        ),
+                    context = context,
                 )
             }
         idleSweeper = BrowserIdleSweeper(profileStates)
         shutdown = BrowserShutdown(profileStates)
+    }
+
+    /**
+     * The terminal AdsPower adapter for a profile.
+     *
+     * AdsPower is the runtime this repository still ships, and it is transitional: the
+     * browser it hands out is joined over CDP, and it is stopped through the same Local
+     * API that started it. The adapter is built here, in one place, so the rest of the
+     * pool speaks `BrowserAutomation` and nothing else.
+     */
+    private fun adsPowerAutomation(
+        profile: BrowserProfileConfig,
+        context: BrowserPoolContext,
+    ): BrowserAutomation {
+        val resolver = CdpUrlResolver(profile, adsPowerApi, context)
+        return AdsPowerAutomation(
+            resolve = resolver::resolve,
+            stopBrowser = { adsPowerApi.stopProfileV2(profile.profileId) },
+        )
     }
 
     /**
@@ -382,7 +403,9 @@ class BrowserPool(
             }
         if (!state.lock.tryAcquire()) return ProfileReconciliation.OWN
         try {
-            if (state.wasStartedByPool() || state.wasUsed()) return ProfileReconciliation.OWN
+            // A profile this process borrowed is never a leftover: the browser is ours,
+            // whether or not we are connected to it right now.
+            if (state.wasUsed()) return ProfileReconciliation.OWN
             return stopLeftover(state)
         } finally {
             state.lock.release()
@@ -402,7 +425,7 @@ class BrowserPool(
         // process, and a browser left behind by an earlier run was never seen
         // by this one.
         if (adsPowerApi.checkActiveV2(profileId) == null) return ProfileReconciliation.NOT_RUNNING
-        if (state.closeAndStop(stopInAdsPower = true)) return ProfileReconciliation.STOPPED
+        if (state.stop()) return ProfileReconciliation.STOPPED
         // AdsPower did not confirm the stop. It may be shutting the browser down
         // asynchronously, so the browser is asked once more whether it is still there.
         return if (adsPowerApi.checkActiveV2(profileId) == null) {

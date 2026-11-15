@@ -64,6 +64,19 @@ data class Spider(
      */
     val egressGroups: List<EgressGroupConfig> = emptyList(),
     /**
+     * Where the persistent browser profiles live on this machine.
+     *
+     * A profile is cookies and storage as much as it is configuration, so it has to
+     * outlive the process: the directory is reopened by the next run, and a fresh one
+     * would be a fresh identity on the same address. Empty means the runtime keeps its
+     * own profiles (as AdsPower does) and the crawler names no directory at all.
+     *
+     * A profile's own directory is `[profilesDir]/[endpoint]/[profileId]`: the endpoint
+     * in the path is what keeps a profile from being opened through an address it was
+     * not created for.
+     */
+    val profilesDir: String = "",
+    /**
      * Whether a group that turns out not to be isolated by IP must stop the crawler.
      *
      * A rotating proxy changes the IP behind a group, and a group whose IP turned out

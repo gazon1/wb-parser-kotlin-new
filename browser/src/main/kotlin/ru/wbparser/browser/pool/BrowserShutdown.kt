@@ -37,7 +37,7 @@ class BrowserShutdown internal constructor(
                 // The same fact as in the idle sweep: a browser may still be running,
                 // whether or not we are still connected to it.
                 if (!state.browserMayBeRunning()) continue
-                state.closeAndStop(stopInAdsPower = true)
+                state.stop()
                 closed++
             } finally {
                 if (locked) state.lock.release()

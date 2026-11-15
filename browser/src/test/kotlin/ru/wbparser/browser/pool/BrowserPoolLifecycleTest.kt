@@ -34,15 +34,16 @@ class BrowserPoolLifecycleTest :
         ): BrowserPool {
             val automations =
                 automations
-                    ?: profileIds.map {
+                    ?: profileIds.map { id ->
                         FakeBrowserAutomation(
                             _isConnected = false,
                             _healthCheckResult = true,
                             _currentPage = null,
+                            onStop = { api.stopProfileV2(id) },
                         )
                     }
             return BrowserPool(
-                profiles = profileIds.map { BrowserProfileConfig(it, null) },
+                profiles = profileIds.map { BrowserProfileConfig(it) },
                 adsPower = AdsPowerConfig(api = api),
                 browserAutomations = automations,
             )
@@ -168,6 +169,7 @@ class BrowserPoolLifecycleTest :
                     _isConnected = false,
                     _healthCheckResult = true,
                     _currentPage = null,
+                    onStop = { api.stopProfileV2("p1") },
                 )
             val pool = poolWith(api, "p1", automations = listOf(automation))
 
@@ -193,6 +195,7 @@ class BrowserPoolLifecycleTest :
                     _isConnected = false,
                     _healthCheckResult = true,
                     _currentPage = null,
+                    onStop = { api.stopProfileV2("p1") },
                 )
             val pool = poolWith(api, "p1", automations = listOf(automation))
 

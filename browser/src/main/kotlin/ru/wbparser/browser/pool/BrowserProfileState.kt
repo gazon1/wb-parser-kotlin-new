@@ -1,14 +1,12 @@
 package ru.wbparser.browser.pool
 
 import org.slf4j.Logger
-import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.playwright.BrowserAutomation
 import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.session.BrowserSession
 import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.browser.session.SessionState
 import java.util.concurrent.Semaphore
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -41,10 +39,13 @@ internal data class BrowserPoolContext(
  * resting after an anti-bot answer, has anybody used it lately, is a browser still open for
  * it. The pool answers "which profile do I hand out next" — a different question, and it
  * was living in the same file.
+ *
+ * The browser's own lifecycle — starting, the health check, ending it — belongs to
+ * [BrowserAutomation]. The profile does not know how a browser is reached: a URL, a
+ * process and a local directory are all the adapter's business.
  */
 internal class BrowserProfileState(
     val profileConfig: BrowserProfileConfig,
-    private val api: AdsPowerApi,
     private val automation: BrowserAutomation,
     private val context: BrowserPoolContext,
     /**
@@ -54,14 +55,6 @@ internal class BrowserProfileState(
      */
     sessionPolicy: SessionPolicy = SessionPolicy(),
 ) {
-    /**
-     * Where the browser of this profile is.
-     *
-     * A collaborator of its own: "which browser is this profile's" is a decision
-     * with three answers, and it is not a part of the profile's bookkeeping.
-     */
-    private val cdpUrlResolver = CdpUrlResolver(profileConfig, api, context)
-
     /**
      * The WB session of this profile.
      *
@@ -87,7 +80,7 @@ internal class BrowserProfileState(
      */
     val lock = Semaphore(1)
 
-    /** The egress group this profile belongs to. Its IP is the group's IP. */
+    /** The egress group this profile belongs to. Its IP is the group's. */
     val egressGroup: String get() = profileConfig.egressGroup
 
     /**
@@ -100,15 +93,6 @@ internal class BrowserProfileState(
     private val lastUsedAtMs = AtomicLong(0L)
 
     /**
-     * Whether this pool started the browser.
-     *
-     * It answers "whose browser is this" — not "is it running". A browser the pool
-     * opened is ours to stop; one we attached to belongs to whoever had it before,
-     * and the rule "close the browsers you used" covers both.
-     */
-    private val startedByPool = AtomicBoolean(false)
-
-    /**
      * Whether this process has ever borrowed this profile.
      *
      * A profile this process has used is not a leftover of an earlier run, even if
@@ -116,21 +100,6 @@ internal class BrowserProfileState(
      * browsers of the previous run must not touch the work of this one.
      */
     fun wasUsed(): Boolean = lastUsedAtMs.get() > 0L
-
-    /**
-     * Whether a Chrome window may still be running for this profile.
-     *
-     * This is the fact the closing decisions are made on, and it is not the same
-     * fact as "we are connected right now": the CDP connection can die while
-     * Chrome keeps running, and a browser that survives its connection is exactly
-     * the one nobody closes. It becomes true when AdsPower says the profile is
-     * running — whether we opened it or attached to it — and false only after
-     * AdsPower confirmed the stop.
-     *
-     * A failed stop leaves it true: the browser may still be there, and the next
-     * attempt has to try again.
-     */
-    private val browserMayBeRunning = AtomicBoolean(false)
 
     /** Records that this profile has just been used. */
     fun markUsed(now: Long) {
@@ -148,12 +117,9 @@ internal class BrowserProfileState(
      *
      * The closing decisions ask this question, not "is the CDP connection alive":
      * a browser whose connection died is still a browser holding a window and a
-     * profile lock.
+     * profile lock. The automation is what knows the answer.
      */
-    fun browserMayBeRunning(): Boolean = browserMayBeRunning.get()
-
-    /** Whether the pool opened this browser, and may therefore close it in AdsPower. */
-    fun wasStartedByPool(): Boolean = startedByPool.get()
+    fun browserMayBeRunning(): Boolean = automation.browserMayBeRunning
 
     /**
      * Whether this profile's page has already loaded a WB page and solved the anti-bot
@@ -235,27 +201,15 @@ internal class BrowserProfileState(
 
         // Shut down stale handle and reconnect
         automation.close()
-        // A fresh CDP connection has no WB session yet: the new page must be warmed up
+        // A fresh browser has no WB session yet: the new page must be warmed up
         // by navigating it to a WB page before the internal API will return products.
         session.onCold()
 
-        val resolution = cdpUrlResolver.resolve()
-        // Two facts follow from where the browser was found: one that may be running,
-        // and — when we started it — one that is ours to close.
-        if (resolution.alreadyRunning || resolution.startedByUs) {
-            browserMayBeRunning.set(true)
-        }
-        if (resolution.startedByUs) {
-            startedByPool.set(true)
-        }
-        val cdpUrl = resolution.url
-        logForProfile("Connecting via CDP: {}", cdpUrl)
-
         return try {
-            automation.connect(cdpUrl)
+            automation.start()
         } catch (e: Throwable) {
             logForProfile(
-                "CDP connection failed: {} | class={}",
+                "Browser start failed: {} | class={}",
                 e.message,
                 e::class.java.name,
             )
@@ -263,49 +217,27 @@ internal class BrowserProfileState(
         }
     }
 
+    /** Releases the session. The browser may still be running. */
     fun close() {
         automation.close()
         session.onCold()
     }
 
     /**
-     * Closes the browser, and asks AdsPower to stop it.
+     * Ends the browser behind the session.
      *
-     * The CDP connection and the browser are two different things: closing the
-     * connection detaches the crawler from Chrome, but Chrome keeps running. Only
-     * the AdsPower stop call makes the window go away.
+     * The connection and the browser are two different things: closing the connection
+     * detaches the crawler, but the browser keeps running with a window and a profile
+     * lock. The rule is "the crawler stops the browsers it used", which is why this is
+     * not limited to the browsers the pool started.
      *
-     * @param stopInAdsPower whether the browser may be stopped in AdsPower. The
-     *   crawler stops the browsers it used — see [browserMayBeRunning] for why
-     *   "only the ones we started" is not the rule.
-     * @return whether the browser is known to be gone. AdsPower confirming the stop
-     *   is the only thing that makes it known: a refusal leaves the browser running,
-     *   and the caller has to be able to say so instead of assuming.
+     * @return whether the browser is known to be gone. A refusal leaves the browser
+     *   running, and the caller has to be able to say so instead of assuming.
      */
-    fun closeAndStop(stopInAdsPower: Boolean): Boolean {
-        close()
-        if (!stopInAdsPower) return false
-        val profileId = profileConfig.profileId
-        val stopped =
-            try {
-                api.stopProfileV2(profileId)
-            } catch (e: Exception) {
-                // AdsPower may already be gone (the runtime is a container that
-                // stops with the app). A browser we cannot stop is a nuisance, not
-                // a reason to fail the shutdown.
-                logForProfile("Could not stop the browser in AdsPower: {}", e.message)
-                false
-            }
-        if (stopped) {
-            startedByPool.set(false)
-            // AdsPower confirmed the window is gone: there is nothing left to stop.
-            browserMayBeRunning.set(false)
-            logForProfile("Browser stopped in AdsPower")
-        } else {
-            // The browser may still be running. The fact stays, so the next attempt
-            // tries again instead of pretending the browser was closed.
-            logForProfile("Browser was not stopped in AdsPower")
-        }
+    fun stop(): Boolean {
+        val stopped = automation.stop()
+        session.onCold()
+        logForProfile(if (stopped) "Browser stopped" else "Browser was not stopped")
         return stopped
     }
 

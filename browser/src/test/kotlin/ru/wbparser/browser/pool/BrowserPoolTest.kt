@@ -106,17 +106,15 @@ class BrowserPoolTest :
             pool.close()
         }
 
-        test("BrowserPool secondary constructor defaults adsPowerApi to RealAdsPowerApi") {
-            // The secondary constructor must compile and work without passing an adsPowerApi.
-            // A static cdpWsUrl prevents RealAdsPowerApi from being invoked at runtime.
+        test("BrowserPool defaults its AdsPower client without being asked for one") {
+            // The constructor must work without an ADS client being passed: a deployment
+            // that does not inject one gets a real client, and nothing is resolved until
+            // a browser is actually started.
             val pool =
                 BrowserPool(
                     profiles =
                         listOf(
-                            BrowserProfileConfig(
-                                profileId = "p1",
-                                cdpWsUrl = "ws://localhost:36980/devtools/browser/p1",
-                            ),
+                            BrowserProfileConfig(profileId = "p1"),
                         ),
                 )
 
@@ -152,7 +150,7 @@ class BrowserPoolTest :
         test("a profile the pool does not manage cannot be reconciled") {
             val pool =
                 BrowserPool(
-                    profiles = listOf(BrowserProfileConfig("p1", null)),
+                    profiles = listOf(BrowserProfileConfig("p1")),
                     adsPower = AdsPowerConfig(api = FakeAdsPowerApi()),
                 )
 

@@ -20,7 +20,7 @@ class EgressRouterCircuitTest :
     FunSpec({
 
         fun poolOf(vararg groups: Pair<String, List<String>>): BrowserPool {
-            val profiles = groups.flatMap { (group, ids) -> ids.map { BrowserProfileConfig(it, "ws://$it", group) } }
+            val profiles = groups.flatMap { (group, ids) -> ids.map { BrowserProfileConfig(it, egressGroup = group) } }
             val automations =
                 profiles.map {
                     FakeBrowserAutomation(

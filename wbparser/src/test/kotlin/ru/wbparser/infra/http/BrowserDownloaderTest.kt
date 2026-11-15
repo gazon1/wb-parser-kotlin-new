@@ -24,8 +24,8 @@ import java.util.UUID
  * A fake [BrowserAutomation] that hands out one prepared page.
  *
  * The pool asks the automation for a page and keeps it for as long as the profile is
- * in use, so this fake answers [connect] with the page it was given and reports the
- * session as open afterwards — a real CDP session behaves the same way, and the pool's
+ * in use, so this fake answers [start] with the page it was given and reports the
+ * session as open afterwards — a real session behaves the same way, and the pool's
  * warm/cold bookkeeping depends on it.
  */
 class FakePageAutomation(
@@ -38,9 +38,11 @@ class FakePageAutomation(
 
     override val currentPage: BrowserPage? get() = current
 
+    override val browserMayBeRunning: Boolean get() = connected
+
     override fun healthCheck(): Boolean = connected
 
-    override fun connect(cdpUrl: String): BrowserPage {
+    override fun start(): BrowserPage {
         connected = true
         current = page
         return page
@@ -49,6 +51,11 @@ class FakePageAutomation(
     override fun close() {
         connected = false
         current = null
+    }
+
+    override fun stop(): Boolean {
+        close()
+        return true
     }
 }
 
@@ -68,7 +75,6 @@ class BrowserDownloaderTest :
 
         val profileId = "test-profile"
         val catalogUrl = "https://www.wildberries.ru/catalog/131954/list.aspx?search=menu_v3_9467"
-        val cdpUrl = "ws://127.0.0.1:36931/devtools/browser/test"
 
         fun task(url: String = catalogUrl): Crawling =
             Crawling(
@@ -83,7 +89,7 @@ class BrowserDownloaderTest :
             borrowTimeoutMs: Long = 120_000,
         ): BrowserPool =
             BrowserPool(
-                profiles = listOf(BrowserProfileConfig(profileId = profileId, cdpWsUrl = cdpUrl)),
+                profiles = listOf(BrowserProfileConfig(profileId = profileId)),
                 adsPower = AdsPowerConfig(api = FakeAdsPowerApi(), borrowTimeoutMs = borrowTimeoutMs),
                 browserAutomations = listOf(FakePageAutomation(page.page)),
             )
