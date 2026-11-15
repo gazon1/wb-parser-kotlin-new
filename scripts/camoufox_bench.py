@@ -28,13 +28,25 @@ and `rate_limited`: a spent session and an exceeded rate must not be added toget
 `--shared-address` either answer also stops the sibling profiles, because the address is
 what WB counted against.
 
-The run's profiles belong to one address
-----------------------------------------
+The run's profiles belong to one endpoint
+-----------------------------------------
 `user_data_dir` keeps cookies and storage between runs, so a directory created while the
 profiles egressed directly, reused through a proxy, is a session that moved house: history
 the site counted against one address arrives at another. The ADR makes one profile one
-address one fingerprint, so the directory is named after the egress and is refused under a
-different one (`EGRESS` marker), unless the move is declared with `--allow-address-change`.
+address one fingerprint, so the directory is named after the proxy endpoint and is refused
+under a different one (`EGRESS` marker), unless the move is declared with
+`--allow-address-change`.
+
+The marker binds to the endpoint, not to the external IP observed through it
+------------------------------------------------------------------------------
+`redacted_proxy()` names the endpoint (`socks5://host:port`), while the external address is
+measured separately and only recorded per profile (`egress`). Those are not the same fact:
+one endpoint may hand out a different external IP between runs, or balance several. The
+marker therefore guards against reusing a directory across *endpoints*, not against an
+endpoint whose egress changed. The harness assumes a static endpoint — the production
+contract is one profile, one address, one fingerprint — and the recorded `egress` is the
+evidence with which a violation can be noticed after the fact, not a check that prevents
+it.
 
 The hypothesis this suggests, and does not prove
 ------------------------------------------------
@@ -233,7 +245,7 @@ def redacted_proxy(proxy: str) -> str:
 
 
 def address_tag(proxy: str) -> str:
-    """A directory-safe name for the egress the profiles belong to."""
+    """A directory-safe name for the proxy endpoint the profiles belong to."""
     endpoint = redacted_proxy(proxy)
     if endpoint == "direct":
         return "direct"
@@ -241,13 +253,18 @@ def address_tag(proxy: str) -> str:
 
 
 def claim_profiles_dir(profiles_dir: str, proxy: str, allow_change: bool) -> Path:
-    """Bind a profiles directory to one address, and refuse a silent reuse under another.
+    """Bind a profiles directory to one proxy endpoint, and refuse a silent reuse under another.
 
     `user_data_dir` keeps cookies and storage between runs, so a directory created while
     the profiles egressed directly and then reused through a proxy is a session that
     moved house: it carries history the site counted against another address. The ADR
     makes one profile one address one fingerprint, and the directory is the only part of
     that which survives between runs, so it is where the rule is checked.
+
+    The marker stores the endpoint, not the external address observed through it: the
+    endpoint is known before the browser launches, while the egress is not, and one
+    endpoint can hand out several addresses. The contract is therefore a static endpoint,
+    and `egress` in the artifact is the evidence, not the guard.
     """
     root = Path(profiles_dir)
     root.mkdir(parents=True, exist_ok=True)
@@ -289,7 +306,10 @@ class Sampler(threading.Thread):
 
     def stop(self) -> None:
         self.halt.set()
-        self.join()
+        # `start()` can fail, and `join()` on a thread that never started raises.
+        # Stopping is cleanup on every path, including that one.
+        if self.ident is not None:
+            self.join()
 
 
 def launch_browser() -> type:
@@ -310,14 +330,18 @@ def worker(index: int, args: argparse.Namespace, results: list, stop_all: thread
     said no, letting the others keep asking is the runaway load the issue forbids: the
     only thing left to measure would be how fast refusals arrive.
     """
-    browser_class = launch_browser()
     out: dict = {"profile": index, "requests": [], "error": None}
-    data_dir = f"{args.profiles_dir}/profile-{index}"
-    Path(data_dir).mkdir(parents=True, exist_ok=True)
-    sampler = Sampler(f"profile-{index}")
-    sampler.start()
+    sampler = None
     started = time.time()
     try:
+        # Inside the protected block: an import that fails, a directory the process may
+        # not create, or a browser that will not start is a measurement, not a thread
+        # that disappears without leaving a record in the artifact.
+        browser_class = launch_browser()
+        data_dir = f"{args.profiles_dir}/profile-{index}"
+        Path(data_dir).mkdir(parents=True, exist_ok=True)
+        sampler = Sampler(f"profile-{index}")
+        sampler.start()
         with browser_class(
             headless=args.headless,
             persistent_context=True,
@@ -326,50 +350,57 @@ def worker(index: int, args: argparse.Namespace, results: list, stop_all: thread
             locale="ru-RU",
             i_know_what_im_doing=True,
         ) as ctx:
-            page = ctx.pages[0] if ctx.pages else ctx.new_page()
-            page.goto(CATALOG, wait_until="domcontentloaded", timeout=args.timeout_ms)
-            page.wait_for_timeout(args.warmup_ms)
-            out["fingerprint"] = page.evaluate(
-                """() => ({ua: navigator.userAgent, platform: navigator.platform,
-                           tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                           webdriver: navigator.webdriver,
-                           plugins: navigator.plugins.length})"""
-            )
             try:
-                out["egress"] = page.evaluate(
-                    "async () => { const r = await fetch('https://api.ipify.org'); return await r.text(); }"
+                page = ctx.pages[0] if ctx.pages else ctx.new_page()
+                page.goto(CATALOG, wait_until="domcontentloaded", timeout=args.timeout_ms)
+                page.wait_for_timeout(args.warmup_ms)
+                out["fingerprint"] = page.evaluate(
+                    """() => ({ua: navigator.userAgent, platform: navigator.platform,
+                               tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                               webdriver: navigator.webdriver,
+                               plugins: navigator.plugins.length})"""
                 )
-            except Exception as e:  # noqa: BLE001 - the address is a note, not the measurement
-                out["egress_error"] = repr(e)[:200]
-
-            for n in range(1, args.count + 1):
-                if stop_all.is_set():
-                    out["stopped"] = "the shared address was refused by another profile"
-                    break
                 try:
-                    answer = page.evaluate(FETCH_JS, [api_url(n), HEADERS])
-                except Exception as e:  # noqa: BLE001 - a transport failure is a datum here
-                    answer = {"status": 0, "products": 0, "ms": 0, "bytes": 0, "error": repr(e)[:200]}
-                answer["n"] = n
-                out["requests"].append(answer)
-                reason = stop_reason(answer["status"])
-                if reason:
-                    field = {"refused": "first_refusal", "throttled": "first_throttle"}[reason]
-                    out.setdefault(field, n)
-                    out["stopped"] = f"{reason} at request {n}; the profile stops there"
-                    if args.shared_address:
-                        stop_all.set()
-                    break
-                time.sleep(args.delay)
-            sampler.stop()
-            out["cpu_s"] = round(sampler.cpu_end - sampler.cpu_start, 1)
+                    out["egress"] = page.evaluate(
+                        "async () => { const r = await fetch('https://api.ipify.org'); return await r.text(); }"
+                    )
+                except Exception as e:  # noqa: BLE001 - the address is a note, not the measurement
+                    out["egress_error"] = repr(e)[:200]
+
+                for n in range(1, args.count + 1):
+                    if stop_all.is_set():
+                        out["stopped"] = "the shared address was refused by another profile"
+                        break
+                    try:
+                        answer = page.evaluate(FETCH_JS, [api_url(n), HEADERS])
+                    except Exception as e:  # noqa: BLE001 - a transport failure is a datum here
+                        answer = {"status": 0, "products": 0, "ms": 0, "bytes": 0, "error": repr(e)[:200]}
+                    answer["n"] = n
+                    out["requests"].append(answer)
+                    reason = stop_reason(answer["status"])
+                    if reason:
+                        field = {"refused": "first_refusal", "throttled": "first_throttle"}[reason]
+                        out.setdefault(field, n)
+                        out["stopped"] = f"{reason} at request {n}; the profile stops there"
+                        if args.shared_address:
+                            stop_all.set()
+                        break
+                    time.sleep(args.delay)
+            finally:
+                # Before the context manager closes the browser: afterwards the processes
+                # are gone and the cost reads as zero.
+                sampler.stop()
     except Exception as e:  # noqa: BLE001 - a failed launch is a datum, not a crash
         out["error"] = repr(e)[:400]
     finally:
-        sampler.stop()
+        if sampler is None:
+            out["cpu_s"] = 0.0
+            out["peak_rss_mb"] = 0.0
+        else:
+            sampler.stop()
+            out["cpu_s"] = round(sampler.cpu_end - sampler.cpu_start, 1)
+            out["peak_rss_mb"] = round(sampler.peak_rss / 2**20, 1)
         out["elapsed_s"] = round(time.time() - started, 1)
-        out["peak_rss_mb"] = round(sampler.peak_rss / 2**20, 1)
-        out.setdefault("cpu_s", 0.0)
         results.append(out)
 
 

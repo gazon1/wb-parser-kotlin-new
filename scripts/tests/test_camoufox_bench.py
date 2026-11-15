@@ -20,6 +20,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 SCRIPTS = Path(__file__).resolve().parent.parent
 
@@ -117,6 +118,57 @@ class SummariseTest(unittest.TestCase):
             args(proxy="http://user@10.0.0.1:8080"),
         )
         self.assertEqual(summary["proxy"], "http://10.0.0.1:8080")
+
+
+class WorkerFailureTest(unittest.TestCase):
+    """A browser that does not start is a datum, not a thread that vanishes."""
+
+    def worker_args(self, profiles_dir):
+        return SimpleNamespace(
+            profiles_dir=str(profiles_dir),
+            headless=True,
+            proxy="",
+            timeout_ms=1000,
+            warmup_ms=0,
+            count=1,
+            delay=0.0,
+            shared_address=False,
+        )
+
+    def test_a_browser_that_cannot_be_imported_is_a_result(self):
+        """The import lives before the old try block, so the profile used to disappear."""
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(bench, "launch_browser", side_effect=ImportError("no camoufox")),
+        ):
+            results = []
+            bench.worker(1, self.worker_args(tmp), results, bench.threading.Event())
+        self.assertEqual(len(results), 1)
+        self.assertIn("no camoufox", results[0]["error"])
+        self.assertEqual(results[0]["requests"], [])
+
+    def test_stopping_a_sampler_that_never_started_is_not_an_error(self):
+        """Cleanup runs on the same path when `start()` itself failed."""
+        sampler = bench.Sampler("profile-1")
+        sampler.stop()
+        self.assertEqual(sampler.peak_rss, 0)
+
+    def test_a_browser_that_fails_to_launch_is_a_result(self):
+        """A launch failure after the import must be recorded just the same."""
+
+        class BrokenBrowser:
+            def __init__(self, **kwargs):
+                raise RuntimeError("launch failed")
+
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(bench, "launch_browser", return_value=BrokenBrowser),
+        ):
+            results = []
+            bench.worker(1, self.worker_args(tmp), results, bench.threading.Event())
+        self.assertEqual(len(results), 1)
+        self.assertIn("launch failed", results[0]["error"])
+        self.assertEqual(results[0]["peak_rss_mb"], 0.0)
 
 
 class RequestShapeTest(unittest.TestCase):

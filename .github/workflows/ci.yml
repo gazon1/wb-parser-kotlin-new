@@ -79,6 +79,15 @@ jobs:
         with:
           python-version: '3.12'
 
+      # The registry's linters are pinned in mise.toml, and the local cycle gets
+      # them from `mise install`. CI is the other caller, so it installs the same
+      # pins: without this step every external gate exited 127 ("command not
+      # found"), and `static` failed for a reason that had nothing to do with the
+      # change under review.
+      - uses: jdx/mise-action@236a21c3b91f5db6d4e174b348674a0f0caac06d # v5.2.9
+        with:
+          install: true
+
       - name: Static gates (shared registry)
         run: |
           chmod +x scripts/ci/static-gates.sh scripts/*.sh
