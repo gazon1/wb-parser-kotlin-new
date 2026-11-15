@@ -222,22 +222,33 @@ class ProfilesDirTest(unittest.TestCase):
     def test_a_directory_refuses_a_second_address(self):
         """Cookies from the direct address must not arrive through a proxy."""
         with tempfile.TemporaryDirectory() as tmp:
-            bench.claim_profiles_dir(tmp, "", False)
+            bench.claim_profiles_dir(tmp, "")
             with self.assertRaises(SystemExit):
-                bench.claim_profiles_dir(tmp, "socks5://127.0.0.1:1082", False)
+                bench.claim_profiles_dir(tmp, "socks5://127.0.0.1:1082")
 
     def test_the_same_address_may_return(self):
         """A repeat run on one address is the point of a persistent profile."""
         with tempfile.TemporaryDirectory() as tmp:
-            bench.claim_profiles_dir(tmp, "", False)
-            bench.claim_profiles_dir(tmp, "", False)
+            bench.claim_profiles_dir(tmp, "")
+            bench.claim_profiles_dir(tmp, "")
 
-    def test_the_move_can_be_declared(self):
-        """An intended move is allowed, and the marker follows it."""
+    def test_a_refused_move_leaves_the_marker_alone(self):
+        """The directory keeps pointing at its old endpoint, so the refusal is repeatable."""
         with tempfile.TemporaryDirectory() as tmp:
-            bench.claim_profiles_dir(tmp, "", False)
-            bench.claim_profiles_dir(tmp, "socks5://127.0.0.1:1082", True)
-            self.assertEqual((Path(tmp) / "EGRESS").read_text(encoding="utf-8").strip(), "socks5://127.0.0.1:1082")
+            bench.claim_profiles_dir(tmp, "")
+            with self.assertRaises(SystemExit):
+                bench.claim_profiles_dir(tmp, "socks5://127.0.0.1:1082")
+            self.assertEqual((Path(tmp) / "EGRESS").read_text(encoding="utf-8").strip(), "direct")
+
+    def test_a_new_endpoint_needs_a_new_directory(self):
+        """There is no override: the only way to change the endpoint is to change the path."""
+        with tempfile.TemporaryDirectory() as tmp:
+            direct = Path(tmp) / "direct"
+            proxied = Path(tmp) / "proxied"
+            bench.claim_profiles_dir(str(direct), "")
+            bench.claim_profiles_dir(str(proxied), "socks5://127.0.0.1:1082")
+            self.assertEqual((direct / "EGRESS").read_text(encoding="utf-8").strip(), "direct")
+            self.assertEqual((proxied / "EGRESS").read_text(encoding="utf-8").strip(), "socks5://127.0.0.1:1082")
 
 
 class ProcStatTest(unittest.TestCase):

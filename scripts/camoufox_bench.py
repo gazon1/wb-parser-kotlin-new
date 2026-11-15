@@ -34,8 +34,9 @@ The run's profiles belong to one endpoint
 profiles egressed directly, reused through a proxy, is a session that moved house: history
 the site counted against one address arrives at another. The ADR makes one profile one
 address one fingerprint, so the directory is named after the proxy endpoint and is refused
-under a different one (`EGRESS` marker), unless the move is declared with
-`--allow-address-change`.
+under a different one (`EGRESS` marker). There is no override: a new endpoint needs a new
+`--profiles-dir`, because moving the directory would move the cookies and storage the old
+address was counted against.
 
 The marker binds to the endpoint, not to the external IP observed through it
 ------------------------------------------------------------------------------
@@ -252,8 +253,8 @@ def address_tag(proxy: str) -> str:
     return "proxy-" + re.sub(r"[^0-9A-Za-z]+", "-", endpoint).strip("-")
 
 
-def claim_profiles_dir(profiles_dir: str, proxy: str, allow_change: bool) -> Path:
-    """Bind a profiles directory to one proxy endpoint, and refuse a silent reuse under another.
+def claim_profiles_dir(profiles_dir: str, proxy: str) -> Path:
+    """Bind a profiles directory to one proxy endpoint, and refuse reuse under another.
 
     `user_data_dir` keeps cookies and storage between runs, so a directory created while
     the profiles egressed directly and then reused through a proxy is a session that
@@ -265,6 +266,10 @@ def claim_profiles_dir(profiles_dir: str, proxy: str, allow_change: bool) -> Pat
     endpoint is known before the browser launches, while the egress is not, and one
     endpoint can hand out several addresses. The contract is therefore a static endpoint,
     and `egress` in the artifact is the evidence, not the guard.
+
+    There is deliberately no flag that re-labels an existing directory. Re-labelling would
+    leave every `profile-N` — cookies and storage — in place, which is the move this check
+    exists to prevent; a new endpoint therefore needs a new directory.
     """
     root = Path(profiles_dir)
     root.mkdir(parents=True, exist_ok=True)
@@ -272,12 +277,12 @@ def claim_profiles_dir(profiles_dir: str, proxy: str, allow_change: bool) -> Pat
     address = redacted_proxy(proxy)
     if marker.exists():
         previous = marker.read_text(encoding="utf-8").strip()
-        if previous != address and not allow_change:
+        if previous != address:
             raise SystemExit(
                 f"{root} was used by {previous}, not {address}: "
                 "a profile that changes address is a new identity "
                 "(ADR 2026-10-23-a-changed-address-is-a-new-identity). "
-                "Point --profiles-dir elsewhere, or pass --allow-address-change if the move is intended."
+                "Point --profiles-dir at a new directory for this endpoint."
             )
     marker.write_text(address + "\n", encoding="utf-8")
     return root
@@ -466,12 +471,7 @@ def main() -> None:
     parser.add_argument(
         "--profiles-dir",
         default=None,
-        help="where the user_data_dirs live; default is one directory per egress",
-    )
-    parser.add_argument(
-        "--allow-address-change",
-        action="store_true",
-        help="reuse a profiles directory that belonged to another egress address",
+        help="where the user_data_dirs live; default is one directory per endpoint",
     )
     parser.add_argument("--out", default=None, help="write the JSON here as well as to stdout")
     args = parser.parse_args()
@@ -479,7 +479,7 @@ def main() -> None:
         args.headless = args.headless == "true"
     if args.profiles_dir is None:
         args.profiles_dir = f"/tmp/camoufox-bench/{address_tag(args.proxy)}"
-    args.profiles_dir = str(claim_profiles_dir(args.profiles_dir, args.proxy, args.allow_address_change))
+    args.profiles_dir = str(claim_profiles_dir(args.profiles_dir, args.proxy))
 
     results: list = []
     stop_all = threading.Event()
