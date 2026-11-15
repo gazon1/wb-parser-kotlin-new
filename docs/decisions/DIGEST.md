@@ -557,6 +557,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** keep a second copy of a decision that lives in the configuration. The copy is the one that rots: it changes on its own schedule, and nobody reads it. _(from `2026-11-10-the-pool-belongs-to-the-application`)
 - **Never** raise coverage by testing a function that should not exist. The number goes up; the code stays. _(from `2026-11-10-the-pool-belongs-to-the-application`)
 - **Always** назначать прокси профилю и держать его неизменным: смена адреса — новая личность (ADR `2026-10-23-a-changed-address-is-a-new-identity`). _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Always** называть каталог `user_data_dir` по адресу и отказывать в его открытии под другим: cookies и storage переезжают вместе с каталогом, и сессия, сменившая адрес, — уже другая сессия. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Always** пинить сборку Camoufox (`~/.cache/camoufox/config.json` → `active_version`): это бета-сборка Firefox, и без пина она обновится молча. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Always** хранить отпечаток профиля явным preset-файлом: `user_data_dir` его не сохраняет, и без файла рестарт — это новый браузер с того же адреса. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **MUST** держать отпечаток стабильным на профиль: два разных отпечатка с одного адреса выглядят как два браузера за одним IP — ровно то, чего egress-группы избегают. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
@@ -565,6 +566,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** выбирать `headless`-режим по рекомендации: `True` измерен, `virtual`/`virtual-gpu` требуют `Xvfb` и отдельного замера. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** настраивать аутентифицированный SOCKS5 в Playwright: он отвергается («Browser does not support socks5 proxy authentication»); endpoint либо без пароля с ограничением по CIDR, либо HTTP с Basic-auth. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** полагаться на `fingerprint_preset=True` для стабильности: он выбирает случайный пресет при каждом запуске, и identity расходится. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Never** складывать 429 с 498 в один счётчик: 429 — ответ про темп, 498 — про потраченный счётчик сессии; в крауле у них разные причины (`rate_limited` / `antibot`) и разные back-off'ы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** считать статус навигации проверкой антибота: датацентровый адрес даёт 498 на HTML и 200 на API из страницы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 
 ## Per-tag

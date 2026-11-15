@@ -3,10 +3,12 @@
 
 What is covered
 ---------------
-Only the arithmetic and the request shape: how a refusal is counted apart from a
-transport failure, what the refusal share divides by, and that the catalog call carries
-the same headers the crawler sends. Launching a browser is deliberately not tested here
-— it needs a real profile, and the measurement itself is the check for that.
+Only the arithmetic, the request shape, the stop rule, and the address-bound profiles
+directory: how a refusal, a rate limit and a transport failure are told apart, what the
+refusal share divides by, that the catalog call carries the same headers the crawler
+sends, and that one directory cannot serve two addresses. Launching a browser is
+deliberately not tested here — it needs a real profile, and the measurement itself is the
+check for that.
 
 `unittest.TestCase` by the convention of the neighbouring tests: the same file runs
 under the gate (`python3 -m unittest discover -s scripts/tests`) and under pytest.
@@ -14,6 +16,7 @@ under the gate (`python3 -m unittest discover -s scripts/tests`) and under pytes
 
 import importlib.util
 import os
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -89,6 +92,32 @@ class SummariseTest(unittest.TestCase):
         summary = bench.summarise(results, args(profiles=2))
         self.assertEqual(summary["first_refusals"], {1: 2, 2: None})
 
+    def test_a_rate_limit_is_counted_apart_from_a_refusal(self):
+        """498 and 429 answer different questions; one must not hide inside the other."""
+        results = [{"profile": 1, "requests": [answer(200), answer(429), answer(498)], "elapsed_s": 60}]
+        summary = bench.summarise(results, args())
+        self.assertEqual(summary["refused"], 1)
+        self.assertEqual(summary["throttled"], 1)
+        self.assertEqual(summary["refusal_ratio"], round(1 / 3, 4))
+
+    def test_first_throttle_is_reported_per_profile(self):
+        """When the site said 'too fast' is its own datum."""
+        results = [
+            {"profile": 1, "requests": [answer(200), answer(429)], "elapsed_s": 30, "first_throttle": 2},
+            {"profile": 2, "requests": [answer(200)], "elapsed_s": 30},
+        ]
+        summary = bench.summarise(results, args(profiles=2))
+        self.assertEqual(summary["first_throttles"], {1: 2, 2: None})
+        self.assertEqual(summary["first_refusals"], {1: None, 2: None})
+
+    def test_the_summary_does_not_publish_proxy_credentials(self):
+        """The artifact is written down; userinfo from the proxy URL must not be in it."""
+        summary = bench.summarise(
+            [{"profile": 1, "requests": [answer(200)], "elapsed_s": 30}],
+            args(proxy="http://user@10.0.0.1:8080"),
+        )
+        self.assertEqual(summary["proxy"], "http://10.0.0.1:8080")
+
 
 class RequestShapeTest(unittest.TestCase):
     def test_the_catalog_call_carries_the_crawler_headers(self):
@@ -111,12 +140,52 @@ class StopRuleTest(unittest.TestCase):
     def test_a_refusal_stops_the_run_at_once(self):
         """The first 498 ends it: a spent counter is not a reason to keep asking."""
         for status in (498, 403, 401):
-            self.assertTrue(bench.stops_the_run(status), status)
+            self.assertEqual(bench.stop_reason(status), "refused", status)
+
+    def test_a_rate_limit_stops_the_run_under_its_own_name(self):
+        """429 is the rate speaking, not the session counter — it gets its own reason."""
+        self.assertEqual(bench.stop_reason(429), "throttled")
 
     def test_an_answer_or_a_transport_failure_does_not_stop_it(self):
-        """Only a refusal is the site saying no; a 200 is work and a 0 is the network."""
+        """Only a refusal or a rate limit is the site saying no; 200 is work, 0 is the network."""
         for status in (200, 0, 404, 500):
-            self.assertFalse(bench.stops_the_run(status), status)
+            self.assertIsNone(bench.stop_reason(status), status)
+
+
+class ProfilesDirTest(unittest.TestCase):
+    """A user_data_dir that outlives a run is an identity that outlives its address."""
+
+    def test_the_default_tag_names_the_egress(self):
+        """Two endpoints must not resolve to one directory."""
+        self.assertEqual(bench.address_tag(""), "direct")
+        self.assertNotEqual(bench.address_tag("socks5://127.0.0.1:1081"), bench.address_tag("socks5://127.0.0.1:1082"))
+        self.assertNotIn(":", bench.address_tag("socks5://127.0.0.1:1082"))
+
+    def test_credentials_do_not_reach_the_directory_name(self):
+        """Userinfo in a /tmp path is userinfo on disk; the endpoint is the identity."""
+        tag = bench.address_tag("http://user@10.0.0.1:8080")
+        self.assertNotIn("user", tag)
+        self.assertEqual(tag, bench.address_tag("http://10.0.0.1:8080"))
+
+    def test_a_directory_refuses_a_second_address(self):
+        """Cookies from the direct address must not arrive through a proxy."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bench.claim_profiles_dir(tmp, "", False)
+            with self.assertRaises(SystemExit):
+                bench.claim_profiles_dir(tmp, "socks5://127.0.0.1:1082", False)
+
+    def test_the_same_address_may_return(self):
+        """A repeat run on one address is the point of a persistent profile."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bench.claim_profiles_dir(tmp, "", False)
+            bench.claim_profiles_dir(tmp, "", False)
+
+    def test_the_move_can_be_declared(self):
+        """An intended move is allowed, and the marker follows it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            bench.claim_profiles_dir(tmp, "", False)
+            bench.claim_profiles_dir(tmp, "socks5://127.0.0.1:1082", True)
+            self.assertEqual((Path(tmp) / "EGRESS").read_text(encoding="utf-8").strip(), "socks5://127.0.0.1:1082")
 
 
 class ProcStatTest(unittest.TestCase):

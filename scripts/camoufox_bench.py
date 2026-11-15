@@ -17,19 +17,32 @@ Two numbers are kept apart on purpose:
   • **errored** — the request never completed. A refusal is the site answering; an error
     is the request not arriving, and only one of the two is about the address.
 
-A worker stops at the FIRST refusal. The point of the measurement is useful throughput,
-not how many refusals a fixed quota can be made to produce: the session's counter is
-spent by the time WB answers 498, so every further request asks a closed door and adds
-load without adding knowledge. With `--shared-address` the refusal also stops the
-sibling profiles, because one address is what WB counted against.
+A worker stops at the FIRST refusal, and at the first 429 for its own reason. The point
+of the measurement is useful throughput, not how many refusals a fixed quota can be made
+to produce: the session's counter is spent by the time WB answers 498, so every further
+request asks a closed door and adds load without adding knowledge. A 429 is a different
+answer — the observed rate is too high — but continuing at the same pace measures how
+many 429s the quota can produce, which is the same forbidden load. The two are counted
+apart (`first_refusal` / `first_throttle`), mirroring the crawler's own split of `antibot`
+and `rate_limited`: a spent session and an exceeded rate must not be added together. With
+`--shared-address` either answer also stops the sibling profiles, because the address is
+what WB counted against.
+
+The run's profiles belong to one address
+----------------------------------------
+`user_data_dir` keeps cookies and storage between runs, so a directory created while the
+profiles egressed directly, reused through a proxy, is a session that moved house: history
+the site counted against one address arrives at another. The ADR makes one profile one
+address one fingerprint, so the directory is named after the egress and is refused under a
+different one (`EGRESS` marker), unless the move is declared with `--allow-address-change`.
 
 The hypothesis this suggests, and does not prove
 ------------------------------------------------
-The first refusal lands between the 9th and 19th request of a session and moves earlier
-as profiles share one address, which is consistent with a **per-session request count**
-rather than a rate. It is a reading, not a demonstrated mechanism: every run here used
-one delay (3.0 s), so rate was never a variable. `first_refusal` per profile is reported
-so the reading can be checked against data, not repeated from the report.
+The first refusal landed between the 11th and 18th request of a session and moved earlier
+as profiles shared one address, which is consistent with a **per-session request count**
+rather than a rate. It is a reading, not a demonstrated mechanism: every run in the report
+used one delay (3.0 s), so rate was never a variable. `first_refusal` per profile is
+reported so the reading can be checked against data, not repeated from the report.
 
 Usage:
     uv run --with camoufox python scripts/camoufox_bench.py --profiles 1 --count 20
@@ -47,10 +60,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import threading
 import time
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 # The browser is imported where it is launched, not at module load: the gate that runs
 # the pure parts of this file (`python3 -m unittest discover -s scripts/tests`) runs on a
@@ -63,6 +77,12 @@ QUERY = "menu_v3_9467 карты памяти"
 
 # The anti-bot answer, kept apart from a transport failure.
 REFUSAL = {498, 403, 401}
+
+# The rate-limit answer, kept apart from the refusal: 498 says the session's counter is
+# spent, 429 says the observed rate is too high. The crawler gives them different reasons
+# (`antibot` / `rate_limited`) and different back-offs; the benchmark gives them different
+# counters, so one cannot hide inside the other.
+THROTTLED = {429}
 
 # The crawler's own headers (`WbCatalogApi`): the request shape must not be the variable.
 HEADERS = {
@@ -173,16 +193,77 @@ def resources(marker: str) -> tuple[float, int]:
     return cpu, rss
 
 
-def stops_the_run(status: int) -> bool:
-    """Whether an answer ends the profile's run.
+def stop_reason(status: int) -> str | None:
+    """Why an answer ends the profile's run, if it does.
 
     A refusal ends it after the FIRST one. The session's counter is already spent, so
     every further request asks the same closed door: it adds a refusal to the tally and
     traffic to the site, and moves the run no closer to knowing what the profile could
     have done. A run that keeps going past a block measures where the counter ran out,
     not how much work the profile got done.
+
+    A 429 ends it too, under its own name. It is not the session counter running out; it
+    is the site saying the rate is too high. Keeping the run going at the same pace would
+    turn the measurement into a count of how many 429s the quota produces, which is the
+    load the issue forbids — and folding it into the refusal count would answer "is the
+    session spent?" with a fact about pace.
     """
-    return status in REFUSAL
+    if status in REFUSAL:
+        return "refused"
+    if status in THROTTLED:
+        return "throttled"
+    return None
+
+
+def redacted_proxy(proxy: str) -> str:
+    """The endpoint as it may be written down: scheme, host and port, never credentials.
+
+    An HTTP proxy that needs Basic auth carries its password in `--proxy` /
+    `CAMOUFOX_PROXY`, and this file writes its proxy string both into the artifact and
+    into the profiles-directory marker. Those are places a password does not belong, so
+    the userinfo is dropped rather than sanitised. Two endpoints that differ only by
+    credentials are one address, which is the identity the marker is about.
+    """
+    if not proxy:
+        return "direct"
+    parts = urlsplit(proxy)
+    host = parts.hostname or ""
+    port = f":{parts.port}" if parts.port else ""
+    return f"{parts.scheme}://{host}{port}" if parts.scheme else f"{host}{port}"
+
+
+def address_tag(proxy: str) -> str:
+    """A directory-safe name for the egress the profiles belong to."""
+    endpoint = redacted_proxy(proxy)
+    if endpoint == "direct":
+        return "direct"
+    return "proxy-" + re.sub(r"[^0-9A-Za-z]+", "-", endpoint).strip("-")
+
+
+def claim_profiles_dir(profiles_dir: str, proxy: str, allow_change: bool) -> Path:
+    """Bind a profiles directory to one address, and refuse a silent reuse under another.
+
+    `user_data_dir` keeps cookies and storage between runs, so a directory created while
+    the profiles egressed directly and then reused through a proxy is a session that
+    moved house: it carries history the site counted against another address. The ADR
+    makes one profile one address one fingerprint, and the directory is the only part of
+    that which survives between runs, so it is where the rule is checked.
+    """
+    root = Path(profiles_dir)
+    root.mkdir(parents=True, exist_ok=True)
+    marker = root / "EGRESS"
+    address = redacted_proxy(proxy)
+    if marker.exists():
+        previous = marker.read_text(encoding="utf-8").strip()
+        if previous != address and not allow_change:
+            raise SystemExit(
+                f"{root} was used by {previous}, not {address}: "
+                "a profile that changes address is a new identity "
+                "(ADR 2026-10-23-a-changed-address-is-a-new-identity). "
+                "Point --profiles-dir elsewhere, or pass --allow-address-change if the move is intended."
+            )
+    marker.write_text(address + "\n", encoding="utf-8")
+    return root
 
 
 class Sampler(threading.Thread):
@@ -271,9 +352,11 @@ def worker(index: int, args: argparse.Namespace, results: list, stop_all: thread
                     answer = {"status": 0, "products": 0, "ms": 0, "bytes": 0, "error": repr(e)[:200]}
                 answer["n"] = n
                 out["requests"].append(answer)
-                if stops_the_run(answer["status"]):
-                    out.setdefault("first_refusal", n)
-                    out["stopped"] = f"refused at request {n}; the profile stops there"
+                reason = stop_reason(answer["status"])
+                if reason:
+                    field = {"refused": "first_refusal", "throttled": "first_throttle"}[reason]
+                    out.setdefault(field, n)
+                    out["stopped"] = f"{reason} at request {n}; the profile stops there"
                     if args.shared_address:
                         stop_all.set()
                     break
@@ -295,6 +378,7 @@ def summarise(results: list, args: argparse.Namespace) -> dict:
     answers = [answer for work in results for answer in work["requests"]]
     ok = [answer for answer in answers if answer["status"] == 200]
     refused = [answer for answer in answers if answer["status"] in REFUSAL]
+    throttled = [answer for answer in answers if answer["status"] in THROTTLED]
     errored = [answer for answer in answers if answer["status"] == 0]
     elapsed = max((work.get("elapsed_s", 0) for work in results), default=0)
     products = sum(answer.get("products", 0) for answer in ok)
@@ -308,12 +392,13 @@ def summarise(results: list, args: argparse.Namespace) -> dict:
         "profiles_measured": len(measured),
         "profiles_refused": sum(1 for work in results if work.get("first_refusal")),
         "shared_address": bool(args.shared_address),
-        "proxy": args.proxy or "direct",
+        "proxy": redacted_proxy(args.proxy),
         "headless": str(args.headless),
         "delay_s": args.delay,
         "requests": len(answers),
         "ok": len(ok),
         "refused": len(refused),
+        "throttled": len(throttled),
         "errored": len(errored),
         "statuses": sorted({answer["status"] for answer in answers}),
         "products": products,
@@ -326,6 +411,7 @@ def summarise(results: list, args: argparse.Namespace) -> dict:
         "peak_rss_mb_sum": round(sum(work.get("peak_rss_mb", 0) for work in results), 1),
         "cpu_s_sum": round(sum(work.get("cpu_s", 0) for work in results), 1),
         "first_refusals": {work["profile"]: work.get("first_refusal") for work in results},
+        "first_throttles": {work["profile"]: work.get("first_throttle") for work in results},
         "egress": sorted({work["egress"] for work in results if work.get("egress")}),
         "fingerprints": [work.get("fingerprint") for work in results],
         "workers": results,
@@ -346,11 +432,23 @@ def main() -> None:
         help="every profile exits through the same address, so one refusal stops them all",
     )
     parser.add_argument("--headless", default="true", help="true, false, virtual or virtual-gpu")
-    parser.add_argument("--profiles-dir", default="/tmp/camoufox-bench", help="where the user_data_dirs live")
+    parser.add_argument(
+        "--profiles-dir",
+        default=None,
+        help="where the user_data_dirs live; default is one directory per egress",
+    )
+    parser.add_argument(
+        "--allow-address-change",
+        action="store_true",
+        help="reuse a profiles directory that belonged to another egress address",
+    )
     parser.add_argument("--out", default=None, help="write the JSON here as well as to stdout")
     args = parser.parse_args()
     if args.headless in ("true", "false"):
         args.headless = args.headless == "true"
+    if args.profiles_dir is None:
+        args.profiles_dir = f"/tmp/camoufox-bench/{address_tag(args.proxy)}"
+    args.profiles_dir = str(claim_profiles_dir(args.profiles_dir, args.proxy, args.allow_address_change))
 
     results: list = []
     stop_all = threading.Event()
