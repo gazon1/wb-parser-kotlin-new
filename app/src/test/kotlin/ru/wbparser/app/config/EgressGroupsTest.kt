@@ -4,6 +4,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldNotContain
 import ru.wbparser.browser.pool.DeclaredProxy
 
 /**
@@ -220,6 +221,102 @@ class EgressGroupsTest :
                 }
 
             failure.message!!.contains("only half an") shouldBe true
+        }
+
+        test("a profile id that is a path is refused, and stays inside the profiles directory") {
+            val failure =
+                shouldThrow<IllegalArgumentException> {
+                    EgressGroups.resolve(
+                        Spider(
+                            profilesDir = "/var/lib/wb/profiles",
+                            egressGroups =
+                                listOf(
+                                    EgressGroupConfig(
+                                        id = "ip-1",
+                                        // `..` normalises to the profiles root: the profile
+                                        // would share a directory with every other profile.
+                                        profiles = listOf(".."),
+                                        proxy = ProxyConfig(type = "none"),
+                                    ),
+                                ),
+                        ),
+                    )
+                }
+
+            failure.message!!.contains("ip-1") shouldBe true
+            failure.message!!.contains("path segment") shouldBe true
+        }
+
+        test("a proxy host that is a path is refused") {
+            val failure =
+                shouldThrow<IllegalArgumentException> {
+                    EgressGroups.resolve(
+                        Spider(
+                            profilesDir = "/var/lib/wb/profiles",
+                            egressGroups =
+                                listOf(
+                                    EgressGroupConfig(
+                                        id = "ip-1",
+                                        profiles = listOf("p1"),
+                                        proxy = ProxyConfig(type = "http", host = "../..", port = 8080),
+                                    ),
+                                ),
+                        ),
+                    )
+                }
+
+            failure.message!!.contains("ip-1") shouldBe true
+            failure.message!!.contains("plain host name") shouldBe true
+        }
+
+        test("an HTTP proxy's credentials reach the resolved profile, and are never printed") {
+            val resolved =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(
+                                    id = "ip-1",
+                                    profiles = listOf("p1"),
+                                    proxy =
+                                        ProxyConfig(
+                                            type = "http",
+                                            host = "proxy-a.invalid",
+                                            port = 8080,
+                                            username = "user",
+                                            password = "secret",
+                                        ),
+                                ),
+                            ),
+                    ),
+                )
+
+            val proxy = resolved.profiles.single().proxy
+            proxy.hasCredentials shouldBe true
+            proxy.username shouldBe "user"
+            // The credentials reach the browser, and the resolved type hides them.
+            proxy.toString() shouldNotContain "secret"
+            proxy.toString() shouldNotContain "user"
+        }
+
+        test("a configured proxy never prints its password") {
+            val configured =
+                ProxyConfig(
+                    type = "http",
+                    host = "proxy-a.invalid",
+                    port = 8080,
+                    username = "user",
+                    password = "secret",
+                )
+
+            // The configuration object is what a deployment holds and what a message
+            // most often carries: it has to redact on its own, not only after conversion.
+            configured.toString() shouldBe "http://proxy-a.invalid:8080 (credentials hidden)"
+            configured.toString() shouldNotContain "secret"
+            configured.toString() shouldNotContain "user"
+            listOf(configured).toString() shouldNotContain "secret"
+            EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = configured)
+                .toString() shouldNotContain "secret"
         }
 
         test("a profile carries the proxy of the group it belongs to") {

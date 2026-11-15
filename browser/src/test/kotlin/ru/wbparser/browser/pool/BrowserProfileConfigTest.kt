@@ -126,4 +126,56 @@ class BrowserProfileConfigTest :
                 "socks5-proxy-a.invalid-1080"
             DeclaredProxy(type = DeclaredProxy.DIRECT).directoryName() shouldBe "none"
         }
+
+        // ─── nothing that reaches a path may be a path ─────────────────────────
+        //
+        // The profile directory is `[profiles-dir]/[endpoint]/[profileId]`, and both
+        // parts come from configuration. A value with a separator, or `..`, turns one
+        // directory name into a path — and `profileId = ".."` normalises to the profiles
+        // root, which is a browser profile placed in somebody else's directory. A
+        // persistent profile holds cookies and storage, so that is a wrong identity on
+        // disk, not a wrong setting.
+
+        test("a profile id that is a path is refused") {
+            for (id in listOf("..", ".", "a/b", "a\\b", "../escape", "")) {
+                shouldThrow<IllegalArgumentException> {
+                    BrowserProfileConfig(profileId = id)
+                }.message shouldContain "not one path segment"
+            }
+        }
+
+        test("a proxy host that is a path is refused") {
+            for (host in listOf("..", ".", "a/b", "a\\b", "../escape")) {
+                shouldThrow<IllegalArgumentException> {
+                    DeclaredProxy(type = "http", host = host, port = 8080)
+                }.message shouldContain "not a plain host name"
+            }
+        }
+
+        test("a directory that resolves outside the profile is refused") {
+            val proxy = DeclaredProxy(type = "http", host = "proxy-a.invalid", port = 8080)
+
+            // This is the shape that used to slip through: the parent *is* the endpoint
+            // directory, so the endpoint guard passes, and only normalising the path shows
+            // that `..` climbs out of the profile's own directory — up to the profiles
+            // root, which belongs to every profile at once.
+            val climbing = Path.of("/profiles", proxy.directoryName(), "..")
+            climbing.normalize() shouldBe Path.of("/profiles")
+
+            shouldThrow<IllegalArgumentException> {
+                BrowserProfileConfig(
+                    profileId = "p1",
+                    proxy = proxy,
+                    profileDir = climbing,
+                )
+            }.message shouldContain "normalises outside"
+        }
+
+        test("a plain host name is still accepted") {
+            // The rule is about path segments, not about DNS: an IPv4 address and a
+            // hostname are both one segment.
+            DeclaredProxy(type = "http", host = "192.0.2.10", port = 8080).directoryName() shouldBe
+                "http-192.0.2.10-8080"
+            DeclaredProxy(type = "http", host = "proxy-a.invalid", port = 8080).isDeclared shouldBe true
+        }
     })

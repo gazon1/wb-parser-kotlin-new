@@ -43,7 +43,22 @@ data class ProxyConfig(
     val port: Int = 0,
     val username: String = "",
     val password: String = "",
-)
+) {
+    /**
+     * The configuration as an operator reads it: the endpoint, and whether it
+     * authenticates — never the credentials themselves.
+     *
+     * The generated `toString()` of a data class prints every property, so a
+     * `ProxyConfig` logged, or caught in a message by a framework that prints its
+     * arguments, published the password. The redaction has to be on this type, not
+     * only on the one it is converted into later: the configuration object is what
+     * the deployment holds and what most often ends up in a log line.
+     */
+    override fun toString(): String {
+        val endpoint = if (host.isBlank()) type.ifBlank { "not declared" } else "$type://$host:$port"
+        return if (username.isBlank() && password.isBlank()) endpoint else "$endpoint (credentials hidden)"
+    }
+}
 
 /**
  * The request budget of one group.
@@ -127,7 +142,10 @@ object EgressGroups {
         spider: Spider,
     ): BrowserProfileConfig {
         val declared = group.proxy
-        val dir = spider.profilesDir.takeIf { it.isNotBlank() }?.let { Path.of(it, declared.directoryName(), profileId) }
+        val dir =
+            spider.profilesDir.takeIf { it.isNotBlank() }?.let { root ->
+                profileDirUnder(Path.of(root), declared, profileId, group.id)
+            }
         return try {
             BrowserProfileConfig(
                 profileId = profileId,
@@ -138,6 +156,37 @@ object EgressGroups {
         } catch (e: IllegalArgumentException) {
             throw IllegalArgumentException("Egress group '${group.id}': ${e.message}", e)
         }
+    }
+
+    /**
+     * `[root]/[endpoint]/[profileId]`, and proof that it is still under [root].
+     *
+     * Both parts come from configuration, so neither is trusted to be one path segment.
+     * The name check refuses a separator or `..` before the path is built, and the
+     * containment check normalises the result and asks whether it is still inside the
+     * root — so a value that slipped past the first rule cannot silently place a browser
+     * profile in somebody else's directory. A persistent profile holds cookies and
+     * storage, and a wrong path is a wrong identity on disk, not a wrong setting.
+     */
+    private fun profileDirUnder(
+        root: Path,
+        declared: DeclaredProxy,
+        profileId: String,
+        groupId: String,
+    ): Path {
+        val endpoint = declared.directoryName()
+        require(DeclaredProxy.isSafeName(profileId) && DeclaredProxy.isSafeName(endpoint)) {
+            "Egress group '$groupId' would name a profile directory from '$profileId' and " +
+                "'$endpoint'. Both must be one path segment: no separator, and not '.' or '..'."
+        }
+        val normalizedRoot = root.normalize().toAbsolutePath()
+        val dir = normalizedRoot.resolve(endpoint).resolve(profileId).normalize()
+        require(dir.startsWith(normalizedRoot)) {
+            "Egress group '$groupId' resolves the profile directory of '$profileId' to '$dir', " +
+                "which is outside the configured profiles directory '$normalizedRoot'. A browser " +
+                "profile must stay under that directory."
+        }
+        return dir
     }
 
     private fun EgressGroupConfig.toGroup(spider: Spider): EgressGroup {

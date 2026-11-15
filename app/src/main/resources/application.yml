@@ -118,11 +118,12 @@ crawler:
     #   host: ${EGRESS_PROXY_HOST_SOCKS5:}
     #
     # `username` / `password` reach the browser, never the repository: a credential
-    # written here would be a credential leaked to every clone of it. And they may not
-    # accompany `socks5` at all — Playwright rejects an authenticated SOCKS5 endpoint,
-    # so a password-protected one has to be limited by network (its own CIDR rule)
-    # or replaced by an HTTP proxy with Basic auth. The crawler refuses to start
-    # rather than fail at the first launch.
+    # written here would be a credential leaked to every clone of it. They are read
+    # from the environment under the names below, next to the address they belong to.
+    # And they may not accompany `socks5` at all — Playwright rejects an authenticated
+    # SOCKS5 endpoint, so a password-protected one has to be limited by network (its
+    # own CIDR rule) or replaced by an HTTP proxy with Basic auth. The crawler refuses
+    # to start rather than fail at the first launch.
     egress-groups:
       - id: direct
         profiles:
@@ -140,6 +141,22 @@ crawler:
           # holds it holds an address that changes when the provider rotates it.
           host: ${EGRESS_PROXY_HOST_SOCKS5:}
           port: ${EGRESS_PROXY_PORT_SOCKS5:0}
+    # The HTTP proxy with Basic auth, for a deployment whose endpoint requires
+    # credentials. It is a second group rather than a credential on the one above: an
+    # authenticated SOCKS5 endpoint is refused, and an HTTP one is not.
+    #
+    # The profile id below stands for whichever profile this deployment puts behind it —
+    # a profile belongs to exactly one group, so it is not `kxpu63n`, which the group
+    # above owns.
+    #   - id: http-auth
+    #     profiles:
+    #       - <profile-id>
+    #     proxy:
+    #       type: http
+    #       host: ${EGRESS_PROXY_HOST_HTTP:}
+    #       port: ${EGRESS_PROXY_PORT_HTTP:0}
+    #       username: ${EGRESS_PROXY_USERNAME_HTTP:}
+    #       password: ${EGRESS_PROXY_PASSWORD_HTTP:}
     # Where the persistent browser profiles live on this machine.
     #
     # A profile is cookies and storage as much as it is configuration, so it has to

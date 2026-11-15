@@ -1,7 +1,5 @@
 package ru.wbparser.browser.pool
 
-import ru.wbparser.browser.adspower.AdsPowerProfileProxy
-
 /**
  * The proxy a profile leaves through: the address the site sees, and the credentials
  * the browser uses to reach it.
@@ -54,6 +52,15 @@ data class DeclaredProxy(
                 "authentication'): leave the endpoint without a password and limit access by " +
                 "network, or use an HTTP proxy with Basic auth."
         }
+        // The host becomes a directory name (see [directoryName]) and reaches a browser
+        // launch. A separator turns one name into a path, and `..` is a path that climbs;
+        // neither belongs in an address, and refusing them here is what keeps the profile
+        // directory inside the directory the deployment named.
+        require(host.isEmpty() || isSafeName(host)) {
+            "The proxy host '${host.take(MAX_REPORTED_HOST)}' is not a plain host name: it " +
+                "must not contain a path separator, and must not be '.' or '..'. The host is " +
+                "part of the profile directory's name, so it has to be one path segment."
+        }
     }
 
     /** Whether the group declared its proxy at all. */
@@ -69,25 +76,6 @@ data class DeclaredProxy(
     val hasCredentials: Boolean get() = username.isNotBlank() || password.isNotBlank()
 
     private val usesSocks: Boolean get() = type.equals(SOCKS, ignoreCase = true)
-
-    /**
-     * Whether the proxy AdsPower shows is the one this group declared.
-     *
-     * An undeclared proxy matches everything: there is nothing to compare it
-     * with. The configuration layer is what refuses an undeclared proxy, so
-     * this case does not reach a running crawler.
-     */
-    fun matches(observed: AdsPowerProfileProxy): Boolean =
-        when {
-            !isDeclared -> true
-            isDirect -> observed.isDirect
-            !observed.hasProxy -> false
-            !observed.proxyType.equals(type, ignoreCase = true) -> false
-            !hasAddress -> true
-            else ->
-                observed.proxyHost.equals(host, ignoreCase = true) &&
-                    observed.proxyPort.equals(port.toString())
-        }
 
     /** How the declaration is written in a message an operator reads. Credentials excluded. */
     override fun toString(): String =
@@ -107,6 +95,11 @@ data class DeclaredProxy(
      * created for. Naming it after the endpoint makes the binding structural: opening
      * it under another address requires renaming it, which is an act somebody has to
      * mean — the harness that measured Camoufox refused the same thing.
+     *
+     * The name is built from [host], which is configuration and therefore untrusted:
+     * a host carrying a separator would turn one directory name into a path, and
+     * `..` in a name is a path that climbs. [isSafeName] refuses that at construction,
+     * so a name that reaches here is a name and not a path.
      */
     fun directoryName(): String =
         when {
@@ -128,5 +121,35 @@ data class DeclaredProxy(
 
         /** The kinds a proxy may be declared as. */
         val KINDS: Set<String> = setOf(DIRECT, SOCKS, "http", "https")
+
+        /**
+         * How much of a refused host a message repeats.
+         *
+         * The host is configuration, and a message about it should not carry an
+         * arbitrarily long value into a log line.
+         */
+        private const val MAX_REPORTED_HOST = 64
+
+        private val UNSAFE_NAME_CHARS = setOf('/', '\\', '\u0000')
+
+        /**
+         * Whether [value] is one path segment: no separator, and not a name that climbs.
+         *
+         * This is the rule the profile directory and the proxy address are both held to.
+         * It is deliberately about *segments* and not about "characters that are legal in
+         * a hostname": a host is checked against its own rules by whoever validates the
+         * address, and what matters here is that nothing that reaches a filesystem path
+         * can escape the directory it is joined to.
+         *
+         * The configuration layer names profiles and endpoints from its own values, and
+         * the browser module is what turns those names into paths — so the rule is part
+         * of the type's surface, not an implementation detail of this file.
+         */
+        @JvmStatic
+        fun isSafeName(value: String): Boolean =
+            value.isNotEmpty() &&
+                value != "." &&
+                value != ".." &&
+                value.none { it in UNSAFE_NAME_CHARS || it.isISOControl() }
     }
 }

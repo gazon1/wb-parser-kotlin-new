@@ -58,6 +58,31 @@ class CrawlPropertiesTest :
             properties.worker.enabled shouldBe true
         }
 
+        test("proxy credentials bind from the configuration and reach the resolved profile") {
+            val properties =
+                bind(
+                    "crawler.spider.egress-groups[0].id" to "ip-1",
+                    "crawler.spider.egress-groups[0].profiles[0]" to "p1",
+                    "crawler.spider.egress-groups[0].proxy.type" to "http",
+                    "crawler.spider.egress-groups[0].proxy.host" to "proxy-a.invalid",
+                    "crawler.spider.egress-groups[0].proxy.port" to 8080,
+                    // The names application.yml reads from the environment. If the binder
+                    // did not carry them, the browser would reach the proxy unauthenticated
+                    // and fail with a 407 nobody could trace back to the configuration.
+                    "crawler.spider.egress-groups[0].proxy.username" to "user",
+                    "crawler.spider.egress-groups[0].proxy.password" to "secret",
+                )
+
+            val resolved = EgressGroups.resolve(properties.spider)
+            val proxy = resolved.profiles.single().proxy
+
+            proxy.hasCredentials shouldBe true
+            proxy.username shouldBe "user"
+            proxy.password shouldBe "secret"
+            // And the value that reaches a log line is still the endpoint alone.
+            proxy.toString() shouldBe "http://proxy-a.invalid:8080"
+        }
+
         test("a lock timeout of zero means no timeout") {
             val properties = bind("crawler.lock.timeout-minutes" to 0L)
 

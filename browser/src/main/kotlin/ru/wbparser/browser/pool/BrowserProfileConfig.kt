@@ -45,7 +45,12 @@ data class BrowserProfileConfig(
     val egressGroup: String = DEFAULT_EGRESS_GROUP,
 ) {
     init {
-        require(profileId.isNotBlank()) { "A profile needs an id" }
+        require(DeclaredProxy.isSafeName(profileId)) {
+            "The profile id '${profileId.take(64)}' is not one path segment: it must not contain " +
+                "a path separator, must not be '.' or '..', and must not be blank. The id names " +
+                "the profile's directory, so a value that is a path would put a browser profile " +
+                "outside the directory the deployment named."
+        }
         if (profileDir != null) {
             require(proxy.isDeclared) {
                 "Profile '$profileId' names the directory '$profileDir' but does not declare the proxy " +
@@ -59,6 +64,11 @@ data class BrowserProfileConfig(
                     "was created for, and opening it through another address moves its cookies and " +
                     "storage to an identity they were never created for. Use a directory under " +
                     "'${proxy.directoryName()}'."
+            }
+            require(profileDir.normalize().fileName?.toString() == profileId) {
+                "Profile '$profileId' names the directory '$profileDir', which normalises outside " +
+                    "the profile it belongs to. The directory's own name is the profile id, and a " +
+                    "path that resolves elsewhere is not this profile's directory."
             }
         }
     }

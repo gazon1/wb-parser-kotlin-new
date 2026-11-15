@@ -3,6 +3,7 @@ package ru.wbparser.infra.http
 import org.slf4j.LoggerFactory
 import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
+import ru.wbparser.browser.pool.DeclaredProxy
 
 /**
  * The static check: do the groups leave where they say they leave?
@@ -103,7 +104,7 @@ internal class EgressStaticCheck(
             // whose profiles disagree with the declaration is wrong in the same way
             // whether it disagrees in one profile or in all of them.
             if (group.proxy.isDeclared && known.size == group.profileIds.size) {
-                val wrong = known.filterNot { group.proxy.matches(it) }
+                val wrong = known.filterNot { matches(observed = it, declared = group.proxy) }
                 if (wrong.isNotEmpty()) {
                     proxyMismatch = true
                     problems +=
@@ -138,6 +139,39 @@ internal class EgressStaticCheck(
             proxyIdentities = groups.associate { group -> group.id to groupProxyIdentity(group, proxies) },
         )
     }
+
+    /**
+     * Whether the proxy AdsPower reports for a profile is the one the group declared.
+     *
+     * The comparison lives here, on the integration side, because it is about *AdsPower's
+     * answer* — what `proxy_soft` means, when a profile is direct, and when it has a proxy
+     * whose address it will not show. `DeclaredProxy` describes a proxy and knows nothing
+     * about the runtime that reports one; giving it a method that took
+     * `AdsPowerProfileProxy` put that runtime's vocabulary back into the model.
+     *
+     * An undeclared proxy matches everything: there is nothing to compare it with, and
+     * the configuration layer is what refuses an undeclared proxy.
+     *
+     * @param declared the proxy the group's configuration names.
+     * @param observed the proxy AdsPower shows for one of the group's profiles.
+     */
+    private fun matches(
+        declared: DeclaredProxy,
+        observed: AdsPowerProfileProxy,
+    ): Boolean =
+        when {
+            !declared.isDeclared -> true
+            declared.isDirect -> observed.isDirect
+            // A proxy AdsPower will not describe is not a direct connection: matching it
+            // against a declaration that names an address would be a guess, and a guess
+            // that passes is what this check exists to prevent.
+            !observed.hasProxy -> false
+            !observed.proxyType.equals(declared.type, ignoreCase = true) -> false
+            !declared.hasAddress -> true
+            else ->
+                observed.proxyHost.equals(declared.host, ignoreCase = true) &&
+                    observed.proxyPort.equals(declared.port.toString())
+        }
 
     /**
      * The proxy AdsPower has configured for each profile.
