@@ -1,0 +1,15 @@
+# betterleaks — what the secrets gate looks at.
+#
+# The gate scans the working tree, not the git history, so it sees the build output
+# too: the HTML and XML reports of the test runs, where the fixtures of the database
+# tests keep their passwords. Those are artifacts of a run, not secrets of the
+# repository, and a scan that trips over them makes the local loop red for a reason
+# that has nothing to do with the code.
+#
+# The findings of the sources themselves are recorded in .betterleaks-baseline.json.
+
+[extend]
+useDefault = true
+
+[allowlist]
+paths = ['''(?i)(^|/)build/''', '''(?i)/node_modules/''']

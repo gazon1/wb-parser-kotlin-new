@@ -2,6 +2,7 @@ package ru.wbparser.browser.camoufox
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import java.nio.file.Files
+import java.nio.file.InvalidPathException
 import java.nio.file.Path
 
 /**
@@ -42,6 +43,9 @@ data class CamoufoxInstall(
  * version is read from the install's own record, and the *expected* version comes from
  * the deployment. A mismatch is refused here rather than discovered as a different
  * fingerprint in production.
+ *
+ * The runtime does not install Camoufox and does not update it: the package does that,
+ * and the runtime only uses the build it finds — the pinned one.
  */
 object CamoufoxInstalls {
     /** The directory the Camoufox package installs into, under the user's home. */
@@ -58,33 +62,36 @@ object CamoufoxInstalls {
     fun defaultHome(): Path = Path.of(System.getProperty("user.home"), DEFAULT_HOME)
 
     /**
-     * The build this machine has installed.
+     * The build this machine has installed, when it is the one the deployment pins.
      *
      * @param home the directory the Camoufox package installs into
-     * @param pinnedVersion the build the deployment expects, or null when it does not
-     *   pin one. A pin that does not match the install is refused: the browser that
-     *   would run is not the browser the deployment was written for.
-     * @throws IllegalStateException when the install is missing or is not the pinned one
+     * @param pinnedVersion the build the deployment expects. There is no default: a
+     *   browser that is not the pinned one is a different browser, and a deployment
+     *   that does not say which one it means has not said anything.
+     * @throws IllegalStateException when the install is missing, is not the pinned one,
+     *   or holds no executable build
      */
     fun resolve(
         home: Path = defaultHome(),
-        pinnedVersion: String? = null,
+        pinnedVersion: String?,
     ): CamoufoxInstall {
+        check(!pinnedVersion.isNullOrBlank()) {
+            "The deployment pins no Camoufox build. A browser that is not the pinned one is a " +
+                "different browser, and a deployment that does not say which one it means has " +
+                "not said anything."
+        }
         val installed = installedVersion(home)
-        check(pinnedVersion == null || pinnedVersion == installed) {
+        check(pinnedVersion == installed) {
             "The Camoufox build installed in '$home' is '$installed', but the deployment " +
                 "pins '$pinnedVersion'. The pinned build is the one whose fingerprint and " +
                 "behaviour the deployment was measured against."
         }
         val install = CamoufoxInstall(home, installed)
-        check(Files.isRegularFile(install.binary)) {
-            "The Camoufox build '$installed' in '$home' has no executable at " +
-                "'${install.binary}'. The install is incomplete."
-        }
+        checkExecutable(install)
         return install
     }
 
-    /** The version the install records as active. */
+    /** The version the install records as active, and the build it names. */
     private fun installedVersion(home: Path): String {
         val config = home.resolve(CONFIG_FILE)
         check(Files.isRegularFile(config)) {
@@ -96,6 +103,52 @@ object CamoufoxInstalls {
             "The Camoufox install in '$home' records no active version in '$config'. The " +
                 "install is incomplete."
         }
+        checkBuildDir(home, version)
         return version
+    }
+
+    /**
+     * Checks that the build the install records really is a build inside the install.
+     *
+     * The record is a file on disk, and a file can say anything. The version names a
+     * build relative to the install, so a version that is absolute, or that climbs out
+     * of the install with `..`, is not a build of this install at all.
+     */
+    private fun checkBuildDir(
+        home: Path,
+        version: String,
+    ) {
+        val relative =
+            try {
+                Path.of(version)
+            } catch (e: InvalidPathException) {
+                error(
+                    "The Camoufox install in '$home' records the active version '$version', which " +
+                        "is not a path at all. The build of the machine is named relative to the " +
+                        "install. Cause: ${e.message}",
+                )
+            }
+        check(!relative.isAbsolute) {
+            "The Camoufox install in '$home' records the active version '$version', which is an " +
+                "absolute path. The build of the machine is named relative to the install."
+        }
+        val buildDir = home.resolve(relative).normalize()
+        check(buildDir.startsWith(home.normalize())) {
+            "The Camoufox install in '$home' records the active version '$version', which points " +
+                "outside the install. The build of the machine is named relative to the install."
+        }
+    }
+
+    /** Checks that the build holds an executable the browser can be started with. */
+    private fun checkExecutable(install: CamoufoxInstall) {
+        val binary = install.binary
+        check(Files.isRegularFile(binary)) {
+            "The Camoufox build '${install.version}' in '${install.home}' has no executable at " +
+                "'$binary'. The install is incomplete."
+        }
+        check(Files.isExecutable(binary)) {
+            "The Camoufox build '${install.version}' in '${install.home}' has a file at " +
+                "'$binary' that cannot be run. The install is incomplete."
+        }
     }
 }

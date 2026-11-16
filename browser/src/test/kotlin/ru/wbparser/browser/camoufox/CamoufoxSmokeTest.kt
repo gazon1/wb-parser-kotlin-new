@@ -6,6 +6,8 @@ import io.kotest.core.test.Enabled
 import io.kotest.core.test.config.enabledOrReasonIf
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.pool.DeclaredProxy
 import java.nio.file.Files
@@ -29,8 +31,18 @@ import java.nio.file.Path
  */
 class CamoufoxSmokeTest :
     FunSpec({
-        /** The install of this machine, or null when there is none. */
-        val install = runCatching { CamoufoxInstalls.resolve() }.getOrNull()
+        /**
+         * The build this test is about.
+         *
+         * The pin is the `active_version` the Camoufox package writes into
+         * `~/.cache/camoufox/config.json` — the build the deployment was measured
+         * against. A machine with another build has another browser, and the test
+         * skips rather than measuring something else.
+         */
+        val pinnedBuild = "browsers/official/158.0.1-beta.41-3f2eb1d0"
+
+        /** The install of this machine, or null when there is none we may use. */
+        val install = runCatching { CamoufoxInstalls.resolve(pinnedVersion = pinnedBuild) }.getOrNull()
 
         /** The stored fingerprint of the test profile. */
         val fingerprint =
@@ -53,8 +65,45 @@ class CamoufoxSmokeTest :
                 Enabled.Companion.enabled
             } else {
                 Enabled.Companion.disabled(
-                    "Camoufox is not installed on this machine: the build is installed out of band.",
+                    "Camoufox is not installed on this machine, or it is not the pinned build " +
+                        "'$pinnedBuild': the build is installed out of band.",
                 )
+            }
+
+        /**
+         * What fontconfig resolves a face to, given the file the browser was given.
+         *
+         * The question is asked of fontconfig itself, with the very file the browser
+         * read: the browser answers the same way, and the answer names the file the
+         * face comes from.
+         */
+        fun fcMatch(
+            fontConfig: Path,
+            family: String,
+        ): String? =
+            runCatching {
+                val process =
+                    ProcessBuilder("fc-match", "-f", "%{family}|%{file}", family)
+                        .redirectErrorStream(true)
+                        .apply { environment()["FONTCONFIG_FILE"] = fontConfig.toString() }
+                        .start()
+                val output = process.inputStream.bufferedReader().use { it.readText() }
+                if (process.waitFor() == 0) output.trim() else null
+            }.getOrNull()
+
+        /** Whether this machine has the tools of fontconfig to ask it a question. */
+        fun fontConfigAvailable(): Boolean = fcMatch(Path.of("/etc/fonts/fonts.conf"), "sans-serif") != null
+
+        /** Enabled where the browser may start and fontconfig may be asked. */
+        fun enabledWithFonts(): Enabled =
+            when {
+                install == null -> enabledHere()
+                !fontConfigAvailable() ->
+                    Enabled.Companion.disabled(
+                        "The fontconfig tools are not installed on this machine: the faces of " +
+                            "the identity cannot be checked here.",
+                    )
+                else -> Enabled.Companion.enabled
             }
 
         /** A profile of the test: a directory of its own and the stored fingerprint. */
@@ -142,6 +191,27 @@ class CamoufoxSmokeTest :
                     first.stop()
                     second.stop()
                 }
+            }
+
+        test("the fontconfig of the identity offers its own faces and not the host ones")
+            .config(enabledOrReasonIf = { enabledWithFonts() }) {
+                // The file the browser was given: the same content, the same name.
+                val fontConfig =
+                    checkNotNull(CamoufoxFonts.fontConfigFile(checkNotNull(install), fingerprint)) {
+                        "The build of this machine ships no fontconfig of its own."
+                    }
+
+                // A face of the identity is the one the machine offers.
+                val own = checkNotNull(fcMatch(fontConfig, "DejaVu Sans"))
+                own shouldContain "DejaVu Sans"
+                own shouldContain checkNotNull(install).browserDir.toString()
+
+                // A face of the host machine is not offered: the parent directory of the
+                // fonts is never named, so the identity is not given the faces of the
+                // systems it cannot have.
+                val host = checkNotNull(fcMatch(fontConfig, "Adwaita Sans"))
+                host shouldNotContain "Adwaita"
+                host shouldContain checkNotNull(install).browserDir.toString()
             }
 
         test("the browser leaves through the proxy of the profile")

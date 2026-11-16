@@ -9,8 +9,10 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -56,6 +58,14 @@ internal class TestHttpProxy(
     // occupy the only thread, and the connections it accepts would never be served.
     private val worker = Executors.newCachedThreadPool { runnable -> Thread(runnable, "test-http-proxy") }
 
+    /**
+     * The connections the proxy accepted.
+     *
+     * A thread that waits for a request of a connection nobody closes waits for
+     * nothing: the connections are closed together with the proxy.
+     */
+    private val accepted = ConcurrentHashMap.newKeySet<Socket>()
+
     init {
         worker.submit { accept() }
     }
@@ -74,7 +84,15 @@ internal class TestHttpProxy(
 
     override fun close() {
         runCatching { server.close() }
+        // The connections that were accepted go with the proxy: a thread blocked on the
+        // read of a socket nobody closes would keep the JVM waiting for it.
+        accepted.forEach { socket -> runCatching { socket.close() } }
+        accepted.clear()
         worker.shutdownNow()
+        runCatching { worker.awaitTermination(SHUTDOWN_TIMEOUT_MS, TimeUnit.MILLISECONDS) }
+            .onFailure { failure ->
+                log.debug("The test proxy did not stop its workers in time: {}", failure.message)
+            }
     }
 
     /** Accepts connections until the proxy is closed. */
@@ -88,55 +106,77 @@ internal class TestHttpProxy(
                     log.debug("The test proxy stopped accepting connections: {}", e.message)
                     return
                 }
+            accepted += socket
             worker.submit { serve(socket) }
         }
     }
 
-    /** Answers one connection. */
+    /** Answers one connection, and lets it go when the answer is written. */
     private fun serve(socket: Socket) {
-        socket.use {
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))
-            val request = reader.readLine() ?: return
-            var authorized = false
-            while (true) {
-                val header = reader.readLine() ?: break
-                if (header.isEmpty()) break
-                if (header.startsWith("Proxy-Authorization:", ignoreCase = true) &&
-                    header.substringAfter(":").trim() == expectedHeader
-                ) {
-                    authorized = true
-                }
-            }
-            if (!authorized) {
-                // A proxy that requires the credentials asks for them first: the browser
-                // has to answer with the credentials of the profile.
-                challenges.incrementAndGet()
-                val challenge =
-                    "HTTP/1.1 407 Proxy Authentication Required\r\n" +
-                        "Proxy-Authenticate: Basic realm=\"test\"\r\n" +
-                        "Content-Length: 0\r\n\r\n"
-                socket.getOutputStream().write(challenge.toByteArray(StandardCharsets.UTF_8))
-                socket.getOutputStream().flush()
-                return
-            }
-            if (request.startsWith("CONNECT", ignoreCase = true)) {
-                // A tunnel is not what this proxy is for: the answer tells the browser
-                // to give the request up instead of hanging on a stream that never opens.
-                val refused = "HTTP/1.1 501 Not Implemented\r\nContent-Length: 0\r\n\r\n"
-                socket.getOutputStream().write(refused.toByteArray(StandardCharsets.UTF_8))
-                socket.getOutputStream().flush()
-                return
-            }
-            requests += request
-            val body = "<html><head><title>the proxy answered</title></head><body>ok</body></html>"
-            val response =
-                "HTTP/1.1 200 OK\r\n" +
-                    "Content-Type: text/html; charset=utf-8\r\n" +
-                    "Content-Length: ${body.toByteArray(StandardCharsets.UTF_8).size}\r\n" +
-                    "\r\n" +
-                    body
-            socket.getOutputStream().write(response.toByteArray(StandardCharsets.UTF_8))
-            socket.getOutputStream().flush()
+        try {
+            // A connection that says nothing must not hold a thread for ever: the read
+            // gives up, and the connection is closed with the proxy.
+            socket.soTimeout = READ_TIMEOUT_MS
+            socket.use { answer(it) }
+        } catch (e: IOException) {
+            // The connection broke or went quiet: the proxy is done with it either way.
+            log.debug("The test proxy stopped serving a connection: {}", e.message)
+        } finally {
+            accepted -= socket
         }
+    }
+
+    /** Answers one connection. */
+    private fun answer(socket: Socket) {
+        val reader = BufferedReader(InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))
+        val request = reader.readLine() ?: return
+        var authorized = false
+        while (true) {
+            val header = reader.readLine() ?: break
+            if (header.isEmpty()) break
+            if (header.startsWith("Proxy-Authorization:", ignoreCase = true) &&
+                header.substringAfter(":").trim() == expectedHeader
+            ) {
+                authorized = true
+            }
+        }
+        if (!authorized) {
+            // A proxy that requires the credentials asks for them first: the browser
+            // has to answer with the credentials of the profile.
+            challenges.incrementAndGet()
+            val challenge =
+                "HTTP/1.1 407 Proxy Authentication Required\r\n" +
+                    "Proxy-Authenticate: Basic realm=\"test\"\r\n" +
+                    "Content-Length: 0\r\n\r\n"
+            socket.getOutputStream().write(challenge.toByteArray(StandardCharsets.UTF_8))
+            socket.getOutputStream().flush()
+            return
+        }
+        if (request.startsWith("CONNECT", ignoreCase = true)) {
+            // A tunnel is not what this proxy is for: the answer tells the browser
+            // to give the request up instead of hanging on a stream that never opens.
+            val refused = "HTTP/1.1 501 Not Implemented\r\nContent-Length: 0\r\n\r\n"
+            socket.getOutputStream().write(refused.toByteArray(StandardCharsets.UTF_8))
+            socket.getOutputStream().flush()
+            return
+        }
+        requests += request
+        val body = "<html><head><title>the proxy answered</title></head><body>ok</body></html>"
+        val response =
+            "HTTP/1.1 200 OK\r\n" +
+                "Content-Type: text/html; charset=utf-8\r\n" +
+                "Content-Length: ${body.toByteArray(StandardCharsets.UTF_8).size}\r\n" +
+                "\r\n" +
+                body
+        socket.getOutputStream().write(response.toByteArray(StandardCharsets.UTF_8))
+        socket.getOutputStream().flush()
+    }
+
+    companion object {
+        /** How long a connection may stay quiet before the proxy stops waiting for it. */
+        const val READ_TIMEOUT_MS: Int = 30_000
+
+        /** How long the workers of the proxy may take to stop. */
+        const val SHUTDOWN_TIMEOUT_MS: Long = 5_000
     }
 }

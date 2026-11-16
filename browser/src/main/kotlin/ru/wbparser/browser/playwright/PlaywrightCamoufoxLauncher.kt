@@ -54,7 +54,9 @@ internal class PlaywrightCamoufoxLauncher(
             return PlaywrightCamoufoxBrowser(playwright, context, page)
         } catch (e: Throwable) {
             // The browser that was started on the way to the failure dies with the
-            // driver: a failed launch leaves no process behind.
+            // driver: a failed launch leaves no process behind. A driver that refuses
+            // to close is a second fact about the failure, and it goes with the first
+            // one rather than replacing it.
             runCatching { playwright.close() }
                 .onFailure { failure ->
                     log.warn(
@@ -62,6 +64,7 @@ internal class PlaywrightCamoufoxLauncher(
                         profile.profileId,
                         failure.message,
                     )
+                    e.addSuppressed(failure)
                 }
             throw e
         }
@@ -140,6 +143,12 @@ internal class PlaywrightCamoufoxBrowser(
     private val context: BrowserContext,
     private val page: Page,
 ) : CamoufoxBrowser {
+    /** Whether the context is closed. A context that refused to close is tried again. */
+    private var contextClosed = false
+
+    /** Whether the driver is closed. A driver that refused to close is tried again. */
+    private var driverClosed = false
+
     override fun openPage(): BrowserPage = PlaywrightBrowserPage(page)
 
     override fun isPageClosed(): Boolean = page.isClosed()
@@ -148,9 +157,15 @@ internal class PlaywrightCamoufoxBrowser(
 
     override fun close(): Boolean {
         // Closing the context ends the browser: a persistent context owns its process.
-        val contextClosed = runCatching { context.close() }.isSuccess
+        // A step that failed is tried again on the next call — the browser may be gone
+        // by then, and a browser nobody closes is worse than a slow close.
+        if (!contextClosed) {
+            contextClosed = runCatching { context.close() }.isSuccess
+        }
         // The driver goes with the browser.
-        val driverClosed = runCatching { playwright.close() }.isSuccess
+        if (!driverClosed) {
+            driverClosed = runCatching { playwright.close() }.isSuccess
+        }
         return contextClosed && driverClosed
     }
 }

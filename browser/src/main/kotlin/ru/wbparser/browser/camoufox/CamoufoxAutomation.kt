@@ -7,6 +7,7 @@ import ru.wbparser.browser.playwright.PlaywrightCamoufoxLauncher
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * A browser of one profile, started on this machine.
@@ -24,6 +25,15 @@ import java.util.concurrent.ConcurrentHashMap
  * one, but only after it had already failed in a way nobody can act on. So the claim is
  * made here, before the browser starts, and it is released only when the browser is
  * known to be gone.
+ *
+ * ## What we own, we keep
+ *
+ * The reference to a started browser is kept from the moment it exists, not from the
+ * moment it became usable: a browser that started and then failed to open a page is
+ * still a browser, and losing its reference would leave a process nobody can close
+ * and a directory nobody may open again. The claim on the directory goes with it: the
+ * directory is released by the owner of the claim, and only when the browser is known
+ * to be gone.
  *
  * ## The fingerprint is stored, not generated
  *
@@ -51,29 +61,45 @@ class CamoufoxAutomation internal constructor(
 
     private val log = LoggerFactory.getLogger(CamoufoxAutomation::class.java)
 
-    private val lock = Any()
+    /**
+     * The lifecycle of this browser.
+     *
+     * One browser at a time: the start and the close of a browser are serialized, so a
+     * close that runs while the browser starts cannot close somebody else's browser and
+     * cannot release a claim it does not own.
+     */
+    private val lifecycle = Any()
 
-    /** The browser of this profile, or null when there is none. */
+    /** The browser of this profile, or null when there is none we could still close. */
+    @Volatile
     private var browser: CamoufoxBrowser? = null
 
     /** The page the crawler works on. */
+    @Volatile
     private var page: BrowserPage? = null
 
-    /** Whether a browser process may still be alive for this profile. */
+    /** The claim of the profile directory, or null when we hold none. */
     @Volatile
-    private var browserAlive: Boolean = false
+    private var claim: OpenProfiles.Holder? = null
 
     override val isConnected: Boolean
         get() {
             val current = browser ?: return false
-            return page != null && !current.isPageClosed()
+            val currentPage = page ?: return false
+            return !current.isPageClosed()
         }
 
     override val currentPage: BrowserPage?
         get() = page
 
+    /**
+     * Whether a browser process may still be running for this profile.
+     *
+     * The browser we could not close is the one that may still be running: a reference
+     * that is still here means nobody confirmed that the process is gone.
+     */
     override val browserMayBeRunning: Boolean
-        get() = browserAlive
+        get() = browser != null
 
     override fun healthCheck(): Boolean {
         val current = browser ?: return false
@@ -83,63 +109,69 @@ class CamoufoxAutomation internal constructor(
     }
 
     override fun start(): BrowserPage {
-        close()
-        val directory = profileDir()
-        OpenProfiles.claim(directory, profile.profileId)
-        val launched =
-            try {
-                launcher.launch(profile)
-            } catch (e: Throwable) {
-                // Nothing was started, so nothing is claimed.
-                OpenProfiles.release(directory)
-                throw e
-            }
-        val opened =
-            try {
-                launched.openPage()
-            } catch (e: Throwable) {
-                closeAfterFailedStart(launched, directory)
-                throw e
-            }
-        if (opened == null) {
-            closeAfterFailedStart(launched, directory)
-            error(
-                "The Camoufox of the profile '${profile.profileId}' started, but it opened no " +
-                    "page. A browser without a page is a browser nobody can work with.",
-            )
-        }
-        synchronized(lock) {
+        synchronized(lifecycle) {
+            // One browser at a time: the previous one goes before the next one starts.
+            close()
+            val holder = OpenProfiles.claim(profileDir(), profile.profileId)
+            claim = holder
+            val launched =
+                try {
+                    launcher.launch(profile)
+                } catch (e: Throwable) {
+                    // Nothing was started, so nothing is claimed.
+                    close()
+                    throw e
+                }
+            // The browser exists from here on. The reference is kept before the page is
+            // opened, so a page that cannot be opened still leaves a browser we can
+            // close — and a directory we can release.
             browser = launched
+            val opened =
+                try {
+                    launched.openPage()
+                } catch (e: Throwable) {
+                    close()
+                    throw e
+                }
+            if (opened == null) {
+                close()
+                error(
+                    "The Camoufox of the profile '${profile.profileId}' started, but it opened no " +
+                        "page. A browser without a page is a browser nobody can work with.",
+                )
+            }
             page = opened
-            browserAlive = true
+            log.info("The Camoufox of the profile '{}' started.", profile.profileId)
+            return opened
         }
-        log.info("The Camoufox of the profile '{}' started.", profile.profileId)
-        return opened
     }
 
     override fun close() {
-        val current = synchronized(lock) { browser } ?: return
-        val gone =
-            runCatching { current.close() }
-                .onFailure { failure ->
-                    log.warn(
-                        "The Camoufox of the profile '{}' could not be closed: {}",
-                        profile.profileId,
-                        failure.message,
-                    )
-                }.getOrDefault(false)
-        synchronized(lock) {
+        synchronized(lifecycle) {
+            val current = browser
+            val gone =
+                if (current == null) {
+                    // There is no browser of ours: the directory is free, and the claim
+                    // we took for it goes back with it.
+                    true
+                } else {
+                    runCatching { current.close() }
+                        .onFailure { failure ->
+                            log.warn(
+                                "The Camoufox of the profile '{}' could not be closed: {}",
+                                profile.profileId,
+                                failure.message,
+                            )
+                        }.getOrDefault(false)
+                }
             // The session is released either way: the page belongs to the session, and
             // the session is over.
             page = null
             if (gone) {
+                // The browser is gone, so the directory belongs to whoever comes next.
                 browser = null
-                browserAlive = false
+                releaseClaim()
             }
-        }
-        if (gone) {
-            // The browser is gone, so the directory belongs to whoever comes next.
-            OpenProfiles.release(profileDir())
         }
     }
 
@@ -147,7 +179,7 @@ class CamoufoxAutomation internal constructor(
         close()
         // A browser that did not go may still be running, and the caller has to be able
         // to say so instead of assuming.
-        return !browserAlive
+        return !browserMayBeRunning
     }
 
     /**
@@ -163,57 +195,72 @@ class CamoufoxAutomation internal constructor(
                 "session to keep."
         }.normalize()
 
-    /** Ends a browser that was started but could not be used, and gives the directory back. */
-    private fun closeAfterFailedStart(
-        launched: CamoufoxBrowser,
-        directory: Path,
-    ) {
-        val gone =
-            runCatching { launched.close() }
-                .onFailure { failure ->
-                    log.warn(
-                        "The Camoufox of the profile '{}' could not be closed after a failed start: {}",
-                        profile.profileId,
-                        failure.message,
-                    )
-                }.getOrDefault(false)
-        // The browser may still be alive, so the directory stays claimed: nobody may open
-        // a directory that a running browser still holds.
-        if (gone) OpenProfiles.release(directory)
+    /** Gives the profile directory back — but only the claim we hold. */
+    private fun releaseClaim() {
+        val holder = claim ?: return
+        claim = null
+        OpenProfiles.release(holder)
     }
 
     companion object {
-        /** The directories the browsers of this process have open. */
-        private val OPEN_PROFILES = ConcurrentHashMap<Path, String>()
-
         /**
-         * The directories that are open, by path.
+         * The directories the browsers of this process have open.
          *
          * Firefox locks the profile directory itself, so a second browser would fail —
          * but it would fail deep inside the launch, where the reason is hard to read.
          * The claim is made here instead, and the message says which profile holds it.
          */
         private object OpenProfiles {
+            /** The claims of this process, by directory. */
+            private val OPEN_PROFILES = ConcurrentHashMap<Path, Holder>()
+
+            /** The number that tells one claim from another. */
+            private val IDS = AtomicLong()
+
+            /**
+             * One claim of one directory.
+             *
+             * The claim is a thing with an identity, not a flag: the directory is
+             * released by the owner of the claim, and a claim that belongs to another
+             * browser is never released by accident.
+             */
+            class Holder(
+                val directory: Path,
+                val profileId: String,
+                val id: Long,
+            )
+
             /**
              * Claims [directory] for [profileId].
              *
+             * @return the claim, which the owner releases when its browser is gone
              * @throws IllegalStateException when the directory is already open
              */
             fun claim(
                 directory: Path,
                 profileId: String,
-            ) {
-                val holder = OPEN_PROFILES.putIfAbsent(directory, profileId)
-                check(holder == null) {
-                    "The profile directory '$directory' is already open by the profile " +
-                        "'$holder'. A persistent directory holds one session, and two browsers " +
-                        "opening it would fight over its cookies."
+            ): Holder {
+                val holder = Holder(directory, profileId, IDS.incrementAndGet())
+                val existing = OPEN_PROFILES.putIfAbsent(directory, holder)
+                if (existing != null) {
+                    error(
+                        "The profile directory '$directory' is already open by the profile " +
+                            "'${existing.profileId}'. A persistent directory holds one session, and " +
+                            "two browsers opening it would fight over its cookies.",
+                    )
                 }
+                return holder
             }
 
-            /** Gives the directory back. */
-            fun release(directory: Path) {
-                OPEN_PROFILES.remove(directory)
+            /**
+             * Gives the directory back.
+             *
+             * Only the owner of the claim gives it back: a stale close of a browser that
+             * already left must not release the claim of the browser that took its
+             * place.
+             */
+            fun release(holder: Holder) {
+                OPEN_PROFILES.remove(holder.directory, holder)
             }
         }
     }

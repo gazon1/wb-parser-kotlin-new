@@ -1,5 +1,6 @@
 package ru.wbparser.browser.camoufox
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -53,6 +54,9 @@ class CamoufoxFontsTest :
         /** The configuration of a Linux identity. */
         val linux = """{"navigator.userAgent":"Mozilla/5.0 (X11; Linux x86_64; rv:158.0)"}"""
 
+        /** The configuration of a macOS identity. */
+        val macos = """{"navigator.userAgent":"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:158.0)"}"""
+
         test("the fonts of the build are named absolutely") {
             val install = build()
 
@@ -82,20 +86,60 @@ class CamoufoxFontsTest :
             Files.readString(written) shouldContain "<dir>${install.browserDir.resolve("fonts/linux")}</dir>"
         }
 
-        test("a bundle without a directory of its own names the whole font directory") {
+        test("a bundle without a directory of its own is refused rather than naming every font") {
             val install = build(groups = null, fontDirs = emptyList())
 
-            val written = CamoufoxFonts.fontConfigFile(install, linux).shouldNotBeNull()
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
 
-            Files.readString(written) shouldContain "<dir>${install.browserDir.resolve("fonts")}</dir>"
+            thrown.message shouldContain "neither the table of the font groups"
         }
 
-        test("a group table that names no group of the identity falls back to the machine") {
-            val install = build(groups = """{"other":["group-1"]}""", fontDirs = listOf("linux"))
+        test("a group table that names no group of the identity is refused") {
+            val install = build(groups = """{"readBy":{"mac":["group-1"]}}""", fontDirs = listOf("group-1"))
 
-            val written = CamoufoxFonts.fontConfigFile(install, linux).shouldNotBeNull()
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
 
-            Files.readString(written) shouldContain "<dir>${install.browserDir.resolve("fonts/linux")}</dir>"
+            thrown.message shouldContain "names no font group"
+        }
+
+        test("an empty group table is refused") {
+            val install = build(groups = """{"readBy":{}}""", fontDirs = listOf("group-1"))
+
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
+
+            thrown.message shouldContain "names no font group"
+        }
+
+        test("a group whose directory is missing is an incomplete install") {
+            val install = build(groups = """{"readBy":{"lin":["group-gone"]}}""", fontDirs = listOf("group-1"))
+
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
+
+            thrown.message shouldContain "no directory at"
+        }
+
+        test("a group that climbs out of the bundle is refused") {
+            val install = build(groups = """{"readBy":{"lin":["../outside"]}}""", fontDirs = listOf("group-1"))
+
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
+
+            thrown.message shouldContain "points outside the fonts"
+        }
+
+        test("a group named by an absolute path is refused") {
+            val install = build(groups = """{"readBy":{"lin":["/etc/fonts"]}}""", fontDirs = listOf("group-1"))
+
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
+
+            thrown.message shouldContain "absolute path"
+        }
+
+        test("a group without a name is refused") {
+            val install = build(groups = """{"readBy":{"lin":[""]}}""", fontDirs = listOf("group-1"))
+
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
+
+            thrown.message shouldContain "without a name"
         }
 
         test("the fonts of a Windows identity are the Windows ones") {
@@ -114,6 +158,29 @@ class CamoufoxFontsTest :
                     ).shouldNotBeNull()
 
             Files.readString(written) shouldContain "<dir>${install.browserDir.resolve("fonts/group-win")}</dir>"
+        }
+
+        test("the fonts of a macOS identity are the macOS ones") {
+            val install = build(groups = """{"readBy":{"mac":["group-mac"]}}""", fontDirs = listOf("group-mac"))
+            Files.createDirectories(install.browserDir.resolve("fontconfig/macos"))
+            Files.writeString(
+                install.browserDir.resolve("fontconfig/macos/fonts.conf"),
+                """<?xml version="1.0"?><fontconfig><dir prefix="cwd">fonts</dir></fontconfig>""",
+            )
+
+            val written = CamoufoxFonts.fontConfigFile(install, macos).shouldNotBeNull()
+
+            Files.readString(written) shouldContain "<dir>${install.browserDir.resolve("fonts/group-mac")}</dir>"
+        }
+
+        test("a path with XML characters of its own is escaped the way XML demands it") {
+            val install = build(groups = """{"readBy":{"lin":["group&one"]}}""", fontDirs = listOf("group&one"))
+
+            val written = CamoufoxFonts.fontConfigFile(install, linux).shouldNotBeNull()
+
+            val content = Files.readString(written)
+            content shouldContain "&amp;"
+            content shouldNotContain "group&one"
         }
 
         test("a build that cannot be written keeps its fontconfig in the temporary directory") {

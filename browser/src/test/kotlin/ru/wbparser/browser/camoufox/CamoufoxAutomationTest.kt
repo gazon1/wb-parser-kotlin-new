@@ -3,12 +3,14 @@ package ru.wbparser.browser.camoufox
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.pool.DeclaredProxy
 import ru.wbparser.browser.testing.FakeBrowserPage
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.concurrent.thread
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CamoufoxAutomationTest
@@ -269,5 +271,104 @@ class CamoufoxAutomationTest :
 
             automation.browserMayBeRunning shouldBe true
             automation.currentPage shouldBe null
+        }
+
+        test("a browser that could not open its page is closed and gives the directory back") {
+            val root = Files.createTempDirectory("camoufox-automation")
+            val failure = IllegalStateException("the page could not be opened")
+            val browser = FakeCamoufoxBrowser(openPageFailure = failure)
+            val automation = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher(browser))
+
+            shouldThrow<IllegalStateException> { automation.start() }
+
+            browser.closeCalls shouldBe 1
+            // The browser is gone, so nobody holds the directory any more.
+            automation.browserMayBeRunning shouldBe false
+            val second = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher())
+            second.start().let { second.isConnected shouldBe true }
+        }
+
+        test("a browser that could not open its page and refuses to close stays ours") {
+            val root = Files.createTempDirectory("camoufox-automation")
+            val browser =
+                FakeCamoufoxBrowser(
+                    openPageFailure = IllegalStateException("the page could not be opened"),
+                    closeResult = false,
+                )
+            val automation = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher(browser))
+
+            shouldThrow<IllegalStateException> { automation.start() }
+
+            browser.closeCalls shouldBe 1
+            // The browser exists, although it never became usable: it is ours, and it
+            // may still be running.
+            automation.browserMayBeRunning shouldBe true
+            val second = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher())
+            shouldThrow<IllegalStateException> { second.start() }.message shouldContain "already open"
+        }
+
+        test("a repeated stop closes the browser that refused and gives the directory back") {
+            val root = Files.createTempDirectory("camoufox-automation")
+            val browser =
+                FakeCamoufoxBrowser(
+                    openPageFailure = IllegalStateException("the page could not be opened"),
+                    closeResult = false,
+                )
+            val automation = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher(browser))
+            shouldThrow<IllegalStateException> { automation.start() }
+
+            browser.closeResult = true
+
+            // The second attempt succeeds: the browser is gone, and so is the claim.
+            automation.stop() shouldBe true
+            automation.browserMayBeRunning shouldBe false
+            val second = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher())
+            second.start().let { second.isConnected shouldBe true }
+        }
+
+        test("two closes at once close the browser once and release the claim once") {
+            val root = Files.createTempDirectory("camoufox-automation")
+            val browser = FakeCamoufoxBrowser()
+            val automation = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher(browser))
+            automation.start()
+
+            val closers = (1..2).map { thread(start = true) { automation.close() } }
+            closers.forEach { it.join() }
+
+            // One browser, one close: the second close finds nothing of its own to
+            // close and does not touch the claim of anybody else.
+            browser.closeCalls shouldBe 1
+            val second = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher())
+            second.start().let { second.isConnected shouldBe true }
+        }
+
+        test("a close of a browser that already left does not release the claim of another one") {
+            val root = Files.createTempDirectory("camoufox-automation")
+            val first = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher())
+            first.start()
+            first.close()
+
+            val second = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher())
+            second.start()
+
+            // The first browser is closed again, long after it left the directory.
+            first.close()
+
+            // The directory still belongs to the browser that took its place.
+            val third = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher())
+            shouldThrow<IllegalStateException> { third.start() }.message shouldContain "already open"
+        }
+
+        test("two profiles work in their own directories") {
+            val root = Files.createTempDirectory("camoufox-automation")
+            val first = CamoufoxAutomation(profile(root, "profile-1"), FakeCamoufoxLauncher())
+            val second = CamoufoxAutomation(profile(root, "profile-2"), FakeCamoufoxLauncher())
+
+            first.start()
+            second.start()
+
+            first.isConnected shouldBe true
+            second.isConnected shouldBe true
+            first.currentPage shouldNotBe second.currentPage
         }
     })

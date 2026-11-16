@@ -14,6 +14,13 @@ import java.io.IOException
  * back. The chunk size is the one the Camoufox package uses, and the cut never splits a
  * character — a configuration cut in the middle of a multi-byte character would reach
  * the browser as broken UTF-8, and the browser would refuse the whole configuration.
+ *
+ * ## The identity is read, not guessed
+ *
+ * The configuration says which operating system the identity claims, and the fonts of
+ * the machine have to be the fonts of that identity. An identity that names no
+ * supported operating system is refused: a browser that claims a system nobody can
+ * name would be given the fonts of a guess.
  */
 internal object CamoufoxEnvironment {
     /** The size of one chunk of the configuration. */
@@ -32,10 +39,12 @@ internal object CamoufoxEnvironment {
      *
      * @param config the configuration JSON of the profile
      */
-    fun configChunks(config: String): Map<String, String> =
-        chunkByBytes(config, CHUNK_SIZE)
+    fun configChunks(config: String): Map<String, String> {
+        parseConfig(config)
+        return chunkByBytes(config, CHUNK_SIZE)
             .mapIndexed { index, chunk -> "$CONFIG_PREFIX${index + 1}" to chunk }
             .toMap()
+    }
 
     /**
      * The operating system the identity of the configuration claims.
@@ -45,24 +54,46 @@ internal object CamoufoxEnvironment {
      */
     fun identityOs(config: String): String {
         val userAgent = parseConfig(config).path(USER_AGENT).asText("")
+        check(userAgent.isNotBlank()) {
+            "The stored fingerprint of the profile names no '$USER_AGENT'. The identity of the " +
+                "browser is read from it, and a profile without one has no identity to speak of."
+        }
         return when {
             userAgent.contains("Windows", ignoreCase = true) -> WINDOWS
-            userAgent.contains("Macintosh", ignoreCase = true) -> MACOS
-            else -> LINUX
+            userAgent.contains("Macintosh", ignoreCase = true) || userAgent.contains("Mac OS X", ignoreCase = true) -> MACOS
+            userAgent.contains("Linux", ignoreCase = true) -> LINUX
+            else ->
+                error(
+                    "The stored fingerprint of the profile claims the user agent '$userAgent', " +
+                        "which names no supported operating system. The fonts of the machine have " +
+                        "to be the fonts of the identity, and the identity has to say which one " +
+                        "it is.",
+                )
         }
     }
 
     /** The configuration of a profile, read as JSON. */
-    fun parseConfig(config: String): JsonNode =
-        try {
-            mapper.readTree(config)
-        } catch (e: IOException) {
-            error(
-                "The stored fingerprint of the profile is not JSON, so the browser cannot be " +
-                    "given it. The fingerprint is the configuration the browser reads; a broken " +
-                    "one is a profile that cannot be started. Cause: ${e.message}",
-            )
+    fun parseConfig(config: String): JsonNode {
+        check(config.isNotBlank()) {
+            "The stored fingerprint of the profile is empty. The browser is given the " +
+                "configuration it reads, and an empty one is no configuration at all."
         }
+        val node =
+            try {
+                mapper.readTree(config)
+            } catch (e: IOException) {
+                error(
+                    "The stored fingerprint of the profile is not JSON, so the browser cannot be " +
+                        "given it. The fingerprint is the configuration the browser reads; a broken " +
+                        "one is a profile that cannot be started. Cause: ${e.message}",
+                )
+            }
+        check(node.isObject) {
+            "The stored fingerprint of the profile is JSON, but not an object. The configuration " +
+                "the browser reads is a map of properties, and a list or a bare value is not one."
+        }
+        return node
+    }
 
     /**
      * The text cut into chunks of at most [limit] bytes, never inside a character.

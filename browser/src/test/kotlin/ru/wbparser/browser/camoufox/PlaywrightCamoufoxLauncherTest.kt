@@ -43,7 +43,7 @@ class PlaywrightCamoufoxLauncherTest :
 
         /** The profile of a test: a directory of its own and a stored fingerprint. */
         fun profile(
-            fingerprint: String? = """{"navigator.userAgent":"Firefox"}""",
+            fingerprint: String? = """{"navigator.userAgent":"Mozilla/5.0 (X11; Linux x86_64; rv:158.0)"}""",
             proxy: DeclaredProxy = DeclaredProxy(type = DeclaredProxy.DIRECT),
         ): BrowserProfileConfig {
             val root = Files.createTempDirectory("camoufox-launcher")
@@ -87,7 +87,8 @@ class PlaywrightCamoufoxLauncherTest :
             options.headless shouldBe true
             // The identity travels through the environment: the browser joins the chunks
             // back into the configuration it was given.
-            checkNotNull(options.env)["CAMOU_CONFIG_1"] shouldBe """{"navigator.userAgent":"Firefox"}"""
+            checkNotNull(options.env)["CAMOU_CONFIG_1"] shouldBe
+                """{"navigator.userAgent":"Mozilla/5.0 (X11; Linux x86_64; rv:158.0)"}"""
         }
 
         test("a profile without a stored fingerprint is refused before the browser starts") {
@@ -206,5 +207,65 @@ class PlaywrightCamoufoxLauncherTest :
             browser.close() shouldBe true
             verify { doubles.context.close() }
             verify { doubles.playwright.close() }
+        }
+
+        test("a context that refuses to close keeps the browser from being gone") {
+            val doubles = Doubles()
+            every { doubles.context.close() } throws IllegalStateException("the context refused to close")
+
+            val browser = doubles.launcher(install()).launch(profile())
+
+            // The browser may still be running, and the caller has to be able to say so.
+            browser.close() shouldBe false
+            // The driver still goes: it is not what failed.
+            verify { doubles.playwright.close() }
+        }
+
+        test("a driver that refuses to close keeps the browser from being gone") {
+            val doubles = Doubles()
+            every { doubles.playwright.close() } throws IllegalStateException("the driver refused to close")
+
+            val browser = doubles.launcher(install()).launch(profile())
+
+            browser.close() shouldBe false
+            // The context still goes: it is not what failed.
+            verify { doubles.context.close() }
+        }
+
+        test("both steps of the cleanup failing keep the browser from being gone") {
+            val doubles = Doubles()
+            every { doubles.context.close() } throws IllegalStateException("the context refused to close")
+            every { doubles.playwright.close() } throws IllegalStateException("the driver refused to close")
+
+            val browser = doubles.launcher(install()).launch(profile())
+
+            browser.close() shouldBe false
+        }
+
+        test("a cleanup that failed is tried again on the next close") {
+            val doubles = Doubles()
+            every { doubles.context.close() } throws IllegalStateException("the context refused to close")
+
+            val browser = doubles.launcher(install()).launch(profile())
+            browser.close() shouldBe false
+
+            // The browser may be gone by now, and a browser nobody closes is worse than a
+            // slow close.
+            every { doubles.context.close() } returns Unit
+            browser.close() shouldBe true
+        }
+
+        test("a driver that refuses to close does not hide the failure of the launch") {
+            val doubles = Doubles()
+            val failure = IllegalStateException("the browser refused to start")
+            every { doubles.browserType.launchPersistentContext(any(), any()) } throws failure
+            every { doubles.playwright.close() } throws IllegalStateException("the driver refused to close")
+
+            val thrown = shouldThrow<IllegalStateException> { doubles.launcher(install()).launch(profile()) }
+
+            // The failure of the launch is what the caller has to see; the failure to
+            // close the driver is a second fact, and it goes with the first one.
+            thrown shouldBe failure
+            (thrown.suppressed.any { it.message == "the driver refused to close" }) shouldBe true
         }
     })

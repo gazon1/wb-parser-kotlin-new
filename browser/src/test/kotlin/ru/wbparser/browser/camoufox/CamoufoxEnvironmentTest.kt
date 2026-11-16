@@ -21,6 +21,18 @@ import java.nio.charset.StandardCharsets
  */
 class CamoufoxEnvironmentTest :
     FunSpec({
+        /** The head of a configuration whose padding is a string of its own. */
+        val head = "{\"navigator.userAgent\":\"Firefox\",\"pad\":\""
+
+        /** The tail of a configuration whose padding is a string of its own. */
+        val tail = "\",\"filler\":\"x\"}"
+
+        /** A configuration of exactly [length] bytes, padded into a JSON object. */
+        fun configOfBytes(length: Int): String {
+            val padding = length - head.length - tail.length
+            return head + "x".repeat(padding) + tail
+        }
+
         test("a configuration that fits into one chunk stays one chunk") {
             val chunks = CamoufoxEnvironment.configChunks("""{"navigator.userAgent":"Firefox"}""")
 
@@ -28,8 +40,27 @@ class CamoufoxEnvironmentTest :
             chunks["CAMOU_CONFIG_1"] shouldBe """{"navigator.userAgent":"Firefox"}"""
         }
 
+        test("a configuration of exactly the limit stays one chunk") {
+            val config = configOfBytes(CamoufoxEnvironment.CHUNK_SIZE)
+
+            val chunks = CamoufoxEnvironment.configChunks(config)
+
+            chunks.keys shouldBe setOf("CAMOU_CONFIG_1")
+            chunks["CAMOU_CONFIG_1"] shouldBe config
+        }
+
+        test("a configuration of one byte over the limit is cut into two") {
+            val config = configOfBytes(CamoufoxEnvironment.CHUNK_SIZE + 1)
+
+            val chunks = CamoufoxEnvironment.configChunks(config)
+
+            chunks.keys shouldBe setOf("CAMOU_CONFIG_1", "CAMOU_CONFIG_2")
+            chunks["CAMOU_CONFIG_1"]!!.toByteArray(StandardCharsets.UTF_8).size shouldBe CamoufoxEnvironment.CHUNK_SIZE
+            chunks.entries.sortedBy { it.key }.joinToString("") { it.value } shouldBe config
+        }
+
         test("a long configuration is cut into chunks the browser can join back") {
-            val config = "x".repeat(CamoufoxEnvironment.CHUNK_SIZE * 2 + 17)
+            val config = configOfBytes(CamoufoxEnvironment.CHUNK_SIZE * 2 + 17)
 
             val chunks = CamoufoxEnvironment.configChunks(config)
 
@@ -40,7 +71,9 @@ class CamoufoxEnvironmentTest :
 
         test("a cut never splits a multi-byte character") {
             // The character takes three bytes, and the limit falls inside it.
-            val config = "a".repeat(CamoufoxEnvironment.CHUNK_SIZE - 1) + "€" + "b"
+            val paddingHead = "{\"pad\":\""
+            val paddingTail = "\",\"filler\":\"x\"}"
+            val config = paddingHead + "a".repeat(CamoufoxEnvironment.CHUNK_SIZE - paddingHead.length - 1) + "€" + paddingTail
 
             val chunks = CamoufoxEnvironment.configChunks(config)
 
@@ -54,7 +87,9 @@ class CamoufoxEnvironmentTest :
 
         test("a cut never splits a character of four bytes either") {
             // The character takes four bytes, and the limit falls inside it.
-            val config = "a".repeat(CamoufoxEnvironment.CHUNK_SIZE - 2) + "🧭" + "b"
+            val paddingHead = "{\"pad\":\""
+            val paddingTail = "\",\"filler\":\"x\"}"
+            val config = paddingHead + "a".repeat(CamoufoxEnvironment.CHUNK_SIZE - paddingHead.length - 2) + "🧭" + paddingTail
 
             val chunks = CamoufoxEnvironment.configChunks(config)
 
@@ -81,5 +116,35 @@ class CamoufoxEnvironmentTest :
             val thrown = shouldThrow<IllegalStateException> { CamoufoxEnvironment.parseConfig("not json") }
 
             thrown.message shouldContain "not JSON"
+        }
+
+        test("an empty configuration is refused") {
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxEnvironment.parseConfig("   ") }
+
+            thrown.message shouldContain "empty"
+        }
+
+        test("a configuration that is JSON but not an object is refused") {
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxEnvironment.parseConfig("""["a"]""") }
+
+            thrown.message shouldContain "not an object"
+        }
+
+        test("a configuration that names no user agent has no identity") {
+            val thrown =
+                shouldThrow<IllegalStateException> {
+                    CamoufoxEnvironment.identityOs("""{"navigator":{"language":"ru"}}""")
+                }
+
+            thrown.message shouldContain "names no"
+        }
+
+        test("an identity of an operating system nobody knows is refused") {
+            val thrown =
+                shouldThrow<IllegalStateException> {
+                    CamoufoxEnvironment.identityOs("""{"navigator.userAgent":"Mozilla/5.0 (SomeOS 1.0)"}""")
+                }
+
+            thrown.message shouldContain "no supported operating system"
         }
     })
