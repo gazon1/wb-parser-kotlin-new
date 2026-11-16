@@ -4,7 +4,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.slf4j.LoggerFactory
-import ru.wbparser.browser.playwright.BrowserAutomation
+import ru.wbparser.browser.api.BrowserAutomation
 import ru.wbparser.browser.session.SessionState
 import ru.wbparser.browser.testing.FakeBrowserAutomation
 

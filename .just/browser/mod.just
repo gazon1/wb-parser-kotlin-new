@@ -1,5 +1,5 @@
 # ==============================================================================
-# 🧩 BROWSER — the local Camoufox runtime and the profile pool
+# 🧩 BROWSER — the local Camoufox runtime (the implementation of the contract)
 # Recipes available as browser::<recipe>.
 # ==============================================================================
 

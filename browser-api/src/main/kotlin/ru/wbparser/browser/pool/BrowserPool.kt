@@ -1,9 +1,7 @@
 package ru.wbparser.browser.pool
 
 import org.slf4j.LoggerFactory
-import ru.wbparser.browser.camoufox.CamoufoxAutomation
-import ru.wbparser.browser.camoufox.CamoufoxInstall
-import ru.wbparser.browser.playwright.BrowserAutomation
+import ru.wbparser.browser.api.BrowserAutomation
 import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.browser.session.SessionSnapshot
 import ru.wbparser.browser.session.SessionSource
@@ -11,13 +9,13 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Manages a pool of local Camoufox browsers, with round-robin selection.
+ * Manages a pool of browsers, with round-robin selection.
  *
  * ## Usage
  *
  * 1. Declare one [BrowserProfileConfig] per profile.
- * 2. Create [BrowserPool] with the Camoufox install the profiles run on.
- * 3. Call [borrowPage] to get a [BrowserPage][ru.wbparser.browser.playwright.BrowserPage] from the next
+ * 2. Create [BrowserPool] with the browser each profile runs on.
+ * 3. Call [borrowPage] to get a [BrowserPage][ru.wbparser.browser.api.BrowserPage] from the next
  *    profile in the pool.
  * 4. Call `close` on the borrowed page when done (returns the profile to the pool).
  *
@@ -31,32 +29,30 @@ import java.util.concurrent.atomic.AtomicInteger
  * Every profile is a persistent directory, and the browser that opens it is started
  * and stopped by this process. There is no endpoint to resolve and no runtime to ask.
  *
+ * ## The pool names no runtime
+ *
+ * The pool hands out pages; what opens them is the caller's decision. The browser
+ * of each profile arrives as a [BrowserAutomation] — the Camoufox one in production,
+ * a fake in the tests — and the pool never learns which is which. That is what makes
+ * the runtime replaceable: swapping it is a change in the wiring, not in the pool.
+ *
  * ## What lives next door
  *
  * This class is the *pool*: which profile to hand out, and when. The profile's own
  * lifecycle — warm, resting after an anti-bot answer, last used, browser open — belongs
  * to [BrowserProfileState]; the browser session — starting it, the health check,
- * ending it — to [BrowserAutomation], whose implementation here is
- * [CamoufoxAutomation].
+ * ending it — to [BrowserAutomation], whose implementation is the runtime's.
  */
 class BrowserPool(
     private val profiles: List<BrowserProfileConfig>,
     /**
-     * The Camoufox build the profiles run on.
+     * The browser of each profile — one [BrowserAutomation] per [profiles] entry, in
+     * the same order.
      *
-     * A provider, not a value: the install is read and verified on disk when a
-     * browser is first started. A process that never borrows a page — a catalog-only
-     * instance, a test with injected automations — must not need a browser install
-     * to exist.
+     * The production wiring hands in the automations of the runtime it runs; a test
+     * hands in fakes and never touches a browser at all.
      */
-    private val camoufoxInstall: (() -> CamoufoxInstall)? = null,
-    /**
-     * Optional list of [BrowserAutomation] instances, one per [profiles] entry.
-     * When null (the default), each profile gets its own Camoufox adapter.
-     * When supplied, the pool uses the provided instances directly — enabling unit tests
-     * to inject a fake automation without any real browser I/O.
-     */
-    private val browserAutomations: List<BrowserAutomation>? = null,
+    private val browserAutomations: List<BrowserAutomation>,
     /**
      * How long a borrow waits for a profile to become free, in milliseconds.
      */
@@ -107,22 +103,16 @@ class BrowserPool(
 
     init {
         require(profiles.isNotEmpty()) { "At least one profile is required" }
-        if (browserAutomations == null) {
-            checkNotNull(camoufoxInstall) {
-                "The pool has no Camoufox install and no automations: a profile cannot be " +
-                    "started without either."
-            }
+        require(browserAutomations.size == profiles.size) {
+            "The pool has ${profiles.size} profiles and ${browserAutomations.size} browsers: " +
+                "every profile runs on its own browser, and a profile without one cannot be " +
+                "started."
         }
         profileStates =
             profiles.mapIndexed { index, profile ->
                 BrowserProfileState(
                     profileConfig = profile,
-                    automation =
-                        browserAutomations?.getOrNull(index)
-                            ?: CamoufoxAutomation(
-                                profile,
-                                checkNotNull(camoufoxInstall),
-                            ),
+                    automation = browserAutomations[index],
                     sessionPolicy = sessionPolicy,
                     log = log,
                 )
@@ -148,7 +138,7 @@ class BrowserPool(
     override val retiredSessionCount: Int get() = profileStates.count { it.isRetired() }
 
     /**
-     * Borrows the next available [BrowserPage][ru.wbparser.browser.playwright.BrowserPage] from the pool
+     * Borrows the next available [BrowserPage][ru.wbparser.browser.api.BrowserPage] from the pool
      * (round-robin), waiting for a free slot.
      *
      * The caller MUST call [BorrowedPage.close] when done with the page.

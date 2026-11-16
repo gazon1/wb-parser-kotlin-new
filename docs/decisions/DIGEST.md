@@ -532,6 +532,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** складывать 429 с 498 в один счётчик: 429 — ответ про темп, 498 — про потраченный счётчик сессии; в крауле у них разные причины (`rate_limited` / `antibot`) и разные back-off'ы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** считать `EGRESS`-маркер проверкой внешнего адреса: он привязан к endpoint'у, а endpoint может менять egress между запусками; неизменность адреса гарантирует контракт прокси, а `egress` в артефакте — свидетельство, а не защита. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** считать статус навигации проверкой антибота: датацентровый адрес даёт 498 на HTML и 200 на API из страницы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Always** держать контракт в `:browser-api` и не называть в нём рантайм. Имя пакета `ru.wbparser.browser.api` — о форме, а не о способе запуска. _(from `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it`)
+- **Always** объявлять границу сборкой, а не соглашением: новый модуль — это `include` в `settings.gradle.kts`, build-скрипт, строка в floors гейтов и правило в `check-repo-rules.py`. _(from `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it`)
+- **Always** публиковать общие тестовые двойники как `java-test-fixtures` — теперь у контракта, а не у реализации. _(from `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it`)
+- **Never** называть рантайм вне composition root приложения. Замена рантайма — это правка `:browser` и `app/config`, и больше ничего. _(from `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it`)
+- **Never** переносить в контракт политику рантайма. Ограничение SOCKS5 с паролем (Playwright его не умеет) остаётся в `DeclaredProxy`: это проверка формы данных на границе доверия, а не знание о рантайме — но при смене рантайма её надо перепроверить. _(from `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it`)
+- **Never** создавать браузер в `:browser-api`. Браузер приходит снаружи: production wiring — `CamoufoxAutomation`, тесты — `FakeBrowserAutomation`. _(from `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it`)
 - **Always** пинить одну сборку Camoufox и проверять её `just browser::verify`. _(from `2026-11-16-the-deployment-runs-camoufox`)
 - **Always** резолвить `CamoufoxInstall` лениво, при первом запуске браузера. _(from `2026-11-16-the-deployment-runs-camoufox`)
 - **Always** сохранять `EgressProbe`/`EgressIsolationCheck` и startup gate. _(from `2026-11-16-the-deployment-runs-camoufox`)
@@ -1245,6 +1251,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-10-the-pool-belongs-to-the-application` — architecture  cleanup  database
 - `2026-11-15-a-browser-session-is-started-not-joined` — architecture  browser  boundaries  egress  antibot
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — architecture  egress  operations  antibot  browser
+- `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it` — architecture  browser  build  dependencies
 - `2026-11-16-the-deployment-runs-camoufox` — architecture  operations  browser  deployment
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — architecture  browser  antibot  boundaries  operations
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — browser  antibot  egress  architecture
@@ -1370,6 +1377,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-10-the-pool-belongs-to-the-application` — The pool belongs to the application, and the application says so in one place
 - `2026-11-15-a-browser-session-is-started-not-joined` — Сессию браузера запускают, а не присоединяются к ней; профиль — это каталог и endpoint
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — Camoufox работает локально, адрес приходит прокси, а отпечаток — данные профиля
+- `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it` — Контракт браузера — отдельный модуль, рантайм — реализация этого контракта
 - `2026-11-16-the-deployment-runs-camoufox` — Развёртывание запускает локальный Camoufox и не несёт AdsPower
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — Локальный браузер живёт в persistent-контексте профиля, а каталог занят на время его жизни
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — Состояние профиля выводится, а отказ, throttling и сбой сервера считаются врозь

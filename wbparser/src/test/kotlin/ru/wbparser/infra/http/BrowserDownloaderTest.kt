@@ -8,9 +8,9 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import kotlinx.coroutines.runBlocking
-import ru.wbparser.browser.playwright.BrowserAutomation
-import ru.wbparser.browser.playwright.BrowserPage
-import ru.wbparser.browser.playwright.BrowserPageException
+import ru.wbparser.browser.api.BrowserAutomation
+import ru.wbparser.browser.api.BrowserPage
+import ru.wbparser.browser.api.BrowserPageException
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.testing.FakeBrowserPage

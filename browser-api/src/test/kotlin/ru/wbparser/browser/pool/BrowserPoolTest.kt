@@ -37,12 +37,15 @@ class BrowserPoolTest :
             pool.close()
         }
 
-        test("BrowserPool requires an install or injected automations") {
-            // A profile cannot be started without either. Failing at construction is
+        test("BrowserPool requires one browser per profile") {
+            // A profile without a browser cannot be started. Failing at construction is
             // better than failing on the first request of a crawl.
-            shouldThrow<IllegalStateException> {
-                BrowserPool(profiles = listOf(BrowserProfileConfig(profileId = "p1")))
-            }.message shouldContain "Camoufox install"
+            shouldThrow<IllegalArgumentException> {
+                BrowserPool(
+                    profiles = listOf(BrowserProfileConfig(profileId = "p1")),
+                    browserAutomations = emptyList(),
+                )
+            }.message shouldContain "every profile runs on its own browser"
         }
 
         test("BrowserPool requires at least one profile — empty list throws") {

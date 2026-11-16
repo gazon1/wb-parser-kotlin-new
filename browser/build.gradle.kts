@@ -4,26 +4,30 @@ plugins {
     id("java-library")
     id("org.jetbrains.kotlin.jvm")
     id("org.jetbrains.kotlinx.kover")
-    // The test doubles this module shares with the crawler — `FakeBrowserAutomation`
-    // and `FakeBrowserPage` — are published as fixtures: the crawler's own tests need
-    // them, and re-declaring them there is how two copies drift apart.
-    id("java-test-fixtures")
 }
 
 // ==============================================================================
 // The module boundary
 // ==============================================================================
-// The browser stack — the Camoufox launch, the Playwright overlay, the profile pool
-// and the browser session — lives here, and it knows nothing about the crawler: no
-// Spring, no database, no Arrow, no Ktor, no Micrometer, no WB.
+// This module is the *runtime*: the Camoufox install and its pinned build, the
+// Playwright launcher and the adapters that speak to it. It implements the contract
+// of `:browser-api` — the page, the session, the profile — and it knows nothing about
+// the crawler: no Spring, no database, no Arrow, no Ktor, no Micrometer, no WB.
 //
-// The direction of the dependency is `app → wbparser → browser`. Nothing points back.
+// The direction of the dependency is `app → wbparser → browser-api`, and this module
+// depends on `:browser-api` as well: the runtime is written against the contract, and
+// the contract knows nothing about the runtime. Replacing the runtime is a change in
+// this module and in the composition root — never in the crawler.
 //
 // `api` means "a consumer's code has to name this type to call ours", `implementation`
 // means "we use it, our consumers do not". The dependency-analysis plugin decides which
 // is which: it looks at the bytecode and reports the types that appear in this module's
 // public signatures.
 dependencies {
+    // The contract this runtime implements. `api`: `CamoufoxAutomation` is a
+    // `BrowserAutomation`, and a consumer that wires the runtime names both.
+    api(project(":browser-api"))
+
     implementation(libs.kotlin.stdlib)
 
     // Playwright launches Camoufox. It is an implementation detail of this module: the
@@ -50,12 +54,9 @@ dependencies {
     testImplementation(libs.kotlin.coroutines.test)
     testImplementation(libs.mockk)
 
-    // The fixtures are their own compilation: they need the test libraries too.
-    // The fixtures hand out a `BrowserPage`, which is this module's own type — so
-    // there is no third-party type for a consumer of the fixtures to name, and
-    // Playwright does not have to be declared here either.
-    testFixturesImplementation(libs.kotest.assertions.core)
-    testFixturesImplementation(libs.mockk)
+    // The fakes of the contract live in the contract's module and are published as its
+    // fixtures: this module's tests drive the adapters against them.
+    testImplementation(testFixtures(project(":browser-api")))
 }
 
 tasks.test {

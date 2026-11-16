@@ -7,6 +7,7 @@
 #   just app::build bootJar
 #   just app::run
 #   just browser::test
+#   just browser-api::test
 #   just wbparser::test
 #   just wbparser::lint
 #   just tests::check
@@ -18,6 +19,7 @@
 mod config   '.just/config'
 mod app      '.just/app'
 mod browser  '.just/browser'
+mod browser-api '.just/browser-api'
 mod wbparser '.just/wbparser'
 mod tests    '.just/tests'
 mod scripts  '.just/scripts'

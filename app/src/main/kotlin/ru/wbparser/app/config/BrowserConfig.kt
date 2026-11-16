@@ -2,6 +2,8 @@ package ru.wbparser.app.config
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import ru.wbparser.browser.camoufox.CamoufoxAutomation
+import ru.wbparser.browser.camoufox.CamoufoxInstall
 import ru.wbparser.browser.camoufox.CamoufoxInstalls
 import ru.wbparser.browser.pool.BrowserIdleSweeper
 import ru.wbparser.browser.pool.BrowserPool
@@ -19,6 +21,14 @@ import java.nio.file.Path
  * which Camoufox build they run on, when an idle browser is closed, and what happens
  * to the browsers when the process is gone. [CrawlerConfig] is about the crawl, and
  * a class that holds both decisions has to grow with either of them.
+ *
+ * ## This is the composition root
+ *
+ * The contract (`:browser-api`) names no runtime, and the runtime (`:browser`) names
+ * only the contract. This class is where the two are bound: the browser of every
+ * profile is a Camoufox here, and it is the only place in the repository that says
+ * so. Replacing the runtime is a change in this file and in the runtime module — the
+ * crawler does not move.
  *
  * ## The install is resolved on first launch
  *
@@ -42,16 +52,13 @@ class BrowserConfig {
     ): BrowserPool =
         BrowserPool(
             profiles = groups.profiles,
-            camoufoxInstall = {
-                CamoufoxInstalls.resolve(
-                    home =
-                        properties.spider.camoufoxHome
-                            .takeIf { it.isNotBlank() }
-                            ?.let { Path.of(it) }
-                            ?: CamoufoxInstalls.defaultHome(),
-                    pinnedVersion = properties.spider.camoufoxBuild.takeIf { it.isNotBlank() },
-                )
-            },
+            // The binding of the contract to the runtime. The install is read on the
+            // first launch, not here: a process that never opens a browser must not
+            // need the build to exist.
+            browserAutomations =
+                groups.profiles.map { profile ->
+                    CamoufoxAutomation(profile, install = { camoufoxInstall(properties) })
+                },
             // The session's limits are the deployment's, and they reach every session
             // the pool creates. They are zero by default — see [Session] for why.
             sessionPolicy =
@@ -82,4 +89,21 @@ class BrowserConfig {
      */
     @Bean
     fun browserShutdown(pool: BrowserPool): BrowserShutdown = pool.shutdown
+
+    /**
+     * The Camoufox build of this machine, checked against the pin.
+     *
+     * Called when a browser is actually started, not when the pool is built: the
+     * install is read from the disk, and a process that never opens a browser must
+     * not need the build to exist.
+     */
+    private fun camoufoxInstall(properties: CrawlProperties): CamoufoxInstall =
+        CamoufoxInstalls.resolve(
+            home =
+                properties.spider.camoufoxHome
+                    .takeIf { it.isNotBlank() }
+                    ?.let { Path.of(it) }
+                    ?: CamoufoxInstalls.defaultHome(),
+            pinnedVersion = properties.spider.camoufoxBuild.takeIf { it.isNotBlank() },
+        )
 }

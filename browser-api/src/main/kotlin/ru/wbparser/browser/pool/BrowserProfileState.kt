@@ -1,8 +1,8 @@
 package ru.wbparser.browser.pool
 
 import org.slf4j.Logger
-import ru.wbparser.browser.playwright.BrowserAutomation
-import ru.wbparser.browser.playwright.BrowserPage
+import ru.wbparser.browser.api.BrowserAutomation
+import ru.wbparser.browser.api.BrowserPage
 import ru.wbparser.browser.session.BrowserSession
 import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.browser.session.SessionState

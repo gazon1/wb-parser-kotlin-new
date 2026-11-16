@@ -9,7 +9,7 @@ import ru.wbparser.app.config.EgressGroups
 import ru.wbparser.app.config.ProxyConfig
 import ru.wbparser.app.config.Spider
 import ru.wbparser.app.config.Worker
-import ru.wbparser.browser.playwright.BrowserPage
+import ru.wbparser.browser.api.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.testing.FakeBrowserAutomation

@@ -1,4 +1,4 @@
-package ru.wbparser.browser.playwright
+package ru.wbparser.browser.api
 
 /**
  * The browser session of one profile: how it is started, the page it works on, whether

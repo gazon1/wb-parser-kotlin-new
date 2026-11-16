@@ -1,8 +1,8 @@
 package ru.wbparser.browser.camoufox
 
 import org.slf4j.LoggerFactory
-import ru.wbparser.browser.playwright.BrowserAutomation
-import ru.wbparser.browser.playwright.BrowserPage
+import ru.wbparser.browser.api.BrowserAutomation
+import ru.wbparser.browser.api.BrowserPage
 import ru.wbparser.browser.playwright.LazyCamoufoxLauncher
 import ru.wbparser.browser.playwright.PlaywrightCamoufoxLauncher
 import ru.wbparser.browser.pool.BrowserProfileConfig

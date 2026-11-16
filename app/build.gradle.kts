@@ -177,13 +177,13 @@ dependencies {
     // container, so the readiness check is tested against a working DataSource
     // rather than against a stand-in for one.
     testImplementation(libs.sqlite.jdbc)
-    // The janitor test implements the crawler's browser contract, and that contract
-    // speaks in Playwright's page type. The dependency arrives with the crawler
-    // module, but the test uses it directly — so it is declared here.
-    // The browser module itself: the start-up reconciler implements the browser
-    // contract directly, and that contract lives in the browser module.
+    // The browser runtime — the Camoufox launch over Playwright. The application is
+    // the composition root: it binds the contract to the runtime and nowhere else.
     implementation(project(":browser"))
-    testImplementation(testFixtures(project(":browser")))
+    // The browser contract the application wires the runtime into. The janitor test
+    // implements the crawler's browser contract directly, so the test names its types.
+    implementation(project(":browser-api"))
+    testImplementation(testFixtures(project(":browser-api")))
     testImplementation(libs.mockk)
     testImplementation(libs.exposed.core)
 }

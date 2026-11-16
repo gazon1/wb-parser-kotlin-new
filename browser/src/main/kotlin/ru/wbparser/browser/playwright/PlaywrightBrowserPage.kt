@@ -3,6 +3,8 @@ package ru.wbparser.browser.playwright
 import com.microsoft.playwright.Page
 import com.microsoft.playwright.PlaywrightException
 import com.microsoft.playwright.options.WaitUntilState
+import ru.wbparser.browser.api.BrowserPage
+import ru.wbparser.browser.api.BrowserPageException
 
 /**
  * A [BrowserPage] backed by Playwright.

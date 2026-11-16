@@ -20,10 +20,9 @@ dependencies {
     // socket and the same fakes the crawler's own suites use, and a second copy of
     // either is a second thing to keep in step.
     testImplementation(testFixtures(project(":wbparser")))
-    // The browser module's contracts — the browser pool and the page — are named by
-    // these suites directly, so they are declared here rather than inherited through
-    // the crawler.
-    testImplementation(project(":browser"))
+    // The browser contract — the pool and the page — is named by these suites
+    // directly, so it is declared here rather than inherited through the crawler.
+    testImplementation(project(":browser-api"))
 
     implementation(libs.kotlin.stdlib)
     implementation(libs.kotlin.reflect)

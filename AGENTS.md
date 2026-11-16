@@ -8,8 +8,12 @@
 
 ```
 wb-parser-kotlin/
-├── browser/        — browser stack (java-library): локальный Camoufox через Playwright,
-│                     пул профилей, состояние сессии. Без Spring, без БД, без WB.
+├── browser-api/    — browser contract (java-library): BrowserPage, BrowserAutomation,
+│                     пул профилей, профиль и прокси, состояние сессии. Без рантайма:
+│                     ни Playwright, ни Camoufox, ни Spring, ни БД, ни WB.
+├── browser/        — browser runtime (java-library): локальный Camoufox через Playwright,
+│                     установка и запуск Camoufox, адаптеры к Playwright. Реализует
+│                     контракт `:browser-api`, знает только его.
 ├── wbparser/       — crawler module (java-library): Stage/Side/Interpreter, модели,
 │                     Repo interfaces, Ktor client, Exposed, роутер egress. Чистая
 │                     логика без Spring.
@@ -19,19 +23,23 @@ wb-parser-kotlin/
 
 Границы явные, и их проверяет сборка, а не соглашение:
 
-- `app → wbparser → browser`. Обратного ребра нет: `browser` не знает ни про краул, ни
-  про WB, ни про базу.
-- `browser` — `java-library`. Наружу он отдаёт четыре вещи: `BrowserPool` (пул профилей),
-  `BorrowedPage` (аренда страницы), `BrowserPage` (контракт страницы — единственный, кто
-  говорит с Playwright) и `CamoufoxInstall`/`CamoufoxAutomation` (локальный запуск).
-  Всё, что не пересекает границу, — `internal` (в Kotlin `internal` — это модуль Gradle, поэтому переезд меняет
-  видимость, и её надо ревизовать). Playwright модуль наружу не отдаёт: его имя проверяет
-  `scripts/ci/check-repo-rules.py` — ни в `wbparser`, ни в `app` его быть не должно.
+- `app → wbparser → browser-api`, и `browser → browser-api`. Обратного ребра нет:
+  контракт не знает ни про краул, ни про WB, ни про базу, ни про рантайм.
+- `browser-api` — контракт браузера: `BrowserPool` (пул профилей), `BorrowedPage`
+  (аренда страницы), `BrowserPage`/`BrowserAutomation` (контракт страницы и сессии),
+  `BrowserProfileConfig`/`DeclaredProxy` (профиль и адрес). Пул не создаёт браузер:
+  браузер приходит снаружи, а composition root (`app/config`) связывает контракт с
+  реализацией. Всё, что не пересекает границу, — `internal` (в Kotlin `internal` —
+  это модуль Gradle, поэтому переезд меняет видимость, и её надо ревизовать).
+- `browser` — реализация этого контракта: Camoufox и Playwright. Playwright модуль
+  наружу не отдаёт: его имя проверяет `scripts/ci/check-repo-rules.py` — ни в
+  `wbparser`, ни в `app` его быть не должно. Рантайм называет только composition root
+  приложения — это проверяет то же правило.
 - `wbparser` — `java-library` (`api` — только то, что действительно в типе публичного API
   модуля), `app` — потребитель. Flyway-миграции живут в `app`, `app` зависит от
   `wbparser`, обратной зависимости нет.
-- Общие тестовые двойники публикуются как `java-test-fixtures` (`browser` — фикстуры
-  браузера, `wbparser` — фикстуры тестовой оснастки), а не пере-объявляются в
+- Общие тестовые двойники публикуются как `java-test-fixtures` (`browser-api` — фикстуры
+  контракта браузера, `wbparser` — фикстуры тестовой оснастки), а не пере-объявляются в
   модуле-потребителе.
 - **Worktree'ы.** Репозиторий открыт в нескольких worktree (`git worktree list`), и
   `main` обычно занят в другом из них: `git checkout main` отсюда падает с «already used
@@ -58,7 +66,8 @@ just t                 # алиас
 
 # Модульные тесты
 just wbparser::test    # crawler module unit tests
-just browser::test     # browser stack unit tests
+just browser-api::test # browser contract unit tests
+just browser::test     # browser runtime unit tests
 just tests::common     # integration tests
 
 # Зависимости
@@ -240,7 +249,8 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 
 Правила, которые может проверить машина, проверяет сборка — нарушение видно сразу:
 `scripts/ci/check-repo-rules.py` (force-unwrap, `delay(-1L)`, Spring вне `app/`,
-чистота `:browser`, `CHANGELOG.md`, `fixDependencies` в CI, запинненный JDK),
+чистота `:browser`/`:browser-api`, рантайм только в composition root, `CHANGELOG.md`,
+`fixDependencies` в CI, запинненный JDK),
 `check-compileonly-runtime.sh`, `check-domain-purity.sh`, DAGP, ratchet baseline.
 
 Правила, которые машина решить не может, — в **[CODING_STANDARDS.md](CODING_STANDARDS.md)**.
@@ -277,6 +287,7 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 | `docs/decisions/2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md` | Camoufox работает локально; адрес — прокси; отпечаток — данные профиля |
 | `docs/decisions/2026-11-16-the-local-browser-lives-in-the-profile-directory.md` | Persistent-контекст в каталоге профиля; каталог занят на время жизни браузера |
 | `docs/decisions/2026-11-16-the-deployment-runs-camoufox.md` | Развёртывание запускает Camoufox и не несёт AdsPower: один образ, ленивый install, никакой startup-сверки |
+| `docs/decisions/2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it.md` | Контракт браузера — модуль `:browser-api`, рантайм — модуль `:browser`; пул не создаёт браузер, composition root связывает одно с другим |
 | `docs/decisions/2026-10-20-the-crawl-cadence-follows-the-measured-catalog.md` | Расписание выводится из измеренной длины каталога: тик короче круга, окно свежести длиннее круга, запасной лимит не ниже измеренного минимума |
 
 ---

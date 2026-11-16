@@ -43,16 +43,27 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 
 #: The sources that ship. A rule about production code is a rule about these.
 PRODUCTION_SOURCES = (
+    "browser-api/src/main/kotlin",
     "browser/src/main/kotlin",
     "wbparser/src/main/kotlin",
     "app/src/main/kotlin",
 )
 
-#: The browser module is a library: it knows about a browser and about nothing else.
-#: No database, no framework, no HTTP client of its own — the crawler owns those.
-BROWSER_MODULE = "browser/src/main/kotlin"
+#: The browser modules are libraries: they know about a browser and about nothing else.
+#: No database, no framework, no HTTP client of their own — the crawler owns those.
+#:
+#: There are two of them, and the difference between them is the whole point:
+#:
+#: - `browser-api` is the *contract*: the page, the session, the profile, the pool.
+#:   It names no runtime at all.
+#: - `browser` is the *runtime*: the Camoufox build, the Playwright launcher, the
+#:   adapters. It implements the contract and depends on it.
+BROWSER_MODULES = (
+    "browser-api/src/main/kotlin",
+    "browser/src/main/kotlin",
+)
 
-#: What the browser module must not name.
+#: What the browser modules must not name.
 FORBIDDEN_IN_BROWSER = (
     "java.sql",
     "javax.sql",
@@ -68,10 +79,9 @@ FORBIDDEN_IN_BROWSER = (
 #: The modules that must not name Playwright at all.
 #:
 #: The other side of the same boundary. `FORBIDDEN_IN_BROWSER` says the browser
-#: module knows about a browser and about nothing else; this says the rest of the
-#: repository does not know about Playwright either. The browser module's public
-#: API is `BrowserPage`, and Playwright is an implementation detail of the module
-#: that owns it.
+#: modules know about a browser and about nothing else; this says the rest of the
+#: repository does not know about Playwright either. The browser contract is
+#: `BrowserPage`, and Playwright is an implementation detail of the runtime.
 #:
 #: Without this rule the boundary is only half-declared: Playwright could creep
 #: back into `wbparser` — which is exactly how it got there the first time, and
@@ -84,12 +94,28 @@ MODULES_WITHOUT_PLAYWRIGHT = (
     "app/src/main/kotlin",
 )
 
-#: The one package inside the browser module that may name Playwright: the adapter
-#: that wraps it. Everything else in the module speaks `BrowserPage`.
+#: The one package inside the runtime module that may name Playwright: the adapter
+#: that wraps it. Everything else in the repository speaks `BrowserPage`.
 BROWSER_PLAYWRIGHT_PACKAGE = "browser/src/main/kotlin/ru/wbparser/browser/playwright"
+
+#: The runtime's packages: the Camoufox build and the Playwright adapters.
+#:
+#: The contract module must not name them, and neither must the crawler. The
+#: application may — but only in its composition root, the place that binds the
+#: contract to the runtime. Everywhere else the runtime would be reachable from
+#: business logic, and replacing it would stop being a change of one module.
+BROWSER_RUNTIME_PACKAGES = (
+    "ru.wbparser.browser.camoufox",
+    "ru.wbparser.browser.playwright",
+)
+
+#: The composition root: the only place outside the runtime module that may name the
+#: runtime.
+COMPOSITION_ROOT = "app/src/main/kotlin/ru/wbparser/app/config"
 
 #: The production sources whose types a test double may stand in for.
 PRODUCTION_SOURCE_SETS = (
+    "browser-api/src/main/kotlin",
     "browser/src/main/kotlin",
     "wbparser/src/main/kotlin",
     "app/src/main/kotlin",
@@ -97,8 +123,9 @@ PRODUCTION_SOURCE_SETS = (
 
 #: The test source sets a double may live in.
 TEST_SOURCE_SETS = (
+    "browser-api/src/test/kotlin",
+    "browser-api/src/testFixtures/kotlin",
     "browser/src/test/kotlin",
-    "browser/src/testFixtures/kotlin",
     "wbparser/src/test/kotlin",
     "wbparser/src/testFixtures/kotlin",
     "app/src/test/kotlin",
@@ -222,22 +249,70 @@ def check_spring_outside_the_app(root: Path) -> list[str]:
 
 
 def check_browser_module_is_a_browser(root: Path) -> list[str]:
-    """The browser module knows about a browser and about nothing else.
+    """The browser modules know about a browser and about nothing else.
 
-    No database, no HTTP client of its own, no metrics, no arrow: the crawler owns
+    No database, no HTTP client of their own, no metrics, no arrow: the crawler owns
     those, and the browser stack is the thing the crawler borrows a page from.
     """
     findings: list[str] = []
-    for path in kotlin_files(root, BROWSER_MODULE):
+    for module in BROWSER_MODULES:
+        for path in kotlin_files(root, module):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                stripped = line.strip()
+                if not stripped.startswith("import "):
+                    continue
+                for forbidden in FORBIDDEN_IN_BROWSER:
+                    if stripped.startswith(f"import {forbidden}"):
+                        findings.append(
+                            f"{relative(path, root)}:{number}: the browser module names "
+                            f"{forbidden} — the browser stack is a library about browsers"
+                        )
+    return findings
+
+
+def check_the_runtime_stays_in_its_module(root: Path) -> list[str]:
+    """The runtime is named by the runtime module and by the composition root only.
+
+    The contract module (`:browser-api`) names no runtime at all — that is what makes
+    the runtime replaceable. The crawler names no runtime either. The application may
+    name it, but only in its composition root: the place that binds the contract to
+    the runtime. Everywhere else, business logic could reach the runtime, and
+    replacing it would stop being a change of one module.
+
+    The compiler already stops most of this — the crawler does not have the runtime
+    on its classpath. The rule covers the rest: the contract module and the
+    application outside its composition root.
+    """
+    findings: list[str] = []
+
+    for module in BROWSER_MODULES:
+        for path in kotlin_files(root, module):
+            if module == "browser/src/main/kotlin":
+                continue
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                stripped = line.strip()
+                if not stripped.startswith("import "):
+                    continue
+                for runtime_package in BROWSER_RUNTIME_PACKAGES:
+                    if stripped.startswith(f"import {runtime_package}"):
+                        findings.append(
+                            f"{relative(path, root)}:{number}: the contract module names "
+                            f"{runtime_package} — the contract knows no runtime"
+                        )
+
+    for path in kotlin_files(root, "app/src/main/kotlin"):
+        if COMPOSITION_ROOT in path.relative_to(root).as_posix():
+            continue
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             stripped = line.strip()
             if not stripped.startswith("import "):
                 continue
-            for forbidden in FORBIDDEN_IN_BROWSER:
-                if stripped.startswith(f"import {forbidden}"):
+            for runtime_package in BROWSER_RUNTIME_PACKAGES:
+                if stripped.startswith(f"import {runtime_package}"):
                     findings.append(
-                        f"{relative(path, root)}:{number}: the browser module names "
-                        f"{forbidden} — the browser stack is a library about browsers"
+                        f"{relative(path, root)}:{number}: the application names "
+                        f"{runtime_package} outside its composition root — the runtime is "
+                        "bound to the contract there and nowhere else"
                     )
     return findings
 
@@ -269,19 +344,20 @@ def check_playwright_stays_inside_the_browser_module(root: Path) -> list[str]:
                             "the boundary is `BrowserPage`"
                         )
 
-    for path in kotlin_files(root, BROWSER_MODULE):
-        if BROWSER_PLAYWRIGHT_PACKAGE in path.relative_to(root).as_posix():
-            continue
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            stripped = line.strip()
-            if not stripped.startswith("import "):
+    for module in BROWSER_MODULES:
+        for path in kotlin_files(root, module):
+            if BROWSER_PLAYWRIGHT_PACKAGE in path.relative_to(root).as_posix():
                 continue
-            for forbidden in FORBIDDEN_OUTSIDE_BROWSER:
-                if stripped.startswith(f"import {forbidden}"):
-                    findings.append(
-                        f"{relative(path, root)}:{number}: {forbidden} outside the "
-                        "browser module's own adapter — the module speaks `BrowserPage`"
-                    )
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                stripped = line.strip()
+                if not stripped.startswith("import "):
+                    continue
+                for forbidden in FORBIDDEN_OUTSIDE_BROWSER:
+                    if stripped.startswith(f"import {forbidden}"):
+                        findings.append(
+                            f"{relative(path, root)}:{number}: {forbidden} outside the "
+                            "runtime module's own adapter — the repository speaks `BrowserPage`"
+                        )
     return findings
 
 
@@ -394,6 +470,7 @@ def check(root: Path) -> list[str]:
         + check_delay_sentinel(root)
         + check_spring_outside_the_app(root)
         + check_browser_module_is_a_browser(root)
+        + check_the_runtime_stays_in_its_module(root)
         + check_playwright_stays_inside_the_browser_module(root)
         + check_test_doubles_are_fakes(root)
         + check_no_changelog(root)
@@ -426,6 +503,12 @@ VIOLATIONS = {
     "browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserPool.kt": (
         "package ru.wbparser.browser.pool\n\nclass BrowserPool\n"
     ),
+    "browser-api/src/main/kotlin/ru/wbparser/browser/pool/Leaky.kt": (
+        "package ru.wbparser.browser.pool\n\nimport ru.wbparser.browser.camoufox.CamoufoxAutomation\n\nclass Leaky\n"
+    ),
+    "app/src/main/kotlin/ru/wbparser/app/scheduling/Leaky.kt": (
+        "package ru.wbparser.app.scheduling\n\nimport ru.wbparser.browser.camoufox.CamoufoxInstalls\n\nclass Leaky\n"
+    ),
     "CHANGELOG.md": "# The history that must not be here\n",
     ".github/workflows/ci.yml": "jobs:\n  build:\n    steps:\n      - run: ./gradlew fixDependencies\n",
     "gradle.properties": "org.gradle.java.home=/home/max/.jdks/temurin-21.0.10\n",
@@ -454,6 +537,8 @@ def self_test() -> int:
             "negative delay",
             "framework import",
             "browser module names",
+            "the contract module names",
+            "outside its composition root",
             "outside the browser module",
             "is a double of our own",
             "CHANGELOG.md exists",

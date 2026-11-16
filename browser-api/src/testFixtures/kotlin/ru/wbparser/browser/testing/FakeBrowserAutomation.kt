@@ -1,7 +1,7 @@
 package ru.wbparser.browser.testing
 
-import ru.wbparser.browser.playwright.BrowserAutomation
-import ru.wbparser.browser.playwright.BrowserPage
+import ru.wbparser.browser.api.BrowserAutomation
+import ru.wbparser.browser.api.BrowserPage
 
 /**
  * A fake [BrowserAutomation] that records calls and returns configurable responses.

@@ -1,6 +1,6 @@
 package ru.wbparser.browser.testing
 
-import ru.wbparser.browser.playwright.BrowserPage
+import ru.wbparser.browser.api.BrowserPage
 
 /**
  * A fake page: it answers the calls the crawler makes, records what it was asked, and

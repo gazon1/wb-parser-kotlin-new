@@ -1,8 +1,14 @@
 # Executed-test floors, one per module: `<module> <count>`.
 # Managed by scripts/check-test-runs.py --update. Raise it in the same commit
 # that adds tests; lowering it is allowed only when tests are deleted.
+#
+# The `browser` row fell when the browser stack was split (2026-11-16): the
+# pool and session suites moved to the new `browser-api` module, so the
+# runtime kept fewer tests and the contract got its own row. No test was
+# deleted — the count moved with the code it covers.
 
 app 259
-browser 150
+browser 103
+browser-api 78
 tests 173
 wbparser 572

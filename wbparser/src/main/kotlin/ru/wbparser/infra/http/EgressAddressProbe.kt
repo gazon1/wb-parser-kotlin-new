@@ -2,7 +2,7 @@ package ru.wbparser.infra.http
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
-import ru.wbparser.browser.playwright.BrowserPage
+import ru.wbparser.browser.api.BrowserPage
 import java.util.concurrent.TimeUnit
 
 /**

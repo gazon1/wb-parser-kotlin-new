@@ -1,6 +1,6 @@
 package ru.wbparser.browser.pool
 
-import ru.wbparser.browser.playwright.BrowserPage
+import ru.wbparser.browser.api.BrowserPage
 
 /**
  * A borrowed [BrowserPage] paired with the [profileId] it came from.

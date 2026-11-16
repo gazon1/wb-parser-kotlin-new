@@ -1,4 +1,4 @@
-package ru.wbparser.browser.playwright
+package ru.wbparser.browser.api
 
 /**
  * A page in a browser — what the crawler needs from a browser, and nothing else.
