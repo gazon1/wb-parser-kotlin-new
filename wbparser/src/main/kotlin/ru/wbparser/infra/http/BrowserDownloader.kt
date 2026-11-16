@@ -2,6 +2,7 @@ package ru.wbparser.infra.http
 
 import arrow.core.Either
 import com.fasterxml.jackson.databind.ObjectMapper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
@@ -188,6 +189,15 @@ open class BrowserDownloader(
                             isAntibot = false,
                         ),
                     )
+            } catch (e: CancellationException) {
+                // Cancellation is not a transport failure, and `CancellationException`
+                // extends `IllegalStateException`, so the generic catch below used to turn
+                // a cancelled crawl into a `NetworkError` -> retry: the crawler kept
+                // downloading after its caller had given up, and every shutdown wrote an
+                // ERROR line with a stack trace about a request nobody was waiting for.
+                // `KtorDownloader` has carried this clause for the same reason; this path
+                // did not, because it is the one the browser-only deployment runs.
+                throw e
             } catch (e: Exception) {
                 log.error("BrowserDownloader unexpected error for {}: {}", task.url, e.message, e)
                 result =

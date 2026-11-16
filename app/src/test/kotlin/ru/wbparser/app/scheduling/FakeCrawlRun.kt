@@ -1,5 +1,6 @@
 package ru.wbparser.app.scheduling
 
+import ru.wbparser.domain.scheduling.CrawlTrigger
 import ru.wbparser.infra.runner.CrawlRun
 import ru.wbparser.infra.runner.RunResult
 
@@ -21,9 +22,36 @@ class FakeCrawlRun(
     var calls: Int = 0
         private set
 
-    override suspend fun run(): RunResult {
+    override suspend fun run(trigger: CrawlTrigger): RunResult {
         calls++
         failure?.let { throw it }
         return outcome
+    }
+}
+
+/**
+ * A crawl that runs until the test opens its gate.
+ *
+ * The re-entrancy guard exists because two ticks can overlap: the first is still inside
+ * `CrawlRun.run`, the second arrives. Reproducing that needs a crawl that does not
+ * finish on its own — otherwise the window the guard closes is a few microseconds wide
+ * and the test would pass whether the guard were there or not.
+ *
+ * @param gate the test completes this when it wants the crawl to finish.
+ */
+class BlockingCrawlRun(
+    private val gate: kotlinx.coroutines.CompletableDeferred<Unit>,
+) : CrawlRun {
+    /** Completed once the crawl has entered `run` and is about to wait. */
+    val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+
+    var calls: Int = 0
+        private set
+
+    override suspend fun run(trigger: CrawlTrigger): RunResult {
+        calls++
+        started.complete(Unit)
+        gate.await()
+        return RunResult.Success(pagesCrawled = 1, itemsSaved = 1)
     }
 }

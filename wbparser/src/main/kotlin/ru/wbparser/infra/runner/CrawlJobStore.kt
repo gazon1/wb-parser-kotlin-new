@@ -10,6 +10,7 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import org.slf4j.Logger
+import ru.wbparser.domain.scheduling.CrawlTrigger
 import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.infra.db.CrawlJobsTable
 import ru.wbparser.infra.db.DatabaseHandle
@@ -41,7 +42,10 @@ internal class CrawlJobStore(
      * The heartbeat starts with the job: a job that never gets one would be
      * indistinguishable from a job whose process died.
      */
-    fun openJob(targetId: UUID): UUID {
+    fun openJob(
+        targetId: UUID,
+        trigger: CrawlTrigger = CrawlTrigger.Manual,
+    ): UUID {
         val id = UUID.randomUUID()
         val now = OffsetDateTime.now(ZoneOffset.UTC)
         db.ds.exposedOnce()
@@ -53,6 +57,7 @@ internal class CrawlJobStore(
                 it[CrawlJobsTable.startedAt] = now
                 it[CrawlJobsTable.createdAt] = now
                 it[CrawlJobsTable.lastHeartbeatAt] = now
+                it[CrawlJobsTable.triggeredBy] = trigger.dbValue
             }
         }
         return id

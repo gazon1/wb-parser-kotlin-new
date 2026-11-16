@@ -82,7 +82,7 @@ class AdminRoutesTest :
                         "CREATE TABLE crawl_jobs (" +
                             "id TEXT PRIMARY KEY, target_id TEXT, status TEXT NOT NULL, started_at TIMESTAMP, " +
                             "completed_at TIMESTAMP, pages_crawled INTEGER NOT NULL DEFAULT 0, " +
-                            "items_saved INTEGER NOT NULL DEFAULT 0, error_message TEXT)",
+                            "items_saved INTEGER NOT NULL DEFAULT 0, triggered_by TEXT, error_message TEXT)",
                     )
                     stmt.execute(
                         "CREATE TABLE crawl_errors (" +
@@ -92,7 +92,7 @@ class AdminRoutesTest :
                 }
                 val jobsSql =
                     "INSERT INTO crawl_jobs (id, target_id, status, started_at, completed_at, " +
-                        "pages_crawled, items_saved, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+                        "pages_crawled, items_saved, triggered_by, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                 conn.prepareStatement(jobsSql).use { ps ->
                     ps.setString(1, "11111111-1111-1111-1111-111111111111")
                     ps.setString(2, targetId.toString())
@@ -101,7 +101,8 @@ class AdminRoutesTest :
                     ps.setTimestamp(5, Timestamp.from(finishedAt))
                     ps.setInt(6, 60)
                     ps.setInt(7, 6000)
-                    ps.setNull(8, java.sql.Types.VARCHAR)
+                    ps.setString(8, "schedule")
+                    ps.setNull(9, java.sql.Types.VARCHAR)
                     ps.executeUpdate()
 
                     ps.setString(1, "22222222-2222-2222-2222-222222222222")
@@ -111,7 +112,10 @@ class AdminRoutesTest :
                     ps.setNull(5, java.sql.Types.TIMESTAMP)
                     ps.setInt(6, 0)
                     ps.setInt(7, 0)
-                    ps.setString(8, "the address refused the connection")
+                    // Null on purpose: rows written before the trigger was recorded say
+                    // nothing, and the API must pass that nothing through as null.
+                    ps.setNull(8, java.sql.Types.VARCHAR)
+                    ps.setString(9, "the address refused the connection")
                     ps.executeUpdate()
                 }
                 val errorsSql =
@@ -188,6 +192,7 @@ class AdminRoutesTest :
             job.completedAt shouldBe finishedAt
             job.pagesCrawled shouldBe 60
             job.itemsSaved shouldBe 6000
+            job.triggeredBy shouldBe "schedule"
             job.errorMessage shouldBe null
         }
 
@@ -197,6 +202,8 @@ class AdminRoutesTest :
             val job = routes.getJobs(limit = 20, targetId = null).single { it.status == "Failed" }
 
             job.completedAt shouldBe null
+            // A row written before the trigger was recorded carries no answer, not a guess.
+            job.triggeredBy shouldBe null
             job.pagesCrawled shouldBe 0
             job.errorMessage shouldBe "the address refused the connection"
         }

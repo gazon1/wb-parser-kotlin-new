@@ -1,5 +1,7 @@
 package ru.wbparser.infra.runner
 
+import ru.wbparser.domain.scheduling.CrawlTrigger
+
 /**
  * The one thing a scheduler needs from the crawler.
  *
@@ -20,6 +22,11 @@ package ru.wbparser.infra.runner
 interface CrawlRun {
     /**
      * Runs one crawl and says how it went.
+     *
+     * @param trigger what started this run. It is recorded on the job row, because
+     *   "the schedule did it" and "somebody did it" are the same shape of event in the
+     *   data otherwise, and the first question asked of a surprising run is which one
+     *   it was.
      */
-    suspend fun run(): RunResult
+    suspend fun run(trigger: CrawlTrigger = CrawlTrigger.Manual): RunResult
 }

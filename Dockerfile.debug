@@ -34,6 +34,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 \
     libasound2t64 \
     libpangocairo-1.0-0 \
+    libgtk-3-0 \
+    libdbus-glib-1-2 \
+    libxt6 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
