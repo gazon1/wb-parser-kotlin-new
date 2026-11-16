@@ -86,7 +86,18 @@ services:
       CRAWLER_SCHEDULE_FRESHNESS_MINUTES: "240"
       # Nextcloud owns 8080 on this host; 8082 keeps both up.
       SERVER_PORT: "8082"
-      LOGGING_LEVEL_ROOT: DEBUG
+      # The application is debugged, the libraries are not. `ROOT=DEBUG` turns on the
+      # DEBUG level for the whole JVM, and the libraries answer with far more than the
+      # crawler does: over twenty minutes of a running crawl, Hikari printed 277 lines
+      # about pool bookkeeping, the JDBC driver 53 about `setAutoCommit`, and Tomcat 46
+      # `EOFException` stack traces — one per keep-alive connection a client closed
+      # without sending another request, which is what every `curl` and every health
+      # check does. None of it says anything about the crawler, and all of it buries the
+      # lines that do.
+      #
+      # `ru.wbparser` stays at DEBUG: those are the crawler's own decisions, and they are
+      # the reason this stack exists.
+      LOGGING_LEVEL_ROOT: INFO
       LOGGING_LEVEL_RU_WBPARSER: DEBUG
     volumes:
       # A FILE, not a directory. `app/build/libs:/app/app.jar` mounts the
