@@ -203,6 +203,7 @@ jobs:
           name: kover-report
           path: |
             build/reports/kover/report.xml
+            browser-api/build/reports/kover/report.xml
             browser/build/reports/kover/report.xml
             wbparser/build/reports/kover/report.xml
             app/build/reports/kover/report.xml

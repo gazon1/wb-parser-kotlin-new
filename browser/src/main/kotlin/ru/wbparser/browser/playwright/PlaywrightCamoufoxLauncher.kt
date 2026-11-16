@@ -6,6 +6,7 @@ import com.microsoft.playwright.Page
 import com.microsoft.playwright.Playwright
 import com.microsoft.playwright.options.Proxy
 import org.slf4j.LoggerFactory
+import ru.wbparser.browser.api.BrowserPage
 import ru.wbparser.browser.camoufox.CamoufoxBrowser
 import ru.wbparser.browser.camoufox.CamoufoxCleanup
 import ru.wbparser.browser.camoufox.CamoufoxEnvironment

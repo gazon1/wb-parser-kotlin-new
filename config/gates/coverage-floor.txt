@@ -44,8 +44,14 @@
 #   probe was split by decision and the adapters that speak to Playwright were
 #   checked against a real Chrome: `app` 93% against 95.0%, `browser` 95% against
 #   96.5%, `merged` 94% against 95.4%, `wbparser` 94% against 95.3% (2026-10-23).
+# - 94% / 95% / 95% / 95% / 98% — after the browser stack was split into a contract
+#   module and a runtime module: the new `browser-api` row 98% against 99.1%
+#   (2026-11-16). The split did not lower the coverage of either half: the
+#   contract is nearly fully covered by its own tests, and the runtime kept the
+#   adapters and their real-Chrome checks.
 
 app 94
 browser 95
+browser-api 98
 merged 95
 wbparser 95

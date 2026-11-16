@@ -95,6 +95,7 @@ FLOOR_FILE = ROOT / "config" / "gates" / "coverage-floor.txt"
 #: module → where Gradle writes that module's kover XML report.
 REPORT_FILES = {
     "wbparser": "wbparser/build/reports/kover/report.xml",
+    "browser-api": "browser-api/build/reports/kover/report.xml",
     "browser": "browser/build/reports/kover/report.xml",
     "app": "app/build/reports/kover/report.xml",
     # The repository-wide report. The root project is the merging module: it has no
@@ -113,6 +114,7 @@ REPORT_FILES = {
 #: the coverage report describes, and the report must not be behind them.
 RESULT_DIRS = {
     "app": "app/build/test-results/test",
+    "browser-api": "browser-api/build/test-results/test",
     "browser": "browser/build/test-results/test",
     "wbparser": "wbparser/build/test-results/test",
     "tests": "tests/build/test-results/test",
@@ -134,7 +136,17 @@ MERGED_REPORT = REPORT_FILES["merged"]
 #: module → the packages its row covers in the merged report. `None` means all of them.
 MODULE_PACKAGES: dict[str, tuple[str, ...] | None] = {
     "app": ("ru/wbparser/app",),
-    "browser": ("ru/wbparser/browser",),
+    # The contract: the page, the session, the profile, the pool. It names no runtime.
+    "browser-api": (
+        "ru/wbparser/browser/api",
+        "ru/wbparser/browser/pool",
+        "ru/wbparser/browser/session",
+    ),
+    # The runtime: the Camoufox build and the Playwright adapters.
+    "browser": (
+        "ru/wbparser/browser/camoufox",
+        "ru/wbparser/browser/playwright",
+    ),
     "wbparser": ("ru/wbparser",),
     "merged": None,
 }
@@ -156,6 +168,7 @@ MODULE_EXCLUDED: dict[str, tuple[str, ...]] = {
 #: missing — the shape a stale merged report takes.
 UNION_PARTS = {
     "app": REPORT_FILES["app"],
+    "browser-api": REPORT_FILES["browser-api"],
     "browser": REPORT_FILES["browser"],
     "wbparser": REPORT_FILES["wbparser"],
 }

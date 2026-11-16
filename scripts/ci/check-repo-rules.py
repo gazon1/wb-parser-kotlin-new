@@ -43,16 +43,27 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 
 #: The sources that ship. A rule about production code is a rule about these.
 PRODUCTION_SOURCES = (
+    "browser-api/src/main/kotlin",
     "browser/src/main/kotlin",
     "wbparser/src/main/kotlin",
     "app/src/main/kotlin",
 )
 
-#: The browser module is a library: it knows about a browser and about nothing else.
-#: No database, no framework, no HTTP client of its own — the crawler owns those.
-BROWSER_MODULE = "browser/src/main/kotlin"
+#: The browser modules are libraries: they know about a browser and about nothing else.
+#: No database, no framework, no HTTP client of their own — the crawler owns those.
+#:
+#: There are two of them, and the difference between them is the whole point:
+#:
+#: - `browser-api` is the *contract*: the page, the session, the profile, the pool.
+#:   It names no runtime at all.
+#: - `browser` is the *runtime*: the Camoufox build, the Playwright launcher, the
+#:   adapters. It implements the contract and depends on it.
+BROWSER_MODULES = (
+    "browser-api/src/main/kotlin",
+    "browser/src/main/kotlin",
+)
 
-#: What the browser module must not name.
+#: What the browser modules must not name.
 FORBIDDEN_IN_BROWSER = (
     "java.sql",
     "javax.sql",
@@ -68,10 +79,9 @@ FORBIDDEN_IN_BROWSER = (
 #: The modules that must not name Playwright at all.
 #:
 #: The other side of the same boundary. `FORBIDDEN_IN_BROWSER` says the browser
-#: module knows about a browser and about nothing else; this says the rest of the
-#: repository does not know about Playwright either. The browser module's public
-#: API is `BrowserPage`, and Playwright is an implementation detail of the module
-#: that owns it.
+#: modules know about a browser and about nothing else; this says the rest of the
+#: repository does not know about Playwright either. The browser contract is
+#: `BrowserPage`, and Playwright is an implementation detail of the runtime.
 #:
 #: Without this rule the boundary is only half-declared: Playwright could creep
 #: back into `wbparser` — which is exactly how it got there the first time, and
@@ -84,12 +94,28 @@ MODULES_WITHOUT_PLAYWRIGHT = (
     "app/src/main/kotlin",
 )
 
-#: The one package inside the browser module that may name Playwright: the adapter
-#: that wraps it. Everything else in the module speaks `BrowserPage`.
+#: The one package inside the runtime module that may name Playwright: the adapter
+#: that wraps it. Everything else in the repository speaks `BrowserPage`.
 BROWSER_PLAYWRIGHT_PACKAGE = "browser/src/main/kotlin/ru/wbparser/browser/playwright"
+
+#: The runtime's packages: the Camoufox build and the Playwright adapters.
+#:
+#: The contract module must not name them, and neither must the crawler. The
+#: application may — but only in its composition root, the place that binds the
+#: contract to the runtime. Everywhere else the runtime would be reachable from
+#: business logic, and replacing it would stop being a change of one module.
+BROWSER_RUNTIME_PACKAGES = (
+    "ru.wbparser.browser.camoufox",
+    "ru.wbparser.browser.playwright",
+)
+
+#: The composition root: the only place outside the runtime module that may name the
+#: runtime.
+COMPOSITION_ROOT = "app/src/main/kotlin/ru/wbparser/app/config"
 
 #: The production sources whose types a test double may stand in for.
 PRODUCTION_SOURCE_SETS = (
+    "browser-api/src/main/kotlin",
     "browser/src/main/kotlin",
     "wbparser/src/main/kotlin",
     "app/src/main/kotlin",
@@ -97,8 +123,9 @@ PRODUCTION_SOURCE_SETS = (
 
 #: The test source sets a double may live in.
 TEST_SOURCE_SETS = (
+    "browser-api/src/test/kotlin",
+    "browser-api/src/testFixtures/kotlin",
     "browser/src/test/kotlin",
-    "browser/src/testFixtures/kotlin",
     "wbparser/src/test/kotlin",
     "wbparser/src/testFixtures/kotlin",
     "app/src/test/kotlin",
@@ -120,34 +147,127 @@ def kotlin_files(root: Path, relative: str) -> list[Path]:
     return sorted(directory.rglob("*.kt"))
 
 
-def strip_noise(line: str) -> str:
+def _closing_quote(text: str, start: int, quote: str) -> int:
+    """The index just past the closing quote of the literal that starts at `start`."""
+    index = start + 1
+    while index < len(text):
+        char = text[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == quote:
+            return index + 1
+        index += 1
+    return len(text)
+
+
+def _scan_interpolation(text: str, start: int, out: list[str]) -> int:
+    """Scans the code inside `${...}` as code — it *is* code, and it can name a runtime.
+
+    A string template is half literal and half code. Dropping the whole thing
+    would drop the code with it, and `"${ru.wbparser.browser.camoufox.CamoufoxAutomation}"`
+    is a reference as plainly as the same name written out.
+    """
+    index = start + 2
+    depth = 0
+    while index < len(text):
+        char = text[index]
+        if char == '"':
+            index = _scan_string(text, index, out)
+            continue
+        if char == "'":
+            index = _closing_quote(text, index, "'")
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            if depth == 0:
+                return index + 1
+            depth -= 1
+        out.append(char)
+        index += 1
+    return index
+
+
+def _scan_string(text: str, start: int, out: list[str]) -> int:
+    """Scans a `"..."` literal: the text goes, the interpolations stay."""
+    index = start + 1
+    while index < len(text):
+        char = text[index]
+        if char == "\\":
+            out.append("\n" * text.count("\n", index, index + 2))
+            index += 2
+            continue
+        if char == '"':
+            return index + 1
+        if char == "$" and text.startswith("${", index):
+            index = _scan_interpolation(text, index, out)
+            continue
+        if char == "\n":
+            out.append("\n")
+        index += 1
+    return index
+
+
+def _scan_raw_string(text: str, start: int, out: list[str]) -> int:
+    """Scans a Kotlin raw string literal: the text goes, the interpolations stay."""
+    index = start + 3
+    while index < len(text):
+        if text.startswith('"""', index):
+            return index + 3
+        if text[index] == "$" and text.startswith("${", index):
+            index = _scan_interpolation(text, index, out)
+            continue
+        if text[index] == "\n":
+            out.append("\n")
+        index += 1
+    return index
+
+
+def strip_comments_and_strings(text: str) -> str:
     """Removes what cannot hold code: comments and string literals.
 
     A rule that fires on a KDoc mentioning `!!` is a rule people learn to work
     around, and a rule people work around is worse than no rule.
+
+    The line structure survives — every removed line still ends in a newline — so
+    a finding can name the line the code was on.
+
+    The code inside a string template is code, not text, so it stays: a runtime
+    named in `${...}` is a runtime named.
     """
     out: list[str] = []
     index = 0
-    in_string = False
-    while index < len(line):
-        char = line[index]
-        if in_string:
-            if char == "\\":
-                index += 2
-                continue
-            if char == '"':
-                in_string = False
-            index += 1
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if char == "/" and text.startswith("//", index):
+            end = text.find("\n", index)
+            index = length if end == -1 else end
+            continue
+        if char == "/" and text.startswith("/*", index):
+            end = text.find("*/", index + 2)
+            end = length if end == -1 else end + 2
+            out.append("\n" * text.count("\n", index, end))
+            index = end
+            continue
+        if text.startswith('"""', index):
+            index = _scan_raw_string(text, index, out)
             continue
         if char == '"':
-            in_string = True
-            index += 1
+            index = _scan_string(text, index, out)
             continue
-        if char == "/" and index + 1 < len(line) and line[index + 1] == "/":
-            break
+        if char == "'":
+            index = _closing_quote(text, index, "'")
+            continue
         out.append(char)
         index += 1
     return "".join(out)
+
+
+def strip_noise(line: str) -> str:
+    """Removes what cannot hold code: comments and string literals."""
+    return strip_comments_and_strings(line)
 
 
 def relative(path: Path, root: Path) -> str:
@@ -222,23 +342,89 @@ def check_spring_outside_the_app(root: Path) -> list[str]:
 
 
 def check_browser_module_is_a_browser(root: Path) -> list[str]:
-    """The browser module knows about a browser and about nothing else.
+    """The browser modules know about a browser and about nothing else.
 
-    No database, no HTTP client of its own, no metrics, no arrow: the crawler owns
+    No database, no HTTP client of their own, no metrics, no arrow: the crawler owns
     those, and the browser stack is the thing the crawler borrows a page from.
     """
     findings: list[str] = []
-    for path in kotlin_files(root, BROWSER_MODULE):
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            stripped = line.strip()
-            if not stripped.startswith("import "):
-                continue
-            for forbidden in FORBIDDEN_IN_BROWSER:
-                if stripped.startswith(f"import {forbidden}"):
-                    findings.append(
-                        f"{relative(path, root)}:{number}: the browser module names "
-                        f"{forbidden} — the browser stack is a library about browsers"
-                    )
+    for module in BROWSER_MODULES:
+        for path in kotlin_files(root, module):
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                stripped = line.strip()
+                if not stripped.startswith("import "):
+                    continue
+                for forbidden in FORBIDDEN_IN_BROWSER:
+                    if stripped.startswith(f"import {forbidden}"):
+                        findings.append(
+                            f"{relative(path, root)}:{number}: the browser module names "
+                            f"{forbidden} — the browser stack is a library about browsers"
+                        )
+    return findings
+
+
+def runtime_mentions(text: str) -> list[tuple[int, str]]:
+    """The runtime packages named in `text`, with the line each was named on.
+
+    A mention is the package name in code — an import, a fully qualified type, a
+    qualified call — and not a mention in prose. Comments and string literals are
+    stripped first, so a KDoc that discusses the runtime does not trip the rule.
+
+    An import is not the only way to name a package: `ru.wbparser.browser.camoufox.
+    CamoufoxAutomation` in a return type names it just as plainly, and the
+    compiler accepts it wherever the runtime is on the classpath.
+    """
+    findings: list[tuple[int, str]] = []
+    cleaned = strip_comments_and_strings(text)
+    for number, line in enumerate(cleaned.splitlines(), 1):
+        for runtime_package in BROWSER_RUNTIME_PACKAGES:
+            if re.search(rf"\b{re.escape(runtime_package)}\b", line):
+                findings.append((number, runtime_package))
+    return findings
+
+
+def check_the_runtime_stays_in_its_module(root: Path) -> list[str]:
+    """The runtime is named by the runtime module and by the composition root only.
+
+    The contract module (`:browser-api`) names no runtime at all — that is what makes
+    the runtime replaceable. The crawler names no runtime either. The application may
+    name it, but only in its composition root: the place that binds the contract to
+    the runtime. Everywhere else, business logic could reach the runtime, and
+    replacing it would stop being a change of one module.
+
+    The compiler already stops most of this — the crawler does not have the runtime
+    on its classpath. The rule covers the rest: the contract module and the
+    application outside its composition root.
+
+    A name is a name, however it is written: an import or a fully qualified
+    reference. The rule looks for the package in the code, not for the word
+    `import`, because the application does have the runtime on its classpath and a
+    fully qualified reference compiles there.
+    """
+    findings: list[str] = []
+
+    for module in BROWSER_MODULES:
+        if module == "browser/src/main/kotlin":
+            continue
+        for path in kotlin_files(root, module):
+            for number, runtime_package in runtime_mentions(path.read_text(encoding="utf-8")):
+                findings.append(
+                    f"{relative(path, root)}:{number}: the contract module names "
+                    f"{runtime_package} — the contract knows no runtime"
+                )
+
+    composition_root = root / COMPOSITION_ROOT
+    for path in kotlin_files(root, "app/src/main/kotlin"):
+        # The composition root is a directory, not a name: a sibling whose path
+        # merely contains the same letters is a different place.
+        if path.is_relative_to(composition_root):
+            continue
+        for number, runtime_package in runtime_mentions(path.read_text(encoding="utf-8")):
+            findings.append(
+                f"{relative(path, root)}:{number}: the application names "
+                f"{runtime_package} outside its composition root — the runtime is "
+                "bound to the contract there and nowhere else"
+            )
     return findings
 
 
@@ -269,19 +455,20 @@ def check_playwright_stays_inside_the_browser_module(root: Path) -> list[str]:
                             "the boundary is `BrowserPage`"
                         )
 
-    for path in kotlin_files(root, BROWSER_MODULE):
-        if BROWSER_PLAYWRIGHT_PACKAGE in path.relative_to(root).as_posix():
-            continue
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            stripped = line.strip()
-            if not stripped.startswith("import "):
+    for module in BROWSER_MODULES:
+        for path in kotlin_files(root, module):
+            if BROWSER_PLAYWRIGHT_PACKAGE in path.relative_to(root).as_posix():
                 continue
-            for forbidden in FORBIDDEN_OUTSIDE_BROWSER:
-                if stripped.startswith(f"import {forbidden}"):
-                    findings.append(
-                        f"{relative(path, root)}:{number}: {forbidden} outside the "
-                        "browser module's own adapter — the module speaks `BrowserPage`"
-                    )
+            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                stripped = line.strip()
+                if not stripped.startswith("import "):
+                    continue
+                for forbidden in FORBIDDEN_OUTSIDE_BROWSER:
+                    if stripped.startswith(f"import {forbidden}"):
+                        findings.append(
+                            f"{relative(path, root)}:{number}: {forbidden} outside the "
+                            "runtime module's own adapter — the repository speaks `BrowserPage`"
+                        )
     return findings
 
 
@@ -394,6 +581,7 @@ def check(root: Path) -> list[str]:
         + check_delay_sentinel(root)
         + check_spring_outside_the_app(root)
         + check_browser_module_is_a_browser(root)
+        + check_the_runtime_stays_in_its_module(root)
         + check_playwright_stays_inside_the_browser_module(root)
         + check_test_doubles_are_fakes(root)
         + check_no_changelog(root)
@@ -426,6 +614,36 @@ VIOLATIONS = {
     "browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserPool.kt": (
         "package ru.wbparser.browser.pool\n\nclass BrowserPool\n"
     ),
+    "browser-api/src/main/kotlin/ru/wbparser/browser/pool/Leaky.kt": (
+        "package ru.wbparser.browser.pool\n\nimport ru.wbparser.browser.camoufox.CamoufoxAutomation\n\nclass Leaky\n"
+    ),
+    "app/src/main/kotlin/ru/wbparser/app/scheduling/Leaky.kt": (
+        "package ru.wbparser.app.scheduling\n\nimport ru.wbparser.browser.camoufox.CamoufoxInstalls\n\nclass Leaky\n"
+    ),
+    # A fully qualified reference names the runtime just as plainly as an import,
+    # and the application has the runtime on its classpath: it compiles there.
+    "app/src/main/kotlin/ru/wbparser/app/scheduling/FullyQualifiedLeaky.kt": (
+        "package ru.wbparser.app.scheduling\n\nclass FullyQualifiedLeaky {\n"
+        "    fun create(): ru.wbparser.browser.camoufox.CamoufoxAutomation = TODO()\n}\n"
+    ),
+    # A sibling of the composition root whose path contains the same letters.
+    # It is not the composition root, so it is not exempt.
+    "app/src/main/kotlin/ru/wbparser/app/configuration/Leaky.kt": (
+        "package ru.wbparser.app.configuration\n\nimport ru.wbparser.browser.playwright.PlaywrightBrowserPage\n\nclass Leaky\n"
+    ),
+    # A string template is half literal and half code. The code names the runtime,
+    # so the rule must see it.
+    "app/src/main/kotlin/ru/wbparser/app/scheduling/InterpolatedLeaky.kt": (
+        "package ru.wbparser.app.scheduling\n\nclass InterpolatedLeaky {\n"
+        '    val name = "${ru.wbparser.browser.camoufox.CamoufoxAutomation::class.java.name}"\n}\n'
+    ),
+    # The runtime named in prose and in plain text only: nothing to report.
+    "app/src/main/kotlin/ru/wbparser/app/scheduling/ProseOnly.kt": (
+        "package ru.wbparser.app.scheduling\n\n"
+        "/**\n * Mentions ru.wbparser.browser.camoufox.CamoufoxAutomation in prose.\n */\n"
+        "class ProseOnly {\n"
+        '    val label = "ru.wbparser.browser.camoufox.CamoufoxAutomation"\n}\n'
+    ),
     "CHANGELOG.md": "# The history that must not be here\n",
     ".github/workflows/ci.yml": "jobs:\n  build:\n    steps:\n      - run: ./gradlew fixDependencies\n",
     "gradle.properties": "org.gradle.java.home=/home/max/.jdks/temurin-21.0.10\n",
@@ -454,6 +672,11 @@ def self_test() -> int:
             "negative delay",
             "framework import",
             "browser module names",
+            "the contract module names",
+            "outside its composition root",
+            "FullyQualifiedLeaky.kt",
+            "configuration/Leaky.kt",
+            "InterpolatedLeaky.kt",
             "outside the browser module",
             "is a double of our own",
             "CHANGELOG.md exists",
@@ -462,6 +685,10 @@ def self_test() -> int:
         ):
             if not any(expected in finding for finding in findings):
                 print(f"self-test FAILED: nothing reported the '{expected}' violation")
+                return 1
+        for unexpected in ("ProseOnly.kt",):
+            if any(unexpected in finding for finding in findings):
+                print(f"self-test FAILED: '{unexpected}' was reported, and prose is not a violation")
                 return 1
         print(f"self-test OK: {len(findings)} findings on a deliberately broken tree")
         return 0

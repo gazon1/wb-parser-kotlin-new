@@ -127,6 +127,7 @@ tasks.register<Delete>("clean") {
 // honest number for the repository.
 dependencies {
     kover(project(":app"))
+    kover(project(":browser-api"))
     kover(project(":browser"))
     kover(project(":wbparser"))
     kover(project(":tests"))

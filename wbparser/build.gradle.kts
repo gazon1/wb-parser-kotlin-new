@@ -26,11 +26,15 @@ plugins {
 // reports the types that appear in this module's public signatures. Everything it
 // lists as "should be modified" is an `api` dependency below.
 dependencies {
-    // The browser stack — the Camoufox launch, the Playwright overlay, the profile
-    // pool — lives in its own module. `api`: the crawler's public signatures name
-    // `BrowserPool`, `BorrowedPage` and `BrowserProfileConfig`, so a consumer of the
-    // crawler names types of the browser module too.
-    api(project(":browser"))
+    // The browser contract — the page, the session, the profile, the pool — lives in
+    // its own module. `api`: the crawler's public signatures name `BrowserPool`,
+    // `BorrowedPage` and `BrowserProfileConfig`, so a consumer of the crawler names
+    // types of the contract module too.
+    //
+    // The runtime (`:browser`, the Camoufox launch over Playwright) is not on the
+    // crawler's classpath at all: the crawler borrows a page and never learns what
+    // opened it.
+    api(project(":browser-api"))
 
     // Kotlin
     implementation(libs.kotlin.stdlib)
@@ -133,7 +137,7 @@ dependencies {
     // `FakeBrowserPage` — are published as its fixtures. The crawler's own tests build
     // browser pools and drive pages through them, so they consume the same fakes
     // instead of declaring a second copy of each.
-    testImplementation(testFixtures(project(":browser")))
+    testImplementation(testFixtures(project(":browser-api")))
     // This module's own test support — the fixture server, the fake interpreters, the
     // test database — is published as its fixtures, for the same reason: the
     // integration module needs a real socket and a real PostgreSQL too, and a second

@@ -74,6 +74,7 @@ FLOOR_FILE = ROOT / "config" / "gates" / "test-runs-floor.txt"
 #: module → where Gradle writes that module's JUnit XML.
 RESULT_DIRS = {
     "app": "app/build/test-results/test",
+    "browser-api": "browser-api/build/test-results/test",
     "browser": "browser/build/test-results/test",
     "wbparser": "wbparser/build/test-results/test",
     "tests": "tests/build/test-results/test",
@@ -297,6 +298,11 @@ def main() -> int:
             "# Executed-test floors, one per module: `<module> <count>`.",
             "# Managed by scripts/check-test-runs.py --update. Raise it in the same commit",
             "# that adds tests; lowering it is allowed only when tests are deleted.",
+            "#",
+            "# The `browser` row fell when the browser stack was split (2026-11-16): the",
+            "# pool and session suites moved to the new `browser-api` module, so the",
+            "# runtime kept fewer tests and the contract got its own row. No test was",
+            "# deleted — the count moved with the code it covers.",
             "",
         ]
         for module in sorted(measured):

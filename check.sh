@@ -65,12 +65,13 @@ echo -e "${GREEN}dependency health passed${NC}"
 # The wbparser module (domain + infrastructure merged) carries no Spring, no I/O.
 # If its tests fail, every failure above it is downstream, so they run first.
 #
-# The browser module runs in the same step: it carries no Spring and no I/O either,
-# and its suites cover the Camoufox launch, the profile pool and the session — the
-# code the crawler leans on hardest.
-step 3 "wbparser:test + browser:test"
-./gradlew :wbparser:test :browser:test --quiet || fail "wbparser:test / browser:test FAILED"
-echo -e "${GREEN}wbparser:test + browser:test passed${NC}"
+# The browser modules run in the same step: they carry no Spring and no I/O either.
+# `:browser-api` is the contract — the page, the session, the profile, the pool — and
+# `:browser` is the runtime that implements it: the Camoufox launch, the Playwright
+# adapters. Their suites cover the code the crawler leans on hardest.
+step 3 "wbparser:test + browser-api:test + browser:test"
+./gradlew :wbparser:test :browser-api:test :browser:test --quiet || fail "wbparser:test / browser-api:test / browser:test FAILED"
+echo -e "${GREEN}wbparser:test + browser-api:test + browser:test passed${NC}"
 
 # --- [4] integration tests ----------------------------------------------------
 if [[ "$SKIP_DB" == "1" ]]; then

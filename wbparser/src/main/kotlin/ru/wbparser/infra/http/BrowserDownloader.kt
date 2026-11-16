@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
-import ru.wbparser.browser.playwright.BrowserPageException
+import ru.wbparser.browser.api.BrowserPageException
 import ru.wbparser.browser.pool.BorrowedPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.domain.error.NetworkError

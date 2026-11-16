@@ -1,6 +1,6 @@
 package ru.wbparser.browser.camoufox
 
-import ru.wbparser.browser.playwright.BrowserPage
+import ru.wbparser.browser.api.BrowserPage
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.testing.FakeBrowserPage
 
