@@ -83,12 +83,15 @@ class AdsPowerBrowserReconcilerTest :
                 // The pool never opens a browser in this suite — the reconciliation
                 // only asks AdsPower what is running — so the automations are never
                 // used. They still have to exist: a profile without one would fall
-                // back to the real CDP automation, and Playwright would have to be
+                // back to the real AdsPower adapter, and Playwright would have to be
                 // installed for a test that never opens a browser.
                 browserAutomations =
-                    groups.profiles.map {
+                    groups.profiles.map { profile ->
                         ru.wbparser.browser.testing
-                            .FakeBrowserAutomation(_isConnected = false)
+                            .FakeBrowserAutomation(
+                                _isConnected = false,
+                                onStop = { api.stopProfileV2(profile.profileId) },
+                            )
                     },
             )
 

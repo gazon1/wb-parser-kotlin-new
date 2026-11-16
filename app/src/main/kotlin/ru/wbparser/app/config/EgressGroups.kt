@@ -1,9 +1,10 @@
 package ru.wbparser.app.config
 
 import ru.wbparser.browser.pool.BrowserProfileConfig
-import ru.wbparser.infra.http.DeclaredProxy
+import ru.wbparser.browser.pool.DeclaredProxy
 import ru.wbparser.infra.http.EgressGroup
 import ru.wbparser.infra.http.RequestPacing
+import java.nio.file.Path
 
 /**
  * One egress group, as configured.
@@ -31,15 +32,33 @@ data class EgressGroupConfig(
  *   is checked too.
  * @param port the port of the proxy. It goes with the host: one without the other is
  *   a half-declared address.
- *
- * The password is not here: the crawler never authenticates to the proxy — the
- * browser does, and the browser's credentials live in AdsPower.
+ * @param username the user the browser authenticates as, when the proxy requires it.
+ * @param password the password the browser authenticates with. Its default is the
+ *   environment, not a literal: a credential baked into the repository is a credential
+ *   leaked to every clone of it.
  */
 data class ProxyConfig(
     val type: String = "",
     val host: String = "",
     val port: Int = 0,
-)
+    val username: String = "",
+    val password: String = "",
+) {
+    /**
+     * The configuration as an operator reads it: the endpoint, and whether it
+     * authenticates — never the credentials themselves.
+     *
+     * The generated `toString()` of a data class prints every property, so a
+     * `ProxyConfig` logged, or caught in a message by a framework that prints its
+     * arguments, published the password. The redaction has to be on this type, not
+     * only on the one it is converted into later: the configuration object is what
+     * the deployment holds and what most often ends up in a log line.
+     */
+    override fun toString(): String {
+        val endpoint = if (host.isBlank()) type.ifBlank { "not declared" } else "$type://$host:$port"
+        return if (username.isBlank() && password.isBlank()) endpoint else "$endpoint (credentials hidden)"
+    }
+}
 
 /**
  * The request budget of one group.
@@ -97,16 +116,95 @@ object EgressGroups {
 
         val groups = configured.map { it.toGroup(spider) }
         validate(groups)
-        val profiles = groups.flatMap { group -> group.profileIds.map { it to group.id } }
+        val profiles = groups.flatMap { group -> group.profileIds.map { it to group } }
         return Resolved(
             groups = groups,
-            profiles = profiles.map { (profileId, groupId) -> BrowserProfileConfig(profileId = profileId, egressGroup = groupId) },
+            profiles = profiles.map { (profileId, group) -> profileOf(profileId, group, spider) },
             targetConcurrency = profiles.size,
         )
     }
 
-    private fun EgressGroupConfig.toGroup(spider: Spider): EgressGroup =
-        EgressGroup(
+    /**
+     * A profile, with the address it leaves through and the directory it lives in.
+     *
+     * The proxy is the group's: a profile does not choose its own address, and a group
+     * is the unit the configuration names. The directory follows the endpoint
+     * ([BrowserProfileConfig.profileDir]), so a profile cannot be pointed at cookies
+     * that belong to another address.
+     *
+     * This is also where a profile behind an authenticated SOCKS5 endpoint is refused:
+     * the browser cannot authenticate to one, and the refusal belongs at configuration
+     * time rather than at the first launch.
+     */
+    private fun profileOf(
+        profileId: String,
+        group: EgressGroup,
+        spider: Spider,
+    ): BrowserProfileConfig {
+        val declared = group.proxy
+        val dir =
+            spider.profilesDir.takeIf { it.isNotBlank() }?.let { root ->
+                profileDirUnder(Path.of(root), declared, profileId, group.id)
+            }
+        return try {
+            BrowserProfileConfig(
+                profileId = profileId,
+                proxy = declared,
+                profileDir = dir,
+                egressGroup = group.id,
+            )
+        } catch (e: IllegalArgumentException) {
+            throw IllegalArgumentException("Egress group '${group.id}': ${e.message}", e)
+        }
+    }
+
+    /**
+     * `[root]/[endpoint]/[profileId]`, and proof that it is still under [root].
+     *
+     * Both parts come from configuration, so neither is trusted to be one path segment.
+     * The name check refuses a separator or `..` before the path is built, and the
+     * containment check normalises the result and asks whether it is still inside the
+     * root — so a value that slipped past the first rule cannot silently place a browser
+     * profile in somebody else's directory. A persistent profile holds cookies and
+     * storage, and a wrong path is a wrong identity on disk, not a wrong setting.
+     */
+    private fun profileDirUnder(
+        root: Path,
+        declared: DeclaredProxy,
+        profileId: String,
+        groupId: String,
+    ): Path {
+        val endpoint = declared.directoryName()
+        require(DeclaredProxy.isSafeName(profileId) && DeclaredProxy.isSafeName(endpoint)) {
+            "Egress group '$groupId' would name a profile directory from '$profileId' and " +
+                "'$endpoint'. Both must be one path segment: no separator, and not '.' or '..'."
+        }
+        val normalizedRoot = root.normalize().toAbsolutePath()
+        val dir = normalizedRoot.resolve(endpoint).resolve(profileId).normalize()
+        require(dir.startsWith(normalizedRoot)) {
+            "Egress group '$groupId' resolves the profile directory of '$profileId' to '$dir', " +
+                "which is outside the configured profiles directory '$normalizedRoot'. A browser " +
+                "profile must stay under that directory."
+        }
+        return dir
+    }
+
+    private fun EgressGroupConfig.toGroup(spider: Spider): EgressGroup {
+        val declared =
+            try {
+                DeclaredProxy(
+                    type = proxy.type.trim().lowercase(),
+                    host = proxy.host.trim(),
+                    port = proxy.port,
+                    username = proxy.username.trim(),
+                    password = proxy.password,
+                )
+            } catch (e: IllegalArgumentException) {
+                // The refusal is the proxy's — it knows what Playwright can do — and the
+                // group's name is what the operator needs to find the mistake.
+                throw IllegalArgumentException("Egress group '$id': ${e.message}", e)
+            }
+        return EgressGroup(
             id = id,
             profileIds = profiles,
             pacing =
@@ -115,13 +213,9 @@ object EgressGroups {
                     jitterMinMs = pacing.jitterMinMs ?: spider.browserJitterMinMs,
                     jitterMaxMs = pacing.jitterMaxMs ?: spider.browserJitterMaxMs,
                 ),
-            proxy =
-                DeclaredProxy(
-                    type = proxy.type.trim().lowercase(),
-                    host = proxy.host.trim(),
-                    port = proxy.port,
-                ),
+            proxy = declared,
         )
+    }
 
     private fun validate(groups: List<EgressGroup>) {
         val seen = mutableMapOf<String, String>()

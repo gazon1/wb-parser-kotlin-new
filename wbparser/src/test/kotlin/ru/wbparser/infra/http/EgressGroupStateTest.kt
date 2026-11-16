@@ -26,7 +26,7 @@ class EgressGroupStateTest :
             vararg groups: String,
             now: () -> Long = System::currentTimeMillis,
         ): EgressRouter {
-            val profiles = groups.map { group -> BrowserProfileConfig("p-$group", "ws://p-$group", group) }
+            val profiles = groups.map { group -> BrowserProfileConfig("p-$group", egressGroup = group) }
             val automations =
                 profiles.map {
                     FakeBrowserAutomation(

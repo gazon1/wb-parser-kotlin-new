@@ -14,9 +14,9 @@ import ru.wbparser.app.config.Worker
 import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
-import ru.wbparser.browser.playwright.BrowserAutomation
 import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
+import ru.wbparser.browser.testing.FakeBrowserAutomation
 import ru.wbparser.browser.testing.FakeBrowserPage
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.BrowserAccess
@@ -45,21 +45,6 @@ class AdsPowerPreflightRunnerTest :
          * A page that answers every echo request with [answer].
          */
         fun pageAnswering(answer: String): BrowserPage = FakeBrowserPage(evaluateAnswer = answer)
-
-        class FakeBrowser(
-            private val page: BrowserPage,
-        ) : BrowserAutomation {
-            override var isConnected: Boolean = true
-            override val currentPage: BrowserPage? get() = page
-
-            override fun healthCheck(): Boolean = true
-
-            override fun connect(cdpUrl: String): BrowserPage = page
-
-            override fun close() {
-                isConnected = false
-            }
-        }
 
         class FakeAdsPower : AdsPowerApi {
             var available: Boolean = true
@@ -146,7 +131,7 @@ class AdsPowerPreflightRunnerTest :
                 BrowserPool(
                     profiles = profiles,
                     adsPower = AdsPowerConfig(api = api),
-                    browserAutomations = profiles.map { FakeBrowser(pageAnswering(answer)) },
+                    browserAutomations = profiles.map { FakeBrowserAutomation(_isConnected = true, _currentPage = pageAnswering(answer)) },
                 )
             val properties =
                 CrawlProperties(

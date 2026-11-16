@@ -12,10 +12,10 @@ import ru.wbparser.app.config.Worker
 import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.adspower.AdsPowerProfileProxy
-import ru.wbparser.browser.playwright.BrowserAutomation
 import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
+import ru.wbparser.browser.testing.FakeBrowserAutomation
 import ru.wbparser.browser.testing.FakeBrowserPage
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.http.BrowserAccess
@@ -54,21 +54,6 @@ class EgressProbeServiceTest :
             override fun isAvailable(): Boolean = true
         }
 
-        class FakeBrowser(
-            private val page: BrowserPage,
-        ) : BrowserAutomation {
-            override var isConnected: Boolean = true
-            override val currentPage: BrowserPage? get() = page
-
-            override fun healthCheck(): Boolean = true
-
-            override fun connect(cdpUrl: String): BrowserPage = page
-
-            override fun close() {
-                isConnected = false
-            }
-        }
-
         /**
          * A database that is not there.
          *
@@ -104,13 +89,13 @@ class EgressProbeServiceTest :
         fun page(): BrowserPage = FakeBrowserPage(evaluateAnswer = "203.0.113.9")
 
         fun service(router: EgressRouter): EgressProbeService {
-            val profiles = listOf(BrowserProfileConfig("p1", "ws://p1", "ip-1"))
+            val profiles = listOf(BrowserProfileConfig("p1", egressGroup = "ip-1"))
             val api = FakeAdsPower()
             val pool =
                 BrowserPool(
                     profiles = profiles,
                     adsPower = AdsPowerConfig(api = api),
-                    browserAutomations = profiles.map { FakeBrowser(page()) },
+                    browserAutomations = profiles.map { FakeBrowserAutomation(_isConnected = true, _currentPage = page()) },
                 )
             return EgressProbeService(
                 browser = BrowserAccess(pool = pool, adsPowerApi = api),
@@ -134,11 +119,11 @@ class EgressProbeServiceTest :
         }
 
         test("a group whose address changed starts with an empty book") {
-            val profiles = listOf(BrowserProfileConfig("p1", "ws://p1", "ip-1"))
+            val profiles = listOf(BrowserProfileConfig("p1", egressGroup = "ip-1"))
             val pool =
                 BrowserPool(
                     profiles = profiles,
-                    browserAutomations = profiles.map { FakeBrowser(page()) },
+                    browserAutomations = profiles.map { FakeBrowserAutomation(_isConnected = true, _currentPage = page()) },
                 )
             val router = EgressRouter(pool, EgressPacerRegistry(groups = listOf("ip-1")))
             val borrowed = router.borrow()
@@ -170,11 +155,11 @@ class EgressProbeServiceTest :
         }
 
         test("a group whose address did not change keeps its book") {
-            val profiles = listOf(BrowserProfileConfig("p1", "ws://p1", "ip-1"))
+            val profiles = listOf(BrowserProfileConfig("p1", egressGroup = "ip-1"))
             val pool =
                 BrowserPool(
                     profiles = profiles,
-                    browserAutomations = profiles.map { FakeBrowser(page()) },
+                    browserAutomations = profiles.map { FakeBrowserAutomation(_isConnected = true, _currentPage = page()) },
                 )
             val router = EgressRouter(pool, EgressPacerRegistry(groups = listOf("ip-1")))
             val borrowed = router.borrow()

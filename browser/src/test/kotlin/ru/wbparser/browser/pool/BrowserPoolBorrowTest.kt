@@ -31,8 +31,8 @@ import ru.wbparser.browser.testing.FakeBrowserAutomation
  */
 class BrowserPoolBorrowTest :
     FunSpec({
-        /** A profile that names its own browser: the discovery is not asked. */
-        fun profile(id: String) = BrowserProfileConfig(profileId = id, cdpWsUrl = "ws://127.0.0.1:36931/devtools/browser/$id")
+        /** A profile whose browser is the fake it is handed. */
+        fun profile(id: String) = BrowserProfileConfig(profileId = id)
 
         test("a profile whose browser does not come up is closed, and the pool keeps serving") {
             val broken = FakeBrowserAutomation(connectFailure = IllegalStateException("the browser died"))
@@ -124,8 +124,15 @@ class BrowserPoolBorrowTest :
         }
 
         test("the endpoints are discovered once and remembered for the pool's lifetime") {
+            // The scan shells out to `ss` and probes every candidate port: doing that per
+            // profile on a hot path would dominate the request latency. Both profiles fall
+            // back to the scan (the Local API is down), and both must read the one answer.
             var discoveries = 0
-            val api = FakeAdsPowerApi().apply { apiAvailable = false }
+            val api =
+                FakeAdsPowerApi().apply {
+                    apiAvailable = false
+                    checkActiveFailure = RuntimeException("the runtime is gone")
+                }
             val pool =
                 BrowserPool(
                     profiles =
@@ -133,21 +140,18 @@ class BrowserPoolBorrowTest :
                             BrowserProfileConfig(profileId = "first"),
                             BrowserProfileConfig(profileId = "second"),
                         ),
-                    adsPower = AdsPowerConfig(api = api),
-                    browserAutomations = listOf(FakeBrowserAutomation(), FakeBrowserAutomation()),
+                    adsPower = AdsPowerConfig(api = api, borrowTimeoutMs = 50),
                     resolveEndpoints = {
                         discoveries++
                         listOf("ws://127.0.0.1:36931/devtools/browser/first")
                     },
                 )
 
-            val first = pool.borrowPage()
-            val second = pool.borrowPage()
+            // No browser answers the scan's endpoint, so the borrows fail — after the
+            // resolver has been asked where the browser is.
+            runCatching { pool.borrowPage() }
+            runCatching { pool.borrowPage() }
 
-            first shouldNotBe null
-            second shouldNotBe null
-            // The scan shells out to `ss` and probes every candidate port: doing that per
-            // profile on a hot path would dominate the request latency.
             discoveries shouldBe 1
             pool.close()
         }

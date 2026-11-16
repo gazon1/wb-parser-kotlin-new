@@ -10,6 +10,7 @@ import ru.wbparser.browser.adspower.AdsPowerProfileProxy
 import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
+import ru.wbparser.browser.pool.DeclaredProxy
 import ru.wbparser.browser.testing.FakeAdsPowerApi
 import ru.wbparser.browser.testing.FakeBrowserAutomation
 import ru.wbparser.browser.testing.FakeBrowserPage
@@ -38,7 +39,7 @@ class EgressProbeTest :
             navigateFailure: Throwable? = null,
         ): Pair<BrowserPool, FakeAdsPowerApi> {
             val profiles =
-                groups.flatMap { (group, ids) -> ids.map { BrowserProfileConfig(it, "ws://$it", group) } }
+                groups.flatMap { (group, ids) -> ids.map { BrowserProfileConfig(it, egressGroup = group) } }
             val automations =
                 profiles.map { profile ->
                     FakeBrowserAutomation(

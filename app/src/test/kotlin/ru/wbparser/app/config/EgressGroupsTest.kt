@@ -4,6 +4,8 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldNotContain
+import ru.wbparser.browser.pool.DeclaredProxy
 
 /**
  * The groups the crawler runs on, as the configuration resolves them.
@@ -219,6 +221,198 @@ class EgressGroupsTest :
                 }
 
             failure.message!!.contains("only half an") shouldBe true
+        }
+
+        test("a profile id that is a path is refused, and stays inside the profiles directory") {
+            val failure =
+                shouldThrow<IllegalArgumentException> {
+                    EgressGroups.resolve(
+                        Spider(
+                            profilesDir = "/var/lib/wb/profiles",
+                            egressGroups =
+                                listOf(
+                                    EgressGroupConfig(
+                                        id = "ip-1",
+                                        // `..` normalises to the profiles root: the profile
+                                        // would share a directory with every other profile.
+                                        profiles = listOf(".."),
+                                        proxy = ProxyConfig(type = "none"),
+                                    ),
+                                ),
+                        ),
+                    )
+                }
+
+            failure.message!!.contains("ip-1") shouldBe true
+            failure.message!!.contains("path segment") shouldBe true
+        }
+
+        test("a proxy host that is a path is refused") {
+            val failure =
+                shouldThrow<IllegalArgumentException> {
+                    EgressGroups.resolve(
+                        Spider(
+                            profilesDir = "/var/lib/wb/profiles",
+                            egressGroups =
+                                listOf(
+                                    EgressGroupConfig(
+                                        id = "ip-1",
+                                        profiles = listOf("p1"),
+                                        proxy = ProxyConfig(type = "http", host = "../..", port = 8080),
+                                    ),
+                                ),
+                        ),
+                    )
+                }
+
+            failure.message!!.contains("ip-1") shouldBe true
+            failure.message!!.contains("plain host name") shouldBe true
+        }
+
+        test("an HTTP proxy's credentials reach the resolved profile, and are never printed") {
+            val resolved =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(
+                                    id = "ip-1",
+                                    profiles = listOf("p1"),
+                                    proxy =
+                                        ProxyConfig(
+                                            type = "http",
+                                            host = "proxy-a.invalid",
+                                            port = 8080,
+                                            username = "user",
+                                            password = "placeholder",
+                                        ),
+                                ),
+                            ),
+                    ),
+                )
+
+            val proxy = resolved.profiles.single().proxy
+            proxy.hasCredentials shouldBe true
+            proxy.username shouldBe "user"
+            // The credentials reach the browser, and the resolved type hides them.
+            proxy.toString() shouldNotContain "placeholder"
+            proxy.toString() shouldNotContain "user"
+        }
+
+        test("a configured proxy never prints its password") {
+            val configured =
+                ProxyConfig(
+                    type = "http",
+                    host = "proxy-a.invalid",
+                    port = 8080,
+                    username = "user",
+                    password = "placeholder",
+                )
+
+            // The configuration object is what a deployment holds and what a message
+            // most often carries: it has to redact on its own, not only after conversion.
+            configured.toString() shouldBe "http://proxy-a.invalid:8080 (credentials hidden)"
+            configured.toString() shouldNotContain "placeholder"
+            configured.toString() shouldNotContain "user"
+            listOf(configured).toString() shouldNotContain "placeholder"
+            EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = configured)
+                .toString() shouldNotContain "placeholder"
+        }
+
+        test("a profile carries the proxy of the group it belongs to") {
+            val resolved =
+                EgressGroups.resolve(
+                    Spider(
+                        profilesDir = "/var/lib/wb/profiles",
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(
+                                    id = "ip-1",
+                                    profiles = listOf("p1"),
+                                    proxy = ProxyConfig(type = "socks5", host = "proxy-a.invalid", port = 1080),
+                                ),
+                            ),
+                    ),
+                )
+
+            val profile = resolved.profiles.single()
+            // The proxy is the group's: a profile does not choose its own address, and
+            // the browser has to be told where it leaves from when the crawler starts it.
+            profile.proxy shouldBe DeclaredProxy(type = "socks5", host = "proxy-a.invalid", port = 1080)
+            profile.proxy.isDirect shouldBe false
+        }
+
+        test("a profile's directory is named after its endpoint") {
+            val resolved =
+                EgressGroups.resolve(
+                    Spider(
+                        profilesDir = "/var/lib/wb/profiles",
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(
+                                    id = "ip-1",
+                                    profiles = listOf("p1"),
+                                    proxy = ProxyConfig(type = "socks5", host = "proxy-a.invalid", port = 1080),
+                                ),
+                            ),
+                    ),
+                )
+
+            // The endpoint in the path is what keeps a profile from being opened through
+            // an address its cookies and storage were not created for.
+            resolved.profiles
+                .single()
+                .profileDir
+                ?.toString() shouldBe
+                "/var/lib/wb/profiles/socks5-proxy-a.invalid-1080/p1"
+        }
+
+        test("without a profiles directory no profile names one") {
+            val resolved =
+                EgressGroups.resolve(
+                    Spider(
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none")),
+                            ),
+                    ),
+                )
+
+            // The runtime keeps its own profiles; the crawler naming a directory would
+            // be the crawler deciding where a runtime's identity lives.
+            resolved.profiles.single().profileDir shouldBe null
+        }
+
+        test("a SOCKS5 proxy with credentials is refused, and the message names the group") {
+            val failure =
+                shouldThrow<IllegalArgumentException> {
+                    EgressGroups.resolve(
+                        Spider(
+                            egressGroups =
+                                listOf(
+                                    EgressGroupConfig(
+                                        id = "ip-1",
+                                        profiles = listOf("p1"),
+                                        proxy =
+                                            ProxyConfig(
+                                                type = "socks5",
+                                                host = "proxy-a.invalid",
+                                                port = 1080,
+                                                username = "user",
+                                                password = "placeholder",
+                                            ),
+                                    ),
+                                ),
+                        ),
+                    )
+                }
+
+            // Playwright cannot authenticate to SOCKS5, so this is a configuration error
+            // the crawler has to find before it launches a browser.
+            failure.message!!.contains("ip-1") shouldBe true
+            failure.message!!.contains("socks5 proxy authentication") shouldBe true
+            // The refusal is about the endpoint, and it must not repeat the credential.
+            failure.message!!.contains("placeholder") shouldBe false
         }
 
         test("a group's own pacing overrides the default") {

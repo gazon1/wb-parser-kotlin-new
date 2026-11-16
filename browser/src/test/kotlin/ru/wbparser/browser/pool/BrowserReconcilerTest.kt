@@ -33,9 +33,15 @@ class BrowserReconcilerTest :
             vararg profileIds: String,
         ): BrowserPool =
             BrowserPool(
-                profiles = profileIds.map { BrowserProfileConfig(it, null) },
+                profiles = profileIds.map { BrowserProfileConfig(it) },
                 adsPower = AdsPowerConfig(api = api),
-                browserAutomations = profileIds.map { FakeBrowserAutomation(_isConnected = false) },
+                browserAutomations =
+                    profileIds.map { id ->
+                        FakeBrowserAutomation(
+                            _isConnected = false,
+                            onStop = { api.stopProfileV2(id) },
+                        )
+                    },
             )
 
         test("a browser left running by the previous run is stopped") {

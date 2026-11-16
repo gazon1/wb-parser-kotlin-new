@@ -1,6 +1,7 @@
 package ru.wbparser.infra.http
 
 import ru.wbparser.browser.pool.BrowserProfileConfig
+import ru.wbparser.browser.pool.DeclaredProxy
 
 /**
  * A set of AdsPower profiles that are expected to share one egress IP.

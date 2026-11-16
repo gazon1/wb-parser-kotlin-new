@@ -4,19 +4,17 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import org.slf4j.LoggerFactory
-import ru.wbparser.browser.adspower.AdsPowerApi
 import ru.wbparser.browser.playwright.BrowserAutomation
 import ru.wbparser.browser.session.SessionState
-import ru.wbparser.browser.testing.FakeAdsPowerApi
 import ru.wbparser.browser.testing.FakeBrowserAutomation
 
 /**
  * The profile's own state, on its own.
  *
  * Before the split this state lived inside [BrowserPool] as a private inner class, and
- * every one of its answers — "is this profile resting", "did we start this browser",
- * "is it idle" — could only be reached by going through the pool. This test drives the
- * unit directly, which is the point of the split: the decisions are now reachable
+ * every one of its answers — "is this profile resting", "is it idle", "is a browser
+ * still open for it" — could only be reached by going through the pool. This test drives
+ * the unit directly, which is the point of the split: the decisions are now reachable
  * without the machinery around them.
  */
 class BrowserProfileStateTest :
@@ -36,13 +34,11 @@ class BrowserProfileStateTest :
             )
 
         fun state(
-            api: AdsPowerApi = FakeAdsPowerApi(),
             automation: BrowserAutomation = FakeBrowserAutomation(),
             context: BrowserPoolContext = context(),
         ): BrowserProfileState =
             BrowserProfileState(
                 profileConfig = BrowserProfileConfig("p0"),
-                api = api,
                 automation = automation,
                 context = context,
             )
@@ -105,72 +101,53 @@ class BrowserProfileStateTest :
             state.session.currentState shouldBe SessionState.Flagged
         }
 
-        test("a browser the pool started is reported as started by the pool") {
-            val api = FakeAdsPowerApi()
-            api.whenCheckActive("p0", null)
-            api.whenStartProfile("p0", "ws://localhost:36931/devtools/browser/one")
+        test("a browser the profile asked for is started through the automation") {
             val automation = FakeBrowserAutomation()
-            val state = state(api = api, automation = automation)
+            val state = state(automation = automation)
 
-            // The CDP URL is resolved the first time a page is needed; the state asks
-            // the Local API, and the API starts the profile.
+            // Where a browser comes from is the automation's business: a local process,
+            // a URL, a directory. The profile only asks for a page.
             state.getOrCreatePage()
 
-            state.wasStartedByPool() shouldBe true
-            automation.connectCalls shouldBe listOf("ws://localhost:36931/devtools/browser/one")
+            automation.startCalls.size shouldBe 1
         }
 
-        test("a browser that was already running is not the pool's to claim") {
-            val api = FakeAdsPowerApi()
-            api.whenCheckActive("p0", "ws://localhost:36931/devtools/browser/one")
-            val state = state(api = api)
+        test("whether a browser may be running is answered by the automation") {
+            val automation = FakeBrowserAutomation()
+            val state = state(automation = automation)
 
             state.getOrCreatePage()
 
-            state.wasStartedByPool() shouldBe false
+            // The fact belongs to the browser, not to the bookkeeping: a connection that
+            // dies leaves the browser running, and only the automation knows that.
+            state.browserMayBeRunning() shouldBe true
         }
 
-        test("closing a profile asks AdsPower to stop the browser") {
-            val api = FakeAdsPowerApi()
-            val state = state(api = api)
+        test("stopping a profile ends the browser behind it") {
+            val automation = FakeBrowserAutomation()
+            val state = state(automation = automation)
 
-            state.closeAndStop(stopInAdsPower = true)
+            state.stop()
 
-            api.stoppedProfiles shouldBe listOf("p0")
+            automation.stopCalls.size shouldBe 1
         }
 
-        test("a browser that cannot be stopped is not a reason to fail") {
-            val api = FakeAdsPowerApi()
-            api.stopSucceeds = false
-            val state = state(api = api)
-
-            state.closeAndStop(stopInAdsPower = true)
-
-            // The stop was attempted; the failure is logged, not thrown.
-            api.stoppedProfiles shouldBe listOf("p0")
-        }
-
-        test(
-            "an AdsPower that dies while the browser is being stopped leaves the browser behind, " +
-                "and says so",
-        ) {
-            val api = FakeAdsPowerApi()
-            api.stopFailure = RuntimeException("the AdsPower runtime is gone")
-            val state = state(api = api)
+        test("a browser that could not be stopped may still be running") {
+            val automation = FakeBrowserAutomation(stopSucceeds = false)
+            val state = state(automation = automation)
+            state.getOrCreatePage()
 
             // Not true: the browser is still out there, and the caller has to be able
             // to say so instead of assuming the window went away.
-            state.closeAndStop(stopInAdsPower = true) shouldBe false
-            api.stoppedProfiles shouldBe listOf("p0")
+            state.stop() shouldBe false
+            state.browserMayBeRunning() shouldBe true
         }
 
-        test("a browser that fails its health check is dropped and connected again") {
-            val api = FakeAdsPowerApi()
-            api.whenCheckActive("p0", "ws://localhost:36931/devtools/browser/one")
-            // A dead Chrome can still say it is connected: the health check is the
+        test("a browser that fails its health check is dropped and started again") {
+            // A dead browser can still say it is connected: the health check is the
             // only thing that tells the truth.
             val automation = FakeBrowserAutomation(_isConnected = true, _healthCheckResult = false)
-            val state = state(api = api, automation = automation)
+            val state = state(automation = automation)
 
             val page = state.getOrCreatePage()
 
@@ -178,21 +155,19 @@ class BrowserProfileStateTest :
             automation.healthCheckCalls.size shouldBe 1
             // The dead connection is dropped, and a fresh one is made.
             automation.closeCalls.size shouldBe 2
-            automation.connectCalls shouldBe listOf("ws://localhost:36931/devtools/browser/one")
+            automation.startCalls.size shouldBe 1
         }
 
-        test("a browser that is connected but has no page is dropped and connected again") {
-            val api = FakeAdsPowerApi()
-            api.whenCheckActive("p0", "ws://localhost:36931/devtools/browser/one")
+        test("a browser that is connected but has no page is dropped and started again") {
             // The contract does not allow this, and a force-unwrap would turn a broken
             // promise into a crash in the middle of a crawl.
             val automation = FakeBrowserAutomation(_isConnected = true, _currentPage = null)
-            val state = state(api = api, automation = automation)
+            val state = state(automation = automation)
 
             val page = state.getOrCreatePage()
 
             page shouldNotBe null
             automation.closeCalls.size shouldBe 2
-            automation.connectCalls shouldBe listOf("ws://localhost:36931/devtools/browser/one")
+            automation.startCalls.size shouldBe 1
         }
     })

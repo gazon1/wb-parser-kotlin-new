@@ -556,6 +556,21 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** remove a dependency when the module stops naming its class. A declaration nobody needs is a promise that somebody maintains it. _(from `2026-11-10-the-pool-belongs-to-the-application`)
 - **Never** keep a second copy of a decision that lives in the configuration. The copy is the one that rots: it changes on its own schedule, and nobody reads it. _(from `2026-11-10-the-pool-belongs-to-the-application`)
 - **Never** raise coverage by testing a function that should not exist. The number goes up; the code stays. _(from `2026-11-10-the-pool-belongs-to-the-application`)
+- **Always** брать прокси профиля из его egress-группы: профиль не выбирает свой адрес. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Always** вырезать credentials в `toString()` того типа, который держит конфигурация (`ProxyConfig`), а не только в том, в который он потом конвертируется. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Always** держать транспорт в адаптере: `BrowserAutomation` не называет URL, CDP, Chrome или AdsPower. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Always** спрашивать `browserMayBeRunning` у автоматизации, а не выводить из `isConnected`: соединение умирает, браузер остаётся. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Always** хранить отпечаток профиля явным preset'ом (`BrowserProfileConfig.fingerprint`), а не генерировать при старте. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **MUST** называть persistent-каталог профиля по proxy endpoint'у и отказывать в открытии под другим. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **MUST** объявлять имена переменных окружения для credentials и проверять их привязку тестом: пустые credentials — это прокси без аутентификации, и этого никто не заметит. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **MUST** отказывать SOCKS5 с credentials на конфигурации: Playwright не умеет аутентификацию в SOCKS5, и отказ на первом запуске — это отказ, который случился слишком поздно. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **MUST** проверять, что `profileId`, host и собранный путь профиля остаются одним сегментом под `profiles-dir`: `..` — это чужая identity на диске, а не настройка. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **MUST** разделять закрытие сессии (`close`) и завершение браузера (`stop`): runtime, который оставляет браузер после разрыва, иначе течёт. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Never** давать `DeclaredProxy` метод, принимающий тип runtime'а: сверка с ответом AdsPower живёт на стороне интеграции, иначе граница держит снаружи то, что этот метод возвращает внутрь. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Never** добавлять адрес браузера в контракт или в `BrowserProfileConfig`: браузер запускают, а не присоединяются к нему по конфигурации профиля. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Never** добавлять флаг, переписывающий привязку каталога к endpoint'у. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Never** переключать pool concurrency, semaphores, round-robin, egress selection или session policy в этом изменении — это #270. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Never** печатать credentials прокси: `DeclaredProxy.toString()` вырезает их, и сообщения строятся на нём. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **Always** назначать прокси профилю и держать его неизменным: смена адреса — новая личность (ADR `2026-10-23-a-changed-address-is-a-new-identity`). _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Always** называть каталог `user_data_dir` по proxy endpoint и отказывать в его открытии под другим: cookies и storage переезжают вместе с каталогом, и сессия, сменившая адрес, — уже другая сессия. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Always** пинить сборку Camoufox (`~/.cache/camoufox/config.json` → `active_version`): это бета-сборка Firefox, и без пина она обновится молча. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
@@ -1295,6 +1310,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-08-the-test-asks-the-clock-a-different-question` — testing  reliability  browser
 - `2026-11-09-the-test-asks-a-local-server-for-the-dictionary` — testing  coverage  architecture
 - `2026-11-10-the-pool-belongs-to-the-application` — architecture  cleanup  database
+- `2026-11-15-a-browser-session-is-started-not-joined` — architecture  browser  boundaries  egress  antibot
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — architecture  egress  operations  antibot  browser
 
 ## Active entries
@@ -1430,4 +1446,5 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-08-the-test-asks-the-clock-a-different-question` — The test asks the clock a different question
 - `2026-11-09-the-test-asks-a-local-server-for-the-dictionary` — The test asks a local server for the dictionary, not WB's CDN
 - `2026-11-10-the-pool-belongs-to-the-application` — The pool belongs to the application, and the application says so in one place
+- `2026-11-15-a-browser-session-is-started-not-joined` — Сессию браузера запускают, а не присоединяются к ней; профиль — это каталог и endpoint
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — Camoufox работает локально, адрес приходит прокси, а отпечаток — данные профиля

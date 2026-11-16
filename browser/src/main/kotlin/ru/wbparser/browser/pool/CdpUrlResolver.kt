@@ -1,22 +1,27 @@
 package ru.wbparser.browser.pool
 
 import ru.wbparser.browser.adspower.AdsPowerApi
+import ru.wbparser.browser.playwright.BrowserEndpoint
 
 /**
- * Where the browser of a profile is, and what it took to get there.
+ * Where the browser of a profile is, for a runtime that hands out an endpoint.
  *
- * One decision with three answers: the configured URL, the AdsPower Local API, and
- * — only when the API is unreachable — the DevTools port scan.
- *
- * It used to be three methods of [BrowserProfileState], and the state was over the
- * limit detekt allows. A class that holds many decisions is a class that is hard to
- * change safely: "which browser is this profile's" is a decision of its own, and it
- * does not belong to the bookkeeping of the profile's session.
+ * One decision with two answers: the AdsPower Local API, and — only when the API is
+ * unreachable — the DevTools port scan. It used to be three methods of
+ * [BrowserProfileState], and the state was over the limit detekt allows. A class that
+ * holds many decisions is a class that is hard to change safely: "which browser is this
+ * profile's" is a decision of its own, and it does not belong to the bookkeeping of the
+ * profile's session.
  *
  * The resolver does not decide *what to do* with the browser it finds — that is the
- * profile's business. It says what it found and what it had to do to find it, and
- * the profile records the two facts that follow: a browser that may be running, and
- * a browser this process started.
+ * profile's business. It says what it found and what it had to do to find it.
+ *
+ * ## This class is the AdsPower adapter's, not the contract's
+ *
+ * "Ask a runtime where a browser is" is true of AdsPower and of nothing local: a locally
+ * launched browser has no endpoint to resolve. The class therefore stays where its
+ * runtime is, and [BrowserAutomation][ru.wbparser.browser.playwright.BrowserAutomation]
+ * does not mention it.
  */
 internal class CdpUrlResolver(
     private val profileConfig: BrowserProfileConfig,
@@ -24,30 +29,11 @@ internal class CdpUrlResolver(
     private val context: BrowserPoolContext,
 ) {
     /**
-     * The URL of the browser, and what it took to get it.
+     * Resolves the endpoint of the profile.
      *
-     * @param url the CDP WebSocket URL of the browser.
-     * @param alreadyRunning the browser was already running: somebody else started
-     *   it, and it is still a browser that has to be closed when nobody needs it.
-     * @param startedByUs we started the browser ourselves, so we are the ones who
-     *   may close it again.
+     * The AdsPower Local API answers; only when it is unreachable does the port scan.
      */
-    data class Resolution(
-        val url: String,
-        val alreadyRunning: Boolean,
-        val startedByUs: Boolean,
-    )
-
-    /**
-     * Resolves the CDP URL of the profile.
-     *
-     * The configured URL wins; then the AdsPower Local API; and only when the API
-     * is unreachable does the port scan answer.
-     */
-    fun resolve(): Resolution {
-        val configured = profileConfig.cdpWsUrl?.takeIf { it.isNotBlank() }
-        if (configured != null) return Resolution(configured, alreadyRunning = false, startedByUs = false)
-
+    fun resolve(): BrowserEndpoint {
         val fromApi = askAdsPowerForCdpUrl()
         if (fromApi != null) return fromApi
 
@@ -67,11 +53,11 @@ internal class CdpUrlResolver(
             "AdsPower Local API is unreachable for profile {} — falling back to the DevTools port scan",
             profileConfig.profileId,
         )
-        return Resolution(scanForCdpUrl(), alreadyRunning = false, startedByUs = false)
+        return BrowserEndpoint(scanForCdpUrl(), alreadyRunning = false, startedByUs = false)
     }
 
     /**
-     * The CDP URL the AdsPower Local API reports, or null when it does not know one.
+     * The endpoint the AdsPower Local API reports, or null when it does not know one.
      *
      * The Local API is asked first, and unconditionally.
      *
@@ -82,7 +68,7 @@ internal class CdpUrlResolver(
      * assigns browsers to profiles by index and can hand two profiles the
      * same one: one anti-bot session wearing two names.
      */
-    private fun askAdsPowerForCdpUrl(): Resolution? {
+    private fun askAdsPowerForCdpUrl(): BrowserEndpoint? {
         val profileId = profileConfig.profileId
         return try {
             val running = api.checkActiveV2(profileId)
@@ -90,7 +76,7 @@ internal class CdpUrlResolver(
                 // A browser is already running for this profile — ours from an earlier
                 // borrow, or one that survived the previous run. Either way it is
                 // running, and it has to be stopped when we are done with it.
-                return Resolution(running, alreadyRunning = true, startedByUs = false)
+                return BrowserEndpoint(running, alreadyRunning = true, startedByUs = false)
             }
             val started = api.startProfileV2(profileId)
             if (started == null) {
@@ -99,7 +85,7 @@ internal class CdpUrlResolver(
                 // We started this browser, so we are the ones who may close it
                 // again. A profile that was already running when we arrived
                 // belongs to whoever started it.
-                Resolution(started, alreadyRunning = false, startedByUs = true)
+                BrowserEndpoint(started, alreadyRunning = false, startedByUs = true)
             }
         } catch (e: Exception) {
             context.log.warn(

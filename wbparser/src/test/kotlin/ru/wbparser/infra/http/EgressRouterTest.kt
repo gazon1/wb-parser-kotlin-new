@@ -30,7 +30,7 @@ class EgressRouterTest :
             vararg groups: Pair<String, List<String>>,
             groupIntervals: Map<String, Long> = emptyMap(),
         ): Pair<BrowserPool, EgressPacerRegistry> {
-            val profiles = groups.flatMap { (group, profileIds) -> profileIds.map { BrowserProfileConfig(it, "ws://$it", group) } }
+            val profiles = groups.flatMap { (group, profileIds) -> profileIds.map { BrowserProfileConfig(it, egressGroup = group) } }
             val automations =
                 profiles.map {
                     FakeBrowserAutomation(

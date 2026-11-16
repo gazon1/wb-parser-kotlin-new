@@ -9,18 +9,20 @@ import ru.wbparser.browser.testing.FakeAdsPowerApi
 /**
  * Where the browser of a profile is, and what it took to get there.
  *
- * One decision with three answers — the configured URL, the AdsPower Local API, and,
- * only when the API is unreachable, the DevTools port scan — and two ways it can fail
- * in a way the caller has to be told about rather than papered over.
+ * One decision with two answers — the AdsPower Local API, and, only when the API is
+ * unreachable, the DevTools port scan — and one way it can fail in a way the caller has
+ * to be told about rather than papered over.
  *
- * The first failure is the dangerous one: the Local API answers, the profile does not
- * come up, and the port scan would attach this profile to *some* browser. Five
- * profiles and four browsers is how one anti-bot session ends up wearing five names,
- * so the resolver says what is wrong instead of returning a browser that is not this
- * profile's.
+ * The failure is the dangerous one: the Local API answers, the profile does not come up,
+ * and the port scan would attach this profile to *some* browser. Five profiles and four
+ * browsers is how one anti-bot session ends up wearing five names, so the resolver says
+ * what is wrong instead of returning a browser that is not this profile's.
  *
- * The second is the API dying mid-call: then the scan is all that is left, and it is
+ * The second case is the API dying mid-call: then the scan is all that is left, and it is
  * a worse answer than the API's, but it is the only one there is.
+ *
+ * This is the AdsPower adapter's decision, not the session contract's: a browser started
+ * on this machine has no endpoint to resolve.
  */
 class CdpUrlResolverTest :
     FunSpec({
@@ -34,33 +36,12 @@ class CdpUrlResolverTest :
                 log = LoggerFactory.getLogger("CdpUrlResolverTest"),
             )
 
-        fun resolver(
-            api: FakeAdsPowerApi,
-            profileId: String = "p0",
-        ): CdpUrlResolver =
+        fun resolver(api: FakeAdsPowerApi): CdpUrlResolver =
             CdpUrlResolver(
-                profileConfig = BrowserProfileConfig(profileId),
+                profileConfig = BrowserProfileConfig("p0"),
                 api = api,
                 context = context(),
             )
-
-        test("the configured URL wins over everything else") {
-            val api = FakeAdsPowerApi()
-            val resolver =
-                CdpUrlResolver(
-                    profileConfig = BrowserProfileConfig("p0", "ws://configured/devtools/browser/p0"),
-                    api = api,
-                    context = context(),
-                )
-
-            val resolution = resolver.resolve()
-
-            resolution.url shouldBe "ws://configured/devtools/browser/p0"
-            // Nobody else may close it: this process did not start it.
-            resolution.alreadyRunning shouldBe false
-            resolution.startedByUs shouldBe false
-            api.calls shouldBe emptyList()
-        }
 
         test("a browser that is already running is found, and is not ours to claim") {
             val api = FakeAdsPowerApi()

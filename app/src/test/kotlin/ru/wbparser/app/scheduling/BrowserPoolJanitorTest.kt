@@ -30,24 +30,39 @@ class BrowserPoolJanitorTest :
          * to it on the first borrow, and that is how the pool learns that a browser
          * may be running for the profile. The janitor closes only the browsers that
          * may be running, so a profile nobody ever borrowed is not closed.
+         *
+         * Ending the browser is the runtime's job, which is why [onStop] is a
+         * callback: the profile's browser is stopped through AdsPower, exactly as the
+         * production adapter stops it.
          */
-        class FakeBrowser : BrowserAutomation {
+        class FakeBrowser(
+            private val onStop: () -> Boolean,
+        ) : BrowserAutomation {
             override var isConnected: Boolean = false
             override var currentPage: BrowserPage? = null
+            override var browserMayBeRunning: Boolean = false
             var closeCalls: Int = 0
 
             override fun healthCheck(): Boolean = true
 
-            override fun connect(cdpUrl: String): BrowserPage =
+            override fun start(): BrowserPage =
                 FakeBrowserPage().also {
                     isConnected = true
                     currentPage = it
+                    browserMayBeRunning = true
                 }
 
             override fun close() {
                 closeCalls++
                 isConnected = false
                 currentPage = null
+            }
+
+            override fun stop(): Boolean {
+                close()
+                val stopped = onStop()
+                if (stopped) browserMayBeRunning = false
+                return stopped
             }
         }
 
@@ -73,7 +88,7 @@ class BrowserPoolJanitorTest :
             api: FakeAdsPower,
             browser: FakeBrowser,
         ) = BrowserPool(
-            profiles = listOf(BrowserProfileConfig("p1", null)),
+            profiles = listOf(BrowserProfileConfig("p1")),
             adsPower = AdsPowerConfig(api = api),
             browserAutomations = listOf(browser),
         )
@@ -91,7 +106,7 @@ class BrowserPoolJanitorTest :
 
         test("the tick closes a browser that has been idle for too long") {
             val api = FakeAdsPower()
-            val browser = FakeBrowser()
+            val browser = FakeBrowser { api.stopProfileV2("p1") }
             val pool = poolWith(api, browser)
             // The pool used the browser, so a browser may be running for the profile.
             pool.borrowPage().close()
@@ -116,7 +131,7 @@ class BrowserPoolJanitorTest :
 
         test("a timeout of zero closes nothing") {
             val api = FakeAdsPower()
-            val browser = FakeBrowser()
+            val browser = FakeBrowser { api.stopProfileV2("p1") }
             val pool = poolWith(api, browser)
             pool.borrowPage().close()
             val closesBefore = browser.closeCalls
@@ -130,7 +145,7 @@ class BrowserPoolJanitorTest :
 
         test("the exit stops the browsers") {
             val api = FakeAdsPower()
-            val browser = FakeBrowser()
+            val browser = FakeBrowser { api.stopProfileV2("p1") }
             val pool = poolWith(api, browser)
             pool.borrowPage().close()
             val janitor = BrowserPoolJanitor(pool.idleSweeper, pool.shutdown, properties(idleTimeoutMs = 0L, closeOnExit = true))
@@ -142,7 +157,7 @@ class BrowserPoolJanitorTest :
 
         test("the exit leaves the browsers running when the setting says so") {
             val api = FakeAdsPower()
-            val browser = FakeBrowser()
+            val browser = FakeBrowser { api.stopProfileV2("p1") }
             val pool = poolWith(api, browser)
             pool.borrowPage().close()
             val closesBefore = browser.closeCalls
