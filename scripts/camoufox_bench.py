@@ -11,8 +11,8 @@ question is answered by a stepped run: 1, 2, 3, 4 profiles, each with its own pe
 
 Two numbers are kept apart on purpose:
 
-  • **refused** — the anti-bot answer (498/403/401), the same split `wb_browser_fetch.py`
-    makes. Mixing it with transport failures would make the share say something about
+  • **refused** — the anti-bot answer (498/403/401), the same split the earlier measurement instrument
+    made. Mixing it with transport failures would make the share say something about
     the network that it does not say about the site.
   • **errored** — the request never completed. A refusal is the site answering; an error
     is the request not arriving, and only one of the two is about the address.

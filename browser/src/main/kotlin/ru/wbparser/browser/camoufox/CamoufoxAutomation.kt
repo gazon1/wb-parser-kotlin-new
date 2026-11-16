@@ -3,6 +3,7 @@ package ru.wbparser.browser.camoufox
 import org.slf4j.LoggerFactory
 import ru.wbparser.browser.playwright.BrowserAutomation
 import ru.wbparser.browser.playwright.BrowserPage
+import ru.wbparser.browser.playwright.LazyCamoufoxLauncher
 import ru.wbparser.browser.playwright.PlaywrightCamoufoxLauncher
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import java.nio.file.Path
@@ -14,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong
  *
  * ## The browser is ours
  *
- * Unlike a runtime that hands out an endpoint (AdsPower), a local browser is started by
+ * Unlike a runtime that hands out an endpoint, a local browser is started by
  * the automation that owns it: there is nothing to connect to, nothing to poll and
  * nothing to wait for. The session is started, it is used, and it is ended here.
  *
@@ -67,6 +68,18 @@ class CamoufoxAutomation internal constructor(
         profile: BrowserProfileConfig,
         install: CamoufoxInstall,
     ) : this(profile, PlaywrightCamoufoxLauncher(install))
+
+    /**
+     * The production automation with the install resolved on first use.
+     *
+     * The install is read from disk and checked against the pin when a browser is
+     * actually started, so a process that never opens one — a catalog-only instance,
+     * a unit test with injected automations — does not need the build to exist.
+     */
+    constructor(
+        profile: BrowserProfileConfig,
+        install: () -> CamoufoxInstall,
+    ) : this(profile, LazyCamoufoxLauncher(install))
 
     private val log = LoggerFactory.getLogger(CamoufoxAutomation::class.java)
 

@@ -9,9 +9,6 @@ import ru.wbparser.app.config.EgressGroups
 import ru.wbparser.app.config.ProxyConfig
 import ru.wbparser.app.config.Spider
 import ru.wbparser.app.config.Worker
-import ru.wbparser.browser.adspower.AdsPowerApi
-import ru.wbparser.browser.adspower.AdsPowerConfig
-import ru.wbparser.browser.adspower.AdsPowerProfileProxy
 import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
@@ -38,21 +35,6 @@ import javax.sql.DataSource
  */
 class EgressProbeServiceTest :
     FunSpec({
-
-        /**
-         * The AdsPower API of a machine where the profiles are known and have no proxy.
-         */
-        class FakeAdsPower : AdsPowerApi {
-            override fun checkActiveV2(profileId: String): String? = null
-
-            override fun startProfileV2(profileId: String): String? = null
-
-            override fun stopProfileV2(profileId: String): Boolean = true
-
-            override fun listProfileProxies(): List<AdsPowerProfileProxy> = listOf(AdsPowerProfileProxy("p1", null, null, null, "no_proxy"))
-
-            override fun isAvailable(): Boolean = true
-        }
 
         /**
          * A database that is not there.
@@ -90,15 +72,13 @@ class EgressProbeServiceTest :
 
         fun service(router: EgressRouter): EgressProbeService {
             val profiles = listOf(BrowserProfileConfig("p1", egressGroup = "ip-1"))
-            val api = FakeAdsPower()
             val pool =
                 BrowserPool(
                     profiles = profiles,
-                    adsPower = AdsPowerConfig(api = api),
                     browserAutomations = profiles.map { FakeBrowserAutomation(_isConnected = true, _currentPage = page()) },
                 )
             return EgressProbeService(
-                browser = BrowserAccess(pool = pool, adsPowerApi = api),
+                browser = BrowserAccess(pool = pool),
                 properties =
                     CrawlProperties(
                         worker = Worker(enabled = true),
@@ -139,7 +119,6 @@ class EgressProbeServiceTest :
                                 groupId = "ip-1",
                                 egressIp = "203.0.113.9",
                                 isolated = true,
-                                proxyIdentity = "socks5://203.0.113.9:1080",
                                 ipChanged = true,
                             ),
                         ),
@@ -174,7 +153,6 @@ class EgressProbeServiceTest :
                                 groupId = "ip-1",
                                 egressIp = "203.0.113.9",
                                 isolated = true,
-                                proxyIdentity = null,
                                 ipChanged = false,
                             ),
                         ),
@@ -196,14 +174,12 @@ class EgressProbeServiceTest :
                                 groupId = "ip-1",
                                 egressIp = "203.0.113.9",
                                 isolated = true,
-                                proxyIdentity = null,
                                 ipChanged = false,
                             ),
                             EgressGroupProbe(
                                 groupId = "ip-2",
                                 egressIp = null,
                                 isolated = false,
-                                proxyIdentity = null,
                                 ipChanged = false,
                             ),
                         ),

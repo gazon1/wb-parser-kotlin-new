@@ -51,8 +51,7 @@ class WbSubjectBootstrap(
      * Where WB's subject dictionary is fetched from.
      *
      * This is a seam, not a knob: the deployment does not set it, and a test points it
-     * at a local server instead of WB's CDN — the same seam
-     * [ru.wbparser.app.scheduling.AdsPowerPreflightRunner.profileCacheDir] has.
+     * at a local server instead of WB's CDN.
      */
     internal var subjectsUrl: String = SUBJECTS_URL
 

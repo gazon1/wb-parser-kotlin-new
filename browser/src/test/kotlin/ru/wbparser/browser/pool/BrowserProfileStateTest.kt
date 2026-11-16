@@ -20,27 +20,11 @@ import ru.wbparser.browser.testing.FakeBrowserAutomation
 class BrowserProfileStateTest :
     FunSpec({
 
-        fun context(
-            index: Int = 0,
-            profileCount: Int = 1,
-            endpoints: List<String> = listOf("ws://localhost:36931/devtools/browser/one"),
-        ): BrowserPoolContext =
-            BrowserPoolContext(
-                index = index,
-                profileCount = profileCount,
-                allProfileIds = List(profileCount) { "p$it" },
-                resolveEndpoints = { endpoints },
-                log = LoggerFactory.getLogger("BrowserProfileStateTest"),
-            )
-
-        fun state(
-            automation: BrowserAutomation = FakeBrowserAutomation(),
-            context: BrowserPoolContext = context(),
-        ): BrowserProfileState =
+        fun state(automation: BrowserAutomation = FakeBrowserAutomation()): BrowserProfileState =
             BrowserProfileState(
                 profileConfig = BrowserProfileConfig("p0"),
                 automation = automation,
-                context = context,
+                log = LoggerFactory.getLogger("BrowserProfileStateTest"),
             )
 
         test("a profile nobody used is idle straight away") {

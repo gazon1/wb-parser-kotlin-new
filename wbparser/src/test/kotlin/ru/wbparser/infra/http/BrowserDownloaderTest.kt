@@ -8,13 +8,11 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import kotlinx.coroutines.runBlocking
-import ru.wbparser.browser.adspower.AdsPowerConfig
 import ru.wbparser.browser.playwright.BrowserAutomation
 import ru.wbparser.browser.playwright.BrowserPage
 import ru.wbparser.browser.playwright.BrowserPageException
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserProfileConfig
-import ru.wbparser.browser.testing.FakeAdsPowerApi
 import ru.wbparser.browser.testing.FakeBrowserPage
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.value.CrawlUrl
@@ -90,8 +88,8 @@ class BrowserDownloaderTest :
         ): BrowserPool =
             BrowserPool(
                 profiles = listOf(BrowserProfileConfig(profileId = profileId)),
-                adsPower = AdsPowerConfig(api = FakeAdsPowerApi(), borrowTimeoutMs = borrowTimeoutMs),
                 browserAutomations = listOf(FakePageAutomation(page.page)),
+                borrowTimeoutMs = borrowTimeoutMs,
             )
 
         fun downloaderOf(pool: BrowserPool): BrowserDownloader =

@@ -79,7 +79,7 @@ instead of ~29 s.
 
 ## Consequences
 
-- **Always** open as many AdsPower profiles as `target-concurrency`, or lower the setting. The
+- **Always** open as many browser profiles as `target-concurrency`, or lower the setting. The
   pool queues beyond the browser count rather than failing, so an over-large value looks like it
   is working while delivering one session's worth of throughput.
 - **Never** set `target-concurrency` from a guess about how many browsers are open. The pool

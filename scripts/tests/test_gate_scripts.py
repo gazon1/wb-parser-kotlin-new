@@ -513,6 +513,13 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
             "permissions:\n  contents: read\n"
             "jobs:\n  autofix:\n    steps:\n      - run: bash scripts/ci/lint-autofix.sh\n"
         ),
+        "camoufox-smoke.yml": (
+            "on:\n  workflow_dispatch:\n"
+            "permissions:\n  contents: read\n"
+            "jobs:\n  smoke:\n    steps:\n"
+            "      - run: scripts/camoufox.sh install\n"
+            "      - run: ./gradlew :browser:test --tests '*CamoufoxSmokeTest*'\n"
+        ),
         "ci.yml": (
             "name: CI\n"
             "permissions:\n  contents: read\n"

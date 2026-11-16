@@ -78,7 +78,7 @@ def write_pages(yaml_path: Path, pages: list[dict]) -> None:
     "report_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     required=True,
-    help="JSON report written by measure_catalog_length.py",
+    help="JSON catalog-length measurement report",
 )
 @click.option(
     "--yaml",

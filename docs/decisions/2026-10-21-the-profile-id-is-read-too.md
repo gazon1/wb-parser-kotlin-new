@@ -4,6 +4,9 @@ date: 2026-10-21
 tags: [adspower, api, tests]
 ---
 
+> **Superseded (#271):** the browser now runs locally as Camoufox, and AdsPower is no longer
+> part of the runtime. See `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md`.
+
 ## Context
 
 Клиент Local API AdsPower читает список профилей и поле, в котором профиль назван. Список

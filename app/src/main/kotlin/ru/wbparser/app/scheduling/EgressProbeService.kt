@@ -83,11 +83,10 @@ class EgressProbeService(
         }
         for (group in observedGroups(report)) {
             log.info(
-                "Egress group {}: address={}, isolated={}, proxy={}",
+                "Egress group {}: address={}, isolated={}",
                 group.groupId,
                 group.egressIp ?: "unknown",
                 group.isolated,
-                group.proxyIdentity ?: "unknown",
             )
             if (group.ipChanged) {
                 log.warn(

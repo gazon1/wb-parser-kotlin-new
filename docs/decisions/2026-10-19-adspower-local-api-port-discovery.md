@@ -4,6 +4,9 @@ date: 2026-10-19
 tags: [browser, infrastructure, debugging]
 ---
 
+> **Superseded (#271):** the browser now runs locally as Camoufox, and AdsPower is no longer
+> part of the runtime. See `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md`.
+
 ## Context
 
 `BrowserPool` talked to the AdsPower Local API at a hardcoded `http://127.0.0.1:50325`.

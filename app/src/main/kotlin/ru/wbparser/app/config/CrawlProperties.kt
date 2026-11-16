@@ -68,14 +68,28 @@ data class Spider(
      *
      * A profile is cookies and storage as much as it is configuration, so it has to
      * outlive the process: the directory is reopened by the next run, and a fresh one
-     * would be a fresh identity on the same address. Empty means the runtime keeps its
-     * own profiles (as AdsPower does) and the crawler names no directory at all.
+     * would be a fresh identity on the same address.
      *
      * A profile's own directory is `[profilesDir]/[endpoint]/[profileId]`: the endpoint
      * in the path is what keeps a profile from being opened through an address it was
-     * not created for.
+     * not created for. The stored fingerprint of a profile is read from
+     * `[profileDir].fingerprint.json`.
      */
     val profilesDir: String = "",
+    /**
+     * The Camoufox install directory, or blank for the package's own default
+     * (`~/.cache/camoufox`).
+     */
+    val camoufoxHome: String = "",
+    /**
+     * The Camoufox build the deployment pins.
+     *
+     * Read from the install's `config.json` and compared with this value when the
+     * first browser starts. A blank pin, a different build, or a missing install is a
+     * refusal: the build that runs must be the one the deployment was measured
+     * against.
+     */
+    val camoufoxBuild: String = "",
     /**
      * Whether a group that turns out not to be isolated by IP must stop the crawler.
      *
@@ -123,7 +137,7 @@ data class Spider(
      */
     val browserMinRequestIntervalMs: Long = 3_000L,
     /**
-     * How long an AdsPower browser may sit unused before it is closed.
+     * How long a browser may sit unused before it is closed.
      *
      * A browser nobody asked for still holds a window, a profile lock and its share of
      * the machine's memory. Between two crawls every profile is idle, and the honest
@@ -135,25 +149,12 @@ data class Spider(
      */
     val browserIdleTimeoutMs: Long = 300_000L,
     /**
-     * Whether the AdsPower browsers are stopped when the application exits.
+     * Whether the browsers are stopped when the application exits.
      *
      * A browser left running after the crawler is gone keeps its window open and its
-     * profile locked, and the next run attaches to a session that is older than the one
-     * it would have created for itself.
+     * profile locked, and the next run has to reclaim the directory.
      */
     val closeBrowsersOnExit: Boolean = true,
-    /**
-     * Whether the browsers that survived the previous run are stopped at startup.
-     *
-     * A crawler that was killed — SIGKILL, an OOM, a fallen JVM — never got to stop
-     * its browsers: the AdsPower runtime is a container of its own and keeps them
-     * running. The next run finds them, and this is the switch that stops them
-     * instead of inheriting a session older than the one it could have created.
-     *
-     * Off for a deployment where several crawlers share one AdsPower runtime: the
-     * second one would stop the first one's browsers.
-     */
-    val reconcileBrowsersOnStart: Boolean = true,
     /**
      * The rules that decide how long a profile's session lives and how much it may send.
      *

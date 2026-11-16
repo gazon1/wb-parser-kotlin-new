@@ -61,7 +61,7 @@ DECLARE
         -- data — but it is a table this script has decided about, so it belongs here
         -- rather than in the "nobody has decided" bucket that stops the script.
         'catalog_demo_marker',
-        -- The crawler's egress groups: which AdsPower profiles are expected to share
+        -- The crawler's egress groups: which browser profiles are expected to share
         -- one egress IP, and which IP the probe actually saw. The catalog has no
         -- business reading it — it says nothing about products — but it is a table this
         -- script has decided about, so it belongs here rather than in the "nobody has

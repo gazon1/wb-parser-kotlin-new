@@ -1,7 +1,7 @@
 ---
 title: "Антибот: ротация профиля, свой back-off и ожидание вместо отказа"
 date: 2026-10-20
-tags: [crawler, resilience, adspower]
+tags: [crawler, resilience]
 ---
 
 ## Context

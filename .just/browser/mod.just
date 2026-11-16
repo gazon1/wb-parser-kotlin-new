@@ -1,7 +1,23 @@
 # ==============================================================================
-# 🧩 BROWSER — the browser stack (AdsPower client + Playwright overlay + pool)
+# 🧩 BROWSER — the local Camoufox runtime and the profile pool
 # Recipes available as browser::<recipe>.
 # ==============================================================================
+
+[group('browser')]
+[doc('Install the pinned Camoufox build')]
+[working-directory(justfile_directory())]
+install:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./gradlew :browser:camoufoxInstall
+
+[group('browser')]
+[doc('Verify that the pinned Camoufox build is installed')]
+[working-directory(justfile_directory())]
+verify:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ./gradlew :browser:camoufoxVerify
 
 [group('browser')]
 [doc('Run the browser module unit tests')]

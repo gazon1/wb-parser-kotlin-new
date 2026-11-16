@@ -4,7 +4,7 @@ import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.pool.DeclaredProxy
 
 /**
- * A set of AdsPower profiles that are expected to share one egress IP.
+ * A set of browser profiles that are expected to share one egress IP.
  *
  * ## Why a group and not a profile
  *
@@ -15,9 +15,9 @@ import ru.wbparser.browser.pool.DeclaredProxy
  *
  * ## "Expected" is deliberate
  *
- * The proxy lives in AdsPower, not here. This class only records which profiles are
- * *declared* to share an IP; whether they really do is checked by the egress probe,
- * because a group that is not really one IP would make the whole split fiction.
+ * This class records which profiles are *declared* to share an IP; whether they really
+ * do is checked by the egress probe, because a group that is not really one IP would
+ * make the whole split fiction.
  *
  * ## How many profiles a group should have
  *
@@ -28,15 +28,14 @@ import ru.wbparser.browser.pool.DeclaredProxy
  *
  * ## The proxy the group declares
  *
- * The proxy lives in AdsPower, and this class records what the configuration says
- * the group leaves through. The egress probe compares the two; a group that says
- * one thing and does another gets a budget and a metric of the wrong address, and
- * nobody notices until the numbers describe it.
+ * The declaration is what the browser is launched with: the profile receives the
+ * group's proxy, and the persistent directory is named after it. The egress probe
+ * checks the address the group is really seen at.
  */
 data class EgressGroup(
     /** Identifier of the group. It is also the value of the `egress_group` metric tag. */
     val id: String,
-    /** The AdsPower profile ids that belong to this group. */
+    /** The profile ids that belong to this group. */
     val profileIds: List<String>,
     /** How fast this group may talk to WB. */
     val pacing: RequestPacing = RequestPacing(),

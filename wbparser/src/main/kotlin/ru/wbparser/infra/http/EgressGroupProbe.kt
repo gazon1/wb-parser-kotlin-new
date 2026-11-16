@@ -6,15 +6,12 @@ package ru.wbparser.infra.http
  * @param egressIp the address the group was seen at, or null when it could not be
  *   determined.
  * @param isolated whether the group has an address of its own.
- * @param proxyIdentity the proxy AdsPower reports for the group, or null when AdsPower
- *   did not answer.
  * @param ipChanged whether the address differs from the one seen last time.
  */
 data class EgressGroupProbe(
     val groupId: String,
     val egressIp: String?,
     val isolated: Boolean,
-    val proxyIdentity: String?,
     val ipChanged: Boolean,
 ) {
     /**

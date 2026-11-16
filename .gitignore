@@ -59,17 +59,14 @@ __pycache__/
 # names, paths and search tokens (see scripts/wb-catalog/enrich_catalog_queries.py).
 
 # Live WB browser session capture — holds a real `_wbauid` / `x_wbaas_token` cookie
-# pair for the AdsPower profile. It is a credential, not fixture data: a captured
+# pair for a browser profile. It is a credential, not fixture data: a captured
 # session grants storefront access as the logged-in profile.
 scripts/wb_context.json
 
-# Throwaway CDP reverse-engineering probes and screenshots from the browser-fetch
-# investigation. Kept out of history deliberately — the working reference that
-# replaced them (scripts/wb_browser_fetch.py) is tracked.
-scripts/cdp_*.py
-scripts/pw_cdp_intercept.py
-scripts/wb_api_*.py
-scripts/extract_*.py
+# Persistent browser profiles. They hold cookies and storage, and they live outside
+# the repository on the machine that runs the crawler.
+profiles/
+.wbparser/
 *.png
 
 # Agent tooling directories, not project sources

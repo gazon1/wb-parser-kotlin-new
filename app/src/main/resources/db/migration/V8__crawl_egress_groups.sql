@@ -1,9 +1,9 @@
 -- The egress groups of this deployment.
 --
--- A group is a set of AdsPower profiles that are expected to share one egress IP.
+-- A group is a set of browser profiles that are expected to share one egress IP.
 -- The IP is what WB counts, so a group is the unit that owns a request budget.
 --
--- The proxy itself lives in AdsPower, not here: this table records what the crawler's
+-- The proxy is configured on the browser profile, not here: this table records what the crawler's
 -- probe *observed*, so that an operator can see which address each group really uses
 -- and whether the isolation the configuration promised is the isolation in force.
 --

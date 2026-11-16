@@ -8,9 +8,8 @@
 
 ```
 wb-parser-kotlin/
-├── browser/        — browser stack (java-library): AdsPower Local API client, надстройка
-│                     над Playwright/CDP, пул профилей, состояние сессии. Без Spring,
-│                     без БД, без WB.
+├── browser/        — browser stack (java-library): локальный Camoufox через Playwright,
+│                     пул профилей, состояние сессии. Без Spring, без БД, без WB.
 ├── wbparser/       — crawler module (java-library): Stage/Side/Interpreter, модели,
 │                     Repo interfaces, Ktor client, Exposed, роутер egress. Чистая
 │                     логика без Spring.
@@ -24,8 +23,8 @@ wb-parser-kotlin/
   про WB, ни про базу.
 - `browser` — `java-library`. Наружу он отдаёт четыре вещи: `BrowserPool` (пул профилей),
   `BorrowedPage` (аренда страницы), `BrowserPage` (контракт страницы — единственный, кто
-  говорит с Playwright) и `AdsPowerApi` (клиент Local API). Всё, что не пересекает
-  границу, — `internal` (в Kotlin `internal` — это модуль Gradle, поэтому переезд меняет
+  говорит с Playwright) и `CamoufoxInstall`/`CamoufoxAutomation` (локальный запуск).
+  Всё, что не пересекает границу, — `internal` (в Kotlin `internal` — это модуль Gradle, поэтому переезд меняет
   видимость, и её надо ревизовать). Playwright модуль наружу не отдаёт: его имя проверяет
   `scripts/ci/check-repo-rules.py` — ни в `wbparser`, ни в `app` его быть не должно.
 - `wbparser` — `java-library` (`api` — только то, что действительно в типе публичного API
@@ -92,7 +91,7 @@ just deploy::dry-run <tag> # ansible --check --diff
 
 ## CI-поверхности / CI surfaces
 
-Восемь workflow'а — не украшение, а часть гарантий репозитория. Их связность
+Девять workflow'ов — не украшение, а часть гарантий репозитория. Их связность
 проверяет гейт `scripts/ci/check-ci-workflows.py` (в реестре
 `scripts/ci/static-gates.sh`), поэтому удаление или «опустошение» любого из них —
 это finding, а не тихая потеря.
@@ -107,6 +106,7 @@ just deploy::dry-run <tag> # ansible --check --diff
 | `.github/workflows/lint-autofix.yml` | применяет `scripts/ci/lint-autofix.sh` и **предлагает** правки (ветка `lint-autofix/<run-id>` + PR/комментарий) | push, PR, dispatch |
 | `.github/workflows/dependabot-auto-merge.yml` | мержит PR'ы dependabot: разбирает текст описания, решает по semver, мержит только обновления зависимостей | PR от dependabot, schedule |
 | `.github/workflows/site-compatibility.yml` | спрашивает у витрины, понимает ли она образ, который сейчас собран: контракт между двумя репозиториями | push на main |
+| `.github/workflows/camoufox-smoke.yml` | opt-in: ставит pinned Camoufox и проверяет реальный launch → fingerprint → page → close, а не только наличие executable | dispatch |
 
 Правила, которые из этого следуют:
 
@@ -249,8 +249,8 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 - ошибка, пойманная в `catch`, обязана попасть в `StageFailure` или в лог — и
   ресурс, взятый перед работой, освобождается на **каждом** пути, включая путь отказа;
 - публичный тип модуля не называет тип, который модуль скрывает; домен не знает о базе;
-- критичный вход (`BrowserPool.borrowPage`, `BrowserReconciler.reconcile`,
-  `AdsPowerApi.*`) приезжает с тестом, где он бросает: покрытие строк такой путь не
+- критичный вход (`BrowserPool.borrowPage`, `CamoufoxAutomation.start`,
+  `CamoufoxInstalls.resolve`) приезжает с тестом, где он бросает: покрытие строк такой путь не
   видит;
 - `exitProcess()` — только там, где веб-сервера нет; `compileOnly` не течёт в рантайм;
 - exclude-лист DAGP может только уменьшаться по существу.
@@ -271,9 +271,12 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 | `docs/decisions/2026-10-19-explicit-module-boundary.md` | Граница `wbparser → app` объявлена (`java-library`, `api`/`runtimeOnly`), а не подразумевается |
 | `docs/decisions/2026-10-19-jdk-toolchain.md` | Версия JDK — одно число в одном месте; toolchain сам себя обеспечивает |
 | `docs/decisions/2026-10-20-the-coverage-floor-measures-the-code-not-the-module.md` | Floors меряются по merged-отчёту с фильтром по пакетам: отчёт модуля не видит покрытие чужих сьютов |
-| `docs/decisions/2026-10-20-the-big-classes-are-split-by-decision.md` | Крупные классы делятся по решению, которое они держат: `WbCatalogRequest`/`WbCatalogApi`/`WbCatalogFetchScript`, `Pipeline`/`PipelineBatch`/`PipelinePageProcessor`, `CrawlRunner`/`CrawlJobStore`/`TargetCrawl`/`CrawlMetrics`, `BrowserPool`/`BrowserProfileState`/`AdsPowerApi`/`CdpAutomation` |
+| `docs/decisions/2026-10-20-the-big-classes-are-split-by-decision.md` | Крупные классы делятся по решению, которое они держат: `WbCatalogRequest`/`WbCatalogApi`/`WbCatalogFetchScript`, `Pipeline`/`PipelineBatch`/`PipelinePageProcessor`, `CrawlRunner`/`CrawlJobStore`/`TargetCrawl`/`CrawlMetrics`, `BrowserPool`/`BrowserProfileState`/`CamoufoxAutomation` |
 | `docs/decisions/2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary.md` | Длина каталога измеряется на границе пагинации; лимит следует за границей и никогда не выше предела API (60 страниц); замер пишет отчёт, YAML меняет отдельный шаг |
-| `docs/decisions/2026-10-20-the-crawler-and-its-browser-share-one-network-namespace.md` | Деплой: репозиторий публикует два образа (краул + рантайм AdsPower), Caddy-vps тянет их по digest; браузер делит сетевую namespace краула — Local API и CDP доступны по 127.0.0.1, наружу не выставлен ни один порт |
+| `docs/decisions/2026-10-20-the-crawler-and-its-browser-share-one-network-namespace.md` | **Superseded** для локального runtime: браузер больше не контейнер на VPS. Актуальное решение — `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md` |
+| `docs/decisions/2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md` | Camoufox работает локально; адрес — прокси; отпечаток — данные профиля |
+| `docs/decisions/2026-11-16-the-local-browser-lives-in-the-profile-directory.md` | Persistent-контекст в каталоге профиля; каталог занят на время жизни браузера |
+| `docs/decisions/2026-11-16-the-deployment-runs-camoufox.md` | Развёртывание запускает Camoufox и не несёт AdsPower: один образ, ленивый install, никакой startup-сверки |
 | `docs/decisions/2026-10-20-the-crawl-cadence-follows-the-measured-catalog.md` | Расписание выводится из измеренной длины каталога: тик короче круга, окно свежести длиннее круга, запасной лимит не ниже измеренного минимума |
 
 ---

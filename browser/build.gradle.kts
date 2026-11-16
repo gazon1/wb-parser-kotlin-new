@@ -4,18 +4,18 @@ plugins {
     id("java-library")
     id("org.jetbrains.kotlin.jvm")
     id("org.jetbrains.kotlinx.kover")
-    // The test doubles this module shares with the crawler — `FakeBrowserAutomation`,
-    // `FakePlaywrightPage`, `FakeAdsPowerApi` — are published as fixtures: the crawler's
-    // own tests need them, and re-declaring them there is how two copies drift apart.
+    // The test doubles this module shares with the crawler — `FakeBrowserAutomation`
+    // and `FakeBrowserPage` — are published as fixtures: the crawler's own tests need
+    // them, and re-declaring them there is how two copies drift apart.
     id("java-test-fixtures")
 }
 
 // ==============================================================================
 // The module boundary
 // ==============================================================================
-// The browser stack — the AdsPower Local API client, the Playwright/CDP overlay, the
-// profile pool and the browser session — lives here, and it knows nothing about the
-// crawler: no Spring, no database, no Arrow, no Ktor, no Micrometer, no WB.
+// The browser stack — the Camoufox launch, the Playwright overlay, the profile pool
+// and the browser session — lives here, and it knows nothing about the crawler: no
+// Spring, no database, no Arrow, no Ktor, no Micrometer, no WB.
 //
 // The direction of the dependency is `app → wbparser → browser`. Nothing points back.
 //
@@ -26,17 +26,15 @@ plugins {
 dependencies {
     implementation(libs.kotlin.stdlib)
 
-    // Playwright. `api`: `Page` appears in the public signatures of `BrowserAutomation`,
-    // `BorrowedPage` and `CdpAutomation`, so a consumer's code that drives a browser
-    // names the type. This is the one dependency a consumer of this module cannot
-    // avoid — and the reason the module exists separately from the crawler.
-    // Playwright is an implementation detail of this module: the public API speaks
-    // `BrowserPage`, and Playwright's own types stop at `PlaywrightBrowserPage`.
+    // Playwright launches Camoufox. It is an implementation detail of this module: the
+    // public API speaks `BrowserPage`, and Playwright's own types stop at
+    // `PlaywrightBrowserPage` and `PlaywrightCamoufoxLauncher`.
     implementation(libs.playwright) {
         exclude(group = "org.slf4j")
     }
 
-    // The AdsPower envelope is parsed with Jackson; no consumer names a Jackson type.
+    // The stored fingerprint, the install record and the font tables are JSON; no
+    // consumer names a Jackson type.
     implementation(libs.jackson.databind)
 
     // The failure of a Jackson parse is a fact about the file, and the exception that
@@ -65,22 +63,29 @@ tasks.test {
 }
 
 /**
- * Installs the browser Playwright drives.
+ * Installs the pinned Camoufox build.
  *
- * The adapters that speak to Playwright are the seam itself: Playwright's `Browser`,
- * `Page` and `Playwright` are final classes, and no double can stand in for them. The
- * only way to check them is a real Chrome, and the browser is installed once per
- * machine.
- *
- * The CI runs this before the tests. A developer runs it once, the same way they
- * install a JDK.
+ * Camoufox is installed out of band, by its own package, and the runtime only reads
+ * and verifies the build it finds. This task is the one-command version of that
+ * setup: it pins the package and the build in `scripts/camoufox.sh` and nothing else.
  */
-val playwrightInstall by tasks.registering(JavaExec::class) {
+val camoufoxInstall by tasks.registering(Exec::class) {
     group = "verification"
-    description = "Installs the browser Playwright drives, for the tests that need a real Chrome."
-    classpath = sourceSets["test"].runtimeClasspath
-    mainClass.set("com.microsoft.playwright.CLI")
-    args("install", "chromium")
+    description = "Installs the pinned Camoufox build."
+    commandLine("bash", rootProject.file("scripts/camoufox.sh").absolutePath, "install")
+}
+
+/**
+ * Checks that this machine has the pinned Camoufox build.
+ *
+ * The tests that need a real browser skip when it is missing; this task is how a
+ * developer or a CI job proves the build it is about to run is the one that was
+ * measured.
+ */
+val camoufoxVerify by tasks.registering(Exec::class) {
+    group = "verification"
+    description = "Verifies that the pinned Camoufox build is installed."
+    commandLine("bash", rootProject.file("scripts/camoufox.sh").absolutePath, "verify")
 }
 
 kover {

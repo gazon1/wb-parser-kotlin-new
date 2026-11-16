@@ -119,7 +119,7 @@ def write_artifact(path: Path, limits: dict[str, dict], sources: list[str]) -> N
     required=True,
     multiple=True,
     help=(
-        "JSON report written by measure_catalog_length.py. Repeat for several passes: "
+        "JSON catalog-length measurement report. Repeat for several passes: "
         "the limit is the MAXIMUM over all of them, never the last one."
     ),
 )

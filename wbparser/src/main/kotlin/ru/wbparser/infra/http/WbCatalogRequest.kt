@@ -11,7 +11,7 @@ import ru.wbparser.domain.util.WB_BASE_URL
  *
  * `BrowserDownloader` originally owned all of this as private methods, which left the only
  * interesting decisions in the change — *which* page number, *which* query — reachable only by
- * standing up a real AdsPower Chrome. Two of them had already gone wrong silently in
+ * standing up a real browser. Two of them had already gone wrong silently in
  * production. Extracting them makes the request a value you can assert on.
  *
  * ## Which endpoint, and why it matters

@@ -91,6 +91,6 @@ internal object WbCatalogApi {
 
     private const val API_PATH = "__internal/u-search/exactmatch/ru/common/v18/search"
 
-    /** Moscow, matching the AdsPower profile's egress IP. */
+    /** Moscow, matching the deployment's egress address. */
     private const val DEFAULT_DEST = "1259570991"
 }

@@ -4,6 +4,9 @@ date: 2026-10-17
 tags: [browser, architecture, testing]
 ---
 
+> **Superseded (#271):** the browser now runs locally as Camoufox, and AdsPower is no longer
+> part of the runtime. See `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md`.
+
 ## Context
 
 `BrowserPool.ProfileState.resolveCdpUrl()` calls `checkActiveV2()` and `startProfileV2()` directly via raw `HttpURLConnection`. This makes `BrowserPool` impossible to unit-test without a real AdsPower Local API server running.

@@ -1,7 +1,7 @@
 ---
 title: "Стек браузера — отдельная библиотека, а не часть краула"
 date: 2026-10-22
-tags: [build, architecture, dependencies, browser, adspower]
+tags: [build, architecture, dependencies, browser]
 ---
 
 ## Context

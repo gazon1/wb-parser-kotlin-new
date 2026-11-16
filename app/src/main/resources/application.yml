@@ -92,7 +92,7 @@ crawler:
     # without a limit must not be crawled more shallowly than a target with one,
     # or the fallback would silently truncate the ones nobody measured.
     max-pages-per-catalog: 60
-    # The egress groups: sets of AdsPower profiles that are expected to share one
+    # The egress groups: sets of browser profiles that are expected to share one
     # egress IP. A group owns the request budget of its address, which is what WB
     # counts. One profile per group is the most throughput; several profiles in a
     # group buy the group a working IP while one of its profiles rests after an
@@ -102,19 +102,16 @@ crawler:
     # truth, and a second list of the same profiles would be ignored the day the
     # two disagree.
     #
-    # `proxy` says where the group leaves from, and it is DECLARED, never
-    # assumed: the probe compares it with what AdsPower shows for the profiles of
-    # the group, and a group that says one thing and does another gets the budget
-    # and the metric of an address nobody meant. A group without a declaration is
-    # a configuration error — "not declared" is not "direct".
+    # `proxy` says where the group leaves from, and the browser is launched with it.
+    # A group without a declaration is a configuration error — "not declared" is not
+    # "direct".
     #
-    # `none` leaves from the address of the machine the crawler runs on — the
-    # profiles below have no proxy in AdsPower, so they share that address.
-    # `socks5` leaves from the proxy configured in AdsPower for `kxpu63n`.
+    # `none` leaves from the address of the machine the crawler runs on.
+    # `socks5` / `http` need the address below: a locally launched browser cannot use
+    # an endpoint it does not know.
     #
-    # The kind is enough for the check; `host` and `port` are optional and pin the
-    # address as well. A deployment that keeps its addresses out of the repository
-    # states them through the environment:
+    # The address is stated through the environment so a deployment that keeps its
+    # addresses out of the repository still pins them:
     #   host: ${EGRESS_PROXY_HOST_SOCKS5:}
     #
     # `username` / `password` reach the browser, never the repository: a credential
@@ -136,9 +133,8 @@ crawler:
           - kxpu63n
         proxy:
           type: socks5
-          # The address of the proxy, when the deployment pins it. Left empty on
-          # purpose: the address is the deployment's own, and a repository that
-          # holds it holds an address that changes when the provider rotates it.
+          # The address of the proxy. A group with a non-direct proxy cannot start
+          # without it: the browser is launched with this endpoint.
           host: ${EGRESS_PROXY_HOST_SOCKS5:}
           port: ${EGRESS_PROXY_PORT_SOCKS5:0}
     # The HTTP proxy with Basic auth, for a deployment whose endpoint requires
@@ -165,8 +161,17 @@ crawler:
     # `[profiles-dir]/[endpoint]/[profile-id]` — the endpoint in the path is what
     # keeps a profile from being opened through an address it was not created for.
     #
-    # Empty means the browser runtime keeps its own profiles (as AdsPower does).
-    profiles-dir: ${PROFILES_DIR:}
+    # The stored fingerprint of a profile is read from
+    # `[profiles-dir]/[endpoint]/[profile-id].fingerprint.json`. A profile without one
+    # is refused at launch: the browser must not invent an identity.
+    profiles-dir: ${PROFILES_DIR:${user.home}/.wbparser/profiles}
+    # The Camoufox build this deployment runs.
+    #
+    # Camoufox is installed out of band (see docs/RUNBOOK.md). The runtime reads the
+    # active build from `[camoufox-home]/config.json` and refuses to start a browser
+    # when it is not the build pinned below. A blank home means `~/.cache/camoufox`.
+    camoufox-home: ${CAMOUFOX_HOME:}
+    camoufox-build: ${CAMOUFOX_BUILD:browsers/official/158.0.1-beta.41-3f2eb1d0}
     # The services asked for the crawler's own address, in order. The first that
     # answers wins. The probe never stops the crawler: an unreachable echo service
     # is a warning, not a failure.
@@ -221,7 +226,7 @@ crawler:
     # than parallelise. It used to be a number in this file that had to be kept
     # equal to the profile count by hand — and was not.
     target-concurrency: 0
-    # Anti-bot session warm-up is paid once per AdsPower profile, not per page:
+    # Anti-bot session warm-up is paid once per profile, not per page:
     # ~2 s of challenge wait on the very first request of each profile, then every
     # later request reuses the warm page.
     browser-warmup-ms: 2000
@@ -229,34 +234,19 @@ crawler:
     # metronome so WB's rate limiting has nothing mechanical to key on.
     browser-jitter-min-ms: 200
     browser-jitter-max-ms: 500
-    # An AdsPower browser nobody asked for still holds a window, a profile lock and
-    # its share of the machine's memory — and it keeps its anti-bot session alive, so
-    # the next run would attach to a session older than the one it could have
-    # created. After this long without a request the browser is closed; the next
-    # borrower reopens it, and a fresh browser means a fresh session.
+    # A browser nobody asked for still holds a window, a profile lock and its share
+    # of the machine's memory — and it keeps its anti-bot session alive, so the next
+    # run would start on a session older than the one it could have created. After
+    # this long without a request the browser is closed; the next borrower reopens it,
+    # and a fresh browser means a fresh session.
     # 0 disables the closing: the browsers then live as long as the process.
     browser-idle-timeout-ms: 300000
     # How often the idle browsers are looked for. A tick, not a policy — the timeout
     # above decides what "idle" means.
     browser-janitor-interval-ms: 60000
-    # Whether the browsers are stopped in AdsPower when the application exits. A
-    # browser left running after the crawler is gone keeps its profile locked.
+    # Whether the browsers are stopped when the application exits. A browser left
+    # running after the crawler is gone keeps its profile locked.
     close-browsers-on-exit: true
-    # Whether the browsers that survived the previous run are stopped at startup.
-    #
-    # A crawler that was killed — SIGKILL, an OOM, a fallen JVM — never got to stop
-    # its browsers: the AdsPower runtime is a container of its own and keeps them
-    # running. The next run finds them, and this is the switch that stops them
-    # instead of inheriting a session older than the one it could have created.
-    # The price is a fresh session: the first request of each profile pays the
-    # warm-up again.
-    # Off for a deployment where several crawlers share one AdsPower runtime — the
-    # second one would stop the first one's browsers.
-    reconcile-browsers-on-start: true
-    # How often the reconciliation is retried while it has not been confirmed. The AdsPower
-    # runtime may come up after the crawler does, and a reconciliation that could not run
-    # is a browser nobody looked for — so it is asked again until the answer is confirmed.
-    reconcile-browsers-interval-ms: 60000
 
 # ==============================================================================
 # Catalog read API
@@ -325,7 +315,7 @@ crawler:
     # It follows the measured length of a catalog. A target is 60 pages long (the
     # measured value — see docs/decisions/2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary.md),
     # a page costs about a second plus the anti-bot back-off, and the 132 targets are
-    # crawled three at a time (one per AdsPower profile). A round is therefore about
+    # crawled three at a time (one per profile). A round is therefore about
     # four and a half hours, and a freshness window shorter than that would ask for a
     # second visit before the first one finished — the window has to be longer than a
     # round, or it stops meaning anything.

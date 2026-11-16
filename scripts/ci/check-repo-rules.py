@@ -420,11 +420,11 @@ VIOLATIONS = {
     "wbparser/src/main/kotlin/ru/wbparser/infra/http/Leaky.kt": (
         "package ru.wbparser.infra.http\n\nimport com.microsoft.playwright.Page\n\nclass Leaky\n"
     ),
-    "wbparser/src/test/kotlin/ru/wbparser/infra/http/MockAdsPowerApi.kt": (
-        "package ru.wbparser.infra.http\n\nclass MockAdsPowerApi\n"
+    "wbparser/src/test/kotlin/ru/wbparser/infra/http/MockBrowserPool.kt": (
+        "package ru.wbparser.infra.http\n\nclass MockBrowserPool\n"
     ),
-    "browser/src/main/kotlin/ru/wbparser/browser/adspower/AdsPowerApi.kt": (
-        "package ru.wbparser.browser.adspower\n\ninterface AdsPowerApi\n"
+    "browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserPool.kt": (
+        "package ru.wbparser.browser.pool\n\nclass BrowserPool\n"
     ),
     "CHANGELOG.md": "# The history that must not be here\n",
     ".github/workflows/ci.yml": "jobs:\n  build:\n    steps:\n      - run: ./gradlew fixDependencies\n",

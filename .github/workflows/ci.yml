@@ -144,15 +144,9 @@ jobs:
           echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
           echo "org.gradle.caching=true" >> ~/.gradle/gradle.properties
 
-      # The browser Playwright drives.
-      #
-      # The adapters that speak to Playwright are the seam itself — Playwright's types
-      # are final and no double can stand in for them — so they are checked against a
-      # real Chrome. The browser is installed once per machine; the CI installs it
-      # before anything that runs the tests, and the test fails loudly when it is
-      # missing.
-      - name: Install the browser Playwright drives
-        run: ./gradlew playwrightInstall --no-daemon
+      # No browser is installed here: the crawler runs Camoufox on the operator's
+      # machine, and the tests that need it skip when it is absent. `camoufoxVerify`
+      # is how a machine that has the build proves it is the pinned one.
 
       - name: Build with Gradle
         run: ./gradlew build --no-daemon -x ktlintCheck -x detekt
@@ -220,13 +214,9 @@ jobs:
           echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
           echo "org.gradle.caching=true" >> ~/.gradle/gradle.properties
 
-      # The browser Playwright drives — see the build job. The coverage report is the
-      # union of the modules' reports, and the browser module's own report is part of
-      # it: without the browser, the adapters that speak to Playwright would be
-      # missing from the union, and the floor would be measured against less than the
-      # repository actually has.
-      - name: Install the browser Playwright drives
-        run: ./gradlew playwrightInstall --no-daemon
+      # No browser is installed here — see the build job. The browser module's tests
+      # that need a real Camoufox skip when it is absent, and the rest covers the
+      # decisions.
 
       # `test koverXmlReport`, not `koverXmlReport`: the merged report is the union of
       # the modules' reports, and the union can be built before the part it is made of
@@ -455,39 +445,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # The browser runtime is a second image, not a part of the crawler image.
-      #
-      # The crawler cannot fetch a Wildberries page without a real browser, and the
-      # browser is an AdsPower runtime: a virtual display, the AdsPower CLI and the
-      # Chrome kernel it downloads. Keeping it out of the crawler image means the
-      # crawler image stays small, and it means the browser can be replaced
-      # (a new kernel, a new CLI) without rebuilding the application.
-      #
-      # The tags are the same as the crawler's: both images are built from the same
-      # commit, and the deploy names that commit once.
-      - name: Extract browser metadata (tags + labels)
-        id: meta-browser
-        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
-        with:
-          images: ghcr.io/${{ github.repository_owner }}/wb-parser-adspower
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=sha,prefix=,format=short
-            type=raw,value=latest,enable={{is_default_branch}}
-
-      - name: Build and push the browser runtime
-        id: build-browser
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
-        with:
-          context: docker.adspower
-          file: docker.adspower/Dockerfile
-          push: true
-          tags: ${{ steps.meta-browser.outputs.tags }}
-          labels: ${{ steps.meta-browser.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
       - name: Summary
         if: always()
         run: |
@@ -496,11 +453,6 @@ jobs:
             echo ""
             echo "- Tags: \`${{ steps.meta.outputs.tags }}\`"
             echo "- Digest: \`${{ steps.build.outputs.digest }}\`"
-            echo ""
-            echo "### Browser runtime image"
-            echo ""
-            echo "- Tags: \`${{ steps.meta-browser.outputs.tags }}\`"
-            echo "- Digest: \`${{ steps.build-browser.outputs.digest }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Nobody reads a red cron run.

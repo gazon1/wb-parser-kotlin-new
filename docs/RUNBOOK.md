@@ -34,8 +34,8 @@
 |---|---|---|
 | JDK | 22; задаётся один раз — `subprojects { } → jvmToolchain(22)` в root build. Toolchain сам скачивает JDK (foojay-резолвер в `settings.gradle.kts`) | `docs/decisions/2026-10-19-jdk-toolchain.md` |
 | Docker + docker compose | debug-стек, Testcontainers-тесты, реестр образов | `deploy/docker-compose.debug.yml` |
-| AdsPower Local API | обязателен: краул водит **свой Chrome AdsPower** через CDP, Chromium из Playwright не скачивает | `app/src/main/kotlin/ru/wbparser/app/config/CrawlerConfig.kt` |
-| AdsPower-профили | список в `application.yml → crawler.spider.egress-groups` (по профилю на группу); в комментариях помечены неактивные | `app/src/main/resources/application.yml` |
+| Camoufox | обязателен: краул запускает **локальный Camoufox** через Playwright; ставится вне репозитория (`just browser::install`) | `scripts/camoufox.sh`, `docs/decisions/2026-11-16-the-local-browser-lives-in-the-profile-directory.md` |
+| Профили браузера | список в `application.yml → crawler.spider.egress-groups` (по профилю на группу); persistent-каталоги и отпечатки — в `PROFILES_DIR` | `app/src/main/resources/application.yml` |
 | Меню WB | `https://static-basket-01.wbbasket.ru/vol0/data/main-menu-by-ru-v3.json` — источник токенов `searchQuery` | `scripts/wb-catalog/enrich_catalog_queries.py` |
 | Справочник предметов | `https://static-basket-01.wbbasket.ru/vol0/data/subjects.json` | `scripts/wb-catalog/load_subjects.py` |
 | Python | ≥ 3.11, зависимости через `uv` (`pyproject.toml`, `uv.lock`) | `pyproject.toml` |
@@ -50,9 +50,10 @@
 | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` | `spring.datasource` | `DB_NAME` должен совпадать с базой, из которой читает витрина; legacy-стек .NET использовал `webcrawler` — указание на неё даёт пустой каталог без ошибки |
 | `ADMIN_API_KEY` | `AdminApiKeyFilter` | **Обязательна**: без неё приложение падает на старте (`IllegalStateException`). Ключ передаётся в заголовке `X-Api-Key` |
 | `ADMIN_PASSWORD`, `ADMIN_USER` | `spring.security.user` | Basic-auth для admin API; предпочтительнее `X-Api-Key` |
-| `ADSPOWER_API_KEY` | AdsPower Local API | Требуется для обхода |
-| `ADSPOWER_API_BASE` | `AdsPowerApiResolver` | Переопределяет авто-обнаружение порта. Известные порты: 50325 (десктоп-приложение), 50725 (CLI `adspower-browser`) |
-| `ADSPOWER_HOME` | каталог профилей AdsPower | В debug-стеке монтируется как `/adspower`; без него pre-flight считает все профили отсутствующими |
+| `CAMOUFOX_HOME` | установка Camoufox | По умолчанию `~/.cache/camoufox`; в debug-стеке монтируется как `/camoufox` |
+| `CAMOUFOX_BUILD` | пин сборки Camoufox | Ожидаемая сборка (`active_version` из `config.json`); несовпадение — отказ при первом запуске браузера |
+| `PROFILES_DIR` | каталоги профилей | По умолчанию `~/.wbparser/profiles`; в них лежат cookies, storage и `<profile>.fingerprint.json` |
+| `EGRESS_PROXY_HOST_*`, `EGRESS_PROXY_PORT_*`, `EGRESS_PROXY_USERNAME_HTTP`, `EGRESS_PROXY_PASSWORD_HTTP` | прокси групп | Адрес и credentials браузера; в репозитории их нет |
 | `SERVER_PORT` | порт приложения | В `application.yml` — `8080`; в `just app::run` — `8071`; в debug-стеке — `8082` |
 | `SPRING_PROFILES_ACTIVE` | профиль Spring | `worker` — планировщик включён; `once` — один прогон без веб-сервера; `admin` / `public` — планировщик выключен |
 | `CRAWLER_SCHEDULE_CRON`, `CRAWLER_SCHEDULE_FRESHNESS_MINUTES` | расписание | Тик и каденция — разные вещи, см. `docs/decisions/2026-10-20-schedule-cadence-single-parameter.md` |
@@ -85,15 +86,10 @@
   `docker compose -f deploy/docker-compose.debug.yml up -d --force-recreate app` — иначе JVM
   читает наполовину переписанный архив и отдаёт `NoClassDefFoundError` на классах, которые
   не успели загрузиться;
-- `network_mode: host` обязателен: AdsPower Local API и CDP-порты доступны только через
-  loopback хоста, в bridge-сети контейнера их нет;
+- браузер запускается на хосте; в контейнер монтируются `~/.cache/camoufox` (read-only)
+  и `~/.wbparser/profiles` (rw) как `/camoufox` и `/profiles`;
 - Flyway в debug-стеке включён (`SPRING_FLYWAY_ENABLED=true`): база пустая, без миграций
   схемы нет.
-
-**Отдельный стек с AdsPower в контейнере:**
-`ADSPOWER_API_KEY=<ключ> docker compose -f deploy/docker-compose.adspower.yml up --build` —
-сервисы `wbparser-postgres`, `wbparser-adspower` (Xvfb + Fluxbox + x11vnc +
-`adspower-browser`, Local API на `localhost:50325`), `wbparser-app` на `127.0.0.1:8082`.
 
 **Приложение без контейнера:** `just app::run` — `bootRun` с дефолтами `SERVER_PORT=8071`,
 `DB_HOST=localhost`, `DB_PORT=5433` (база из debug-стека), `ADMIN_API_KEY=dev-admin-key`,
@@ -101,6 +97,66 @@
 
 **Проверить, что живо:** `curl -s http://localhost:8082/api/health/live` и
 `curl -s http://localhost:8082/api/health/ready` (разбор — §6).
+
+---
+
+## 3a. Локальный браузер Camoufox
+
+Парсер и браузер работают на одной машине; VPS даёт только proxy endpoints.
+
+**Установка и пин.** Сборка ставится вне репозитория и пинится в двух местах:
+`scripts/camoufox.sh` (версия пакета и `CAMOUFOX_BUILD`) и `crawler.spider.camoufox.build`
+в `application.yml` (ожидаемая сборка). Несовпадение — отказ при первом запуске браузера,
+а не тихая работа под другим браузером.
+
+```bash
+just browser::install   # uv tool install camoufox==0.5.9 + camoufox fetch
+just browser::verify    # сверяет active_version с пином и проверяет camoufox-bin
+```
+
+**Системные библиотеки.** Бандл приносит свои шрифты и `fonts.conf`; ставить шрифты не
+нужно. Нужны библиотеки, с которыми собран Firefox: на Debian/Ubuntu —
+`libnss3 libgbm1 libasound2t64 libgtk-3-0 libdbus-glib-1-2 libxt6 libx11-xcb1 libxcomposite1
+libxdamage1 libxrandr2 libatk-bridge2.0-0 libpango-1.0-0 libcups2`; на Fedora —
+`nss gbm alsa-lib gtk3 dbus-glib libXt libX11-xcb libXcomposite libXdamage libXrandr
+atk at-spi2-atk pango cups-libs`. `Dockerfile.app`/`Dockerfile.debug` перечисляют тот же
+набор для контейнера.
+
+**Запуск.** Отдельного процесса-сайдкара нет: `CamoufoxAutomation` запускает
+`camoufox-bin` из pinned-сборки через Playwright при первом заёме профиля, в
+persistent-контексте `PROFILES_DIR/<endpoint>/<profile>`. `headless=true` — измеренный
+режим (ADR `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`). Профиль без
+`<profile>.fingerprint.json` не запускается: браузер не придумывает identity.
+
+**Остановка.** Простаивающий браузер закрывается по `browser-idle-timeout-ms`; на выходе
+приложения — все браузеры, которыми пользовался краул (`close-browsers-on-exit`). После
+SIGKILL/OOM процесс может остаться. Проверить и убрать:
+
+```bash
+pgrep -af camoufox-bin            # найти оставшиеся процессы
+kill <pid>                        # сначала обычный SIGTERM
+```
+
+Не удаляйте `parent.lock`/`lock` в каталоге профиля, пока процесс жив: сначала убедитесь,
+что процесс ушёл, иначе следующий запуск подерётся за каталог.
+
+**Профили: backup и restore.** Профиль — это cookies и storage, поэтому каталог и есть
+сессия. Останавливайте браузер перед копированием и копируйте каталог вместе с
+`<profile>.fingerprint.json`:
+
+```bash
+tar -C "$PROFILES_DIR" -czf profiles-$(date +%F).tgz .
+# restore — на машину с тем же endpoint'ом и той же сборкой Camoufox
+tar -C "$PROFILES_DIR" -xzf profiles-$(date +%F).tgz
+```
+
+Каталог назван по proxy endpoint'у: перенос на другой адрес — это новая identity, и
+`BrowserProfileConfig` откажется открывать каталог под чужим endpoint'ом.
+
+**Credentials прокси.** Только через env/секрет-конфиг (`.env`, `app.env`,
+`EGRESS_PROXY_*`); в репозитории их нет, в логи они не попадают — `ProxyConfig.toString()`
+и `DeclaredProxy.toString()` вырезают username/password. SOCKS5 с паролем Playwright не
+принимает: используйте SOCKS5 с ограничением по CIDR или HTTP с Basic auth.
 
 ---
 
@@ -164,59 +220,60 @@ just deploy::dry-run <tag> # ansible --check --diff
 `ansible-playbook ~/Caddy-vps/playbooks/wbparser.yml -e "wbparser_tag=<tag>" -e
 "wbparser_compose_src=<repo>/deploy/docker-compose.vps.yml"`.
 
-**Два образа, один тег.** Краул не может прочитать ни одной страницы Wildberries без
-настоящего браузера, и браузер — это AdsPower: виртуальный дисплей, CLI AdsPower и Chrome,
-который он запускает. Поэтому репозиторий собирает и публикует **два** образа:
-
-| образ | что это |
-|---|---|
-| `ghcr.io/<owner>/wb-parser` | краул (`Dockerfile.app`) |
-| `ghcr.io/<owner>/wb-parser-adspower` | рантайм браузера (`docker.adspower/Dockerfile`) |
-
-Оба помечаются **одним тегом** — коротким SHA коммита: `just deploy` называет коммит один
-раз, и оба образа едут из него. CI (джоб `publish-image` в `.github/workflows/ci.yml`: после
-`build`, `lint`, `coverage`, `gate-honesty`, только на push) собирает оба и пушит их с тегами
+**Один образ, один тег.** Браузер — локальный Camoufox, он не едет на VPS. Репозиторий
+собирает и публикует один образ приложения (`ghcr.io/<owner>/wb-parser`, `Dockerfile.app`) —
+на VPS он работает как API, а локально — как краул;
+тег — короткий SHA коммита. CI (джоб `publish-image` в `.github/workflows/ci.yml`: после
+`build`, `lint`, `coverage`, `gate-honesty`, только на push) собирает и пушит его с тегами
 `branch`, короткий `sha` и `latest` для default-ветки. Вручную: `docker login ghcr.io -u
-<user> --password-stdin`, затем `just deploy::build` и `just deploy::push` — обе команды
-собирают и пушат оба образа.
+<user> --password-stdin`, затем `just deploy::build` и `just deploy::push`.
 
 Фолбэка на `latest` нет намеренно: забытый digest утащил бы «что registry считает самым
 новым», а тег можно переставить. Роль `Caddy-vps` разрешает тег в digest и поднимает именно
 digest, поэтому тег — это имя, а не то, что работает.
 
-**Что происходит на VPS.** `deploy/docker-compose.vps.yml` — два сервиса:
+**Что происходит на VPS.** `deploy/docker-compose.vps.yml` — один сервис, и это
+**API, а не краул**:
 
-- `wb-parser` — краул. Образ по digest (`ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser@${DIGEST:?}`),
-  `env_file: app.env`, порт **не публикуется** — только `expose: 8080` во внешней сети
-  `caddy_net`, которую создаёт и владеет роль из `Caddy-vps`. Healthcheck: `wget -q -O
-  /dev/null http://127.0.0.1:8080/api/health/live || exit 1` — `wget`, а не `curl` (в
+- `wb-parser` — образ по digest (`ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser@${DIGEST:?}`),
+  `env_file: app.env`, `SPRING_PROFILES_ACTIVE=public` и `CRAWLER_WORKER_ENABLED=false`.
+  Порт **не публикуется** — только `expose: 8080` во внешней сети `caddy_net`, которую
+  создаёт и владеет роль из `Caddy-vps`. Healthcheck: `wget -q -O /dev/null
+  http://127.0.0.1:8080/api/health/live || exit 1` — `wget`, а не `curl` (в
   `eclipse-temurin:22-jre` нет curl), и `/live`, а не `/ready` (краткий блёп БД не должен
-  перезапускать краул посреди обхода).
-- `wb-parser-browser` — рантайм браузера. Образ по digest (`...wb-parser-adspower@${BROWSER_DIGEST:?}`),
-  `env_file: browser.env` (только ключ AdsPower — ни пароля БД, ни админского ключа у него
-  быть не должно), и `network_mode: "service:wb-parser"`: он делит сетевую namespace краула,
-  поэтому Local API AdsPower и CDP-порт Chrome доступны краулу по `127.0.0.1` и **нигде
-  больше**. Состояние AdsPower (ядро Chrome на 520 МБ и каталоги профилей) — именованный том
-  `wbparser-adspower-state`, общий для обоих контейнеров: pre-flight краула видит профили,
-  которые материализовал рантайм.
+  перезапускать API).
 
-Наружу не выставлен ни один порт обоих контейнеров: namespace — это мост `caddy_net`, а не
-публичный интерфейс. Caddy и витрина достают краул по имени контейнера, как и раньше.
+Расписание и браузер на VPS выключены: Camoufox нет в образе, persistent-профилей нет и
+быть не должно. Профили создаются и живут на рабочей машине.
 
-**Первый старт браузера долгий.** Рантайм скачивает ядро Chrome (520 МБ) с CDN AdsPower —
-однократно, дальше оно лежит в томе. Поэтому гейт здоровья в роли `Caddy-vps` — 600 с, а не
-180: таймаут короче первой закачки уронил бы деплой, который вот-вот прошёл бы. Профили
-AdsPower приезжают из аккаунта (тот же API-ключ), а не копируются с машины оператора: в
-`wb_catalog_targets.yaml` и в `application.yml` перечислены **id** профилей.
+**Краулер запускается на рабочей машине.** База — та же удалённая, прокси — те же, что
+объявлены группам; браузер — локальный Camoufox. Перед запуском: `just browser::verify`,
+`PROFILES_DIR` с каталогами профилей и `<profile>.fingerprint.json`, переменные прокси.
+
+```bash
+SPRING_PROFILES_ACTIVE=worker \
+SERVER_PORT=8071 \
+DB_HOST=91.188.212.209 DB_PORT=5432 DB_NAME=wbparser \
+DB_USER=<crawler-user> DB_PASSWORD=<secret> \
+ADMIN_API_KEY=<secret> \
+PROFILES_DIR="$HOME/.wbparser/profiles" \
+CAMOUFOX_HOME="$HOME/.cache/camoufox" \
+CAMOUFOX_BUILD="browsers/official/158.0.1-beta.41-3f2eb1d0" \
+EGRESS_PROXY_HOST_SOCKS5=<host> EGRESS_PROXY_PORT_SOCKS5=<port> \
+just app::run
+```
+
+Один прогон без веб-сервера: тот же набор переменных с `SPRING_PROFILES_ACTIVE=once`.
+Краул с рабочей машины пишет в ту же базу; витрина читает её через API на VPS. Временные
+потери связи с VPS базой переживаются штатным retry, но браузер и профили остаются
+локальными: переезд на VPS их не касается.
 
 **Как убедиться, что деплой прошёл.** Деплой не считается удачным, пока контейнер не отмечен
 здоровым (`docs/decisions/2026-10-14-deploy-crawler-as-registry-image.md`):
 
 ```bash
 docker ps --filter name=wb-parser          # STATUS: Up ... (healthy)
-docker ps --filter name=wb-parser-browser  # STATUS: Up ... (healthy)
 docker logs --tail 200 wb-parser
-docker logs --tail 100 wb-parser-browser   # первый старт: скачивание ядра Chrome
 docker exec wb-parser wget -q -O - http://127.0.0.1:8080/api/health/live
 ```
 
@@ -318,7 +375,7 @@ HTTP-сервера, не проверяет. Именно его использ
 ничего не значит — это зафиксировано в
 `docs/decisions/2026-10-20-anti-bot-refusals-are-measured.md`. Ориентир: около 38 % отказов
 наблюдалось при темпе 3 с и нескольких профилях с одного IP. **Профиль — не решение:** все
-профили AdsPower деплоя выходят в сеть **с одного IP**, и ограничитель WB видит их суммарный
+профили деплоя выходят в сеть **с одного IP**, и ограничитель WB видит их суммарный
 поток. Ротация профилей и пауза после 498 бьют по сессии, а не по лимиту IP: лимит этим не
 выигрывается.
 
@@ -331,7 +388,7 @@ HTTP-сервера, не проверяет. Именно его использ
 | back-off антибота | 10 / 20 / 40 / 80 / 160 с (база 10 с против общей базы 1 с) | `RetryPolicy.antibotBaseDelayMs` |
 | пауза профиля после 498 | 2 минуты | `BrowserPool.ProfileState.flagFor` |
 | открытая цепь | запрос ждёт до 75 с, пока цепь не станет half-open | `EgressRouter` (цепь на группу) |
-| закрытие простаивающего браузера | 5 минут без запроса → браузер останавливается в AdsPower | `crawler.spider.browser-idle-timeout-ms` |
+| закрытие простаивающего браузера | 5 минут без запроса → браузер закрывается | `crawler.spider.browser-idle-timeout-ms` |
 | как часто ищутся простаивающие | раз в минуту | `crawler.spider.browser-janitor-interval-ms` |
 | остановка браузеров на выходе | включено | `crawler.spider.close-browsers-on-exit` |
 
@@ -343,11 +400,11 @@ HTTP-сервера, не проверяет. Именно его использ
 `docs/decisions/2026-10-21-egress-groups-are-the-unit-of-rate-limiting.md`.
 
 **Браузеры закрываются.** Профиль, которым не пользовались дольше
-`browser-idle-timeout-ms`, останавливается в AdsPower — следующий заёмщик откроет его
-заново (пул подключается лениво). На выходе приложения останавливаются все браузеры,
-которыми краул пользовался: браузер, переживший один запуск, не должен переживать и
-следующий. Если браузеры не закрываются, проверьте `close-browsers-on-exit` и доступность
-Local API AdsPower — причина обычно в том, что AdsPower уехал раньше приложения.
+`browser-idle-timeout-ms`, закрывается — следующий заёмщик запустит его заново (пул
+стартует браузер лениво). На выходе приложения останавливаются все браузеры, которыми краул
+пользовался: браузер, переживший один запуск, не должен переживать и следующий. Если
+браузеры не закрываются, проверьте `close-browsers-on-exit` и свободен ли каталог профиля —
+его может держать процесс, оставшийся от убитого прогона.
 
 ---
 
@@ -418,7 +475,8 @@ jitter не выключен); проверить, что в `crawl.retries` е�
 | `Cannot connect to the Docker daemon` | Docker не запущен или нет доступа к сокету | запустите Docker; `SKIP_DB=1 ./check.sh`, если Testcontainers не нужны |
 | compose ругается на версию API | устаревший docker-compose | обновите docker/compose: compose-файл использует `name:`, `include:`, `depends_on: condition: service_healthy` |
 | «Invalid or corrupt jarfile app.jar» | в контейнер смонтирован каталог вместо файла | §3: jar монтируется файлом, контейнер пересоздаётся |
-| AdsPower Local API недоступен, «профиль отсутствует» | не запущен AdsPower или неверный `ADSPOWER_HOME` | pre-flight в логах (`AdsPowerPreflightRunner`) |
+| `The Camoufox build installed ... is ... but the deployment pins ...` | установлена не та сборка Camoufox или неверный `CAMOUFOX_HOME` | `just browser::verify`; переустановить `just browser::install` |
+| `The profile ... has no stored fingerprint` | у профиля нет `<profile>.fingerprint.json` | положить сохранённый конфиг Camoufox рядом с каталогом профиля |
 | `NoClassDefFoundError` на ровно что-то, но HTTP отвечает | устаревший контейнер после пересборки jar | `up -d --force-recreate app` |
 
 ### (e) В базе строки со старого эндпоинта
@@ -437,11 +495,11 @@ jitter не выключен); проверить, что в `crawl.retries` е�
 **Действие.** Измерить длину и записать её; вручную число не выставляется
 (`docs/decisions/2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary.md`).
 
-```bash
-# 1. измерить: отчёт JSON перезаписывается после каждого каталога
-just catalog::measure-limits report=/tmp/catalog_lengths.json
+Лимиты уже измерены; повторный замер — отдельная задача (Camoufox-инструмент
+из прежнего скрипта не переносился, см. #274).
 
-# 2. записать в YAML лимит ВМЕСТЕ с его измерением и перегенерировать артефакт
+```bash
+# 1. записать в YAML лимит ВМЕСТЕ с его измерением и перегенерировать артефакт
 uv run scripts/wb-catalog/sync_measurement_metadata.py \
     --report /tmp/catalog_lengths.json --dry-run
 uv run scripts/wb-catalog/sync_measurement_metadata.py \
@@ -456,7 +514,7 @@ python3 scripts/check-measurements.py
 
 Что важно знать о процедуре:
 
-- **Замер требует живого AdsPower и живого WB.** При отказе антибота каталог попадает
+- **Замер требует живого браузера и живого WB.** При отказе антибота каталог попадает
   в отчёт со статусом `blocked`, и для него число **не** выставляется: шаг применения
   перечисляет такие цели и оставляет прежний лимит.
 - **Предел пагинации WB — 60 страниц.** Лимит выше предела — это не «ещё одна
@@ -569,11 +627,11 @@ java -jar app/build/libs/app.jar --spring.profiles.active=once
 
 | Ограничение | Что это значит на практике |
 |---|---|
-| **≈38 % запросов WB отвечает 498** | Все профили AdsPower деплоя выходят с одного IP, и лимитер считает их суммарный поток. Ротация профилей, пауза после отказа и back-off бьют по конкретной сессии, но **лимит по IP этим не выигрывается**. Пока деплой живёт на одном IP, доля отказов в десятки процентов — норма, а не сбой конфигурации |
+| **≈38 % запросов WB отвечает 498** | Все профили деплоя выходят с одного IP, и лимитер считает их суммарный поток. Ротация профилей, пауза после отказа и back-off бьют по конкретной сессии, но **лимит по IP этим не выигрывается**. Пока деплой живёт на одном IP, доля отказов в десятки процентов — норма, а не сбой конфигурации |
 | **Читается срез каталога, а не каталог целиком** | Обход идёт `known_pages_limit` страниц на цель; в `wb_catalog_targets.yaml` у всех 132 целей стоит `known_pages_limit: 60` — это измеренная величина, а не круглое число (§8(f)). У 118 целей пагинацию обрезает предел API WB (60 страниц, страница сверх приходит ошибкой), поэтому счётчик `crawl.targets.truncated{reason="pages"}` для них срабатывает честно: каталог длиннее, чем WB отдаёт |
 | **Токен каталога — данные WB, и они протухают** | `searchQuery` узла меню WB меняется, и цель со старым токеном получает живой ответ 200 с популярной ротацией. Единственный признак — `catalog_type = "presets"`, то есть метрика `crawl.presets.responses`. Токены приходится переобогащать по мере старения |
 | **Покрытие модуля `tests` не видно kover** | Kover 0.9.11 не агрегирует покрытие зависимых модулей, поэтому отчёт модуля `tests` пуст; измеримый код переносится в измеримый модуль — `docs/decisions/2026-10-20-coverage-is-measured-where-the-code-lives.md` |
-| **В проде нет ни наблюдений, ни развёрнутого краула** | База `wbparser` на 91.188.212.209 переведена на Flyway-схему v6 и наполнена каталогом (132 цели с измеренным `known_pages_limit`) и словарём предметов (8174 строк), но сам краул на 91.188.212.39 не развёрнут: нет ни контейнера `wb-parser`, ни systemd-юнита `wbparser`. Пока он не запущен, наблюдения не собираются, а витрина не читает эту базу — в её `.env` на VPS `DATABASE_URL` пуст (см. `deploy/provision-readonly-role.sql` в репозитории витрины) |
+| **Краул запускается с рабочей машины, а не с VPS** | На 91.188.212.39 работает только API каталога и админки; расписание и браузер там выключены. Наблюдения собирает локальный краул, подключённый к удалённой базе; пока он не запущен, витрина не получает новых данных |
 | **Два конфликтующих контракта деплоя** | Этот репозиторий везёт образ и запускает его через compose (`deploy/docker-compose.vps.yml`, `just deploy`), а роль `wbparser` в Caddy-vps клонирует репозиторий, собирает JAR на хосте и запускает его через systemd (`/home/user/wbparser`, java 21). Контракты не совпадают, и старый checkout на хосте (`/home/user/wbparser/wbparser-new`, коммит от 13 октября) клонировать заново нельзя: каталог не пуст |
 | **Данные в проде до пересборки — чужие** | §1 и §8(e) |
 | **Деплой разделён между двумя репозиториями** | Compose-файл и образ — здесь, хост, маршрут и переменные — в `Caddy-vps`. Playbook в этом репозитории не лежит: `just deploy` требует checkout `Caddy-vps` (путь — `CADDY_VPS_DIR`, по умолчанию `~/Caddy-vps`) |

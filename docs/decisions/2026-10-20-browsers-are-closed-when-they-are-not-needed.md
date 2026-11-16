@@ -4,6 +4,9 @@ date: 2026-10-20
 tags: [crawler, browser, adspower, operations]
 ---
 
+> **Superseded (#271):** the browser now runs locally as Camoufox, and AdsPower is no longer
+> part of the runtime. See `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md`.
+
 ## Context
 
 Краул открывает браузеры AdsPower через Local API и держит их открытыми до конца
@@ -74,7 +77,7 @@ Chrome. Соединение — это наше, браузер — это пр
   подключился: так утечка становится постоянной.
 - **Always** закрывать простаивающие профили: браузер, которым никто не пользуется, не
   нужен никому.
-- **Never** ронять выключение из-за того, что AdsPower не ответил.
+- **Never** ронять выключение из-за того, что браузер не подтвердил остановку.
 - **Always** держать настройки `browser-idle-timeout-ms`, `browser-janitor-interval-ms` и
   `close-browsers-on-exit` в `application.yml` с объяснением: это единственное место, где
   видно, что браузеры закрываются.

@@ -125,7 +125,7 @@ gate blocking "the images carry the JDK the build asks for" python3 scripts/ci/c
 # --- dev-quality-gates (adopted from mokevnin/dev-quality-gates) --------------
 gate blocking "jactionlint (GitHub Actions)" jactionlint .github/workflows/*.yml
 gate blocking "betterleaks (secrets)" betterleaks detect --source . --no-git --baseline-path .betterleaks-baseline.json
-gate blocking "hadolint (Dockerfiles)" hadolint Dockerfile.app Dockerfile.debug deploy/docker.adspower/Dockerfile
+gate blocking "hadolint (Dockerfiles)" hadolint Dockerfile.app Dockerfile.debug
 gate blocking "shellcheck (shell scripts)" bash -c 'shellcheck --severity=warning $(find . -name "*.sh" -not -path "./.git/*")'
 gate blocking "typos (spelling)" typos
 gate blocking "rumdl (Markdown)" rumdl check . --exclude .agents,docs/decisions

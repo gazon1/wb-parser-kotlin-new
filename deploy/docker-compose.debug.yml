@@ -53,16 +53,9 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # AdsPower's Local API and the Chrome DevTools ports it hands back
-    # (ws://127.0.0.1:<port>/...) are reachable ONLY through the host's loopback.
-    # In the default bridge network the container's 127.0.0.1 is its own, so every
-    # profile resolves to "no DevTools port reachable" and the crawl fetches nothing.
-    # Host networking makes the container share the host's loopback, which is what
-    # makes the ws URLs the API returns actually connect.
-    network_mode: host
     env_file:
-      # ADSPOWER_API_KEY lives here (gitignored). Only the AdsPower key is read
-      # from it — DB_* is pinned below, so this file cannot repoint the database.
+      # Proxy credentials and other local secrets live here (gitignored). DB_* is
+      # pinned below, so this file cannot repoint the database.
       - ../.env
     environment:
       # Flyway runs here on purpose: a throwaway database with no schema is not
@@ -70,23 +63,18 @@ services:
       # database already has history this build does not know about.
       SPRING_FLYWAY_ENABLED: "true"
       ADMIN_API_KEY: ${ADMIN_API_KEY:-dev-admin-key}
-      # Postgres stays in the bridge network and publishes 5433 on the host;
-      # in host mode the app reaches it through that published port.
-      DB_HOST: 127.0.0.1
+      # Postgres publishes 5433 on the host; the app reaches it there.
+      DB_HOST: host.docker.internal
       DB_PORT: "5433"
       DB_NAME: wbparser
       DB_USER: postgres
       DB_PASSWORD: ${CRAWLER_DATABASE_PASSWORD:-postgres}
-      # The AdsPower Local API port is NOT pinned here on purpose: it differs
-      # across AdsPower distributions (50325 for the classic desktop app, 50725
-      # for the adspower-browser CLI) and can move again on upgrade.
-      # AdsPowerApiResolver discovers the live port at runtime.
-      # Set ADSPOWER_API_BASE only to override discovery.
       CRAWLER_WORKER_ENABLED: "true"
-      # We drive AdsPower's own Chrome over CDP — Playwright's bundled Chromium is
-      # never launched. Without this, Playwright.create() downloads 161 MB of
-      # Chromium on every browser borrow, and re-downloads it on every retry.
-      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      # The browser runtime of this machine. `just browser::install` installs the
+      # pinned build; the compose file mounts the host's copy read-only.
+      CAMOUFOX_HOME: /camoufox
+      CAMOUFOX_BUILD: ${CAMOUFOX_BUILD:-browsers/official/158.0.1-beta.41-3f2eb1d0}
+      PROFILES_DIR: /profiles
       # The tick: how often the scheduler looks for work. Fast enough to watch a cycle
       # happen while you step through it.
       CRAWLER_SCHEDULE_CRON: "*/30 * * * * *"
@@ -96,11 +84,6 @@ services:
       # hardcoded 4-hour freshness window) and the hardcoded value could not be changed
       # without a rebuild.
       CRAWLER_SCHEDULE_FRESHNESS_MINUTES: "240"
-      # Where AdsPower keeps its browser profiles. The pre-flight check reads this
-      # directory to tell a healthy profile from one whose Preferences belong to
-      # another user; without it the container looks at /root/.adspowerCli, sees
-      # nothing, and reports every profile as missing.
-      ADSPOWER_HOME: /adspower
       # Nextcloud owns 8080 on this host; 8082 keeps both up.
       SERVER_PORT: "8082"
       LOGGING_LEVEL_ROOT: DEBUG
@@ -121,12 +104,19 @@ services:
       # Path is relative to the compose file location (deploy/), so ../ goes to project root.
       - ../app/build/libs/app.jar:/app/app.jar:ro
       - ./logs:/logs
-      # AdsPower's profile directory, read-only: the pre-flight check only
-      # inspects it. The browser itself runs on the host, not in the container.
-      - ${HOME}/.adspowerCli:/adspower:ro
-    # No ports: with network_mode: host the app binds the host directly.
-    #   app      -> http://localhost:8082
-    #   debugger -> localhost:5005 (JDWP, address=*:5005)
+      # The host's browser and its persistent profiles. The install is read-only:
+      # the runtime verifies it and never writes to it. The profiles are writable
+      # because that is the session.
+      - ${HOME}/.cache/camoufox:/camoufox:ro
+      - ${HOME}/.wbparser/profiles:/profiles
+    ports:
+      #   app      -> http://localhost:8082
+      #   debugger -> localhost:5005 (JDWP, address=*:5005)
+      - "127.0.0.1:8082:8082"
+      - "127.0.0.1:5005:5005"
+    extra_hosts:
+      # Postgres publishes 5433 on the host; this is how the container reaches it.
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_debug_data:

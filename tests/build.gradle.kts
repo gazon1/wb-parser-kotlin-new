@@ -20,9 +20,9 @@ dependencies {
     // socket and the same fakes the crawler's own suites use, and a second copy of
     // either is a second thing to keep in step.
     testImplementation(testFixtures(project(":wbparser")))
-    // The browser module's contracts — the browser pool and the AdsPower port — are
-    // named by these suites directly, so they are declared here rather than
-    // inherited through the crawler.
+    // The browser module's contracts — the browser pool and the page — are named by
+    // these suites directly, so they are declared here rather than inherited through
+    // the crawler.
     testImplementation(project(":browser"))
 
     implementation(libs.kotlin.stdlib)

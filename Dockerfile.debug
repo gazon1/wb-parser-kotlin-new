@@ -11,6 +11,7 @@
 # Node.js binary linked against glibc/libstdc++, which does not exist in Alpine
 # (Alpine uses musl). Using eclipse-temurin:22-jre (Debian-based) instead.
 FROM eclipse-temurin:22-jre
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \

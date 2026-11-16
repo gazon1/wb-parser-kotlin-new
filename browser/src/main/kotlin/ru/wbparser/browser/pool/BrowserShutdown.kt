@@ -16,12 +16,11 @@ class BrowserShutdown internal constructor(
     private val log = org.slf4j.LoggerFactory.getLogger(BrowserShutdown::class.java)
 
     /**
-     * Closes every browser this pool has used, and stops it in AdsPower.
+     * Closes every browser this pool has used.
      *
      * Called when the application exits. A browser left running after the crawler
      * is gone keeps its window open on the machine and its profile locked — and the
-     * next run attaches to a session that is older than the one it would have
-     * created for itself.
+     * next run starts on a directory whose lock was never released.
      *
      * @return how many browsers were closed
      */
@@ -52,11 +51,9 @@ class BrowserShutdown internal constructor(
     /**
      * Closes the connections and leaves the browsers running.
      *
-     * The deployment may want the browsers to survive the crawler — the AdsPower
-     * runtime is a container of its own, and closing the connection detaches the
-     * crawler from Chrome without closing Chrome. That is a decision of the
-     * deployment (`crawler.spider.close-browsers-on-exit`), and this is the way it
-     * is carried out.
+     * A decision of the deployment (`crawler.spider.close-browsers-on-exit`): a
+     * browser that outlives the process keeps its profile locked, and the next run
+     * has to reclaim it.
      */
     fun closeConnections() {
         states.forEach { it.close() }

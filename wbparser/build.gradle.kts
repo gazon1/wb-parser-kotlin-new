@@ -26,7 +26,7 @@ plugins {
 // reports the types that appear in this module's public signatures. Everything it
 // lists as "should be modified" is an `api` dependency below.
 dependencies {
-    // The browser stack — the AdsPower client, the Playwright/CDP overlay, the profile
+    // The browser stack — the Camoufox launch, the Playwright overlay, the profile
     // pool — lives in its own module. `api`: the crawler's public signatures name
     // `BrowserPool`, `BorrowedPage` and `BrowserProfileConfig`, so a consumer of the
     // crawler names types of the browser module too.
@@ -129,8 +129,8 @@ dependencies {
     // exercised against a real PostgreSQL, because their statements are written for
     // PostgreSQL (TIMESTAMPTZ, uuid) and a stand-in would prove nothing about them.
     testImplementation(libs.testcontainers.postgresql)
-    // The browser module's test doubles — `FakeBrowserAutomation`, `FakePlaywrightPage`,
-    // `FakeAdsPowerApi` — are published as its fixtures. The crawler's own tests build
+    // The browser module's test doubles — `FakeBrowserAutomation`, `FakeBrowserAutomation`,
+    // `FakeBrowserPage` — are published as its fixtures. The crawler's own tests build
     // browser pools and drive pages through them, so they consume the same fakes
     // instead of declaring a second copy of each.
     testImplementation(testFixtures(project(":browser")))
