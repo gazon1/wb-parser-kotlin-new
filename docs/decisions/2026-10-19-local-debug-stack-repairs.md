@@ -4,6 +4,9 @@ date: 2026-10-19
 tags: [docker, debugging, infrastructure]
 ---
 
+> **Superseded (#271):** the browser now runs locally as Camoufox, and AdsPower is no longer
+> part of the runtime. See `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md`.
+
 ## Context
 
 `just app::build bootJar && docker compose -f deploy/docker-compose.debug.yml up` did not

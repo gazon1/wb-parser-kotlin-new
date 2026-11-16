@@ -5,29 +5,14 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
-import ru.wbparser.browser.adspower.AdsPowerConfig
-import ru.wbparser.browser.endpoint.DEFAULT_CDP_PORT
-import ru.wbparser.browser.endpoint.discoverChromeEndpoints
-import ru.wbparser.browser.testing.FakeAdsPowerApi
 import ru.wbparser.browser.testing.FakeBrowserAutomation
 
 /**
  * The pool's own decisions: which profile it hands out, and what it does with one that
  * cannot be opened.
  *
- * ## Why this is here
- *
- * Two paths of the browser path had no test at all, and both of them decide what the crawl
- * is told:
- *
- * - a profile whose browser does not come up — the pool closes it and hands out the next
- *   one, so one broken profile does not take the crawl with it;
- * - the discovery of the browser endpoints — the ports `ss` reports, each probed, and the
- *   fallback when `ss` says nothing.
- *
- * The discovery was a private method of the pool reading the machine it runs on, so it
- * could not be tested at all: the answer depended on what happened to be listening where
- * the tests ran. It is a function now, with the two steps as arguments.
+ * A profile whose browser does not come up must not take the crawl with it: the pool
+ * closes it, releases its permit and hands out the next one.
  */
 class BrowserPoolBorrowTest :
     FunSpec({
@@ -40,7 +25,6 @@ class BrowserPoolBorrowTest :
             val pool =
                 BrowserPool(
                     profiles = listOf(profile("broken"), profile("working")),
-                    adsPower = AdsPowerConfig(api = FakeAdsPowerApi()),
                     browserAutomations = listOf(broken, working),
                 )
 
@@ -65,7 +49,6 @@ class BrowserPoolBorrowTest :
             val pool =
                 BrowserPool(
                     profiles = listOf(profile("only")),
-                    adsPower = AdsPowerConfig(api = FakeAdsPowerApi()),
                     browserAutomations = listOf(broken),
                 )
 
@@ -91,8 +74,8 @@ class BrowserPoolBorrowTest :
             val pool =
                 BrowserPool(
                     profiles = listOf(profile("only")),
-                    adsPower = AdsPowerConfig(api = FakeAdsPowerApi(), borrowTimeoutMs = 50),
                     browserAutomations = listOf(flaky),
+                    borrowTimeoutMs = 50,
                 )
 
             // The first borrow fails: the browser does not come up.
@@ -111,8 +94,8 @@ class BrowserPoolBorrowTest :
             val pool =
                 BrowserPool(
                     profiles = listOf(profile("only")),
-                    adsPower = AdsPowerConfig(api = FakeAdsPowerApi(), borrowTimeoutMs = 50),
                     browserAutomations = listOf(flaky),
+                    borrowTimeoutMs = 50,
                 )
 
             // The non-blocking path reports "nothing free right now" rather than waiting.
@@ -121,73 +104,5 @@ class BrowserPoolBorrowTest :
             flaky.connectFailure = null
             pool.tryBorrowPage(groupId = "default", includeFlagged = false) shouldNotBe null
             pool.close()
-        }
-
-        test("the endpoints are discovered once and remembered for the pool's lifetime") {
-            // The scan shells out to `ss` and probes every candidate port: doing that per
-            // profile on a hot path would dominate the request latency. Both profiles fall
-            // back to the scan (the Local API is down), and both must read the one answer.
-            var discoveries = 0
-            val api =
-                FakeAdsPowerApi().apply {
-                    apiAvailable = false
-                    checkActiveFailure = RuntimeException("the runtime is gone")
-                }
-            val pool =
-                BrowserPool(
-                    profiles =
-                        listOf(
-                            BrowserProfileConfig(profileId = "first"),
-                            BrowserProfileConfig(profileId = "second"),
-                        ),
-                    adsPower = AdsPowerConfig(api = api, borrowTimeoutMs = 50),
-                    resolveEndpoints = {
-                        discoveries++
-                        listOf("ws://127.0.0.1:36931/devtools/browser/first")
-                    },
-                )
-
-            // No browser answers the scan's endpoint, so the borrows fail — after the
-            // resolver has been asked where the browser is.
-            runCatching { pool.borrowPage() }
-            runCatching { pool.borrowPage() }
-
-            discoveries shouldBe 1
-            pool.close()
-        }
-    })
-
-/**
- * The rules of the discovery: which ports are probed, and what happens when the machine
- * reports none.
- */
-class ChromeEndpointDiscoveryTest :
-    FunSpec({
-        test("the ports the machine reports are the ones that get probed") {
-            var probed: List<Int> = emptyList()
-
-            discoverChromeEndpoints(
-                listeningPorts = { listOf(36931, 36932) },
-                probe = { ports ->
-                    probed = ports
-                    listOf("ws://127.0.0.1:36931/devtools/browser/x")
-                },
-            )
-
-            probed shouldBe listOf(36931, 36932)
-        }
-
-        test("a machine that reports no ports falls back to the port AdsPower uses") {
-            var probed: List<Int> = emptyList()
-
-            discoverChromeEndpoints(
-                listeningPorts = { emptyList() },
-                probe = { ports ->
-                    probed = ports
-                    emptyList()
-                },
-            )
-
-            probed shouldBe listOf(DEFAULT_CDP_PORT)
         }
     })

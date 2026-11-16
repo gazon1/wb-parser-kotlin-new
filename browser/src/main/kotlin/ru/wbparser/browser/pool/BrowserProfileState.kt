@@ -10,29 +10,6 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * What a profile needs to know about the pool it belongs to.
- *
- * The profile owns its own browser and its own state; it does not own the pool. These are
- * the four things it cannot know by itself — where it sits in the rotation, how many
- * profiles there are, which browsers the machine has, and where to write the log.
- *
- * @param index this profile's position among the pool's profiles. It is what the port
- *   scan uses to hand each profile a *different* browser.
- * @param profileCount how many profiles the pool has.
- * @param allProfileIds the ids of all the pool's profiles, for a message that names them.
- * @param resolveEndpoints the Chrome DevTools endpoints reachable on this machine,
- *   discovered once and cached by the pool.
- * @param log where this profile's messages go.
- */
-internal data class BrowserPoolContext(
-    val index: Int,
-    val profileCount: Int,
-    val allProfileIds: List<String>,
-    val resolveEndpoints: () -> List<String>,
-    val log: Logger,
-)
-
-/**
  * Per-profile state: the browser, the page, and what WB last said about this session.
  *
  * This is the unit that answers "what is this profile doing right now": is it warm, is it
@@ -47,13 +24,14 @@ internal data class BrowserPoolContext(
 internal class BrowserProfileState(
     val profileConfig: BrowserProfileConfig,
     private val automation: BrowserAutomation,
-    private val context: BrowserPoolContext,
     /**
      * The rules that decide how long this profile's session lives and how much it may
      * send. They are the deployment's, not the pool's: the pool asks the session whether
      * it may work, and the session answers by the policy it was given.
      */
     sessionPolicy: SessionPolicy = SessionPolicy(),
+    /** Where this profile's messages go. */
+    private val log: Logger,
 ) {
     /**
      * The WB session of this profile.
@@ -92,15 +70,6 @@ internal class BrowserProfileState(
      */
     private val lastUsedAtMs = AtomicLong(0L)
 
-    /**
-     * Whether this process has ever borrowed this profile.
-     *
-     * A profile this process has used is not a leftover of an earlier run, even if
-     * its browser is not running right now: the reconciliation that stops the
-     * browsers of the previous run must not touch the work of this one.
-     */
-    fun wasUsed(): Boolean = lastUsedAtMs.get() > 0L
-
     /** Records that this profile has just been used. */
     fun markUsed(now: Long) {
         lastUsedAtMs.set(now)
@@ -113,10 +82,10 @@ internal class BrowserProfileState(
     ): Boolean = now - lastUsedAtMs.get() >= idleMs
 
     /**
-     * Whether a Chrome window may still be running for this profile.
+     * Whether a browser process may still be running for this profile.
      *
-     * The closing decisions ask this question, not "is the CDP connection alive":
-     * a browser whose connection died is still a browser holding a window and a
+     * The closing decisions ask this question, not "is the connection alive": a
+     * browser whose connection died is still a browser holding a window and a
      * profile lock. The automation is what knows the answer.
      */
     fun browserMayBeRunning(): Boolean = automation.browserMayBeRunning
@@ -164,7 +133,7 @@ internal class BrowserProfileState(
 
     fun getOrCreatePage(): BrowserPage {
         if (automation.isConnected) {
-            // Defensively ping the browser: a dead Chrome can show isConnected=true
+            // Defensively ping the browser: a dead browser can show isConnected=true
             // until Playwright discovers the truth on the next call.
             if (!automation.healthCheck()) {
                 logForProfile("Browser health check failed — forcing reconnect")
@@ -231,6 +200,6 @@ internal class BrowserProfileState(
         msg: String,
         vararg args: Any?,
     ) {
-        context.log.info("[${profileConfig.profileId}] $msg", *args)
+        log.info("[${profileConfig.profileId}] $msg", *args)
     }
 }

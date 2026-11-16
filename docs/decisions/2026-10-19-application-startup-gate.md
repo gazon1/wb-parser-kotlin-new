@@ -84,7 +84,7 @@ green suite that would have shipped the defect.
   reason about it.
 - **Never** weaken the migration assertion to a fixed list of versions. The expected set is
   discovered from the classpath, so a new migration is covered the day it is added.
-- **Never** make the startup gate depend on a browser, the network or AdsPower. The `public`
+- **Never** make the startup gate depend on a browser or the network. The `public`
   profile exists for that reason: the crawler must not start in a unit test.
 - **Always** supply `ADMIN_API_KEY` to the test JVM as an environment variable. The filter reads
   it with `System.getenv`; a system property is not read, and the failure looks like a

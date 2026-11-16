@@ -9,25 +9,25 @@ import ru.wbparser.browser.pool.BrowserIdleSweeper
 import ru.wbparser.browser.pool.BrowserShutdown
 
 /**
- * Closes the AdsPower browsers that are not needed any more.
+ * Closes the browsers that are not needed any more.
  *
  * The crawler needs a browser only while it is talking to WB. Between two crawls — and
  * between two targets of the same crawl — the profiles sit idle, and an idle browser
  * is a browser that serves nothing while holding a window, a profile lock and its
  * share of the machine's memory. It also keeps its anti-bot session alive, and the
- * next run would attach to a session older than the one it could have created.
+ * next run would start on a session older than the one it could have created.
  *
  * Two moments matter:
  *
  * - **While the process lives** — the janitor closes the profiles that have not been
  *   used for [CrawlProperties.Spider.browserIdleTimeoutMs]. The next borrower reopens
- *   them: the pool connects lazily and AdsPower starts the profile again.
- * - **When the process ends** — the browsers are stopped in AdsPower, so nothing is
- *   left running after the crawler is gone.
+ *   them: the pool starts the browser again.
+ * - **When the process ends** — the browsers are stopped, so nothing is left running
+ *   after the crawler is gone.
  *
- * The janitor owns the pool's browsers, not the pool's connections: closing the CDP
- * connection detaches the crawler from Chrome, but Chrome keeps running. Only the
- * AdsPower stop call makes the window go away.
+ * The janitor owns the pool's browsers, not the pool's pages: closing a page detaches
+ * the crawler from a browser, but the browser keeps running. Only stopping it makes
+ * the window go away.
  */
 @Component
 class BrowserPoolJanitor(
@@ -62,24 +62,23 @@ class BrowserPoolJanitor(
         if (idleTimeoutMs <= 0) return
         val closed = idleSweeper.closeIdle(clock(), idleTimeoutMs)
         if (closed > 0) {
-            log.info("Closed {} idle AdsPower browser(s) — unused for {} ms", closed, idleTimeoutMs)
+            log.info("Closed {} idle browser(s) — unused for {} ms", closed, idleTimeoutMs)
         }
     }
 
     /**
      * Stops the browsers when the application exits.
      *
-     * Runs before the pool's own shutdown, so the browsers are stopped while AdsPower
-     * is still reachable. When the setting says otherwise, the connections are closed
-     * and the browsers are left running.
+     * When the setting says otherwise, the sessions are closed and the browsers are
+     * left running.
      */
     override fun destroy() {
         if (!properties.spider.closeBrowsersOnExit) {
-            log.info("Leaving the AdsPower browsers running (close-browsers-on-exit is off)")
+            log.info("Leaving the browsers running (close-browsers-on-exit is off)")
             shutdown.closeConnections()
             return
         }
         val closed = shutdown.closeAll()
-        log.info("Stopped {} AdsPower browser(s) on shutdown", closed)
+        log.info("Stopped {} browser(s) on shutdown", closed)
     }
 }

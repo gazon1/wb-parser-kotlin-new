@@ -15,29 +15,27 @@ import ru.wbparser.domain.value.CrawlHttpStatusCode
 import java.time.Instant
 
 /**
- * Downloads Wildberries catalog pages using Playwright's CDP bridge to a running
- * AdsPower Chrome instance.
+ * Downloads Wildberries catalog pages by running the request inside a local browser.
  *
  * Instead of a plain HTTP request (which WB blocks with HTTP 498), this method
- * calls `page.evaluate(fetch(url))` from within a real Chrome browser. Because the
- * request originates from Chrome's own networking stack, WB's TLS-fingerprint and
- * HTTP/2-layer bot detection is bypassed.
+ * calls `page.evaluate(fetch(url))` from within a real browser. Because the
+ * request originates from the browser's own networking stack, WB's TLS-fingerprint
+ * and HTTP/2-layer bot detection is bypassed.
  *
  * ## How it works
  *
- * 1. [BrowserPool] maintains a round-robin pool of Playwright [Page] objects,
- *    each connected to a pre-opened AdsPower Chrome profile via Chrome DevTools
- *    Protocol (CDP) WebSocket.
+ * 1. [BrowserPool] maintains a round-robin pool of browser pages, each in its own
+ *    persistent profile directory.
  * 2. [download] extracts the catalog ID and page number from the [Crawling] URL,
  *    builds the WB internal API URL, and evaluates a JS `fetch()` call inside the
- *    borrowed [Page].
+ *    borrowed page.
  * 3. The response JSON is returned as a [Fetched] body, which is then parsed by
  *    the existing [parseWbCatalog][ru.wbparser.infra.http.parseWbCatalog].
  *
  * ## Failure handling
  *
  * - HTTP 498 → [NetworkError.isAntibot] = true; callers treat this as a retryable
- *   signal and will typically switch to a different AdsPower profile.
+ *   signal and will typically switch to a different profile.
  * - HTTP 403 → same retryable treatment (also indicates bot detection).
  * - JavaScript errors / page crashes → [NetworkError].
  * - The pool has no free profile → the [EgressRouter] turns it into
@@ -60,7 +58,7 @@ open class BrowserDownloader(
      * How long a profile that answered with an anti-bot status rests before it is used again.
      *
      * WB's 498 is a statement about the session that sent the request, not about the whole
-     * IP: the cookies that got flagged belong to one AdsPower profile. Leaving it in the
+     * IP: the cookies that got flagged belong to one profile. Leaving it in the
      * rotation means every following request of that profile is refused as well, and the
      * crawl burns its retries on a session that was never going to answer.
      */

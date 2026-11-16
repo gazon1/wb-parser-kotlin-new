@@ -33,7 +33,7 @@ What it does NOT do
 - it does not crawl WB and does not touch the observed data,
 - it does not invent a token for a page the menu does not publish,
 - it does not delete or deactivate targets, and it does not change `known_pages_limit`
-  (that is `measure_catalog_length.py`'s job),
+  (that is a separate measurement's job),
 - it does not create the tables: the schema belongs to the Flyway migrations.
 
 Usage:

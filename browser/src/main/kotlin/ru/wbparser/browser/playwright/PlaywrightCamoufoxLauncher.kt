@@ -162,6 +162,21 @@ internal class PlaywrightCamoufoxLauncher(
 }
 
 /**
+ * The launch adapter that resolves the install when the first browser is started.
+ *
+ * The install is a fact of the machine, and verifying it is I/O. A process that never
+ * opens a browser must not fail because the machine has no Camoufox — only a process
+ * that starts one needs the build, and that is when the check belongs.
+ */
+internal class LazyCamoufoxLauncher(
+    private val install: () -> CamoufoxInstall,
+) : CamoufoxLauncher {
+    private val delegate by lazy { PlaywrightCamoufoxLauncher(install()) }
+
+    override fun launch(profile: BrowserProfileConfig): CamoufoxBrowser = delegate.launch(profile)
+}
+
+/**
  * The production browser: a Camoufox that Playwright opened.
  */
 internal class PlaywrightCamoufoxBrowser(

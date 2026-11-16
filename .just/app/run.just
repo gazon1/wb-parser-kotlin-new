@@ -21,6 +21,9 @@ run:
     export DB_NAME="{{env_var_or_default("DB_NAME", "wbparser")}}"
     export DB_USER="{{env_var_or_default("DB_USER", "wbparser")}}"
     export DB_PASSWORD="{{env_var_or_default("DB_PASSWORD", "wbparser")}}"
+    # Playwright launches Camoufox from its own executable; its bundled browsers are
+    # never used, and downloading them would be half a gigabyte for nothing.
+    export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
     ./gradlew :app:bootRun --no-daemon
 
 [group('docker')]

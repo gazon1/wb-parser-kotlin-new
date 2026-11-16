@@ -108,7 +108,7 @@ actually for.
 
 - **Never** treat a refusal as a reason to retry the same question.
 - **Always** say what a retry could change: the answer is "nothing", so stop.
-- **Always** create the AdsPower client once, in the deployment, and inject it.
+- **Always** create the browser stack once, in the deployment, and inject it.
 - **Never** reach through a collaborator to what it holds.
 - **MUST** split a class by the decisions it holds, not by its size.
 - **Always** ask a collaborator for a port, not for the object behind it.

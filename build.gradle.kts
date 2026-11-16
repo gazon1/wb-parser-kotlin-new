@@ -60,6 +60,10 @@ subprojects {
     tasks.withType<Test>().configureEach {
         systemProperty("api.version", "1.44")
         environment("DOCKER_API_VERSION", "1.44")
+        // Camoufox tests launch the pinned binary; Playwright's own browsers are not
+        // used, and downloading them on every new machine is half a gigabyte for
+        // nothing.
+        environment("PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD", "1")
     }
 
     // The linters were declared in the version catalogue but never applied, so the

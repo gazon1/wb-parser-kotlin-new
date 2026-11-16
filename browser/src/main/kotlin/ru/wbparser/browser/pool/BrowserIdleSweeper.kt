@@ -25,8 +25,8 @@ class BrowserIdleSweeper internal constructor(
      * of the same crawl — the profiles sit idle, and an idle browser is a browser
      * that serves nothing.
      *
-     * The next borrower reopens it: the pool connects lazily, and AdsPower starts
-     * the profile again. Closing an idle browser costs a start-up, and buys back a
+     * The next borrower reopens it: the pool starts a browser lazily, and the browser
+     * is launched again. Closing an idle browser costs a start-up, and buys back a
      * fresh session — which is not a bad trade against WB's rate limiter.
      *
      * @param now the current time in epoch milliseconds
@@ -46,9 +46,9 @@ class BrowserIdleSweeper internal constructor(
             if (!state.lock.tryAcquire()) continue
             try {
                 if (!state.isIdleSince(now, idleTimeoutMs)) continue
-                // "A browser may still be running", not "we are connected": a browser
-                // whose CDP connection died is still holding a window and a profile
-                // lock, and it is exactly the one that would otherwise never close.
+                // "A browser may still be running", not "we are connected": the
+                // connection can be gone while the browser still holds a window and a
+                // profile lock, and it is exactly the one that would otherwise never close.
                 if (!state.browserMayBeRunning()) continue
                 state.stop()
                 closed++

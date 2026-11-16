@@ -4,6 +4,9 @@ date: 2026-10-17
 tags: [browser, architecture, testing]
 ---
 
+> **Superseded (#271):** the browser now runs locally as Camoufox, and AdsPower is no longer
+> part of the runtime. See `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md`.
+
 ## Context
 
 `BrowserPool.ProfileState.getOrCreatePage()` calls `Playwright.create()`, `playwright.chromium().connectOverCDP()`, `browser.contexts().firstOrNull()`, and `context.newPage()` directly. This makes the state machine logic in `ProfileState` impossible to unit-test without a real Chrome + Playwright installation.

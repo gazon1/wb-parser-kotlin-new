@@ -4,6 +4,9 @@ date: 2026-10-23
 tags: [browser, adspower, lifecycle, operations]
 ---
 
+> **Superseded (#271):** the browser now runs locally as Camoufox, and AdsPower is no longer
+> part of the runtime. See `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md`.
+
 ## Context
 
 The crawler was killed — SIGKILL, an OOM, a fallen JVM — and never got to close its

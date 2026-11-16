@@ -2,14 +2,13 @@ package ru.wbparser.app.config
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import ru.wbparser.browser.adspower.AdsPowerApi
-import ru.wbparser.browser.adspower.AdsPowerClients
-import ru.wbparser.browser.adspower.AdsPowerConfig
+import ru.wbparser.browser.camoufox.CamoufoxInstalls
 import ru.wbparser.browser.pool.BrowserIdleSweeper
 import ru.wbparser.browser.pool.BrowserPool
 import ru.wbparser.browser.pool.BrowserShutdown
 import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.infra.http.BrowserAccess
+import java.nio.file.Path
 
 /**
  * The browser stack of this deployment.
@@ -17,47 +16,42 @@ import ru.wbparser.infra.http.BrowserAccess
  * ## Why this is its own configuration
  *
  * The browser stack is a set of decisions about the machine: which profiles exist,
- * which client talks to AdsPower, when an idle browser is closed, and what happens
+ * which Camoufox build they run on, when an idle browser is closed, and what happens
  * to the browsers when the process is gone. [CrawlerConfig] is about the crawl, and
  * a class that holds both decisions has to grow with either of them.
  *
- * ## The one client
+ * ## The install is resolved on first launch
  *
- * The AdsPower client is made **once**, here, and handed to everyone who needs it:
- * the pool, the pre-flight check, the egress probe and the reconciliation. A second
- * client would resolve a different port and could disagree with the pool about
- * whether AdsPower is up.
+ * The Camoufox build is read from the machine and checked against the pin when a
+ * browser is actually started. A catalog-only instance, or a test that never opens a
+ * browser, must not need a Camoufox install to boot — and the startup gate must not
+ * depend on the browser.
  */
 @Configuration
 class BrowserConfig {
     /**
-     * The AdsPower client of this process.
-     */
-    @Bean
-    fun adsPowerApi(): AdsPowerApi = AdsPowerClients.create()
-
-    /**
      * The pool of browser profiles.
      *
-     * No hardcoded CDP WS URLs — the pool resolves the endpoint through the
-     * AdsPower V2 /active endpoint, and if no browser is running it calls V2 /start
-     * to launch one with --remote-allow-origins=* so Playwright's CDP-over-WebSocket
-     * connection is accepted.
+     * Each profile is opened in its own persistent directory by a Camoufox launched
+     * from the pinned build.
      */
     @Bean
     fun browserPool(
         properties: CrawlProperties,
         groups: EgressGroups.Resolved,
-        adsPowerApi: AdsPowerApi,
     ): BrowserPool =
         BrowserPool(
             profiles = groups.profiles,
-            // The client the deployment made, inside the configuration the pool
-            // reads. One client in the process, and the pool keeps it.
-            adsPower = AdsPowerConfig(api = adsPowerApi),
-            // The budget of a group is not the pool's business: it belongs to the
-            // pacer registry, and every group already carries its own resolved
-            // pacing — its own, or the deployment's default.
+            camoufoxInstall = {
+                CamoufoxInstalls.resolve(
+                    home =
+                        properties.spider.camoufoxHome
+                            .takeIf { it.isNotBlank() }
+                            ?.let { Path.of(it) }
+                            ?: CamoufoxInstalls.defaultHome(),
+                    pinnedVersion = properties.spider.camoufoxBuild.takeIf { it.isNotBlank() },
+                )
+            },
             // The session's limits are the deployment's, and they reach every session
             // the pool creates. They are zero by default — see [Session] for why.
             sessionPolicy =
@@ -70,16 +64,9 @@ class BrowserConfig {
 
     /**
      * The browser stack, as the crawler sees it.
-     *
-     * The pool that lends a page and the AdsPower client that says what each profile
-     * is behind — one pair, made of the same client the pool holds. Nobody reaches
-     * through the pool to get at the client it keeps.
      */
     @Bean
-    fun browserAccess(
-        pool: BrowserPool,
-        adsPowerApi: AdsPowerApi,
-    ): BrowserAccess = BrowserAccess(pool = pool, adsPowerApi = adsPowerApi)
+    fun browserAccess(pool: BrowserPool): BrowserAccess = BrowserAccess(pool = pool)
 
     /**
      * The rule for closing a browser nobody asked for.

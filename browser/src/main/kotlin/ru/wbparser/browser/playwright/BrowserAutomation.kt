@@ -7,24 +7,21 @@ package ru.wbparser.browser.playwright
  * ## No endpoint in this contract
  *
  * A session is *started*, not joined: [start] takes no address. A browser running on
- * this machine is launched by the automation that owns it, and a runtime that hands out
- * an endpoint (AdsPower) resolves that endpoint inside its own adapter — `CdpUrlResolver`
- * and `AdsPowerAutomation`. An address here would make every runtime speak one runtime's
- * vocabulary, and the pool above it would carry a URL it has no use for.
+ * this machine is launched by the automation that owns it, and an address in this
+ * contract would make every runtime speak one runtime's vocabulary.
  *
  * ## Ownership
  *
  * An automation owns the browser it starts and says whether a browser process may still
  * be alive for its profile. [close] releases the session; [stop] ends the browser behind
- * it. For a local browser those are the same act; for a runtime that keeps the browser
- * running after the connection is gone, they are not, and the difference is the one the
- * pool's closing decisions are made on.
+ * it. For a local browser those are the same act, and the contract keeps them apart so
+ * a runtime that keeps the browser running after the connection is gone can say so.
  *
  * ## Why an interface
  *
- * The pool must be testable without a real Chrome and without Playwright installed.
- * Production uses `AdsPowerAutomation` (and, later, a local one); tests use a fake
- * published as a fixture of this module.
+ * The pool must be testable without a real browser and without Playwright installed.
+ * Production uses `CamoufoxAutomation`; tests use a fake published as a fixture of this
+ * module.
  */
 interface BrowserAutomation {
     /** Whether a browser session is currently open. */

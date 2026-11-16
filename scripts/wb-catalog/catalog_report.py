@@ -24,7 +24,7 @@ passes — so "the last measurement" would make the YAML depend on which run
 happened to be written last, and a re-measurement could silently shrink a catalog
 that had grown. The maximum is the number that is true of every measurement.
 
-The CLI scripts (`measure_catalog_length.py`, `apply_measured_limits.py`,
+The CLI scripts (`apply_measured_limits.py`,
 `sync_measurement_metadata.py`) import this module and do the talking to the
 browser, the file and the terminal.
 """

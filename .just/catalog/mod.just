@@ -104,22 +104,6 @@ load-subjects backfill="--backfill":
 # docs/decisions/2026-10-20-the-catalog-length-is-measured-at-the-pagination-boundary.md
 
 [group('catalog')]
-[doc('Measure the real length of every catalog into a JSON report (needs a live AdsPower)')]
-[working-directory(justfile_directory())]
-measure-limits report="catalog_lengths.json" profiles="k17bnqsi k187fu14 k18a6j35" delay="2.0":
-    #!/bin/bash
-    set -euo pipefail
-    args=()
-    for profile in {{profiles}}; do
-        args+=(--profile "$profile")
-    done
-    uv run scripts/wb-catalog/measure_catalog_length.py \
-        --all --keep-going \
-        "${args[@]}" \
-        --delay {{delay}} \
-        --report {{report}}
-
-[group('catalog')]
 [doc('Write the measured catalog lengths into the YAML (dry-run by default)')]
 [working-directory(justfile_directory())]
 apply-limits report="catalog_lengths.json" yaml=CATALOG_YAML write="--dry-run":

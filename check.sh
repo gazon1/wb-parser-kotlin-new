@@ -66,8 +66,8 @@ echo -e "${GREEN}dependency health passed${NC}"
 # If its tests fail, every failure above it is downstream, so they run first.
 #
 # The browser module runs in the same step: it carries no Spring and no I/O either,
-# and its suites cover the AdsPower client, the CDP overlay and the profile pool —
-# the code the crawler leans on hardest.
+# and its suites cover the Camoufox launch, the profile pool and the session — the
+# code the crawler leans on hardest.
 step 3 "wbparser:test + browser:test"
 ./gradlew :wbparser:test :browser:test --quiet || fail "wbparser:test / browser:test FAILED"
 echo -e "${GREEN}wbparser:test + browser:test passed${NC}"

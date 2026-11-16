@@ -272,7 +272,7 @@ WHERE wb_catalog_id = %s
     default=(),
     multiple=True,
     help=(
-        "JSON measurement report (written by measure_catalog_length.py). The measurement "
+        "JSON measurement report. The measurement "
         "metadata — when the limit was measured, where the pagination ended, where the "
         "number came from — is taken from it instead of from the YAML. Repeat for "
         "several passes: the limit is the MAXIMUM over all of them, never the last one. "

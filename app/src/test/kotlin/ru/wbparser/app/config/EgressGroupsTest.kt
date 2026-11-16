@@ -6,6 +6,7 @@ import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotContain
 import ru.wbparser.browser.pool.DeclaredProxy
+import java.nio.file.Files
 
 /**
  * The groups the crawler runs on, as the configuration resolves them.
@@ -452,5 +453,46 @@ class EgressGroupsTest :
             pacing.minIntervalMs shouldBe 3_000L
             pacing.jitterMinMs shouldBe 200L
             pacing.jitterMaxMs shouldBe 500L
+        }
+
+        test("the stored fingerprint is read from next to the profile directory") {
+            val root = Files.createTempDirectory("profiles")
+            val endpoint = root.resolve(DeclaredProxy.DIRECT)
+            Files.createDirectories(endpoint.resolve("p1"))
+            Files.writeString(
+                endpoint.resolve("p1.fingerprint.json"),
+                """{"navigator.userAgent":"Firefox"}""",
+            )
+
+            val resolved =
+                EgressGroups.resolve(
+                    Spider(
+                        profilesDir = root.toString(),
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none")),
+                            ),
+                    ),
+                )
+
+            resolved.profiles.single().fingerprint shouldBe """{"navigator.userAgent":"Firefox"}"""
+        }
+
+        test("a profile with no stored fingerprint has none") {
+            val root = Files.createTempDirectory("profiles")
+            Files.createDirectories(root.resolve(DeclaredProxy.DIRECT).resolve("p1"))
+
+            val resolved =
+                EgressGroups.resolve(
+                    Spider(
+                        profilesDir = root.toString(),
+                        egressGroups =
+                            listOf(
+                                EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = ProxyConfig(type = "none")),
+                            ),
+                    ),
+                )
+
+            resolved.profiles.single().fingerprint shouldBe null
         }
     })

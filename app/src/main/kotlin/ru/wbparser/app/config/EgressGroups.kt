@@ -4,13 +4,14 @@ import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.pool.DeclaredProxy
 import ru.wbparser.infra.http.EgressGroup
 import ru.wbparser.infra.http.RequestPacing
+import java.nio.file.Files
 import java.nio.file.Path
 
 /**
  * One egress group, as configured.
  *
  * @param id the group's identifier. It is also the value of the `egress_group` metric tag.
- * @param profiles the AdsPower profile ids that belong to the group.
+ * @param profiles the profile ids that belong to the group.
  * @param pacing how fast this group may talk to WB. Its own IP, its own budget.
  * @param proxy what the group leaves through. Declared, never assumed: a group that
  *   does not say where it leaves from has not said, and "not said" is not "direct".
@@ -28,8 +29,8 @@ data class EgressGroupConfig(
  * @param type `none` for a group that leaves directly (the address of the machine the
  *   crawler runs on), or the kind of the proxy: `socks5`, `http`, `https`.
  * @param host the address of the proxy. Optional: a deployment that declares only the
- *   kind still gets the kind checked against AdsPower. When it is given, the address
- *   is checked too.
+ *   kind lets the browser use its own endpoint. When it is given, the address is
+ *   passed to the browser too.
  * @param port the port of the proxy. It goes with the host: one without the other is
  *   a half-declared address.
  * @param username the user the browser authenticates as, when the proxy requires it.
@@ -151,11 +152,25 @@ object EgressGroups {
                 profileId = profileId,
                 proxy = declared,
                 profileDir = dir,
+                fingerprint = dir?.let { fingerprintNextTo(it) },
                 egressGroup = group.id,
             )
         } catch (e: IllegalArgumentException) {
             throw IllegalArgumentException("Egress group '${group.id}': ${e.message}", e)
         }
+    }
+
+    /**
+     * The stored Camoufox configuration of a profile, or null when none is stored.
+     *
+     * The fingerprint is data and not a flag: `user_data_dir` does not preserve it, so
+     * it lives next to the directory as `[profileDir].fingerprint.json`. A profile
+     * without one is refused at launch rather than started with a freshly invented
+     * identity.
+     */
+    private fun fingerprintNextTo(dir: Path): String? {
+        val file = dir.resolveSibling("${dir.fileName}.fingerprint.json")
+        return if (Files.isRegularFile(file)) Files.readString(file) else null
     }
 
     /**
@@ -267,8 +282,7 @@ object EgressGroups {
         require(proxy.hasAddress == (proxy.port != 0)) {
             "Egress group '${group.id}' declares the proxy '${proxy.type}' with only half an " +
                 "address (host='${proxy.host}', port=${proxy.port}). Give both or neither: " +
-                "the kind alone is checked against AdsPower, the address is checked when it " +
-                "is given."
+                "a locally launched browser needs the address it leaves through."
         }
         if (proxy.hasAddress) {
             require(proxy.port in 1..65535) {

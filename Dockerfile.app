@@ -18,6 +18,7 @@ WORKDIR /app
 # Gradle writes outside /app and the build is not reproducible byte-for-byte
 # otherwise.
 ENV GRADLE_USER_HOME=/root/.gradle
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # The wrapper first, so a source-only change does not invalidate the layer that
 # unpacks the distribution.
@@ -52,10 +53,13 @@ RUN --mount=type=cache,target=/root/.gradle \
 # ── runtime ──────────────────────────────────────────────────────────────────
 # NOTE: eclipse-temurin:22-jre (Debian) not Alpine — Playwright Java bundles a
 # Node.js binary linked against glibc/libstdc++, which Alpine's musl libc does
-# not provide. All deps below satisfy both the Node.js runtime and the Chromium
-# browser binary that Playwright downloads.
+# not provide. All deps below satisfy both the Node.js driver runtime and the
+# Firefox process Camoufox launches.
 FROM eclipse-temurin:22-jre AS runtime
 WORKDIR /app
+
+# Playwright launches the Camoufox binary; its own browsers are never used.
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libstdc++6 \

@@ -33,7 +33,8 @@ class CrawlPropertiesTest :
             properties.spider.browserJitterMinMs shouldBe 200L
             properties.spider.browserJitterMaxMs shouldBe 500L
             properties.spider.closeBrowsersOnExit shouldBe true
-            properties.spider.reconcileBrowsersOnStart shouldBe true
+            properties.spider.camoufoxHome shouldBe ""
+            properties.spider.camoufoxBuild shouldBe ""
             properties.worker.enabled shouldBe false
         }
 
@@ -45,7 +46,7 @@ class CrawlPropertiesTest :
                     "crawler.spider.concurrency" to 7,
                     "crawler.spider.use-browser-fetch" to true,
                     "crawler.spider.browser-warmup-ms" to 1_500L,
-                    "crawler.spider.reconcile-browsers-on-start" to false,
+                    "crawler.spider.camoufox-build" to "browsers/official/test",
                     "crawler.worker.enabled" to true,
                 )
 
@@ -54,7 +55,7 @@ class CrawlPropertiesTest :
             properties.spider.concurrency shouldBe 7
             properties.spider.useBrowserFetch shouldBe true
             properties.spider.browserWarmupMs shouldBe 1_500L
-            properties.spider.reconcileBrowsersOnStart shouldBe false
+            properties.spider.camoufoxBuild shouldBe "browsers/official/test"
             properties.worker.enabled shouldBe true
         }
 

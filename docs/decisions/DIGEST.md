@@ -51,18 +51,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** give a Kover-exercised DTO a required field that a single malformed API entry can omit. Default it and let the item-level guard reject it. _(from `2026-10-14-extract-browser-request-logic-for-testability`)
 - **Never** solve a coverage drop on untestable adapters by excluding them. Extract the logic that deserves testing and leave the rest measured. _(from `2026-10-14-extract-browser-request-logic-for-testability`)
 - **Always** keep `target-concurrency` low enough to leave connections for the save path. Each in-flight target holds a pooled connection while it waits for a browser slot. _(from `2026-10-14-parallel-crawl-targets`)
-- **Always** open as many AdsPower profiles as `target-concurrency`, or lower the setting. The pool queues beyond the browser count rather than failing, so an over-large value looks like it is working while delivering one session's worth of throughput. _(from `2026-10-14-parallel-crawl-targets`)
+- **Always** open as many browser profiles as `target-concurrency`, or lower the setting. The pool queues beyond the browser count rather than failing, so an over-large value looks like it is working while delivering one session's worth of throughput. _(from `2026-10-14-parallel-crawl-targets`)
 - **Never** read a pool-exhaustion error as evidence that WB blocked us. It means no slot freed in time. _(from `2026-10-14-parallel-crawl-targets`)
 - **Never** set `target-concurrency` from a guess about how many browsers are open. The pool warns when the two disagree; that warning is the diagnostic, not noise. _(from `2026-10-14-parallel-crawl-targets`)
-- **Always** inject `BrowserAutomation` via constructor for testability — never call `Playwright` directly in `ProfileState`. _(from `2026-10-17-browser-automation-interface`)
-- **Always** inject `AdsPowerApi` via constructor for testability — never call `HttpURLConnection` directly in `ProfileState`. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)
 - **Always** handle back-off delays at the coordinator level (inside `Pipeline.run()` or `processItems`) — never inside `async {}`. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)
 - **Always** read targets through `TargetQueries.kt`. The admin API has no SQL of its own for `crawl_targets` any more. _(from `2026-10-19-admin-api-target-write-path-and-category-tree`)
 - **Never** add a second `ResultSet` → DTO mapping for a table the repository already maps. _(from `2026-10-19-admin-api-target-write-path-and-category-tree`)
-- **Always** consult the Local API before falling back to the port scan, and **never** fall back while the API is reachable. _(from `2026-10-19-adspower-api-first-browser-resolution`)
-- **Never** run AdsPower under `sudo`. A profile created by such a run keeps a `Preferences` file and a cache that belong to root, and AdsPower then reports that it could not read the settings. The fix is a rename of the file, and the pre-flight check says so by name. _(from `2026-10-19-adspower-api-first-browser-resolution`)
-- **Always** reach AdsPower through the host's loopback. In Docker that means `network_mode: host` (or an equivalent host-network setup); a bridge network silently breaks every profile. _(from `2026-10-19-adspower-local-api-port-discovery`)
-- **Never** treat a failing `checkActiveV2()` as "the browser is gone". It may mean the port moved. `RealAdsPowerApi` now re-resolves on failure for exactly this reason. _(from `2026-10-19-adspower-local-api-port-discovery`)
 - **Always** carry the reason a run was skipped to the operator: a scheduled crawl that quietly did nothing is indistinguishable from one that had nothing to do. _(from `2026-10-19-advisory-lock-timeout`)
 - **Always** state which one a timeout bounds. "Lock acquisition timed out" and "the crawl took too long" are different facts, and the second one is not the lock's business. _(from `2026-10-19-advisory-lock-timeout`)
 - **Always** take and release an advisory lock on the same connection. _(from `2026-10-19-advisory-lock-timeout`)
@@ -71,7 +65,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** keep the startup gate green: `./check.sh` runs it as part of `tests:test`, and a failure there means the application does not start. _(from `2026-10-19-application-startup-gate`)
 - **Always** supply `ADMIN_API_KEY` to the test JVM as an environment variable. The filter reads it with `System.getenv`; a system property is not read, and the failure looks like a configuration error rather than a missing variable. _(from `2026-10-19-application-startup-gate`)
 - **Never** add a dependency that is needed only at runtime to `implementation` when the compiler never sees it — declare it as `runtimeOnly`, so the plugin and the compiler can both reason about it. _(from `2026-10-19-application-startup-gate`)
-- **Never** make the startup gate depend on a browser, the network or AdsPower. The `public` profile exists for that reason: the crawler must not start in a unit test. _(from `2026-10-19-application-startup-gate`)
+- **Never** make the startup gate depend on a browser or the network. The `public` profile exists for that reason: the crawler must not start in a unit test. _(from `2026-10-19-application-startup-gate`)
 - **Never** weaken the migration assertion to a fixed list of versions. The expected set is discovered from the classpath, so a new migration is covered the day it is added. _(from `2026-10-19-application-startup-gate`)
 - **Always** check the effective rights of the catalog role, not the grants that were issued to it. _(from `2026-10-19-catalog-read-api-contract`)
 - **Always** keep the catalog's pool separate from the crawler's. The crawl is the component that loses data when it runs out of connections. _(from `2026-10-19-catalog-read-api-contract`)
@@ -113,10 +107,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** set the JDK through the toolchain in the root build's `subprojects { }` block. Never repeat the version in a module script — a copy is a place to forget. _(from `2026-10-19-jdk-toolchain`)
 - **Never** bump one surface alone. The version, `ci.yml`, `Dockerfile.app` and `Dockerfile.debug` change in the same commit; `./check.sh` and a Docker build are the two halves of the verification. _(from `2026-10-19-jdk-toolchain`)
 - **Never** pin `org.gradle.java.home` in a committed `gradle.properties`. A path that exists on one machine cannot exist on another, and the failure looks like a Gradle bug rather than a configuration error. _(from `2026-10-19-jdk-toolchain`)
-- **Always** build the jar before `docker compose up` — the debug image does not build it. `just app::run-docker` does it for you. _(from `2026-10-19-local-debug-stack-repairs`)
-- **Never** add a second local compose file. There is one stack, and it is `deploy/docker-compose.debug.yml`; the root file includes it. _(from `2026-10-19-local-debug-stack-repairs`)
-- **Never** assume a relative path in a compose file is relative to where you ran the command. It is relative to the compose file. _(from `2026-10-19-local-debug-stack-repairs`)
-- **Never** mount a directory over `/app/app.jar`. _(from `2026-10-19-local-debug-stack-repairs`)
 - **Always** compare the artifact that ships with the classpath the build resolved. A build that produced a jar is not evidence that the jar is right. _(from `2026-10-19-runtime-classpath-gate`)
 - **Always** read `jdeps` output rather than its exit code. It reports missing dependencies and still exits zero. _(from `2026-10-19-runtime-classpath-gate`)
 - **Never** ship a class twice. A class that exists both loose and in a jar can come from either, and only one of them was built. _(from `2026-10-19-runtime-classpath-gate`)
@@ -154,11 +144,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** держать темп ниже порога WB; «сначала попробуем быстро» — это ровно то, что приводит к 498. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
 - **Always** помечать профиль на паузу при антиботе, а не просто повторять тот же запрос. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
 - **Never** тратить весь бюджет попыток на запросы к открытой цепи: пауза и back-off должны пережить окно блокировки. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)
-- **Always** держать настройки `browser-idle-timeout-ms`, `browser-janitor-interval-ms` и `close-browsers-on-exit` в `application.yml` с объяснением: это единственное место, где видно, что браузеры закрываются. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
-- **Always** закрывать простаивающие профили: браузер, которым никто не пользуется, не нужен никому. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
-- **Always** останавливать браузер в AdsPower, а не только закрывать CDP-соединение: соединение — наше, браузер — процесс, и он переживает наше отсоединение. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
-- **Never** оставлять браузер открытым только потому, что краул его не открывал, а подключился: так утечка становится постоянной. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
-- **Never** ронять выключение из-за того, что AdsPower не ответил. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)
 - **Always** treat a value that is older than ten minutes as "as of ten minutes ago", not as "now". The storefront shows the count it was given; it does not recompute it, and it cannot. _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
 - **Never** run two crawler instances behind one address while the aggregates are cached in the process. The two would answer with different numbers for the same question, and neither would be wrong. _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)
 - **Always** define the pipeline once and call it. The schedule is an entry point, not a property of the pipeline: a schedule inside the pipeline is a copy of the entry point, and the copy is what goes stale. _(from `2026-10-20-ci-security-gates-and-lint-autofix`)
@@ -236,13 +221,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** выставлять `known_pages_limit` по круглому числу: сначала измерить длину каталога. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** грузить в БД цель без `wb_search_query`. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
 - **Never** оставлять в каталоге поле, которое никто не читает. _(from `2026-10-20-the-crawl-reports-its-own-limits`)
-- **Always** давать гейту здоровья время на первый старт: ядро Chrome (520 МБ) качается при первом запуске, поэтому таймаут гейта — 600 с, а не 180. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
-- **Always** держать ключ AdsPower в файле, который compose передаёт буквально. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
-- **Always** публиковать оба образа из одного коммита и поднимать их одним compose-вызовом: браузер без краула и краул без браузера не работают. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
-- **Always** читать compose-файл из репозитория приложения: как краул работает — это его контракт, и его изменение проходит ревью здесь, а не в шаблоне роли. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
-- **Never** включать Flyway обратно, пока история миграций базы не совпадает с миграциями сборки: Flyway падает на проверке контрольной суммы, и падает на каждом деплое. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
-- **Never** запекать ядро Chrome в образ: ключ AdsPower попадёт в слой. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
-- **Never** отдавать контейнеру краула host-сеть: Local API AdsPower и админский API окажутся на публичном адресе. _(from `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace`)
 - **Always** измерять модель тем же скриптом (`scripts/load-catalog.sh`) и тем же набором данных, что и предыдущий замер. Сравнение цифр, взятых из разных замеров, — это не сравнение. _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
 - **Always** указывать в ответе, когда собраны агрегаты (`asOf` это уже делает) — staleness без признака staleness — это просто устаревшие данные. _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
 - **Never** материализовать модель каталога, не решив заранее: кто её пересобирает, в каких профилях, как покупатель узнаёт о staleness и что каталог отдаёт сразу после деплоя. _(from `2026-10-20-the-materialized-read-model-is-a-separate-decision`)
@@ -286,7 +264,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** делить паузу и circuit breaker по egress-группам, а не по процессу. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Always** держать в группе одинаковый прокси: группа — это один источник. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Always** оставлять двухпроходный заём профиля: сначала неза-flagged, потом flagged. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
-- **Always** проверять фактический IP через профиль, а не доверять полю `ip` в ответе AdsPower. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
+- **Always** проверять фактический IP через профиль, а не доверять записанному адресу. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Never** брать паузу до того, как профиль взят: слот паузера не должен тратиться впустую. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Never** отдавать профиль в две группы. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
 - **Never** ронять старт из-за недоступности эхо-сервиса: probe предупреждает, а не блокирует. _(from `2026-10-21-egress-groups-are-the-unit-of-rate-limiting`)
@@ -360,8 +338,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** проверять защиту, которую нельзя вызвать настоящим входом, через шов, который позволяет её вызвать: непроверяемая защита — это вера, а не гарантия. _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Never** ловить `Error` широким `catch (e: Exception)`: `StackOverflowError` требует отдельного `catch`, иначе он невидим. _(from `2026-10-21-the-parse-failure-names-the-field`)
 - **Never** превращать ошибку разбора в пустую страницу без предупреждения: отчёт «0 предметов» без причины — это отчёт об успехе, которого не было. _(from `2026-10-21-the-parse-failure-names-the-field`)
-- **Always** читать оба написания поля, когда имя зависит от версии сервера, и проверять оба. _(from `2026-10-21-the-profile-id-is-read-too`)
-- **Never** считать пустой список ответов доказательством того, что данных нет: список может оказаться пустым из-за имени поля, и выглядит это как успех. _(from `2026-10-21-the-profile-id-is-read-too`)
 - **Always** измерять модель тем же скриптом и тем же набором данных, что и предыдущий замер (200 000 наблюдений, пул из пяти, страница 24). _(from `2026-10-21-the-read-model-is-not-needed-yet`)
 - **Always** пересматривать это решение на замере `scripts/load-catalog.sh --rows N`, где N — продовый `count(*)` из `scraped_items`, записанный в фазе 0. _(from `2026-10-21-the-read-model-is-not-needed-yet`)
 - **Always** чинить путь записи (#147–#155) раньше, чем считать, что данных «не хватает» по причине модели. _(from `2026-10-21-the-read-model-is-not-needed-yet`)
@@ -382,20 +358,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** перечислять в гейте исключения именами: CTE и псевдонимы подзапросов выводятся из текста, иначе новое имя в новом запросе сделает гейт ложно-красным. _(from `2026-10-21-the-schema-gate-reads-the-package`)
 - **Never** считать прочитанным один файл пакета: фасад не содержит SQL, и гейт, читающий только его, слеп к каждой из десяти частей. _(from `2026-10-21-the-schema-gate-reads-the-package`)
 - **Never** считать чтением то, что написано в комментарии: гейт читает строковые литералы, потому что только они уходят в базу. _(from `2026-10-21-the-schema-gate-reads-the-package`)
-- **Always** держать `browser-idle-timeout-ms`, `browser-janitor-interval-ms`, `close-browsers-on-exit` и `reconcile-browsers-on-start` в `application.yml` с объяснением: это единственное место, где видно, что браузеры закрываются. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
-- **Always** записывать факт «браузер, возможно, ещё жив» и закрывать по нему, а не по живому соединению: соединение может умереть, а браузер — нет. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
-- **Always** сверять состояние с AdsPower при старте: умерший процесс закрыть не может, следующий — может. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
-- **Never** выносить вердикт о профиле по проверке, которая не выполнилась. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
-- **Never** отдавать пустой список там, где список не удалось получить. «Проверка не выполнилась» и «проверка прошла» — разные вещи, и пустой список говорит «прошла». _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
-- **Never** превращать ошибку транспорта в «не запущен». Ошибка — это ошибка: она должна дойти до вызывающего кода исключением или логом. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
-- **Never** ронять выключение из-за того, что AdsPower не ответил. Остановка, которая не удалась, — это неприятность, а не повод повесить процесс; факт остаётся, и попытка повторится. _(from `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed`)
-- **Always** объявлять egress-группы единственным списком профилей. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
-- **Always** проверять изоляцию статически, до первого запроса к WB. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
-- **MUST** различать «проверка прошла» и «проверка не смогла выполниться»: второй случай — это предупреждение, а не успех. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
-- **Never** включать `require-isolated-egress-groups` там, где изоляция обеспечивается чем-то, кроме прокси. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
-- **Never** держать два способа описать профили: они разойдутся, и разойдутся тихо. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
-- **Never** считать профиль без прокси прямой, если AdsPower говорит, что прокси есть, но не отдаёт его адрес. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
-- **Never** считать статическую проверку достаточной: два разных прокси могут сходиться на одном адресе, и это видит только живой probe. _(from `2026-10-22-egress-groups-are-declared-and-checked`)
 - **Always** объявлять границу сборкой, а не соглашением. Новый модуль — это `include` в `settings.gradle.kts`, build-скрипт и строка в floors гейтов. _(from `2026-10-22-the-browser-stack-is-a-library`)
 - **Always** объявлять константу в том модуле, который владеет полем, и ссылаться на неё из другого. `EgressGroup.DEFAULT_ID` ссылается на `BrowserProfileConfig.DEFAULT_EGRESS_GROUP`. _(from `2026-10-22-the-browser-stack-is-a-library`)
 - **Always** проверять видимость на шве: `internal` — это модуль Gradle, и переезд меняет то, что видно наружу. _(from `2026-10-22-the-browser-stack-is-a-library`)
@@ -422,16 +384,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** останавливать краулер из-за недоступного эхо-сервиса: это «проверка не выполнилась», а не «проверка провалилась». _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **Never** переносить накопленное старым адресом на новый: circuit, книги и штраф. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
 - **Never** считать `crawl_targets` историей прогонов: это агрегат цели, а не журнал. _(from `2026-10-23-a-changed-address-is-a-new-identity`)
-- **Always** check the adapters below a seam against the real thing, when the seam exists because the real thing cannot be faked. _(from `2026-10-23-the-adapters-are-checked-against-a-real-chrome`)
-- **Always** declare an asymmetry between the local loop and CI, with the reason. _(from `2026-10-23-the-adapters-are-checked-against-a-real-chrome`)
-- **MUST** install the browser before the tests in every CI job that runs them — including the one that only measures coverage. _(from `2026-10-23-the-adapters-are-checked-against-a-real-chrome`)
-- **Never** let a test skip silently because a resource is missing: it must fail with the command that fixes it. _(from `2026-10-23-the-adapters-are-checked-against-a-real-chrome`)
 - **Always** keep the surface of a contract to what the consumer actually calls. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
 - **Always** translate the failures of the hidden library into the module's own type, keeping the message: the caller decides what the failure means. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
 - **Never** let a consumer of a module declare the module's hidden dependency. DAGP reports it, and the report is right. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
 - **Never** let a public type of a module name a type the module hides. The boundary is enforced by the compiler, not by a convention. _(from `2026-10-23-the-browser-module-owns-the-page-contract`)
 - **Always** ask a collaborator for a port, not for the object behind it. _(from `2026-10-23-the-browser-module-stops-handing-out-what-it-holds`)
-- **Always** create the AdsPower client once, in the deployment, and inject it. _(from `2026-10-23-the-browser-module-stops-handing-out-what-it-holds`)
+- **Always** create the browser stack once, in the deployment, and inject it. _(from `2026-10-23-the-browser-module-stops-handing-out-what-it-holds`)
 - **Always** say what a retry could change: the answer is "nothing", so stop. _(from `2026-10-23-the-browser-module-stops-handing-out-what-it-holds`)
 - **MUST** split a class by the decisions it holds, not by its size. _(from `2026-10-23-the-browser-module-stops-handing-out-what-it-holds`)
 - **Never** reach through a collaborator to what it holds. _(from `2026-10-23-the-browser-module-stops-handing-out-what-it-holds`)
@@ -444,15 +402,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** bound the age of test results outside a workspace that may be reused. _(from `2026-10-23-the-measurement-must-describe-this-run`)
 - **Never** compare against a part that is older than the union. _(from `2026-10-23-the-measurement-must-describe-this-run`)
 - **Never** treat the age of a report or of a result as staleness; treat its distance from the run it describes, or leave it to Gradle. _(from `2026-10-23-the-measurement-must-describe-this-run`)
-- **Always** move a type to a file of its own when the package works that way. _(from `2026-10-23-the-probe-asks-three-questions`)
-- **Always** split a class by the decisions it holds, not by its size. _(from `2026-10-23-the-probe-asks-three-questions`)
-- **MUST** keep the behaviour of a split identical: a split that changes what is asked, or in what order, is a new decision and needs its own record. _(from `2026-10-23-the-probe-asks-three-questions`)
-- **Never** keep a metric registry inside the class that produces the measurement: the measurement and its reporting are two decisions. _(from `2026-10-23-the-probe-asks-three-questions`)
-- **Always** reconcile every profile AdsPower knows, not only the configured ones. A profile removed from the configuration is the one that leaks. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
-- **Always** retry the reconciliation until it is confirmed. A skipped reconciliation is a browser nobody looked for. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
-- **Never** fail the startup because the reconciliation could not run. The AdsPower runtime may legitimately come up later; that is a fact to report, not a reason to refuse to start. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
-- **Never** let the reconciliation close a browser of this run. The permit, the `startedByPool` fact and the "has been borrowed" fact are the three answers to "is it ours". _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
-- **Never** share one AdsPower runtime between two crawlers with the reconciliation on. The second one would stop the first one's browsers. _(from `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed`)
 - **Always** measure a rule before enabling it, and record the rules that were measured and left off. _(from `2026-10-23-the-rules-live-where-they-are-enforced`)
 - **Always** put a rule where it is enforced: a pattern in a check, a judgement in `CODING_STANDARDS.md`, and neither in `AGENTS.md`. _(from `2026-10-23-the-rules-live-where-they-are-enforced`)
 - **Never** duplicate a rule between the check and the standards file. The copy goes stale silently, and the stale copy is the one that is read. _(from `2026-10-23-the-rules-live-where-they-are-enforced`)
@@ -507,18 +456,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** считать `publish-image` защитой от такой поломки: джоб не обязательный, и образ, который не собрался, до `main` не дойдёт — но и PR с ним будет зелёным. _(from `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk`)
 - **Always** измерять новый адрес по протоколу (`2026-10-27-the-measurement-does-not-authorize-a-second-address`) до того, как доверять ему обход: гейт протокола, который не пройден, не разрешает адрес. _(from `2026-11-01-one-crawler-many-addresses`)
 - **Always** измерять цену хопа: адрес измеряется вместе с задержкой до WB, и эндпоинт, который добавляет больше задержки, чем снимает отказов, адресом не является. _(from `2026-11-01-one-crawler-many-addresses`)
-- **Always** объявлять прокси группы в конфигурации краулера и сверять его с AdsPower до старта обхода: расхождение адреса и объявления молча даёт не тот бюджет и не тот адрес, ради которых группа объявлена. _(from `2026-11-01-one-crawler-many-addresses`)
+- **Always** объявлять прокси группы в конфигурации краулера и передавать его браузеру при запуске: объявленный адрес — это адрес, ради которого группа существует. _(from `2026-11-01-one-crawler-many-addresses`)
 - **MUST** держать один бюджет на адрес: пока процесс один, бюджет живёт в процессе; при появлении второго хоста бюджет переезжает в базу (ADR `2026-10-25-the-work-and-the-budget-belong-where-they-are-known`). _(from `2026-11-01-one-crawler-many-addresses`)
 - **Never** множить краулер, чтобы получить больше адресов: адрес — это то, за что считает WB, и его можно получить без второй машины. _(from `2026-11-01-one-crawler-many-addresses`)
 - **Never** строить общую очередь заданий ради числа адресов: адреса множатся прокси-эндпоинтами, а очередь появляется только тогда, когда обход упёрся в CPU одного хоста. _(from `2026-11-01-one-crawler-many-addresses`)
 - **Never** считать адрес группы известным, если он не объявлен и не наблюдался: «не знаю» и «прямой выход» — разные вещи, и вторая не должна получаться молча. _(from `2026-11-01-one-crawler-many-addresses`)
-- **Never** хранить пароль прокси в репозитории: пароль на каждый эндпоинт свой, приходит из секрета, а ротация — сознательное действие, после которого надо убедиться, что AdsPower узнал новый пароль, а не старый. _(from `2026-11-01-one-crawler-many-addresses`)
-- **Always** выполнять блок протокола скриптом `scripts/measure_egress.py`, а не вручную: порядок, пауза и время старта должны быть в данных, иначе их нечем проверять. _(from `2026-11-02-the-protocol-runs-from-the-repository`)
-- **Always** писать в отчёте «нет», когда правило не выполнено: честное «нет» гейт принимает, и это единственное, что делает блок пригодным для следующего решения. _(from `2026-11-02-the-protocol-runs-from-the-repository`)
-- **Always** читать вердикт блока как вывод о **пригодности блока**, а не как вывод о мире: блок, не прошедший гейт, не авторизует адрес (ADR `2026-10-27-the-measurement-does-not-authorize-a-second-address`). _(from `2026-11-02-the-protocol-runs-from-the-repository`)
-- **MUST** коммитить сырые JSON вместе с отчётом: отчёт без сырых данных — это утверждение, а не измерение. _(from `2026-11-02-the-protocol-runs-from-the-repository`)
-- **Never** править числа в отчёте блока рукой: отчёт пишется из данных, и правка расходится с JSON рядом — гейт это находит. _(from `2026-11-02-the-protocol-runs-from-the-repository`)
-- **Never** считать правило выполненным, если его нельзя проверить по данным: гейт пишет «не решается из данных», и это честнее «да». _(from `2026-11-02-the-protocol-runs-from-the-repository`)
+- **Never** хранить пароль прокси в репозитории: пароль на каждый эндпоинт свой, приходит из секрета, а ротация — сознательное действие, после которого надо убедиться, что браузер получил новый пароль, а не старый. _(from `2026-11-01-one-crawler-many-addresses`)
 - **Always** держать одну и ту же схему ключа в краулере и в витрине. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
 - **Always** записывать решение по зависимости, а номер(а) pull request'а — оставлять в причине. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
 - **Always** объяснять гейтом записанное решение, а не падать молча: решение `deferred` с причиной — это объяснение, а не ошибка. _(from `2026-11-03-the-decision-belongs-to-the-dependency`)
@@ -558,7 +501,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** raise coverage by testing a function that should not exist. The number goes up; the code stays. _(from `2026-11-10-the-pool-belongs-to-the-application`)
 - **Always** брать прокси профиля из его egress-группы: профиль не выбирает свой адрес. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **Always** вырезать credentials в `toString()` того типа, который держит конфигурация (`ProxyConfig`), а не только в том, в который он потом конвертируется. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
-- **Always** держать транспорт в адаптере: `BrowserAutomation` не называет URL, CDP, Chrome или AdsPower. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Always** держать транспорт в адаптере: `BrowserAutomation` не называет URL, транспорт или runtime. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **Always** спрашивать `browserMayBeRunning` у автоматизации, а не выводить из `isConnected`: соединение умирает, браузер остаётся. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **Always** хранить отпечаток профиля явным preset'ом (`BrowserProfileConfig.fingerprint`), а не генерировать при старте. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **MUST** называть persistent-каталог профиля по proxy endpoint'у и отказывать в открытии под другим. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
@@ -566,13 +509,15 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **MUST** отказывать SOCKS5 с credentials на конфигурации: Playwright не умеет аутентификацию в SOCKS5, и отказ на первом запуске — это отказ, который случился слишком поздно. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **MUST** проверять, что `profileId`, host и собранный путь профиля остаются одним сегментом под `profiles-dir`: `..` — это чужая identity на диске, а не настройка. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **MUST** разделять закрытие сессии (`close`) и завершение браузера (`stop`): runtime, который оставляет браузер после разрыва, иначе течёт. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
-- **Never** давать `DeclaredProxy` метод, принимающий тип runtime'а: сверка с ответом AdsPower живёт на стороне интеграции, иначе граница держит снаружи то, что этот метод возвращает внутрь. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Never** давать `DeclaredProxy` метод, принимающий тип runtime'а: сверка с ответом runtime живёт на стороне интеграции, иначе граница держит снаружи то, что этот метод возвращает внутрь. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **Never** добавлять адрес браузера в контракт или в `BrowserProfileConfig`: браузер запускают, а не присоединяются к нему по конфигурации профиля. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **Never** добавлять флаг, переписывающий привязку каталога к endpoint'у. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **Never** переключать pool concurrency, semaphores, round-robin, egress selection или session policy в этом изменении — это #270. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
 - **Never** печатать credentials прокси: `DeclaredProxy.toString()` вырезает их, и сообщения строятся на нём. _(from `2026-11-15-a-browser-session-is-started-not-joined`)
+- **Always** держать `browser-idle-timeout-ms`, `browser-janitor-interval-ms` и `close-browsers-on-exit` в `application.yml`. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Always** назначать прокси профилю и держать его неизменным: смена адреса — новая личность (ADR `2026-10-23-a-changed-address-is-a-new-identity`). _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Always** называть каталог `user_data_dir` по proxy endpoint и отказывать в его открытии под другим: cookies и storage переезжают вместе с каталогом, и сессия, сменившая адрес, — уже другая сессия. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Always** останавливать браузер, который, возможно, ещё работает, когда он простаивает и при выходе; спрашивать `browserMayBeRunning`, а не `isConnected`. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Always** пинить сборку Camoufox (`~/.cache/camoufox/config.json` → `active_version`): это бета-сборка Firefox, и без пина она обновится молча. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Always** хранить отпечаток профиля явным preset-файлом: `user_data_dir` его не сохраняет, и без файла рестарт — это новый браузер с того же адреса. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **MUST** держать отпечаток стабильным на профиль: два разных отпечатка с одного адреса выглядят как два браузера за одним IP — ровно то, чего egress-группы избегают. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
@@ -581,10 +526,23 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** выбирать `headless`-режим по рекомендации: `True` измерен, `virtual`/`virtual-gpu` требуют `Xvfb` и отдельного замера. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** добавлять флаг, который переписывает `EGRESS`-маркер на существующем каталоге: профили останутся с cookies и storage прежнего адреса, то есть проверка перестанет защищать от того, ради чего существует. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** настраивать аутентифицированный SOCKS5 в Playwright: он отвергается («Browser does not support socks5 proxy authentication»); endpoint либо без пароля с ограничением по CIDR, либо HTTP с Basic-auth. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Never** оставлять браузер открытым только потому, что краул его не открывал. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** полагаться на `fingerprint_preset=True` для стабильности: он выбирает случайный пресет при каждом запуске, и identity расходится. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Never** ронять выключение из-за того, что браузер не подтвердил остановку: факт остаётся, попытка повторится. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** складывать 429 с 498 в один счётчик: 429 — ответ про темп, 498 — про потраченный счётчик сессии; в крауле у них разные причины (`rate_limited` / `antibot`) и разные back-off'ы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** считать `EGRESS`-маркер проверкой внешнего адреса: он привязан к endpoint'у, а endpoint может менять egress между запусками; неизменность адреса гарантирует контракт прокси, а `egress` в артефакте — свидетельство, а не защита. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** считать статус навигации проверкой антибота: датацентровый адрес даёт 498 на HTML и 200 на API из страницы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Always** пинить одну сборку Camoufox и проверять её `just browser::verify`. _(from `2026-11-16-the-deployment-runs-camoufox`)
+- **Always** резолвить `CamoufoxInstall` лениво, при первом запуске браузера. _(from `2026-11-16-the-deployment-runs-camoufox`)
+- **Always** сохранять `EgressProbe`/`EgressIsolationCheck` и startup gate. _(from `2026-11-16-the-deployment-runs-camoufox`)
+- **Always** строить `BrowserAutomation` профиля из Camoufox в `BrowserPool`; шов для фейков — только тестовый. _(from `2026-11-16-the-deployment-runs-camoufox`)
+- **Always** хранить профили и fingerprint'ы вне репозитория (`PROFILES_DIR`, `*.fingerprint.json`). _(from `2026-11-16-the-deployment-runs-camoufox`)
+- **Never** возвращать startup-сверку браузеров для локального рантайма: осиротевший процесс убирает оператор. _(from `2026-11-16-the-deployment-runs-camoufox`)
+- **Never** делать старт приложения зависимым от установленного Camoufox, доступности WB или сети. _(from `2026-11-16-the-deployment-runs-camoufox`)
+- **Never** добавлять второй browser runtime, второй process manager или второй profile claim. _(from `2026-11-16-the-deployment-runs-camoufox`)
+- **Never** оставлять AdsPower-специфичный offline-скрипт без подтверждённого use case: инструмент замера — `scripts/camoufox_bench.py`. _(from `2026-11-16-the-deployment-runs-camoufox`)
+- **Never** публиковать browser image или поднимать browser-service на VPS: браузер запускается на рабочей машине. _(from `2026-11-16-the-deployment-runs-camoufox`)
+- **Never** хранить proxy credentials в репозитории; они приходят из env и вырезаются `toString()`. _(from `2026-11-16-the-deployment-runs-camoufox`)
 - **Always** добавлять ошибку неуспешной очистки к исходной ошибке как suppressed, а не заменять ею. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Always** запускать Camoufox persistent-контекстом в каталоге профиля: каталог — это сессия. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Always** отдавать handle сессии, оставшейся после неудачного запуска, вместе с ошибкой: handle, который знает только launcher, — это handle, который никто не закроет второй раз. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
@@ -640,13 +598,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Pagination remains inline — defer extraction until a concrete need arises _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 - `Pipeline.run()` reduced from 113 lines to ~55 lines _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 
-### `adspower`
-
-- В логах появляются «профиль отдывает» и «цепи ждёт окна» — это ожидаемое поведение, а не сбой. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
-- Ноль в `browser-idle-timeout-ms` отключает закрытие простаивающих браузеров: они живут вместе с процессом. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)_
-- Полный обход 132 каталогов по 5 страниц при темпе 3 с занимает около 35 минут. Это ожидаемо: краул ходит в чужой API и платит за это скоростью, а не частотой. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
-- Цель, у которой антибот не отпустил за 5 попыток, всё равно падает — но теперь это означает настоящий блок, а не мгновенный отказ открытой цепи. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
-
 ### `ansible`
 
 - The crawler reaching Wildberries from the VPS is a separate question from reaching a registry, and it is still unverified: the outbound restriction has only ever been observed against HTTPS in general. _(from `2026-10-14-deploy-crawler-as-registry-image`)_
@@ -685,19 +636,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - Future work: surface `Spider.concurrency` in a Spring `@Bean` configuration (covered in PR 18) _(from `2026-09-09-concurrency-wiring-pr17`)_
 - New `stage()` DSL makes stage bodies read like domain language _(from `2026-10-17-stage-data-class-dsl`)_
 - Pagination task IDs and the start task ID are now explicitly controllable — critical for deterministic integration tests. _(from `2026-10-14-pipeline-purity-idgen`)_
-- Playwright/CDP connection remains an integration concern — no attempt to mock it in unit tests. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
 - Retry logic in `runDownloadStage` / `runParseStage` / `saveBatch` is fully deterministic and testable with fake clocks. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - The `Side` hierarchy now has three variants. A fourth one is a new effect of the crawler, and it arrives with a stage, an interpreter and a test. _(from `2026-10-20-the-registry-is-total-by-construction`)_
 - The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same commit. Verified by control: removing `TargetQueriesPostgresTest` leaves Gradle reporting `BUILD SUCCESSFUL` while the floor gate exits 1 with "ran 31 tests, floor is 44". _(from `2026-10-08-discover-test-migrations`)_
 - The executed-test floors are raised in the same commit that adds tests, in both repositories. Verified by control in each: deleting the new suite leaves the test task reporting success while the floor gate exits 1. _(from `2026-10-08-gates-that-can-fail`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path tests and leaves `TargetQueries` green. Under the old list it would have failed none. _(from `2026-10-08-discover-test-migrations`)_
 - `.invoke()` calls become `.run.invoke()` (the function is now a property named `run`) _(from `2026-10-17-stage-data-class-dsl`)_
-- `BorrowedPage` remains unchanged — it still wraps a real `Page`. _(from `2026-10-17-browser-automation-interface`)_
-- `BrowserPool` remains the pool manager (round-robin, locking); `BrowserAutomation` handles only the browser lifecycle. _(from `2026-10-17-browser-automation-interface`)_
 - `Coordinator` is the sole owner of deduplication and retry attempt state _(from `2026-10-17-coordinator-extraction`)_
 - `DomainError` still has `isStopped()` / `isDrop()` defaults — zero callers confirmed, removal deferred _(from `2026-09-09-dead-code-purge-pr9`)_
-- `FakeAdsPowerApi` lives in `src/test/kotlin/` alongside the tests that use it. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
-- `FakeBrowserAutomation` lives in `src/test/kotlin/` alongside `BrowserPoolTest`. _(from `2026-10-17-browser-automation-interface`)_
 - `Pipeline.run()` is still not referentially transparent due to `delay()` in retry loops, but this is a fundamental property of any suspend-based retry implementation and does not affect testability or debuggability. _(from `2026-10-14-pipeline-purity-idgen`)_
 - `Pipeline.run()` save-stage `when` is still exhaustive (added explicit `Cont` comment) _(from `2026-09-09-dead-code-purge-pr9`)_
 - `Pipeline.run` signature simplified: removed `seenFingerprints` parameter _(from `2026-10-17-coordinator-extraction`)_
@@ -737,26 +683,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `browser`
 
-- A profile directory that was never materialised and a profile whose `Preferences` belong to another user are different problems with different fixes, and the pre-flight check names them apart. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- Playwright/CDP connection remains an integration concern — no attempt to mock it in unit tests. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
-- Profile state under `~/.adspowerCli/source/cache/<id>_<hash>/` must be owned by the user running the AdsPower runtime. A container that mounted `~/.adspowerCli` and ran as root leaves root-owned profile directories and Chrome kernels behind; the host runtime then cannot write `Preferences` and the browser refuses to start with `EACCES`. See `docs/decisions/2026-10-19-local-debug-stack-repairs.md`. _(from `2026-10-19-adspower-local-api-port-discovery`)_
 - SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No serialization failures were observed in these runs, so the isolation level was left alone rather than changed on theory. _(from `2026-10-14-parallel-crawl-targets`)_
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is the only thing that will change that, and it needs a profile-per-test fixture CI does not have yet. _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
-- The debug stack must set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`. We drive AdsPower's own Chrome over CDP, so Playwright's bundled Chromium is never launched; without the flag `Playwright.create()` downloads 161 MB on every browser borrow and re-downloads it on every retry. `deploy/docker-compose.adspower.yml` already had this. _(from `2026-10-19-adspower-local-api-port-discovery`)_
-- The pre-flight check reads `~/.adspowerCli` by default; `ADSPOWER_HOME` overrides it for installations that keep their state elsewhere. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- The profile directory is found by prefix (`<profileId>_<hash>`); the hash is AdsPower's own and is not reconstructed. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- `ADSPOWER_API_BASE` overrides discovery when set, but a stale value is not fatal — the resolver logs a warning and falls back to scanning. _(from `2026-10-19-adspower-local-api-port-discovery`)_
-- `ADSPOWER_API_KEY` no longer gates the API call. It is read from the environment and reported by the pre-flight check, but the Local API on loopback is unauthenticated and the key is not sent anywhere. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- `AdsPowerApi` has three methods now. A new implementation — the test fake included — must answer `isAvailable()` honestly, or the pool will fall back to the scan when it should have reported a broken profile. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- `BorrowedPage` remains unchanged — it still wraps a real `Page`. _(from `2026-10-17-browser-automation-interface`)_
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels with the borrow instead of being re-derived at each call site. _(from `2026-10-14-antibot-session-is-site-wide`)_
 - `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. The new concurrency logic was put where it *is* testable: `CrawlRunner`'s bound is verified by a peak-concurrency probe against a real PostgreSQL, including that `target-concurrency = 1` still measures exactly 1, so the probe cannot pass on a runner that ignored the setting. _(from `2026-10-14-parallel-crawl-targets`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. Warm-up now belongs to whoever needs a warm page, and is timed by the caller. _(from `2026-10-14-antibot-session-is-site-wide`)_
-- `BrowserPool` remains the pool manager (round-robin, locking); `BrowserAutomation` handles only the browser lifecycle. _(from `2026-10-17-browser-automation-interface`)_
-- `FakeAdsPowerApi` lives in `src/test/kotlin/` alongside the tests that use it. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
-- `FakeBrowserAutomation` lives in `src/test/kotlin/` alongside `BrowserPoolTest`. _(from `2026-10-17-browser-automation-interface`)_
 - Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не браузера. _(from `2026-10-20-the-request-rate-has-one-owner`)_
-- Ноль в `browser-idle-timeout-ms` отключает закрытие простаивающих браузеров: они живут вместе с процессом. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)_
 - Первый запрос pacer'а не ждёт: интервал отсчитывается от предыдущего разрешения, а не от старта. Расписание при этом остаётся не-метрономным — jitter прибавляется к каждому следующему интервалу. _(from `2026-10-20-the-request-rate-has-one-owner`)_
 
 ### `bug-fix`
@@ -859,7 +791,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - В логах появляются «профиль отдывает» и «цепи ждёт окна» — это ожидаемое поведение, а не сбой. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Данные в базе, собранные старым эндпоинтом, — популярная ротация под чужими названиями. Их нужно пересобрать (в debug-окружении база пересобрана с нуля). _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)_
 - Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не браузера. _(from `2026-10-20-the-request-rate-has-one-owner`)_
-- Ноль в `browser-idle-timeout-ms` отключает закрытие простаивающих браузеров: они живут вместе с процессом. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)_
 - Первый запрос pacer'а не ждёт: интервал отсчитывается от предыдущего разрешения, а не от старта. Расписание при этом остаётся не-метрономным — jitter прибавляется к каждому следующему интервалу. _(from `2026-10-20-the-request-rate-has-one-owner`)_
 - Полный обход 132 каталогов по 5 страниц при темпе 3 с занимает около 35 минут. Это ожидаемо: краул ходит в чужой API и платит за это скоростью, а не частотой. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Скачивание при старте добавляет сетевую зависимость: без интернета старт проходит с предупреждением. _(from `2026-10-20-subject-dictionary-loaded-at-startup`)_
@@ -909,11 +840,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `debugging`
 
-- Profile state under `~/.adspowerCli/source/cache/<id>_<hash>/` must be owned by the user running the AdsPower runtime. A container that mounted `~/.adspowerCli` and ran as root leaves root-owned profile directories and Chrome kernels behind; the host runtime then cannot write `Preferences` and the browser refuses to start with `EACCES`. See `docs/decisions/2026-10-19-local-debug-stack-repairs.md`. _(from `2026-10-19-adspower-local-api-port-discovery`)_
-- The debug image needs `iproute2` for the browser port scan. Adding a dependency to the image is cheaper than the alternative — a browser that cannot be found. _(from `2026-10-19-local-debug-stack-repairs`)_
-- The debug stack must set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`. We drive AdsPower's own Chrome over CDP, so Playwright's bundled Chromium is never launched; without the flag `Playwright.create()` downloads 161 MB on every browser borrow and re-downloads it on every retry. `deploy/docker-compose.adspower.yml` already had this. _(from `2026-10-19-adspower-local-api-port-discovery`)_
 - The item path writes one statement per item, and the category path one per distinct category. A future change that batches these needs the empty-row behaviour of `addBatch()` handled explicitly — and a test that would fail if it were not. _(from `2026-10-19-exposed-single-row-writes-and-unmasked-db-errors`)_
-- `ADSPOWER_API_BASE` overrides discovery when set, but a stale value is not fatal — the resolver logs a warning and falls back to scanning. _(from `2026-10-19-adspower-local-api-port-discovery`)_
 - `EXPOSED_SQL_LOG_LEVEL=DEBUG` re-enables the per-statement log for a debugging session. The crawl's log volume grows by two orders of magnitude while it is on. _(from `2026-10-19-exposed-single-row-writes-and-unmasked-db-errors`)_
 
 ### `dependencies`
@@ -931,7 +858,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `docker`
 
 - The crawler reaching Wildberries from the VPS is a separate question from reaching a registry, and it is still unverified: the outbound restriction has only ever been observed against HTTPS in general. _(from `2026-10-14-deploy-crawler-as-registry-image`)_
-- The debug image needs `iproute2` for the browser port scan. Adding a dependency to the image is cheaper than the alternative — a browser that cannot be found. _(from `2026-10-19-local-debug-stack-repairs`)_
 
 ### `documentation`
 
@@ -982,18 +908,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `infrastructure`
 
-- A profile directory that was never materialised and a profile whose `Preferences` belong to another user are different problems with different fixes, and the pre-flight check names them apart. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- Profile state under `~/.adspowerCli/source/cache/<id>_<hash>/` must be owned by the user running the AdsPower runtime. A container that mounted `~/.adspowerCli` and ran as root leaves root-owned profile directories and Chrome kernels behind; the host runtime then cannot write `Preferences` and the browser refuses to start with `EACCES`. See `docs/decisions/2026-10-19-local-debug-stack-repairs.md`. _(from `2026-10-19-adspower-local-api-port-discovery`)_
 - SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No serialization failures were observed in these runs, so the isolation level was left alone rather than changed on theory. _(from `2026-10-14-parallel-crawl-targets`)_
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is the only thing that will change that, and it needs a profile-per-test fixture CI does not have yet. _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 - The crawler reaching Wildberries from the VPS is a separate question from reaching a registry, and it is still unverified: the outbound restriction has only ever been observed against HTTPS in general. _(from `2026-10-14-deploy-crawler-as-registry-image`)_
-- The debug image needs `iproute2` for the browser port scan. Adding a dependency to the image is cheaper than the alternative — a browser that cannot be found. _(from `2026-10-19-local-debug-stack-repairs`)_
-- The debug stack must set `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`. We drive AdsPower's own Chrome over CDP, so Playwright's bundled Chromium is never launched; without the flag `Playwright.create()` downloads 161 MB on every browser borrow and re-downloads it on every retry. `deploy/docker-compose.adspower.yml` already had this. _(from `2026-10-19-adspower-local-api-port-discovery`)_
-- The pre-flight check reads `~/.adspowerCli` by default; `ADSPOWER_HOME` overrides it for installations that keep their state elsewhere. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- The profile directory is found by prefix (`<profileId>_<hash>`); the hash is AdsPower's own and is not reconstructed. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- `ADSPOWER_API_BASE` overrides discovery when set, but a stale value is not fatal — the resolver logs a warning and falls back to scanning. _(from `2026-10-19-adspower-local-api-port-discovery`)_
-- `ADSPOWER_API_KEY` no longer gates the API call. It is read from the environment and reported by the pre-flight check, but the Local API on loopback is unauthenticated and the key is not sent anywhere. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- `AdsPowerApi` has three methods now. A new implementation — the test fake included — must answer `isAvailable()` honestly, or the pool will fall back to the scan when it should have reported a broken profile. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels with the borrow instead of being re-derived at each call site. _(from `2026-10-14-antibot-session-is-site-wide`)_
 - `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. The new concurrency logic was put where it *is* testable: `CrawlRunner`'s bound is verified by a peak-concurrency probe against a real PostgreSQL, including that `target-concurrency = 1` still measures exactly 1, so the probe cannot pass on a runner that ignored the setting. _(from `2026-10-14-parallel-crawl-targets`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. Warm-up now belongs to whoever needs a warm page, and is timed by the caller. _(from `2026-10-14-antibot-session-is-site-wide`)_
@@ -1017,7 +934,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The API answers a request that arrives right after a restart with a value computed from the database at that moment, and the next one with a value computed before the restart. Both are correct answers to "what did the database say". _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 - The `totalCount` of a page of `/items` is **not** cached, and the reason is separate and worth stating here: it is 27 ms of a 125 ms request, and caching it would make the number the storefront shows "N products" wrong by up to ten minutes. A stale aggregate nobody looks at is cheap; a stale count on a page is a lie the storefront tells. _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 - When the topology grows to more than one instance, the aggregates move to a shared cache in the same change that adds the second instance. Doing them separately would leave a window in which the second instance answers from its own empty cache — the exact inconsistency this decision exists to prevent. _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
-- Ноль в `browser-idle-timeout-ms` отключает закрытие простаивающих браузеров: они живут вместе с процессом. _(from `2026-10-20-browsers-are-closed-when-they-are-not-needed`)_
 
 ### `packaging`
 
@@ -1098,15 +1014,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `reliability`
 
-- A profile directory that was never materialised and a profile whose `Preferences` belong to another user are different problems with different fixes, and the pre-flight check names them apart. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
 - Jobs left `Running` by a crash are now reported as `Crashed` with an explanatory `error_message`, instead of looking like a running crawl. _(from `2026-10-19-crawl-job-heartbeat-and-crash-reconciliation`)_
 - The item path writes one statement per item, and the category path one per distinct category. A future change that batches these needs the empty-row behaviour of `addBatch()` handled explicitly — and a test that would fail if it were not. _(from `2026-10-19-exposed-single-row-writes-and-unmasked-db-errors`)_
 - The nightly now costs two workflows a week instead of one: the run itself, and the watchdog that checks it. The watchdog is a few seconds of API calls. _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)_
-- The pre-flight check reads `~/.adspowerCli` by default; `ADSPOWER_HOME` overrides it for installations that keep their state elsewhere. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- The profile directory is found by prefix (`<profileId>_<hash>`); the hash is AdsPower's own and is not reconstructed. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
 - The reconciliation runs on every boot. It touches only rows that have been quiet for more than five minutes, so a normal startup changes nothing. _(from `2026-10-19-crawl-job-heartbeat-and-crash-reconciliation`)_
-- `ADSPOWER_API_KEY` no longer gates the API call. It is read from the environment and reported by the pre-flight check, but the Local API on loopback is unauthenticated and the key is not sent anywhere. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
-- `AdsPowerApi` has three methods now. A new implementation — the test fake included — must answer `isAvailable()` honestly, or the pool will fall back to the scan when it should have reported a broken profile. _(from `2026-10-19-adspower-api-first-browser-resolution`)_
 - `EXPOSED_SQL_LOG_LEVEL=DEBUG` re-enables the per-statement log for a debugging session. The crawl's log volume grows by two orders of magnitude while it is on. _(from `2026-10-19-exposed-single-row-writes-and-unmasked-db-errors`)_
 - `crawl_jobs.last_heartbeat_at` is now meaningful; queries that assumed it was always null should be revisited. _(from `2026-10-19-crawl-job-heartbeat-and-crash-reconciliation`)_
 
@@ -1181,16 +1092,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - Crawler: `tests` floor 31 → 44. Storefront: per-file floors in `config/test-runs-floor.tsv`, 10 files, 145 tests. _(from `2026-10-08-gates-that-can-fail`)_
 - Integration tests in `tests/` still cover the full stack; they complement, not replace, domain tests. _(from `2026-09-08-domain-coverage-pr4`)_
-- Playwright/CDP connection remains an integration concern — no attempt to mock it in unit tests. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is the only thing that will change that, and it needs a profile-per-test fixture CI does not have yet. _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
 - The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same commit. Verified by control: removing `TargetQueriesPostgresTest` leaves Gradle reporting `BUILD SUCCESSFUL` while the floor gate exits 1 with "ran 31 tests, floor is 44". _(from `2026-10-08-discover-test-migrations`)_
 - The executed-test floors are raised in the same commit that adds tests, in both repositories. Verified by control in each: deleting the new suite leaves the test task reporting success while the floor gate exits 1. _(from `2026-10-08-gates-that-can-fail`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by `SKIP_DB=1 ./check.sh` — which is reported explicitly, never silently. _(from `2026-10-19-application-startup-gate`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path tests and leaves `TargetQueries` green. Under the old list it would have failed none. _(from `2026-10-08-discover-test-migrations`)_
-- `BorrowedPage` remains unchanged — it still wraps a real `Page`. _(from `2026-10-17-browser-automation-interface`)_
-- `BrowserPool` remains the pool manager (round-robin, locking); `BrowserAutomation` handles only the browser lifecycle. _(from `2026-10-17-browser-automation-interface`)_
-- `FakeAdsPowerApi` lives in `src/test/kotlin/` alongside the tests that use it. _(from `2026-10-17-browserpool-testability-adspower-api-interface`)_
-- `FakeBrowserAutomation` lives in `src/test/kotlin/` alongside `BrowserPoolTest`. _(from `2026-10-17-browser-automation-interface`)_
 - `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share `PostgresFixture`, and both call `db.clear()` from `beforeTest`. The SQLite suites already did; the Postgres ones did not, so their results depended on declaration order. _(from `2026-10-08-discover-test-migrations`)_
 - `domain:test` now runs ~50 pure domain unit tests (previously NO-SOURCE) _(from `2026-09-09-test-module-boundary-pr10`)_
 - `isStopped()` / `isDrop()` defaults in `DomainError` still present — zero callers confirmed, removal deferred _(from `2026-09-09-test-module-boundary-pr10`)_
@@ -1243,14 +1149,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-14-extract-browser-request-logic-for-testability` — infrastructure  testing  coverage  browser
 - `2026-10-14-parallel-crawl-targets` — infrastructure  concurrency  browser  performance
 - `2026-10-14-pipeline-purity-idgen` — pipeline  refactoring  architecture
-- `2026-10-17-browser-automation-interface` — browser  architecture  testing
-- `2026-10-17-browserpool-testability-adspower-api-interface` — browser  architecture  testing
 - `2026-10-17-coordinator-extraction` — pipeline  architecture  pr-13
 - `2026-10-17-pipeline-purity-delayfn-extraction` — pipeline  architecture  concurrency
 - `2026-10-17-stage-data-class-dsl` — pipeline  architecture  pr-13
 - `2026-10-19-admin-api-target-write-path-and-category-tree` — api  database  architecture
-- `2026-10-19-adspower-api-first-browser-resolution` — browser  infrastructure  reliability
-- `2026-10-19-adspower-local-api-port-discovery` — browser  infrastructure  debugging
 - `2026-10-19-advisory-lock-timeout` — concurrency  runtime  correctness
 - `2026-10-19-application-startup-gate` — testing  gates  spring  database  flyway
 - `2026-10-19-catalog-read-api-contract` — catalog  api  database  security  contract
@@ -1261,7 +1163,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-exposed-single-row-writes-and-unmasked-db-errors` — database  reliability  debugging
 - `2026-10-19-idempotent-target-load-and-root-categories` — catalog  data  tooling
 - `2026-10-19-jdk-toolchain` — build  toolchain  ci  docker
-- `2026-10-19-local-debug-stack-repairs` — docker  debugging  infrastructure
 - `2026-10-19-runtime-classpath-gate` — build  runtime  gate  packaging
 - `2026-10-19-schema-drift-gate` — database  schema  test  migrations
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — catalog  data  domain-model
@@ -1270,8 +1171,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-a-popular-list-is-not-a-catalog` — crawler  data-quality  catalog  api
 - `2026-10-20-a-schedule-that-does-not-run-is-a-failure` — ci  reliability  schedule  observability  gate
 - `2026-10-20-anti-bot-refusals-are-measured` — crawler  antibot  metrics  pipeline
-- `2026-10-20-antibot-profile-rotation-and-backoff` — crawler  resilience  adspower
-- `2026-10-20-browsers-are-closed-when-they-are-not-needed` — crawler  browser  adspower  operations
+- `2026-10-20-antibot-profile-rotation-and-backoff` — crawler  resilience
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — catalog  api  cache  operations  deployment
 - `2026-10-20-ci-security-gates-and-lint-autofix` — ci  security  tooling  gate  lint
 - `2026-10-20-contract-versions-are-paths` — catalog  contract
@@ -1288,7 +1188,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — build  tests  gate  coverage
 - `2026-10-20-the-crawl-cadence-follows-the-measured-catalog` — crawler  scheduling  configuration  catalog
 - `2026-10-20-the-crawl-reports-its-own-limits` — crawler  data-quality  catalog  operations
-- `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace` — deployment  infrastructure  docker  crawler
 - `2026-10-20-the-materialized-read-model-is-a-separate-decision` — catalog  performance  database
 - `2026-10-20-the-measurement-travels-with-the-limit` — crawler  catalog  data-quality  operations  tooling
 - `2026-10-20-the-registry-is-total-by-construction` — pipeline  architecture  domain  types
@@ -1313,24 +1212,18 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-failure-keeps-what-was-read` — crawler  pipeline  observability
 - `2026-10-21-the-number-wb-reports-reaches-the-report` — crawler  reporting  catalog  data-quality
 - `2026-10-21-the-parse-failure-names-the-field` — crawler  diagnostics  catalog  api
-- `2026-10-21-the-profile-id-is-read-too` — adspower  api  tests
 - `2026-10-21-the-read-model-is-not-needed-yet` — catalog  performance  database  measurement
 - `2026-10-21-the-repository-is-licensed` — legal  project  governance
 - `2026-10-21-the-run-message-has-a-length` — crawler  operations  database  error-handling
 - `2026-10-21-the-schema-gate-reads-the-package` — gates  database  architecture
-- `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed` — crawler  browser  adspower  operations
-- `2026-10-22-egress-groups-are-declared-and-checked` — infrastructure  browser  antibot  operations
-- `2026-10-22-the-browser-stack-is-a-library` — build  architecture  dependencies  browser  adspower
+- `2026-10-22-the-browser-stack-is-a-library` — build  architecture  dependencies  browser
 - `2026-10-22-the-code-nobody-calls-is-gone` — dead-code  cleanup  domain
 - `2026-10-22-the-gaps-are-closed-or-written-down` — testing  coverage  seams  playwright
 - `2026-10-22-the-table-of-runs-has-a-reader` — reporting  operations  egress  api
 - `2026-10-23-a-changed-address-is-a-new-identity` — infrastructure  antibot  database  operations
-- `2026-10-23-the-adapters-are-checked-against-a-real-chrome` — architecture  coverage  ci
 - `2026-10-23-the-browser-module-owns-the-page-contract` — browser  architecture  dependencies  playwright
 - `2026-10-23-the-browser-module-stops-handing-out-what-it-holds` — architecture  boundaries  browser
 - `2026-10-23-the-measurement-must-describe-this-run` — gates  coverage  boundaries
-- `2026-10-23-the-probe-asks-three-questions` — architecture  coverage
-- `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed` — browser  adspower  lifecycle  operations
 - `2026-10-23-the-rules-live-where-they-are-enforced` — process  gates  standards  tooling
 - `2026-10-23-the-schema-metadata-left-the-domain` — architecture  database  domain  gates
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — infrastructure  antibot  observability  operations
@@ -1342,7 +1235,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-30-an-empty-observation-changes-nothing` — infrastructure  antibot  operations  database
 - `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk` — infrastructure  build  operations
 - `2026-11-01-one-crawler-many-addresses` — architecture  egress  operations  antibot
-- `2026-11-02-the-protocol-runs-from-the-repository` — operations  measurement  antibot
 - `2026-11-03-the-decision-belongs-to-the-dependency` — workflow  dependencies  conventions
 - `2026-11-04-the-refusal-is-a-count-against-the-session` — antibot  egress  architecture  measurement
 - `2026-11-05-the-router-file-holds-the-routing` — architecture  refactoring  infrastructure
@@ -1353,6 +1245,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-10-the-pool-belongs-to-the-application` — architecture  cleanup  database
 - `2026-11-15-a-browser-session-is-started-not-joined` — architecture  browser  boundaries  egress  antibot
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — architecture  egress  operations  antibot  browser
+- `2026-11-16-the-deployment-runs-camoufox` — architecture  operations  browser  deployment
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — architecture  browser  antibot  boundaries  operations
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — browser  antibot  egress  architecture
 
@@ -1381,14 +1274,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-14-extract-browser-request-logic-for-testability` — Browser fetch extracts request construction instead of excluding itself from coverage
 - `2026-10-14-parallel-crawl-targets` — Crawl targets run in parallel; the browser pool is what actually bounds it
 - `2026-10-14-pipeline-purity-idgen` — Pipeline idGen injectable; delay() in stageWithRetry is intentional
-- `2026-10-17-browser-automation-interface` — BrowserAutomation interface — extract Playwright CDP lifecycle from BrowserPool.ProfileState
-- `2026-10-17-browserpool-testability-adspower-api-interface` — BrowserPool testability — AdsPowerApi interface extraction
 - `2026-10-17-coordinator-extraction` — Extract Coordinator class from Pipeline.run
 - `2026-10-17-pipeline-purity-delayfn-extraction` — Extract delayFn from async dispatcher into coordinator-level retry loop
 - `2026-10-17-stage-data-class-dsl` — Stage data class + StageDSL for readable stage construction
 - `2026-10-19-admin-api-target-write-path-and-category-tree` — Admin API — one Target mapping, a write path, and the category tree
-- `2026-10-19-adspower-api-first-browser-resolution` — AdsPower — API-first browser resolution, one client, and a pre-flight check
-- `2026-10-19-adspower-local-api-port-discovery` — AdsPower Local API — runtime port discovery instead of a hardcoded port
 - `2026-10-19-advisory-lock-timeout` — The lock timeout bounds the wait, not the work
 - `2026-10-19-application-startup-gate` — The application must be startable, and something must prove it
 - `2026-10-19-catalog-read-api-contract` — The storefront reads the catalog through the crawler's HTTP API
@@ -1399,7 +1288,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-19-exposed-single-row-writes-and-unmasked-db-errors` — Exposed writes are one statement per row, and database errors are never masked
 - `2026-10-19-idempotent-target-load-and-root-categories` — Loading targets is idempotent, and root categories come from WB's public tree
 - `2026-10-19-jdk-toolchain` — The JDK version is one number in one place, and the toolchain provisions itself
-- `2026-10-19-local-debug-stack-repairs` — Local debug stack — paths, ports and the runtime classpath the app actually needs
 - `2026-10-19-runtime-classpath-gate` — The image is compared with the classpath the build resolved
 - `2026-10-19-schema-drift-gate` — The table definitions are compared with the schema the migrations create
 - `2026-10-19-subject-dictionary-and-known-pages-limit` — Category names come from WB's subject dictionary, and known_pages_limit is a limit
@@ -1409,7 +1297,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-a-schedule-that-does-not-run-is-a-failure` — A schedule that does not run is a failure, and a CI failure should be about the code
 - `2026-10-20-anti-bot-refusals-are-measured` — Отказы антибота измеряются и получают собственный back-off
 - `2026-10-20-antibot-profile-rotation-and-backoff` — Антибот: ротация профиля, свой back-off и ожидание вместо отказа
-- `2026-10-20-browsers-are-closed-when-they-are-not-needed` — Браузеры AdsPower закрываются, когда они не нужны, и при выходе
 - `2026-10-20-catalog-aggregate-cache-is-in-process` — The catalog's aggregates are cached in the process, and that shapes the topology
 - `2026-10-20-ci-security-gates-and-lint-autofix` — The repository's CI surface is CodeQL, Scorecard, a nightly run that opens an issue, and a lint auto-fix
 - `2026-10-20-contract-versions-are-paths` — Версия контракта — это путь, а не поле
@@ -1426,7 +1313,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-20-the-coverage-floor-measures-the-code-not-the-module` — Покрытие меряется по коду, а не по модулю, которому он принадлежит
 - `2026-10-20-the-crawl-cadence-follows-the-measured-catalog` — the crawl cadence follows the measured catalog
 - `2026-10-20-the-crawl-reports-its-own-limits` — Краул показывает свои границы: усечение каталога, токены, пересборка данных
-- `2026-10-20-the-crawler-and-its-browser-share-one-network-namespace` — the crawler and its browser share one network namespace
 - `2026-10-20-the-materialized-read-model-is-a-separate-decision` — Материализованная модель каталога — это отдельное решение, и вот какое
 - `2026-10-20-the-measurement-travels-with-the-limit` — the measurement travels with the limit: the metadata belongs to the target, the evidence belongs to the repository
 - `2026-10-20-the-registry-is-total-by-construction` — The registry is total by construction, and a side nobody emits is not a side
@@ -1451,24 +1337,18 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-21-the-failure-keeps-what-was-read` — Отказ не выбрасывает прочитанное
 - `2026-10-21-the-number-wb-reports-reaches-the-report` — Число, которое называет WB, доходит до отчёта — под своим именем и без приписки полноты
 - `2026-10-21-the-parse-failure-names-the-field` — Ошибка разбора называет поле, а не страницу
-- `2026-10-21-the-profile-id-is-read-too` — Имя поля профиля читается в обеих написаниях
 - `2026-10-21-the-read-model-is-not-needed-yet` — Материализованная read-модель каталога пока не нужна — вот цифры, по которым это решено
 - `2026-10-21-the-repository-is-licensed` — Публичный репозиторий лицензирован Apache-2.0
 - `2026-10-21-the-run-message-has-a-length` — Сообщение прогона в `crawl_jobs.error_message` имеет длину — и говорит, что обрезано
 - `2026-10-21-the-schema-gate-reads-the-package` — Гейт совместимости схемы читает пакет решений каталога, а не один файл
-- `2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed` — Браузер, который, возможно, ещё жив, закрывается — при простое, при выходе и при следующем старте
-- `2026-10-22-egress-groups-are-declared-and-checked` — Egress-группы объявляются и проверяются, а не угадываются
 - `2026-10-22-the-browser-stack-is-a-library` — Стек браузера — отдельная библиотека, а не часть краула
 - `2026-10-22-the-code-nobody-calls-is-gone` — Код, который никто не зовёт, убран
 - `2026-10-22-the-gaps-are-closed-or-written-down` — Пробелы покрытия закрыты, а непокрываемый — записан
 - `2026-10-22-the-table-of-runs-has-a-reader` — Таблица прогонов получает читателя
 - `2026-10-23-a-changed-address-is-a-new-identity` — Сменившийся адрес — это новая личность, а прогон оставляет след
-- `2026-10-23-the-adapters-are-checked-against-a-real-chrome` — The adapters that speak to Playwright are checked against a real Chrome
 - `2026-10-23-the-browser-module-owns-the-page-contract` — The browser module owns the page contract, and Playwright stops at its edge
 - `2026-10-23-the-browser-module-stops-handing-out-what-it-holds` — The browser module stops handing out what it holds
 - `2026-10-23-the-measurement-must-describe-this-run` — The measurement must describe this run — the union is not behind its parts
-- `2026-10-23-the-probe-asks-three-questions` — The probe asks three questions, and each is answered by its own class
-- `2026-10-23-the-reconciliation-covers-every-profile-and-is-retried-until-confirmed` — The reconciliation covers every profile AdsPower knows and is retried until it is confirmed
 - `2026-10-23-the-rules-live-where-they-are-enforced` — The rules live where they are enforced: the mechanical ones in a check, the rest in a review-time file
 - `2026-10-23-the-schema-metadata-left-the-domain` — The schema metadata left the domain, and the purity gate lost its exemption
 - `2026-10-24-the-crawlers-capacity-is-not-the-targets-fault` — Мощность краулера — не вина цели, и она видна
@@ -1480,7 +1360,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-10-30-an-empty-observation-changes-nothing` — Пустое наблюдение не меняет строку леджера
 - `2026-10-31-the-image-and-the-build-ask-for-the-same-jdk` — Образ и сборка просят одну и ту же версию JDK
 - `2026-11-01-one-crawler-many-addresses` — Один краулер — много адресов
-- `2026-11-02-the-protocol-runs-from-the-repository` — Правило протокола живёт в репозитории, а не в памяти оператора
 - `2026-11-03-the-decision-belongs-to-the-dependency` — Решение принадлежит зависимости, а не номеру pull request'а
 - `2026-11-04-the-refusal-is-a-count-against-the-session` — Отказ — это счётчик, и код считает его по сессии
 - `2026-11-05-the-router-file-holds-the-routing` — Файл роутера содержит только маршрутизацию, а типы состояния живут по одному на файл
@@ -1491,5 +1370,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-10-the-pool-belongs-to-the-application` — The pool belongs to the application, and the application says so in one place
 - `2026-11-15-a-browser-session-is-started-not-joined` — Сессию браузера запускают, а не присоединяются к ней; профиль — это каталог и endpoint
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — Camoufox работает локально, адрес приходит прокси, а отпечаток — данные профиля
+- `2026-11-16-the-deployment-runs-camoufox` — Развёртывание запускает локальный Camoufox и не несёт AdsPower
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — Локальный браузер живёт в persistent-контексте профиля, а каталог занят на время его жизни
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — Состояние профиля выводится, а отказ, throttling и сбой сервера считаются врозь

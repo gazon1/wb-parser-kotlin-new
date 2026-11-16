@@ -1,11 +1,8 @@
 package ru.wbparser.browser.pool
 
 import org.slf4j.LoggerFactory
-import ru.wbparser.browser.adspower.AdsPowerApi
-import ru.wbparser.browser.adspower.AdsPowerClients
-import ru.wbparser.browser.adspower.AdsPowerConfig
-import ru.wbparser.browser.endpoint.discoverChromeEndpoints
-import ru.wbparser.browser.playwright.AdsPowerAutomation
+import ru.wbparser.browser.camoufox.CamoufoxAutomation
+import ru.wbparser.browser.camoufox.CamoufoxInstall
 import ru.wbparser.browser.playwright.BrowserAutomation
 import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.browser.session.SessionSnapshot
@@ -14,13 +11,12 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Manages a pool of browser connections to pre-opened
- * AdsPower Chrome profiles, with round-robin selection.
+ * Manages a pool of local Camoufox browsers, with round-robin selection.
  *
  * ## Usage
  *
- * 1. Open browser profiles in AdsPower UI or via API.
- * 2. Create [BrowserPool] with one [BrowserProfileConfig] per profile.
+ * 1. Declare one [BrowserProfileConfig] per profile.
+ * 2. Create [BrowserPool] with the Camoufox install the profiles run on.
  * 3. Call [borrowPage] to get a [BrowserPage][ru.wbparser.browser.playwright.BrowserPage] from the next
  *    profile in the pool.
  * 4. Call `close` on the borrowed page when done (returns the profile to the pool).
@@ -30,48 +26,41 @@ import java.util.concurrent.atomic.AtomicInteger
  * Each profile operates a single dedicated page. The pool serialises access to
  * each profile with a permit, so concurrent callers block safely.
  *
- * ## CDP connection
+ * ## The browser is local
  *
- * Playwright's CDP client connects to an *already-running* AdsPower Chrome via
- * its WebSocket debug endpoint. No browser binary is launched — we act as a
- * remote debugging client.
+ * Every profile is a persistent directory, and the browser that opens it is started
+ * and stopped by this process. There is no endpoint to resolve and no runtime to ask.
  *
  * ## What lives next door
  *
  * This class is the *pool*: which profile to hand out, and when. The profile's own
  * lifecycle — warm, resting after an anti-bot answer, last used, browser open — belongs
- * to [BrowserProfileState]; the AdsPower contract and its implementation to [AdsPowerApi]
- * and [RealAdsPowerApi]; the browser session — starting it, the health check, ending it —
- * to [BrowserAutomation], whose current implementation is `AdsPowerAutomation`.
+ * to [BrowserProfileState]; the browser session — starting it, the health check,
+ * ending it — to [BrowserAutomation], whose implementation here is
+ * [CamoufoxAutomation].
  */
 class BrowserPool(
     private val profiles: List<BrowserProfileConfig>,
     /**
-     * The AdsPower configuration of this pool.
+     * The Camoufox build the profiles run on.
      *
-     * It carries the client as well as the endpoint and the timeout: one process
-     * talks to one AdsPower runtime, and the pre-flight check, the egress probe and
-     * the reconciliation need the *same* client — a second one would resolve a
-     * different port and could disagree with the pool about whether AdsPower is up.
-     * The pool keeps that client and does not give it away; the deployment creates
-     * it once (see [AdsPowerClients]) and hands it to everyone who needs it.
+     * A provider, not a value: the install is read and verified on disk when a
+     * browser is first started. A process that never borrows a page — a catalog-only
+     * instance, a test with injected automations — must not need a browser install
+     * to exist.
      */
-    private val adsPower: AdsPowerConfig = AdsPowerConfig(),
+    private val camoufoxInstall: (() -> CamoufoxInstall)? = null,
     /**
      * Optional list of [BrowserAutomation] instances, one per [profiles] entry.
-     * When null (the default), each profile gets its own AdsPower adapter.
+     * When null (the default), each profile gets its own Camoufox adapter.
      * When supplied, the pool uses the provided instances directly — enabling unit tests
      * to inject a fake automation without any real browser I/O.
      */
     private val browserAutomations: List<BrowserAutomation>? = null,
     /**
-     * How the pool finds the Chrome DevTools endpoints of the profiles that do not name one.
-     *
-     * Defaults to the discovery on this machine: the ports `ss` reports, each of them
-     * probed for a DevTools endpoint. A seam for the tests, and for a deployment that
-     * knows its own endpoints.
+     * How long a borrow waits for a profile to become free, in milliseconds.
      */
-    private val resolveEndpoints: () -> List<String> = { discoverChromeEndpoints() },
+    private val borrowTimeoutMs: Long = DEFAULT_BORROW_TIMEOUT_MS,
     /**
      * The rules that decide how long a profile's session lives and how much it may send.
      *
@@ -80,16 +69,7 @@ class BrowserPool(
      * [SessionPolicy] for why every limit is zero until the measurement decides it.
      */
     private val sessionPolicy: SessionPolicy = SessionPolicy(),
-) : SessionSource,
-    BrowserLifecycle {
-    /**
-     * The AdsPower client this pool talks to.
-     *
-     * The one the configuration names, or a real one made here. Either way it is the
-     * pool's own, and the pool does not hand it out.
-     */
-    private val adsPowerApi: AdsPowerApi = AdsPowerClients.create(adsPower)
-
+) : SessionSource {
     /**
      * The groups this pool serves.
      *
@@ -127,47 +107,28 @@ class BrowserPool(
 
     init {
         require(profiles.isNotEmpty()) { "At least one profile is required" }
-        val allProfileIds = profiles.map { it.profileId }
+        if (browserAutomations == null) {
+            checkNotNull(camoufoxInstall) {
+                "The pool has no Camoufox install and no automations: a profile cannot be " +
+                    "started without either."
+            }
+        }
         profileStates =
             profiles.mapIndexed { index, profile ->
-                val context =
-                    BrowserPoolContext(
-                        index = index,
-                        profileCount = profiles.size,
-                        allProfileIds = allProfileIds,
-                        resolveEndpoints = { discoveredEndpoints.value },
-                        log = log,
-                    )
                 BrowserProfileState(
                     profileConfig = profile,
                     automation =
                         browserAutomations?.getOrNull(index)
-                            ?: adsPowerAutomation(profile, context),
+                            ?: CamoufoxAutomation(
+                                profile,
+                                checkNotNull(camoufoxInstall),
+                            ),
                     sessionPolicy = sessionPolicy,
-                    context = context,
+                    log = log,
                 )
             }
         idleSweeper = BrowserIdleSweeper(profileStates)
         shutdown = BrowserShutdown(profileStates)
-    }
-
-    /**
-     * The terminal AdsPower adapter for a profile.
-     *
-     * AdsPower is the runtime this repository still ships, and it is transitional: the
-     * browser it hands out is joined over CDP, and it is stopped through the same Local
-     * API that started it. The adapter is built here, in one place, so the rest of the
-     * pool speaks `BrowserAutomation` and nothing else.
-     */
-    private fun adsPowerAutomation(
-        profile: BrowserProfileConfig,
-        context: BrowserPoolContext,
-    ): BrowserAutomation {
-        val resolver = CdpUrlResolver(profile, adsPowerApi, context)
-        return AdsPowerAutomation(
-            resolve = resolver::resolve,
-            stopBrowser = { adsPowerApi.stopProfileV2(profile.profileId) },
-        )
     }
 
     /**
@@ -251,14 +212,14 @@ class BrowserPool(
             // it is out of the rotation by decision, and handing it out would undo that
             // decision one request at a time.
             if (state.isRetired()) continue
-            val acquired = state.lock.tryAcquire(adsPower.borrowTimeoutMs, TimeUnit.MILLISECONDS)
+            val acquired = state.lock.tryAcquire(borrowTimeoutMs, TimeUnit.MILLISECONDS)
             if (acquired) {
                 val page = borrowWithPermit(state, "Profile {} unusable after waiting: {}")
                 if (page != null) return page
             }
         }
         throw BrowserPoolExhaustedException(
-            "No browser profile freed within ${adsPower.borrowTimeoutMs}ms " +
+            "No browser profile freed within ${borrowTimeoutMs}ms " +
                 "(${profileStates.size} configured, group=${groupId ?: "all"}, " +
                 "live sessions=$liveSessionCount)",
         )
@@ -303,9 +264,9 @@ class BrowserPool(
      * The permit is normally released by the borrowed page's `onClose` hook. On the
      * failure path there is no page, so nobody would ever release it: the profile would
      * leave the rotation for the rest of the process's life. One transient failure — a
-     * CDP timeout, a profile AdsPower could not start — would cost a profile for good,
-     * and the pool would empty itself one failure at a time until the crawl died of
-     * exhaustion with profiles idle and healthy.
+     * launch timeout, a profile directory that cannot be opened — would cost a profile
+     * for good, and the pool would empty itself one failure at a time until the crawl
+     * died of exhaustion with profiles idle and healthy.
      *
      * A profile that failed to open goes back into the rotation. The pool's caller
      * decides what to do about a pool that cannot open any browser; the pool's job is
@@ -357,34 +318,10 @@ class BrowserPool(
         state.lock.release()
     }
 
-    /**
-     * Every reachable Chrome DevTools endpoint, discovered once and cached.
-     *
-     * The scan shells out to `ss` and probes each candidate port over HTTP, which is far
-     * too slow to repeat per profile on a hot path. Cached for the pool's lifetime: the set
-     * of open browsers does not change during a crawl, and a stale answer is recoverable
-     * by restarting, whereas re-scanning on every borrow would dominate request latency.
-     */
-    private val discoveredEndpoints: Lazy<List<String>> = lazy { resolveEndpoints() }
-
     /** Cleanly shuts down all profiles. */
     fun close() {
         shutdown.closeConnections()
     }
-
-    /**
-     * The ids of the profiles this pool manages.
-     *
-     * The reconciliation needs to tell "a profile of ours" from "a profile AdsPower
-     * knows about": the first is stopped under the pool's permit, the second is
-     * nobody's business in this process.
-     */
-    override val managedProfileIds: List<String> get() = profiles.map { it.profileId }
-
-    /**
-     * Whether this pool manages the profile [profileId].
-     */
-    override fun manages(profileId: String): Boolean = profiles.any { it.profileId == profileId }
 
     /**
      * Resets one of the pool's profiles: ends the browser, then lets [clear] decide what
@@ -484,56 +421,15 @@ class BrowserPool(
         }
     }
 
-    /**
-     * Stops the browser of one of this pool's profiles, if it is a leftover.
-     *
-     * A leftover is a browser that is running in AdsPower and that this process did
-     * not start and has never borrowed. Those are the browsers an earlier run left
-     * behind: this process never opened them, so nothing else will ever close them.
-     *
-     * The permit is taken for the whole operation, so a profile that is in use right
-     * now is left alone — the crawl's own work is never a leftover.
-     */
-    override fun reconcileProfile(profileId: String): ProfileReconciliation {
-        val state =
-            checkNotNull(profileStates.firstOrNull { it.profileConfig.profileId == profileId }) {
-                "the pool does not manage the profile $profileId"
-            }
-        if (!state.lock.tryAcquire()) return ProfileReconciliation.OWN
-        try {
-            // A profile this process borrowed is never a leftover: the browser is ours,
-            // whether or not we are connected to it right now.
-            if (state.wasUsed()) return ProfileReconciliation.OWN
-            return stopLeftover(state)
-        } finally {
-            state.lock.release()
-        }
-    }
-
-    /**
-     * Stops the browser of a leftover, if it is still there.
-     *
-     * A browser that is shutting down asynchronously is not a refusal: the profile is
-     * asked once more whether it is still there, and a browser that has gone needs no
-     * stop.
-     */
-    private fun stopLeftover(state: BrowserProfileState): ProfileReconciliation {
-        val profileId = state.profileConfig.profileId
-        // AdsPower is the only one that knows: the local fact dies with the
-        // process, and a browser left behind by an earlier run was never seen
-        // by this one.
-        if (adsPowerApi.checkActiveV2(profileId) == null) return ProfileReconciliation.NOT_RUNNING
-        if (state.stop()) return ProfileReconciliation.STOPPED
-        // AdsPower did not confirm the stop. It may be shutting the browser down
-        // asynchronously, so the browser is asked once more whether it is still there.
-        return if (adsPowerApi.checkActiveV2(profileId) == null) {
-            ProfileReconciliation.NOT_RUNNING
-        } else {
-            ProfileReconciliation.REFUSED
-        }
-    }
-
     companion object {
+        /**
+         * How long a borrow waits for a profile to become free by default.
+         *
+         * Generous by design: under normal contention the wait is sub-second, and a
+         * timeout means a profile is genuinely wedged.
+         */
+        const val DEFAULT_BORROW_TIMEOUT_MS: Long = 120_000L
+
         /**
          * How long a profile rests after WB answered it with an anti-bot status.
          *

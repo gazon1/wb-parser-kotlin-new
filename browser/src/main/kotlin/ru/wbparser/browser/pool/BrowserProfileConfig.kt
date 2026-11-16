@@ -27,9 +27,9 @@ import java.nio.file.Path
  * @param proxy the endpoint this profile leaves through, and the credentials the browser
  *   uses to reach it. It is the profile's, not the group's: a profile that changed
  *   address is a profile that changed identity.
- * @param profileDir the local persistent directory of this profile, or null for a
- *   profile whose browser runtime keeps its own (AdsPower does). When given, its name
- *   must be the endpoint's — see above.
+ * @param profileDir the local persistent directory of this profile. A local browser
+ *   keeps its session in this directory; a profile without one has no session to keep.
+ *   When given, its name must be the endpoint's — see above.
  * @param fingerprint the explicit fingerprint preset of this profile, as the browser
  *   runtime expects it, or null when none is stored yet.
  * @param egressGroup the group this profile belongs to. Profiles of one group are

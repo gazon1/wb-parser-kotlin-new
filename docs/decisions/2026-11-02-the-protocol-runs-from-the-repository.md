@@ -4,6 +4,9 @@ date: 2026-11-02
 tags: [operations, measurement, antibot]
 ---
 
+> **Superseded (#271):** the browser now runs locally as Camoufox, and AdsPower is no longer
+> part of the runtime. See `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy.md`.
+
 ## Context
 
 Первый блок замера (2026-10-20) нарушил четыре правила протокола, и никто не мог

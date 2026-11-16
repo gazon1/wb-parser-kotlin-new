@@ -13,11 +13,11 @@
 
 ## Egress-группа (EgressGroup)
 
-Набор профилей AdsPower, которые, как ожидается, выходят с одного egress IP. Группа — это
+Набор профилей браузера, которые, как ожидается, выходят с одного egress IP. Группа — это
 **адрес**, и адрес владеет своими книгами: сколько запросов через него ушло, сколько WB
 отказал, сколько вообще не дошло, своим circuit'ом и своей долей антибот-бюджета. Слово
-«ожидается» намеренно: прокси живёт в AdsPower, а краулер объявляет только кто с кем делит
-адрес. Профилей в группе лучше один — ради пропускной способности; два-три покупают живучесть,
+«ожидается» намеренно: прокси объявлен в конфигурации и передаётся браузеру, а краулер
+объявляет только кто с кем делит адрес. Профилей в группе лучше один — ради пропускной способности; два-три покупают живучесть,
 но не скорость.
 
 > **Уточнение (2026-11-03).** Группа владеет **книгами адреса**, но не бюджетом WB. Бюджет
@@ -49,7 +49,7 @@
 
 ## Профиль браузера (BrowserProfileConfig)
 
-Один профиль AdsPower: идентификатор профиля, необязательный CDP WebSocket-URL и имя egress-группы, которой он принадлежит. Профиль задаёт fingerprint и сессию; группа
+Один профиль браузера: идентификатор, persistent-каталог, сохранённый fingerprint, прокси и имя egress-группы, которой он принадлежит. Профиль задаёт identity и сессию; группа
 задаёт, кого WB считает одним источником. Профиль вне группы — ошибка конфигурации: он молча разделил бы бюджет с той группой, к которой не принадлежит.
 
 **Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserProfileConfig.kt` — `BrowserProfileConfig`, поле `egressGroup`;
@@ -57,7 +57,7 @@
 
 ## Пул браузеров (BrowserPool)
 
-Пул Playwright-подключений к уже открытым профилям AdsPower. Каждому профилю соответствует свой паузер, то есть свой бюджет запросов на группу. Пул отдаёт профиль в заём
+Пул локальных браузеров Camoufox, по одному на профиль. Каждому профилю соответствует свой паузер, то есть свой бюджет запросов на группу. Пул отдаёт профиль в заём
 и умеет сказать, когда у конкретной группы освободится слот (`millisUntilSlot`) и сколько этот слот будет ждать (`awaitRequestSlot`). **Ёмкость пула измеряется в живых
 сессиях** (`liveSessionCount`, `retiredSessionCount`, `sessionSnapshots()`), а не в адресах: адрес без живой сессии ничего не отправляет, и сессия, которую WB отказала,
 тоже. Сессия, выведенная из ротации политикой, в заём не выдаётся.
@@ -67,12 +67,12 @@
 
 ## Браузер, возможно, ещё живой (browserMayBeRunning)
 
-Факт о профиле: **окно Chrome, может быть, ещё открыто**. Это не то же самое, что «мы сейчас
-подключены»: CDP-соединение может умереть, а Chrome — нет, и именно такой браузер раньше не
+Факт о профиле: **браузер, может быть, ещё запущен**. Это не то же самое, что «мы сейчас
+подключены»: соединение может умереть, а процесс — нет, и именно такой браузер раньше не
 закрывался никогда (закрытие спрашивало «жива ли связь?», а связь была мертва, а окно — нет).
 
-Факт становится истинным, когда AdsPower сказал, что профиль работает — и мы его открыли, и
-мы к нему подключились; он становится ложным только после подтверждённой остановки. Неудачная
+Факт становится истинным, когда браузер запущен; он становится ложным только после
+подтверждённой остановки. Неудачная
 остановка оставляет его истинным: браузер, возможно, ещё там, и следующая попытка повторит
 остановку.
 
@@ -82,22 +82,18 @@
 **Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserProfileState.kt` — `browserMayBeRunning`;
 `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserPool.kt` — `closeIdleBrowsers`, `closeAllBrowsers`.
 
-## Сверка браузеров на старте (BrowserReconciler)
+## Осиротевший браузер (после SIGKILL)
 
-Краул, который убили — SIGKILL, OOM, падение JVM — не успел закрыть свои браузеры: рантайм
-AdsPower — отдельный контейнер, и браузеры продолжают работать. Следующий запуск находит их
-и наследует их сессию, а правило «краул закрывает браузеры, которыми пользовался» их не
-закрывает: этим запуском они не открывались.
+Локальный браузер живёт в процессе краулера, поэтому обычный выход и уборщик простоя
+закрывают его. Но процесс, убитый SIGKILL/OOM, не успевает ничего: `camoufox-bin` остаётся
+и держит каталог профиля через свой `parent.lock`. Следующий запуск не может открыть этот
+каталог, пока процесс жив.
 
-Поэтому запуск **сверяется** с AdsPower: что из наших профилей ещё работает — то останавливается,
-до того как начнёт ползать. Это единственная опора, которая переживает аварийную смерть
-процесса: умерший закрыть не может, следующий — может.
-
-Цена сверки — свежая сессия: первый запрос каждого профиля платит разогрев заново.
-
-**Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserReconciler.kt` — `BrowserReconciler`, `ReconcileOutcome`;
-`app/src/main/kotlin/ru/wbparser/app/scheduling/AdsPowerBrowserReconciler.kt` — вызов на старте;
-`app/src/main/kotlin/ru/wbparser/app/config/CrawlProperties.kt` — `Spider.reconcileBrowsersOnStart` (ключ `crawler.spider.reconcile-browsers-on-start`).
+Автоматической сверки с внешним рантаймом больше нет — внешнего рантайма нет. Внутри
+процесса занятость каталога объявляет `CamoufoxAutomation.OpenProfiles`: второй браузер того
+же каталога получает ошибку с именем держателя, а не падение внутри Playwright. Осиротевший
+**процесс** убирает оператор: `pgrep -af camoufox-bin`, затем `kill <pid>` (см.
+`docs/RUNBOOK.md` §3a). Удалять `parent.lock` до подтверждённой смерти процесса нельзя.
 
 ## Кто владеет закрытием браузера
 
@@ -107,22 +103,20 @@ AdsPower — отдельный контейнер, и браузеры прод
 
 | Место | Что делает |
 |---|---|
-| `BrowserProfileState.browserMayBeRunning` | факт «возможно, ещё работает»; ставится успешным `checkActiveV2`/`startProfileV2`, снимается только подтверждённым `stopProfileV2` |
+| `BrowserProfileState.browserMayBeRunning` | факт «возможно, ещё работает»; ставится запуском, снимается только подтверждённой остановкой |
 | `BrowserPool.borrowWithPermit` | permit возвращается, даже когда аренда провалилась |
 | `BrowserPool.closeIdleBrowsers` | уборщик простоя: закрывает то, что «возможно, ещё работает» |
 | `BrowserPool.closeAllBrowsers` | путь выхода: закрывает всё, что осталось |
-| `BrowserReconciler` | сверка на старте: то, что пережило умерший процесс |
-| `AdsPowerBrowserReconciler` | вызов сверки на старте и повтор, пока сверка не подтверждена |
+| `CamoufoxAutomation.OpenProfiles` | занятость каталога в процессе: второй браузер того же каталога не стартует |
 
 Правило, из которого растёт остальное: **закрытие спрашивает «может, ещё работает»,
-а не «жива ли CDP-связь»**. Браузер с оборванной связью — это всё ещё браузер: он
+а не «жива ли связь»**. Браузер с оборванной связью — это всё ещё браузер: он
 держит окно, профиль и свою долю памяти.
 
 **Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserPool.kt` — `borrowWithPermit`,
-`closeIdleBrowsers`, `closeAllBrowsers`, `reconcileProfile`;
-`browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserProfileState.kt` — `browserMayBeRunning`, `closeAndStop`;
-`browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserReconciler.kt` — `BrowserReconciler`;
-`app/src/main/kotlin/ru/wbparser/app/scheduling/AdsPowerBrowserReconciler.kt` — вызов и повтор;
+`idleSweeper`, `shutdown`;
+`browser/src/main/kotlin/ru/wbparser/browser/pool/BrowserProfileState.kt` — `browserMayBeRunning`;
+`browser/src/main/kotlin/ru/wbparser/browser/camoufox/CamoufoxAutomation.kt` — `OpenProfiles`;
 `app/src/main/kotlin/ru/wbparser/app/scheduling/BrowserPoolJanitor.kt` — уборщик простоя;
 `docs/decisions/2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-needed.md`.
 
@@ -202,40 +196,28 @@ circuit группы не спрашивается, пока другие отв
 
 ## Проба выхода (EgressProbe, EgressProbeConfig)
 
-Проверка того, что группы — это то, что объявлено. Сверяет объявление с фактом, потому что прокси живёт в AdsPower, а поле `ip` в ответе Local API — записанное значение,
-а не живой замер. Проба читает прокси всех профилей и проверяет два свойства, а затем открывает по одному профилю на группу и спрашивает у эхо-сервиса, какой адрес видит
-мир. Проба **сама по себе не блокирует старт**: недоступный сторонний сервис — предупреждение, а не отказ; отказом старта это становится только при включённом
+Проверка того, что группы — это то, что объявлено. Открывает по одному профилю на группу и
+спрашивает у эхо-сервиса, какой адрес видит мир. Проба **сама по себе не блокирует старт**: недоступный сторонний сервис — предупреждение, а не отказ; отказом старта это становится только при включённом
 `crawler.spider.require-isolated-egress-groups`. Проба идёт только там, где работает краулер — она открывает браузер.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressProbe.kt` — `EgressProbe`, `EgressProbeConfig`, `EgressReport`, `EgressGroupProbe`,
-`EgressProbe.DIRECT_IDENTITY`; `app/src/main/kotlin/ru/wbparser/app/scheduling/AdsPowerPreflightRunner.kt` — `AdsPowerPreflightRunner.probeEgressGroups`;
+**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressProbe.kt` — `EgressProbe`, `EgressProbeConfig`, `EgressReport`, `EgressGroupProbe`;
+`app/src/main/kotlin/ru/wbparser/app/scheduling/EgressPreflightRunner.kt` — `EgressPreflightRunner.probeEgressGroups`;
 `docs/decisions/2026-10-22-egress-groups-are-declared-and-checked.md`.
 
 ## Объявленный прокси (DeclaredProxy)
 
-Что конфигурация говорит о том, как группа выходит в сеть. Прокси живёт в AdsPower, но **объявлен** он в конфигурации краулера: `proxy.type` — вид прокси (`none` для прямого
-выхода, `socks5`, `http`, `https`), а `host` и `port` — необязательное уточнение адреса. Пароля здесь нет и быть не должно: краулер никогда не ходит в прокси сам, это делает
-браузер, и учётные данные браузера живут в AdsPower.
+Что конфигурация говорит о том, как группа выходит в сеть. **Объявлен** он в конфигурации
+краулера: `proxy.type` — вид прокси (`none` для прямого выхода, `socks5`, `http`, `https`),
+а `host` и `port` — адрес, с которым браузер запускается. Credentials приходят из
+окружения и в репозитории их нет; `toString()` их вырезает.
 
-Объявление **обязательно**. Группа, которая ничего не объявила, — это не «прямая группа», это группа с неизвестным адресом, и такая конфигурация отвергается при старте: «не
-сказал» и «прямой выход» — разные вещи, и второе не должно получаться молча. Объявленный вид сверяется с тем, что AdsPower показывает для профилей группы; расхождение
-останавливает краулер **безусловно** — это не вопрос изоляции, а вопрос «та ли это группа».
+Объявление **обязательно**. Группа, которая ничего не объявила, — это не «прямая группа»,
+это группа с неизвестным адресом, и такая конфигурация отвергается при старте: «не сказал»
+и «прямой выход» — разные вещи, и второе не должно получаться молча. Браузер запускается
+с объявленным прокси; сравнить это с отдельным runtime'ом не с чем.
 
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/DeclaredProxy.kt` — `DeclaredProxy`, `DeclaredProxy.matches`;
-`app/src/main/kotlin/ru/wbparser/app/config/EgressGroups.kt` — `ProxyConfig`, `EgressGroups.validateProxy`;
-`wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressProbe.kt` — `EgressProbe.checkStatic`.
-
-## Статическая проверка прокси
-
-Дешёвый слой: читает у AdsPower прокси каждого профиля (один HTTP-вызов, без браузера) и проверяет, что **внутри** группы все профили за одним прокси и что **между**
-группами прокси разные. Именно она ловит ошибку конфигурации: две группы за одним прокси — это один адрес и один бюджет, а не два. Профиль без прокси — это адрес машины,
-на которой работает краулер; одна такая «прямая» группа допустима, две — нет. Прокси, детали которого AdsPower не отдаёт (`proxy_soft: other` с пустым host), — это
-прокси, а не «прямое подключение»: путать их нельзя. Третье, что она проверяет: **объявленный** прокси группы совпадает с тем, что AdsPower показывает — иначе группа
-получает бюджет и метрику чужого адреса, и это видно только по цифрам.
-
-**Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressProbe.kt` — `EgressProbe.checkStatic`, `EgressProbe.readConfiguredProxies`,
-`EgressProbe.groupProxyIdentity`; `browser/src/main/kotlin/ru/wbparser/browser/adspower/AdsPowerApi.kt` — `AdsPowerProfileProxy.identity`, `AdsPowerProfileProxy.isDirect`,
-`AdsPowerProfileProxy.hasOpaqueProxy`.
+**Где правда:** `browser/src/main/kotlin/ru/wbparser/browser/pool/DeclaredProxy.kt` — `DeclaredProxy`;
+`app/src/main/kotlin/ru/wbparser/app/config/EgressGroups.kt` — `ProxyConfig`, `EgressGroups.validateProxy`.
 
 ## Живая проверка адреса
 
@@ -251,8 +233,8 @@ circuit группы не спрашивается, пока другие отв
 ## «Проверка не смогла выполниться» и «проверка провалилась»
 
 Это два разных исхода, и путать их нельзя. Проверка **провалилась** — факт известен и он плохой: у группы разные прокси, две группы за одним прокси, две группы видны по
-одному адресу. Проверка **не смогла выполниться** — факта нет: AdsPower не описал ни одного профиля, часть профилей группы не описана, эхо-сервис не ответил, не хватило
-бюджета времени. Второе — это предупреждение, а не успех: `EgressReport.misconfigured` тогда `false`, а нарушение попадает в `EgressReport.problems` словами, с которыми
+одному адресу. Проверка **не смогла выполниться** — факта нет: у группы нет свободного
+профиля, эхо-сервис не ответил, не хватило бюджета времени. Второе — это предупреждение, а не успех: `EgressReport.misconfigured` тогда `false`, а нарушение попадает в `EgressReport.problems` словами, с которыми
 оператор может что-то сделать. Пустой ответ проверки нельзя выдавать за «всё в порядке».
 
 **Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressProbe.kt` — `EgressReport.misconfigured`, `EgressReport.problems`, `EgressProbe.probe`;
@@ -266,7 +248,7 @@ circuit группы не спрашивается, пока другие отв
 
 **Где правда:** `wbparser/src/main/kotlin/ru/wbparser/infra/http/EgressProbe.kt` — `EgressGroupProbe.ipChanged`, `EgressProbe.probe`;
 `wbparser/src/main/kotlin/ru/wbparser/infra/db/repositories/EgressGroupQueries.kt` — `EgressGroupRecord.ipChanges`, `upsertEgressGroup`;
-`app/src/main/kotlin/ru/wbparser/app/scheduling/AdsPowerPreflightRunner.kt` — предупреждение о смене адреса в `probeEgressGroups`.
+`app/src/main/kotlin/ru/wbparser/app/scheduling/EgressPreflightRunner.kt` — предупреждение о смене адреса в `probeEgressGroups`.
 
 ## Класс отказа (FailureClass)
 
