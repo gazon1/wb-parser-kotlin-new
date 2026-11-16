@@ -197,31 +197,35 @@ class CamoufoxSmokeTest :
                 val automation = CamoufoxAutomation(profile, checkNotNull(install))
                 automation.start()
 
-                // The processes of this run: the driver Playwright started for us, the
-                // browser it started, and everything they brought with them. They are
-                // our descendants, and the browser names the directory of the profile.
-                val during = ProcessProbe.processes()
-                val directory = checkNotNull(profile.profileDir).toString()
-                val ours =
-                    (
-                        ProcessProbe.descendants(ProcessHandle.current().pid(), during) -
-                            ProcessHandle.current().pid()
-                    ) + during.filterValues { it.commandLine.contains(directory) }.keys
-                // The check is only worth something when it has something to check: the
-                // driver of Playwright and the browser it started are processes of this
-                // run, and the machine has to show them.
-                ours.isNotEmpty() shouldBe true
+                try {
+                    // The processes of this run: the driver Playwright started for us, the
+                    // browser it started, and everything they brought with them. They are
+                    // our descendants, and the browser names the directory of the profile.
+                    val during = ProcessProbe.processes()
+                    val directory = checkNotNull(profile.profileDir).toString()
+                    val ours =
+                        (
+                            ProcessProbe.descendants(ProcessHandle.current().pid(), during) -
+                                ProcessHandle.current().pid()
+                        ) + during.filterValues { it.commandLine.contains(directory) }.keys
+                    // The check is only worth something when it has something to check: the
+                    // driver of Playwright and the browser it started are processes of this
+                    // run, and the machine has to show them.
+                    ours.isNotEmpty() shouldBe true
 
-                automation.stop() shouldBe true
+                    automation.stop() shouldBe true
 
-                // The browser is gone, so the directory may be opened again — by anyone.
-                automation.browserMayBeRunning shouldBe false
+                    // The browser is gone, so the directory may be opened again — by anyone.
+                    automation.browserMayBeRunning shouldBe false
 
-                // And the machine agrees: not one of the processes of the run is there
-                // any more. The check is asked of the operating system, because only it
-                // knows about a browser that our references have already forgotten.
-                val left = ProcessProbe.awaitGone(ours)
-                left shouldBe emptySet()
+                    // And the machine agrees: not one of the processes of the run is there
+                    // any more. The check is asked of the operating system, because only it
+                    // knows about a browser that our references have already forgotten.
+                    val left = ProcessProbe.awaitGone(ours)
+                    left shouldBe emptySet()
+                } finally {
+                    automation.stop()
+                }
             }
 
         test("a repeated start keeps the profile, its fingerprint and its proxy")
@@ -231,8 +235,12 @@ class CamoufoxSmokeTest :
                 val automation = CamoufoxAutomation(profile, checkNotNull(install))
 
                 val first = automation.start()
-                val firstUserAgent = first.evaluate("() => navigator.userAgent")
-                automation.stop() shouldBe true
+                val firstUserAgent =
+                    try {
+                        first.evaluate("() => navigator.userAgent")
+                    } finally {
+                        automation.stop() shouldBe true
+                    }
 
                 // The same directory, the same fingerprint, the same proxy: a restart is
                 // the same session, not a new one.
@@ -254,16 +262,19 @@ class CamoufoxSmokeTest :
                 val second = CamoufoxAutomation(profile(root, "profile-two"), checkNotNull(install))
 
                 first.start()
-                second.start()
                 try {
-                    // Two profiles, two directories, two pages: the parallelism the
-                    // deployment counts on.
-                    first.isConnected shouldBe true
-                    second.isConnected shouldBe true
-                    first.currentPage shouldNotBe second.currentPage
+                    second.start()
+                    try {
+                        // Two profiles, two directories, two pages: the parallelism the
+                        // deployment counts on.
+                        first.isConnected shouldBe true
+                        second.isConnected shouldBe true
+                        first.currentPage shouldNotBe second.currentPage
+                    } finally {
+                        second.stop()
+                    }
                 } finally {
                     first.stop()
-                    second.stop()
                 }
             }
 
