@@ -39,6 +39,11 @@ dependencies {
     // The AdsPower envelope is parsed with Jackson; no consumer names a Jackson type.
     implementation(libs.jackson.databind)
 
+    // The failure of a Jackson parse is a fact about the file, and the exception that
+    // carries it is named in the code that answers it — so the dependency that owns
+    // the type is declared, not inherited.
+    implementation(libs.jackson.core)
+
     implementation(libs.slf4j.api)
 
     // Test

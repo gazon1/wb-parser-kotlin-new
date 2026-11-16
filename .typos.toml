@@ -3,4 +3,4 @@ childs = "childs"
 mis = "mis"
 
 [files]
-extend-exclude = ["*.lock", "uv.lock", "catalog_measurements.json"]
+extend-exclude = ["*.lock", "uv.lock", "catalog_measurements.json", "fingerprint-linux.json"]
