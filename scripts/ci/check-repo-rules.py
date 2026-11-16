@@ -147,34 +147,57 @@ def kotlin_files(root: Path, relative: str) -> list[Path]:
     return sorted(directory.rglob("*.kt"))
 
 
-def strip_noise(line: str) -> str:
+def _closing_quote(text: str, start: int, quote: str) -> int:
+    """The index just past the closing quote of the literal that starts at `start`."""
+    index = start + 1
+    while index < len(text):
+        char = text[index]
+        if char == "\\":
+            index += 2
+            continue
+        if char == quote:
+            return index + 1
+        index += 1
+    return len(text)
+
+
+def strip_comments_and_strings(text: str) -> str:
     """Removes what cannot hold code: comments and string literals.
 
     A rule that fires on a KDoc mentioning `!!` is a rule people learn to work
     around, and a rule people work around is worse than no rule.
+
+    The line structure survives — every removed line still ends in a newline — so
+    a finding can name the line the code was on.
     """
     out: list[str] = []
     index = 0
-    in_string = False
-    while index < len(line):
-        char = line[index]
-        if in_string:
-            if char == "\\":
-                index += 2
-                continue
-            if char == '"':
-                in_string = False
+    length = len(text)
+    while index < length:
+        char = text[index]
+        if char == "/" and text.startswith("//", index):
+            end = text.find("\n", index)
+            end = length if end == -1 else end
+        elif char == "/" and text.startswith("/*", index):
+            end = text.find("*/", index + 2)
+            end = length if end == -1 else end + 2
+        elif text.startswith('"""', index):
+            end = text.find('"""', index + 3)
+            end = length if end == -1 else end + 3
+        elif char in "\"'":
+            end = _closing_quote(text, index, char)
+        else:
+            out.append(char)
             index += 1
             continue
-        if char == '"':
-            in_string = True
-            index += 1
-            continue
-        if char == "/" and index + 1 < len(line) and line[index + 1] == "/":
-            break
-        out.append(char)
-        index += 1
+        out.append("\n" * text.count("\n", index, end))
+        index = end
     return "".join(out)
+
+
+def strip_noise(line: str) -> str:
+    """Removes what cannot hold code: comments and string literals."""
+    return strip_comments_and_strings(line)
 
 
 def relative(path: Path, root: Path) -> str:
@@ -270,6 +293,26 @@ def check_browser_module_is_a_browser(root: Path) -> list[str]:
     return findings
 
 
+def runtime_mentions(text: str) -> list[tuple[int, str]]:
+    """The runtime packages named in `text`, with the line each was named on.
+
+    A mention is the package name in code — an import, a fully qualified type, a
+    qualified call — and not a mention in prose. Comments and string literals are
+    stripped first, so a KDoc that discusses the runtime does not trip the rule.
+
+    An import is not the only way to name a package: `ru.wbparser.browser.camoufox.
+    CamoufoxAutomation` in a return type names it just as plainly, and the
+    compiler accepts it wherever the runtime is on the classpath.
+    """
+    findings: list[tuple[int, str]] = []
+    cleaned = strip_comments_and_strings(text)
+    for number, line in enumerate(cleaned.splitlines(), 1):
+        for runtime_package in BROWSER_RUNTIME_PACKAGES:
+            if re.search(rf"\b{re.escape(runtime_package)}\b", line):
+                findings.append((number, runtime_package))
+    return findings
+
+
 def check_the_runtime_stays_in_its_module(root: Path) -> list[str]:
     """The runtime is named by the runtime module and by the composition root only.
 
@@ -282,38 +325,36 @@ def check_the_runtime_stays_in_its_module(root: Path) -> list[str]:
     The compiler already stops most of this — the crawler does not have the runtime
     on its classpath. The rule covers the rest: the contract module and the
     application outside its composition root.
+
+    A name is a name, however it is written: an import or a fully qualified
+    reference. The rule looks for the package in the code, not for the word
+    `import`, because the application does have the runtime on its classpath and a
+    fully qualified reference compiles there.
     """
     findings: list[str] = []
 
     for module in BROWSER_MODULES:
-        for path in kotlin_files(root, module):
-            if module == "browser/src/main/kotlin":
-                continue
-            for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-                stripped = line.strip()
-                if not stripped.startswith("import "):
-                    continue
-                for runtime_package in BROWSER_RUNTIME_PACKAGES:
-                    if stripped.startswith(f"import {runtime_package}"):
-                        findings.append(
-                            f"{relative(path, root)}:{number}: the contract module names "
-                            f"{runtime_package} — the contract knows no runtime"
-                        )
-
-    for path in kotlin_files(root, "app/src/main/kotlin"):
-        if COMPOSITION_ROOT in path.relative_to(root).as_posix():
+        if module == "browser/src/main/kotlin":
             continue
-        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-            stripped = line.strip()
-            if not stripped.startswith("import "):
-                continue
-            for runtime_package in BROWSER_RUNTIME_PACKAGES:
-                if stripped.startswith(f"import {runtime_package}"):
-                    findings.append(
-                        f"{relative(path, root)}:{number}: the application names "
-                        f"{runtime_package} outside its composition root — the runtime is "
-                        "bound to the contract there and nowhere else"
-                    )
+        for path in kotlin_files(root, module):
+            for number, runtime_package in runtime_mentions(path.read_text(encoding="utf-8")):
+                findings.append(
+                    f"{relative(path, root)}:{number}: the contract module names "
+                    f"{runtime_package} — the contract knows no runtime"
+                )
+
+    composition_root = root / COMPOSITION_ROOT
+    for path in kotlin_files(root, "app/src/main/kotlin"):
+        # The composition root is a directory, not a name: a sibling whose path
+        # merely contains the same letters is a different place.
+        if path.is_relative_to(composition_root):
+            continue
+        for number, runtime_package in runtime_mentions(path.read_text(encoding="utf-8")):
+            findings.append(
+                f"{relative(path, root)}:{number}: the application names "
+                f"{runtime_package} outside its composition root — the runtime is "
+                "bound to the contract there and nowhere else"
+            )
     return findings
 
 
@@ -509,6 +550,17 @@ VIOLATIONS = {
     "app/src/main/kotlin/ru/wbparser/app/scheduling/Leaky.kt": (
         "package ru.wbparser.app.scheduling\n\nimport ru.wbparser.browser.camoufox.CamoufoxInstalls\n\nclass Leaky\n"
     ),
+    # A fully qualified reference names the runtime just as plainly as an import,
+    # and the application has the runtime on its classpath: it compiles there.
+    "app/src/main/kotlin/ru/wbparser/app/scheduling/FullyQualifiedLeaky.kt": (
+        "package ru.wbparser.app.scheduling\n\nclass FullyQualifiedLeaky {\n"
+        "    fun create(): ru.wbparser.browser.camoufox.CamoufoxAutomation = TODO()\n}\n"
+    ),
+    # A sibling of the composition root whose path contains the same letters.
+    # It is not the composition root, so it is not exempt.
+    "app/src/main/kotlin/ru/wbparser/app/configuration/Leaky.kt": (
+        "package ru.wbparser.app.configuration\n\nimport ru.wbparser.browser.playwright.PlaywrightBrowserPage\n\nclass Leaky\n"
+    ),
     "CHANGELOG.md": "# The history that must not be here\n",
     ".github/workflows/ci.yml": "jobs:\n  build:\n    steps:\n      - run: ./gradlew fixDependencies\n",
     "gradle.properties": "org.gradle.java.home=/home/max/.jdks/temurin-21.0.10\n",
@@ -539,6 +591,8 @@ def self_test() -> int:
             "browser module names",
             "the contract module names",
             "outside its composition root",
+            "FullyQualifiedLeaky.kt",
+            "configuration/Leaky.kt",
             "outside the browser module",
             "is a double of our own",
             "CHANGELOG.md exists",
