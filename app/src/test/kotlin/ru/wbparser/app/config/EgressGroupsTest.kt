@@ -284,7 +284,7 @@ class EgressGroupsTest :
                                             host = "proxy-a.invalid",
                                             port = 8080,
                                             username = "user",
-                                            password = "secret",
+                                            password = "placeholder",
                                         ),
                                 ),
                             ),
@@ -295,7 +295,7 @@ class EgressGroupsTest :
             proxy.hasCredentials shouldBe true
             proxy.username shouldBe "user"
             // The credentials reach the browser, and the resolved type hides them.
-            proxy.toString() shouldNotContain "secret"
+            proxy.toString() shouldNotContain "placeholder"
             proxy.toString() shouldNotContain "user"
         }
 
@@ -306,17 +306,17 @@ class EgressGroupsTest :
                     host = "proxy-a.invalid",
                     port = 8080,
                     username = "user",
-                    password = "secret",
+                    password = "placeholder",
                 )
 
             // The configuration object is what a deployment holds and what a message
             // most often carries: it has to redact on its own, not only after conversion.
             configured.toString() shouldBe "http://proxy-a.invalid:8080 (credentials hidden)"
-            configured.toString() shouldNotContain "secret"
+            configured.toString() shouldNotContain "placeholder"
             configured.toString() shouldNotContain "user"
-            listOf(configured).toString() shouldNotContain "secret"
+            listOf(configured).toString() shouldNotContain "placeholder"
             EgressGroupConfig(id = "ip-1", profiles = listOf("p1"), proxy = configured)
-                .toString() shouldNotContain "secret"
+                .toString() shouldNotContain "placeholder"
         }
 
         test("a profile carries the proxy of the group it belongs to") {
@@ -399,7 +399,7 @@ class EgressGroupsTest :
                                                 host = "proxy-a.invalid",
                                                 port = 1080,
                                                 username = "user",
-                                                password = "secret",
+                                                password = "placeholder",
                                             ),
                                     ),
                                 ),
@@ -411,8 +411,8 @@ class EgressGroupsTest :
             // the crawler has to find before it launches a browser.
             failure.message!!.contains("ip-1") shouldBe true
             failure.message!!.contains("socks5 proxy authentication") shouldBe true
-            // The refusal is about the endpoint, and it must not repeat the secret.
-            failure.message!!.contains("secret") shouldBe false
+            // The refusal is about the endpoint, and it must not repeat the credential.
+            failure.message!!.contains("placeholder") shouldBe false
         }
 
         test("a group's own pacing overrides the default") {

@@ -83,7 +83,7 @@ class BrowserProfileConfigTest :
                         host = "proxy-a.invalid",
                         port = 1080,
                         username = "user",
-                        password = "secret",
+                        password = "placeholder",
                     )
                 }
 
@@ -99,7 +99,7 @@ class BrowserProfileConfigTest :
                     host = "proxy-a.invalid",
                     port = 8080,
                     username = "user",
-                    password = "secret",
+                    password = "placeholder",
                 )
 
             proxy.hasCredentials shouldBe true
@@ -113,11 +113,11 @@ class BrowserProfileConfigTest :
                     host = "proxy-a.invalid",
                     port = 8080,
                     username = "user",
-                    password = "secret",
+                    password = "placeholder",
                 )
 
             proxy.toString() shouldBe "http://proxy-a.invalid:8080"
-            proxy.toString() shouldNotContain "secret"
+            proxy.toString() shouldNotContain "placeholder"
             proxy.toString() shouldNotContain "user"
         }
 
