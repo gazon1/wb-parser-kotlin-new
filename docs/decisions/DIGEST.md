@@ -587,7 +587,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** считать статус навигации проверкой антибота: датацентровый адрес даёт 498 на HTML и 200 на API из страницы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Always** добавлять ошибку неуспешной очистки к исходной ошибке как suppressed, а не заменять ею. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Always** запускать Camoufox persistent-контекстом в каталоге профиля: каталог — это сессия. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Always** отдавать handle сессии, оставшейся после неудачного запуска, вместе с ошибкой: handle, который знает только launcher, — это handle, который никто не закроет второй раз. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Always** отказывать в конфиге, который не JSON-объект, и в identity, чья ОС не названа или не известна. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Always** повторять неудачную очистку при следующем `close()` и сообщать о незавершённой очистке, а не делать вид, что всё прошло. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Always** проверять профиль, отпечаток, fontconfig и прокси до создания драйвера Playwright. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Always** различать «браузер ушёл», «драйвер ушёл» и «очистка закончена»: успешный `Playwright.close()` закрывает всё, что запущено, и упавший `context.close()` не держит браузер живым. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Always** резать конфиг по 32767 байт, не разрывая символ. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Always** указывать `FONTCONFIG_FILE` на `fonts.conf` сборки с абсолютными каталогами шрифтов той ОС, которую называет identity. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Always** хранить в `BrowserProfileConfig.fingerprint` сам конфиг Camoufox и отказывать в старте профиля без него. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
@@ -598,11 +602,14 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** доверять пути из записи установки: версия сборки задаётся относительно каталога установки, и выход наружу — отказ. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** менять в этом изменении пул, его concurrency, semaphores и round-robin — это #271. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** называть родительский каталог `fonts`: он хранит лица всех систем, а identity получает только свои. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Never** освобождать каталог профиля, пока жив драйвер его браузера; **Always** освобождать каталог, когда браузер ушёл, даже если драйвер ещё жив. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** оставлять браузер после неудачного старта: драйвер закрывается вместе с попыткой. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** открывать один каталог профиля из двух браузеров в одном процессе; занятость снимается только когда браузер известно ушёл. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** отпускать каталог чужим закрытием: право на каталог отпускает только тот, кто его взял. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** передавать `CAMOU_PREFS_*` вместе с сохранённым конфигом: это второй ответ на один вопрос. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** переходить молча на весь каталог шрифтов, когда таблица групп есть, а группы своей ОС в ней нет. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Never** проверять отсутствие браузера по внутреннему состоянию объекта: процессы спрашиваются у операционной системы, а тест на платформе без такой возможности пропускается. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Never** путать отсутствующий `fonts/groups.json` со сломанным: отсутствие — старый формат, нечитаемое содержимое — отказ. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 
 ## Per-tag
 

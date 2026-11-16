@@ -110,6 +110,41 @@ class CamoufoxFontsTest :
             thrown.message shouldContain "names no font group"
         }
 
+        test("a group table that is not an object is refused") {
+            val install = build(groups = """{}""", fontDirs = listOf("linux"))
+
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
+
+            // A table that is there and says nothing usable is a damaged bundle, not an
+            // older layout: reading it as one would offer the identity the fonts of
+            // another operating system.
+            thrown.message shouldContain "no 'readBy' object"
+        }
+
+        test("a group table whose readBy is not an object is refused") {
+            val install = build(groups = """{"readBy":[]}""", fontDirs = listOf("linux"))
+
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
+
+            thrown.message shouldContain "no 'readBy' object"
+        }
+
+        test("a group table whose readBy is null is refused") {
+            val install = build(groups = """{"readBy":null}""", fontDirs = listOf("linux"))
+
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
+
+            thrown.message shouldContain "no 'readBy' object"
+        }
+
+        test("a group table that is not JSON is refused") {
+            val install = build(groups = """{"readBy":""", fontDirs = listOf("linux"))
+
+            val thrown = shouldThrow<IllegalStateException> { CamoufoxFonts.fontConfigFile(install, linux) }
+
+            thrown.message shouldContain "not readable JSON"
+        }
+
         test("a group whose directory is missing is an incomplete install") {
             val install = build(groups = """{"readBy":{"lin":["group-gone"]}}""", fontDirs = listOf("group-1"))
 

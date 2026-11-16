@@ -7,10 +7,13 @@ import com.microsoft.playwright.Playwright
 import com.microsoft.playwright.options.Proxy
 import org.slf4j.LoggerFactory
 import ru.wbparser.browser.camoufox.CamoufoxBrowser
+import ru.wbparser.browser.camoufox.CamoufoxCleanup
 import ru.wbparser.browser.camoufox.CamoufoxEnvironment
 import ru.wbparser.browser.camoufox.CamoufoxFonts
 import ru.wbparser.browser.camoufox.CamoufoxInstall
+import ru.wbparser.browser.camoufox.CamoufoxLaunchFailure
 import ru.wbparser.browser.camoufox.CamoufoxLauncher
+import ru.wbparser.browser.camoufox.CamoufoxSession
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.pool.DeclaredProxy
 
@@ -23,12 +26,23 @@ import ru.wbparser.browser.pool.DeclaredProxy
  * context has one. The context owns the browser it opened, so closing the context ends
  * the browser — there is no second object to close and no window left behind.
  *
+ * ## Why the configuration is checked before the driver exists
+ *
+ * The launch needs a fingerprint, a fontconfig and a proxy, and all three may be
+ * wrong. They are prepared first: a configuration that cannot work must not start a
+ * driver process, because a process that was started for nothing is a process that has
+ * to be cleaned up for nothing.
+ *
  * ## Why the failure path closes the driver
  *
  * The launch can fail after the browser has started — a profile directory that cannot
  * be opened, a proxy the browser refuses. The Playwright instance owns the browser it
  * launched, so closing it closes the browser too. That is what keeps a failed launch
  * from leaving a process nobody owns.
+ *
+ * And a driver that refuses to close is a session that is still there: its handle
+ * travels with the failure, so the automation can try again instead of giving a
+ * directory back while its driver is still running.
  */
 internal class PlaywrightCamoufoxLauncher(
     private val install: CamoufoxInstall,
@@ -37,6 +51,9 @@ internal class PlaywrightCamoufoxLauncher(
     private val log = LoggerFactory.getLogger(PlaywrightCamoufoxLauncher::class.java)
 
     override fun launch(profile: BrowserProfileConfig): CamoufoxBrowser {
+        // The profile is checked before a driver exists: nothing that may be wrong is
+        // allowed to start a process.
+        val options = launchOptions(profile)
         val playwright = createPlaywright()
         try {
             val context =
@@ -46,7 +63,7 @@ internal class PlaywrightCamoufoxLauncher(
                         checkNotNull(profile.profileDir) {
                             "The profile '${profile.profileId}' has no local directory to open."
                         },
-                        launchOptions(profile),
+                        options,
                     )
             // A persistent context opens a page of its own; one that did not is a
             // browser we cannot work with.
@@ -57,15 +74,24 @@ internal class PlaywrightCamoufoxLauncher(
             // driver: a failed launch leaves no process behind. A driver that refuses
             // to close is a second fact about the failure, and it goes with the first
             // one rather than replacing it.
-            runCatching { playwright.close() }
-                .onFailure { failure ->
-                    log.warn(
-                        "The Playwright driver of the profile '{}' could not be closed: {}",
-                        profile.profileId,
-                        failure.message,
-                    )
-                    e.addSuppressed(failure)
-                }
+            val closed = runCatching { playwright.close() }
+            val closeFailure = closed.exceptionOrNull()
+            if (closeFailure != null) {
+                log.warn(
+                    "The Playwright driver of the profile '{}' could not be closed: {}",
+                    profile.profileId,
+                    closeFailure.message,
+                )
+                // The driver is alive and it is ours: the handle travels with the
+                // failure, so the profile directory is not given back while a driver of
+                // it is still running.
+                throw CamoufoxLaunchFailure(
+                    "The Camoufox of the profile '${profile.profileId}' failed to start, and its " +
+                        "Playwright driver could not be closed.",
+                    e,
+                    PlaywrightDriverSession(playwright),
+                ).also { it.addSuppressed(closeFailure) }
+            }
             throw e
         }
     }
@@ -155,7 +181,7 @@ internal class PlaywrightCamoufoxBrowser(
 
     override fun title(): String = page.title()
 
-    override fun close(): Boolean {
+    override fun close(): CamoufoxCleanup {
         // Closing the context ends the browser: a persistent context owns its process.
         // A step that failed is tried again on the next call — the browser may be gone
         // by then, and a browser nobody closes is worse than a slow close.
@@ -166,6 +192,31 @@ internal class PlaywrightCamoufoxBrowser(
         if (!driverClosed) {
             driverClosed = runCatching { playwright.close() }.isSuccess
         }
-        return contextClosed && driverClosed
+        // Playwright closes what it owns when the instance closes: a driver that went
+        // took the context and the browser with it. So a context that refused to close
+        // does not keep the browser alive — the driver is the one that has to answer.
+        val browserGone = contextClosed || driverClosed
+        return CamoufoxCleanup(browserGone = browserGone, driverGone = driverClosed)
+    }
+}
+
+/**
+ * The driver of a launch that failed on the way.
+ *
+ * The browser never became usable, but the driver is alive and it is ours: it owns the
+ * browser it may have started, and it is the one thing that can be closed.
+ */
+internal class PlaywrightDriverSession(
+    private val playwright: Playwright,
+) : CamoufoxSession {
+    /** Whether the driver is closed. A driver that refused to close is tried again. */
+    private var driverGone = false
+
+    override fun close(): CamoufoxCleanup {
+        if (!driverGone) {
+            driverGone = runCatching { playwright.close() }.isSuccess
+        }
+        // The driver owns the browser it launched: a driver that went took it with it.
+        return CamoufoxCleanup(browserGone = driverGone, driverGone = driverGone)
     }
 }

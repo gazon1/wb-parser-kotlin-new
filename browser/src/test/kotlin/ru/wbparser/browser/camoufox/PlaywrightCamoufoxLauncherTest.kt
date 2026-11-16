@@ -64,6 +64,9 @@ class PlaywrightCamoufoxLauncherTest :
             val options: io.mockk.CapturingSlot<BrowserType.LaunchPersistentContextOptions> =
                 slot<BrowserType.LaunchPersistentContextOptions>()
 
+            /** How often a driver was created for a launch. */
+            var created: Int = 0
+
             init {
                 every { playwright.firefox() } returns browserType
                 every { context.pages() } returns listOf(page)
@@ -73,7 +76,11 @@ class PlaywrightCamoufoxLauncherTest :
             }
 
             /** The launcher under test, driving these doubles. */
-            fun launcher(install: CamoufoxInstall): PlaywrightCamoufoxLauncher = PlaywrightCamoufoxLauncher(install) { playwright }
+            fun launcher(install: CamoufoxInstall): PlaywrightCamoufoxLauncher =
+                PlaywrightCamoufoxLauncher(install) {
+                    created++
+                    playwright
+                }
         }
 
         test("the browser is the pinned build, headless, with the configuration in the environment") {
@@ -91,7 +98,7 @@ class PlaywrightCamoufoxLauncherTest :
                 """{"navigator.userAgent":"Mozilla/5.0 (X11; Linux x86_64; rv:158.0)"}"""
         }
 
-        test("a profile without a stored fingerprint is refused before the browser starts") {
+        test("a profile without a stored fingerprint is refused before the driver exists") {
             val doubles = Doubles()
 
             val thrown =
@@ -100,10 +107,10 @@ class PlaywrightCamoufoxLauncherTest :
                 }
 
             thrown.message shouldContain "no stored fingerprint"
-            // No browser was started, so there is no browser to leave behind.
+            // A configuration that cannot work must not start a process at all: there is
+            // no driver to close and no browser to leave behind.
+            doubles.created shouldBe 0
             verify(exactly = 0) { doubles.browserType.launchPersistentContext(any(), any()) }
-            // The driver of the attempt is closed: a failed launch leaves no process.
-            verify { doubles.playwright.close() }
         }
 
         test("the proxy of the profile is given to the browser with its credentials") {
@@ -179,11 +186,11 @@ class PlaywrightCamoufoxLauncherTest :
             every { doubles.browserType.launchPersistentContext(any(), any()) } throws failure
             every { doubles.playwright.close() } throws IllegalStateException("the driver refused to close")
 
-            val thrown = shouldThrow<IllegalStateException> { doubles.launcher(install()).launch(profile()) }
+            val thrown = shouldThrow<CamoufoxLaunchFailure> { doubles.launcher(install()).launch(profile()) }
 
             // The failure of the launch is what the caller has to see; the failure to
-            // close the driver is a second fact, and it goes to the log.
-            thrown shouldBe failure
+            // close the driver is a second fact, and it goes with the first one.
+            thrown.cause shouldBe failure
             verify { doubles.playwright.close() }
         }
 
@@ -204,30 +211,41 @@ class PlaywrightCamoufoxLauncherTest :
             val browser = doubles.launcher(install()).launch(profile())
 
             // The context owns the browser process: closing it is what ends the browser.
-            browser.close() shouldBe true
+            val cleanup = browser.close()
+            cleanup.browserGone shouldBe true
+            cleanup.driverGone shouldBe true
+            cleanup.complete shouldBe true
             verify { doubles.context.close() }
             verify { doubles.playwright.close() }
         }
 
-        test("a context that refuses to close keeps the browser from being gone") {
+        test("a context that refuses to close does not keep the browser alive when the driver goes") {
             val doubles = Doubles()
             every { doubles.context.close() } throws IllegalStateException("the context refused to close")
 
             val browser = doubles.launcher(install()).launch(profile())
 
-            // The browser may still be running, and the caller has to be able to say so.
-            browser.close() shouldBe false
-            // The driver still goes: it is not what failed.
+            // Playwright closes what it owns when the instance closes: a driver that
+            // went took the browser with it, so the profile may be opened again.
+            val cleanup = browser.close()
+            cleanup.browserGone shouldBe true
+            cleanup.driverGone shouldBe true
+            cleanup.complete shouldBe true
             verify { doubles.playwright.close() }
         }
 
-        test("a driver that refuses to close keeps the browser from being gone") {
+        test("a driver that refuses to close leaves the driver for the next attempt") {
             val doubles = Doubles()
             every { doubles.playwright.close() } throws IllegalStateException("the driver refused to close")
 
             val browser = doubles.launcher(install()).launch(profile())
 
-            browser.close() shouldBe false
+            // The browser is gone — the context closed it — but the driver is still
+            // there, and the cleanup is not finished.
+            val cleanup = browser.close()
+            cleanup.browserGone shouldBe true
+            cleanup.driverGone shouldBe false
+            cleanup.complete shouldBe false
             // The context still goes: it is not what failed.
             verify { doubles.context.close() }
         }
@@ -239,20 +257,25 @@ class PlaywrightCamoufoxLauncherTest :
 
             val browser = doubles.launcher(install()).launch(profile())
 
-            browser.close() shouldBe false
+            val cleanup = browser.close()
+            cleanup.browserGone shouldBe false
+            cleanup.driverGone shouldBe false
+            cleanup.complete shouldBe false
         }
 
         test("a cleanup that failed is tried again on the next close") {
             val doubles = Doubles()
-            every { doubles.context.close() } throws IllegalStateException("the context refused to close")
+            every { doubles.playwright.close() } throws IllegalStateException("the driver refused to close")
 
             val browser = doubles.launcher(install()).launch(profile())
-            browser.close() shouldBe false
+            browser.close().driverGone shouldBe false
 
-            // The browser may be gone by now, and a browser nobody closes is worse than a
+            // The driver may be gone by now, and a driver nobody closes is worse than a
             // slow close.
-            every { doubles.context.close() } returns Unit
-            browser.close() shouldBe true
+            every { doubles.playwright.close() } returns Unit
+            val cleanup = browser.close()
+            cleanup.driverGone shouldBe true
+            cleanup.complete shouldBe true
         }
 
         test("a driver that refuses to close does not hide the failure of the launch") {
@@ -261,11 +284,27 @@ class PlaywrightCamoufoxLauncherTest :
             every { doubles.browserType.launchPersistentContext(any(), any()) } throws failure
             every { doubles.playwright.close() } throws IllegalStateException("the driver refused to close")
 
-            val thrown = shouldThrow<IllegalStateException> { doubles.launcher(install()).launch(profile()) }
+            val thrown = shouldThrow<CamoufoxLaunchFailure> { doubles.launcher(install()).launch(profile()) }
 
             // The failure of the launch is what the caller has to see; the failure to
             // close the driver is a second fact, and it goes with the first one.
-            thrown shouldBe failure
+            thrown.cause shouldBe failure
             (thrown.suppressed.any { it.message == "the driver refused to close" }) shouldBe true
+        }
+
+        test("a launch that failed and whose driver refused to close hands the driver over") {
+            val doubles = Doubles()
+            every { doubles.browserType.launchPersistentContext(any(), any()) } throws
+                IllegalStateException("the browser refused to start")
+            every { doubles.playwright.close() } throws IllegalStateException("the driver refused to close")
+
+            val thrown = shouldThrow<CamoufoxLaunchFailure> { doubles.launcher(install()).launch(profile()) }
+
+            // The driver is alive and it is ours: the handle travels with the failure,
+            // so it can be closed a second time instead of being lost.
+            every { doubles.playwright.close() } returns Unit
+            val cleanup = thrown.session.close()
+            cleanup.driverGone shouldBe true
+            cleanup.browserGone shouldBe true
         }
     })

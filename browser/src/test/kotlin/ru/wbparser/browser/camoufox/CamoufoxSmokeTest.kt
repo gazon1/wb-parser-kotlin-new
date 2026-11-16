@@ -106,6 +106,21 @@ class CamoufoxSmokeTest :
                 else -> Enabled.Companion.enabled
             }
 
+        /** Whether this machine can tell which processes are running. */
+        fun processProbeAvailable(): Boolean = ProcessProbe.available()
+
+        /** Enabled where the browser may start and the machine may be asked about it. */
+        fun enabledWithProcesses(): Enabled =
+            when {
+                install == null -> enabledHere()
+                !processProbeAvailable() ->
+                    Enabled.Companion.disabled(
+                        "This machine does not publish its processes: the absence of a browser " +
+                            "cannot be checked here.",
+                    )
+                else -> Enabled.Companion.enabled
+            }
+
         /** A profile of the test: a directory of its own and the stored fingerprint. */
         fun profile(
             root: Path,
@@ -139,15 +154,37 @@ class CamoufoxSmokeTest :
             }
 
         test("the browser leaves no process behind")
-            .config(enabledOrReasonIf = { enabledHere() }) {
+            .config(enabledOrReasonIf = { enabledWithProcesses() }) {
                 val root = Files.createTempDirectory("camoufox-smoke")
-                val automation = CamoufoxAutomation(profile(root, "smoke-profile"), checkNotNull(install))
+                val profile = profile(root, "smoke-profile")
+                val automation = CamoufoxAutomation(profile, checkNotNull(install))
                 automation.start()
+
+                // The processes of this run: the driver Playwright started for us, the
+                // browser it started, and everything they brought with them. They are
+                // our descendants, and the browser names the directory of the profile.
+                val during = ProcessProbe.processes()
+                val directory = checkNotNull(profile.profileDir).toString()
+                val ours =
+                    (
+                        ProcessProbe.descendants(ProcessHandle.current().pid(), during) -
+                            ProcessHandle.current().pid()
+                    ) + during.filterValues { it.commandLine.contains(directory) }.keys
+                // The check is only worth something when it has something to check: the
+                // driver of Playwright and the browser it started are processes of this
+                // run, and the machine has to show them.
+                ours.isNotEmpty() shouldBe true
 
                 automation.stop() shouldBe true
 
                 // The browser is gone, so the directory may be opened again — by anyone.
                 automation.browserMayBeRunning shouldBe false
+
+                // And the machine agrees: not one of the processes of the run is there
+                // any more. The check is asked of the operating system, because only it
+                // knows about a browser that our references have already forgotten.
+                val left = ProcessProbe.awaitGone(ours)
+                left shouldBe emptySet()
             }
 
         test("a repeated start keeps the profile, its fingerprint and its proxy")

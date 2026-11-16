@@ -35,6 +35,15 @@ import java.util.concurrent.atomic.AtomicLong
  * directory is released by the owner of the claim, and only when the browser is known
  * to be gone.
  *
+ * ## A session is not only a browser
+ *
+ * A launch may fail after the driver was created, and the driver is then a session of
+ * ours: the launcher hands its handle over with the failure, and the handle is kept
+ * until the driver is gone. The claim on the directory follows the browser, not the
+ * driver — a browser that is gone leaves the directory free even when its driver
+ * lingers — but the session itself is kept, because a driver nobody closes is a
+ * process nobody owns.
+ *
  * ## The fingerprint is stored, not generated
  *
  * The profile carries the Camoufox configuration as data (ADR
@@ -74,6 +83,26 @@ class CamoufoxAutomation internal constructor(
     @Volatile
     private var browser: CamoufoxBrowser? = null
 
+    /**
+     * The session that has to be closed: a browser, or the driver of a launch that
+     * failed on the way.
+     *
+     * The handle is kept until the driver is gone: a driver that is still there can be
+     * closed, and a driver nobody closes is a process nobody owns.
+     */
+    @Volatile
+    private var session: CamoufoxSession? = null
+
+    /**
+     * Whether a browser process may still be running for this profile.
+     *
+     * This is a fact of its own and not a question about the handle: a browser that is
+     * gone may leave a driver behind, and a driver that is gone takes its browser with
+     * it.
+     */
+    @Volatile
+    private var browserProcessAlive = false
+
     /** The page the crawler works on. */
     @Volatile
     private var page: BrowserPage? = null
@@ -95,11 +124,11 @@ class CamoufoxAutomation internal constructor(
     /**
      * Whether a browser process may still be running for this profile.
      *
-     * The browser we could not close is the one that may still be running: a reference
-     * that is still here means nobody confirmed that the process is gone.
+     * The browser we could not close is the one that may still be running: nobody
+     * confirmed that the process is gone.
      */
     override val browserMayBeRunning: Boolean
-        get() = browser != null
+        get() = browserProcessAlive
 
     override fun healthCheck(): Boolean {
         val current = browser ?: return false
@@ -118,7 +147,15 @@ class CamoufoxAutomation internal constructor(
                 try {
                     launcher.launch(profile)
                 } catch (e: Throwable) {
-                    // Nothing was started, so nothing is claimed.
+                    // A launch that failed on the way may have left a session behind:
+                    // the launcher hands its handle with the failure, and it is ours to
+                    // close. The claim on the directory stays until that session is
+                    // gone — a driver that is still running may still own the browser.
+                    val left = (e as? CamoufoxLaunchFailure)?.session
+                    if (left != null) {
+                        session = left
+                        browserProcessAlive = true
+                    }
                     close()
                     throw e
                 }
@@ -126,6 +163,8 @@ class CamoufoxAutomation internal constructor(
             // opened, so a page that cannot be opened still leaves a browser we can
             // close — and a directory we can release.
             browser = launched
+            session = launched
+            browserProcessAlive = true
             val opened =
                 try {
                     launched.openPage()
@@ -148,29 +187,46 @@ class CamoufoxAutomation internal constructor(
 
     override fun close() {
         synchronized(lifecycle) {
-            val current = browser
-            val gone =
-                if (current == null) {
-                    // There is no browser of ours: the directory is free, and the claim
-                    // we took for it goes back with it.
-                    true
-                } else {
-                    runCatching { current.close() }
-                        .onFailure { failure ->
-                            log.warn(
-                                "The Camoufox of the profile '{}' could not be closed: {}",
-                                profile.profileId,
-                                failure.message,
-                            )
-                        }.getOrDefault(false)
-                }
-            // The session is released either way: the page belongs to the session, and
-            // the session is over.
+            val current = session
+            if (current == null) {
+                // There is no session of ours: nothing is running, the directory is
+                // free, and the claim we took for it goes back with it.
+                browserProcessAlive = false
+                page = null
+                releaseClaim()
+                return
+            }
+            val cleanup =
+                runCatching { current.close() }
+                    .onFailure { failure ->
+                        log.warn(
+                            "The Camoufox of the profile '{}' could not be closed: {}",
+                            profile.profileId,
+                            failure.message,
+                        )
+                    }.getOrElse { CamoufoxCleanup(browserGone = false, driverGone = false) }
+            // The session is over either way: the page belongs to the session, and the
+            // session is over.
             page = null
-            if (gone) {
-                // The browser is gone, so the directory belongs to whoever comes next.
+            if (cleanup.browserGone) {
+                // The browser is gone, so the directory belongs to whoever comes next —
+                // even when the driver of it lingers: the browser is what holds the
+                // directory, and it is gone.
+                browserProcessAlive = false
                 browser = null
                 releaseClaim()
+            }
+            if (cleanup.driverGone) {
+                // The driver is gone as well: there is nothing left to clean, and a
+                // handle to a dead driver would only ask it again.
+                session = null
+            }
+            if (!cleanup.complete) {
+                log.warn(
+                    "The Camoufox of the profile '{}' was not cleaned completely: the driver is " +
+                        "still there, and the next close tries again.",
+                    profile.profileId,
+                )
             }
         }
     }

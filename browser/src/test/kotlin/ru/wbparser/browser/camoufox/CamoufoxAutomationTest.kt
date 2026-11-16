@@ -359,6 +359,66 @@ class CamoufoxAutomationTest :
             shouldThrow<IllegalStateException> { third.start() }.message shouldContain "already open"
         }
 
+        test("a launch that failed on the way keeps its session and the directory") {
+            val root = Files.createTempDirectory("camoufox-automation")
+            val failure = IllegalStateException("the browser refused to start")
+            val session = FakeCamoufoxSession(closeResult = false)
+            val automation =
+                CamoufoxAutomation(
+                    profile(root),
+                    FakeCamoufoxLauncher(failure = failure, sessionOnFailure = session),
+                )
+
+            val thrown = shouldThrow<CamoufoxLaunchFailure> { automation.start() }
+
+            // The failure of the launch is what the caller has to see; the session that
+            // was left behind travels with it.
+            thrown.cause shouldBe failure
+            session.closeCalls shouldBe 1
+            // The driver is still there: the browser it started may be running too, so
+            // the directory stays claimed.
+            automation.browserMayBeRunning shouldBe true
+            val second = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher())
+            shouldThrow<IllegalStateException> { second.start() }.message shouldContain "already open"
+        }
+
+        test("a repeated close closes the driver of a failed launch and gives the directory back") {
+            val root = Files.createTempDirectory("camoufox-automation")
+            val session = FakeCamoufoxSession(closeResult = false)
+            val automation =
+                CamoufoxAutomation(
+                    profile(root),
+                    FakeCamoufoxLauncher(
+                        failure = IllegalStateException("the browser refused to start"),
+                        sessionOnFailure = session,
+                    ),
+                )
+            shouldThrow<CamoufoxLaunchFailure> { automation.start() }
+
+            session.closeResult = true
+
+            // The second attempt succeeds: the driver is gone, and so is the claim.
+            automation.stop() shouldBe true
+            automation.browserMayBeRunning shouldBe false
+            val second = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher())
+            second.start().let { second.isConnected shouldBe true }
+        }
+
+        test("a browser that is gone but whose driver lingers gives the directory back") {
+            val root = Files.createTempDirectory("camoufox-automation")
+            val browser = FakeCamoufoxBrowser(closeResult = true, driverGone = false)
+            val automation = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher(browser))
+            automation.start()
+
+            automation.stop() shouldBe true
+
+            // The browser is what holds the directory, and it is gone: the driver that
+            // lingers is a process of its own, not a reason to keep the profile.
+            automation.browserMayBeRunning shouldBe false
+            val second = CamoufoxAutomation(profile(root), FakeCamoufoxLauncher())
+            second.start().let { second.isConnected shouldBe true }
+        }
+
         test("two profiles work in their own directories") {
             val root = Files.createTempDirectory("camoufox-automation")
             val first = CamoufoxAutomation(profile(root, "profile-1"), FakeCamoufoxLauncher())

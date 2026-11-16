@@ -1,5 +1,6 @@
 package ru.wbparser.browser.camoufox
 
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import java.io.IOException
@@ -28,6 +29,11 @@ import javax.xml.stream.XMLOutputFactory
  * may read. Naming the parent directory would offer the identity the faces of every
  * operating system — including the ones it cannot have — so the parent is never named,
  * not even as a fallback: a bundle that names no group for the identity is refused.
+ *
+ * A bundle without the table of the groups is an older layout and may be read as one.
+ * A bundle whose table is there and says nothing usable is damaged, and a damaged
+ * table is refused rather than read as an older layout — otherwise a broken install
+ * would silently offer the identity the faces of another operating system.
  */
 internal object CamoufoxFonts {
     private const val CWD_FONTS_DIR = "<dir prefix=\"cwd\">fonts</dir>"
@@ -143,11 +149,39 @@ internal object CamoufoxFonts {
         return dir
     }
 
-    /** The groups of the bundle that the given operating system may read. */
+    /**
+     * The groups of the bundle that the given operating system may read.
+     *
+     * A bundle without the table is an older layout, and only that: a table that is
+     * there and says nothing usable is a damaged bundle, and a damaged bundle must not
+     * be read as an older one — the identity would be offered the fonts of another
+     * operating system, silently.
+     *
+     * @return the table, or null when the bundle has none at all
+     */
     private fun readGroups(groupsFile: Path): Map<String, List<String>>? {
         if (!Files.isRegularFile(groupsFile)) return null
-        val readBy = mapper.readTree(Files.readString(groupsFile)).path("readBy")
-        if (!readBy.isObject) return null
+        val root =
+            try {
+                mapper.readTree(Files.readString(groupsFile))
+            } catch (e: JsonProcessingException) {
+                error(
+                    "The table of the font groups in '$groupsFile' is not readable JSON: " +
+                        "${e.originalMessage}. The bundle is damaged, and a damaged table is not " +
+                        "an older layout.",
+                )
+            }
+        check(root != null && root.isObject) {
+            "The table of the font groups in '$groupsFile' is not a JSON object. The bundle is " +
+                "damaged, and a damaged table is not an older layout: the identity may only be " +
+                "offered the faces it can have."
+        }
+        val readBy = root.path("readBy")
+        check(readBy.isObject) {
+            "The table of the font groups in '$groupsFile' names no 'readBy' object. The bundle " +
+                "is damaged, and a damaged table is not an older layout: the identity may only " +
+                "be offered the faces it can have."
+        }
         return readBy.properties().associate { (key, value) ->
             key to value.map { it.asText() }
         }
