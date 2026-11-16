@@ -4,7 +4,7 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
 
 /**
- * The thresholds of the two chains.
+ * The thresholds of the chains.
  *
  * They travel together because they configure the same thing: what the group does
  * when it fails, and how long it rests.
@@ -13,16 +13,18 @@ import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig
  * @param transportWindowMs the window over which the transport failures are counted.
  * @param transportFailureThreshold how many failures in the window rest the group.
  * @param transportCooldownMs how long the group rests after the last failure.
+ * @param throttleCooldownMs how long the group rests after WB rejected a request with 429.
  */
 internal data class EgressChainsConfig(
     val circuitConfig: CircuitBreakerConfig,
     val transportWindowMs: Long,
     val transportFailureThreshold: Int,
     val transportCooldownMs: Long,
+    val throttleCooldownMs: Long = EgressRouterConfig.DEFAULT_THROTTLE_COOLDOWN_MS,
 )
 
 /**
- * The two chains of one egress group.
+ * The chains of one egress group.
  *
  * ## What they are
  *
@@ -33,15 +35,19 @@ internal data class EgressChainsConfig(
  * WB and rests the group when there are too many of them. It is not a circuit, because
  * a broken cable says nothing about an address.
  *
+ * The **throttle** is the rate's: a 429 is WB asking for less, and the throttle rests
+ * the group for a bounded time so the crawler stops collecting 429s it was told to
+ * avoid.
+ *
  * ## Why they are together
  *
- * They are together because they are the two answers to the same question — "may this
- * group serve a request right now?" — and because keeping them apart was a bug once:
- * a transport failure used to count towards the anti-bot circuit, so one severed cable
+ * They are together because they are the answers to the same question — "may this group
+ * serve a request right now?" — and because keeping them apart was a bug once: a
+ * transport failure used to count towards the anti-bot circuit, so one severed cable
  * closed an address that was answering perfectly.
  *
  * @param groupId the group the chains belong to.
- * @param config the thresholds of both chains.
+ * @param config the thresholds of the chains.
  */
 internal class EgressChains(
     private val groupId: String,
@@ -58,28 +64,36 @@ internal class EgressChains(
             now = now,
         )
 
+    private val throttle = GroupThrottle(config.throttleCooldownMs, now)
+
     /** The anti-bot circuit's state. */
     val circuitState: CircuitBreaker.State get() = circuit.state
 
     /** Whether the transport chain is resting the group. */
     val transportSuspended: Boolean get() = transport.isSuspended()
 
+    /** Whether the throttle is resting the group. */
+    val throttled: Boolean get() = throttle.isThrottled()
+
+    /** How long until the group may be asked again, across all of its chains. */
+    fun millisUntilAvailable(): Long = maxOf(transport.millisUntilAvailable(), throttle.millisUntilAvailable())
+
     /** Whether the group may be asked for a request right now. */
-    fun isServable(): Boolean = !circuit.isOpen && !transport.isSuspended()
+    fun isServable(): Boolean = !circuit.isOpen && !transport.isSuspended() && !throttle.isThrottled()
 
     /**
      * Tells the chains what happened.
      *
      * A refusal goes to the anti-bot circuit — the address is refusing, and the address
      * is to be rested. A transport failure goes to the transport chain — the network
-     * failed, and the network is to be rested. Neither chain is told about the other
+     * failed, and the network is to be rested. A 429 goes to the throttle — WB asked for
+     * less, and the group rests a bounded time. Neither chain is told about another
      * one's failures: that is what "separate chains" means.
      *
-     * A 429 and a 5xx go to **neither**. WB throttling an address asks for less traffic,
-     * and WB's own server failing asks for nothing from the address at all: resting the
-     * network over either of them is the address paying for a cable that was not cut and
-     * a session that was not refused. They are counted by the group's books, and the
-     * retry back-off bounds how often they are repeated.
+     * A 5xx goes to none of them: its own server failed the request, and neither the
+     * address, the network nor the rate is to blame. The same holds for a status the books
+     * cannot classify: an answer arrived, so it is not the network's. Both are counted by
+     * the group's books, and the retry back-off bounds how often they are repeated.
      */
     fun onOutcome(outcome: DownloadOutcome) {
         when (outcome) {
@@ -92,8 +106,10 @@ internal class EgressChains(
 
             DownloadOutcome.Error -> transport.onFailure()
 
-            DownloadOutcome.Throttled, DownloadOutcome.ServerError -> {
-                // Counted by GroupHealth, and neither the network's nor the address's.
+            DownloadOutcome.Throttled -> throttle.onThrottled()
+
+            DownloadOutcome.ServerError, DownloadOutcome.ClientError -> {
+                // Counted by GroupHealth; an answer, so neither the network's nor the rate's.
             }
         }
     }
@@ -104,6 +120,7 @@ internal class EgressChains(
     fun reset() {
         circuit.reset()
         transport.reset()
+        throttle.reset()
     }
 
     /** The transport chain's state, as a word — for a message an operator reads. */

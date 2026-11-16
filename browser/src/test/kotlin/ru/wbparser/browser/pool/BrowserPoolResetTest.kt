@@ -2,6 +2,7 @@ package ru.wbparser.browser.pool
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import ru.wbparser.browser.session.SessionPolicy
 import ru.wbparser.browser.testing.FakeBrowserAutomation
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -160,6 +161,72 @@ class BrowserPoolResetTest :
             val failure = runCatching { pool.resetProfile("nope") { } }.exceptionOrNull()
 
             (failure is IllegalStateException) shouldBe true
+            pool.close()
+        }
+
+        // ─── the policy that a clean directory does not restore ────────────────
+        //
+        // A reset clears the data, but a spent request budget and an exceeded age belong
+        // to the *session*. Reporting RESET for such a profile would hand the caller a
+        // profile the policy still refuses to lend.
+
+        test("a reset reports a profile whose request budget is spent as still out of rotation") {
+            val automation = FakeBrowserAutomation(_isConnected = true, _healthCheckResult = true)
+            val pool =
+                BrowserPool(
+                    profiles = listOf(BrowserProfileConfig("p1")),
+                    browserAutomations = listOf(automation),
+                    sessionPolicy = SessionPolicy(requestsPerSession = 1),
+                )
+            val borrowed = pool.borrowPage()
+            borrowed.markRequest()
+            borrowed.close()
+            // The budget is spent, so the policy retires the session.
+            pool.tryBorrowPage("default", includeFlagged = true) shouldBe null
+
+            val result = pool.resetProfile("p1") { }
+
+            result shouldBe ProfileReset.RESET_OUT_OF_ROTATION
+            // The data was cleared, but the budget is not: the profile is still not lent.
+            pool.tryBorrowPage("default", includeFlagged = true) shouldBe null
+            pool.close()
+        }
+
+        test("a reset reports a profile whose age exceeded the limit as still out of rotation") {
+            val automation = FakeBrowserAutomation(_isConnected = true, _healthCheckResult = true)
+            val pool =
+                BrowserPool(
+                    profiles = listOf(BrowserProfileConfig("p1")),
+                    browserAutomations = listOf(automation),
+                    // A zero max age is "unlimited"; a tiny one expires immediately.
+                    sessionPolicy = SessionPolicy(maxAgeMs = 1),
+                )
+            Thread.sleep(5)
+
+            val result = pool.resetProfile("p1") { }
+
+            result shouldBe ProfileReset.RESET_OUT_OF_ROTATION
+            pool.tryBorrowPage("default", includeFlagged = true) shouldBe null
+            pool.close()
+        }
+
+        test("a reset of a refused profile does put it back in the rotation") {
+            val (pool, _) = poolOf()
+
+            val refused = pool.borrowPage()
+            refused.markAntibot(60_000)
+            refused.close()
+            // Resting after the refusal: not lent out.
+            pool.tryBorrowPage("default", includeFlagged = false) shouldBe null
+
+            val result = pool.resetProfile("p1") { }
+
+            // A refusal is exactly what a reset undoes: the session is fine, its data was
+            // the problem.
+            result shouldBe ProfileReset.RESET
+            val after = pool.tryBorrowPage("default", includeFlagged = false)
+            (after != null) shouldBe true
+            after?.close()
             pool.close()
         }
     })

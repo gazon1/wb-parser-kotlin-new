@@ -35,7 +35,10 @@ class EgressRouterChainsTest :
             return BrowserPool(profiles = profiles, browserAutomations = automations)
         }
 
-        fun routerOf(vararg groups: Pair<String, List<String>>): EgressRouter =
+        fun routerOf(
+            vararg groups: Pair<String, List<String>>,
+            now: () -> Long = System::currentTimeMillis,
+        ): EgressRouter =
             EgressRouter(
                 pool = poolOf(*groups),
                 pacers = EgressPacerRegistry(groups = groups.map { it.first }),
@@ -45,6 +48,7 @@ class EgressRouterChainsTest :
                         transportCooldownMs = 30_000L,
                         maxOpenWaitMs = 1_000L,
                     ),
+                now = now,
             )
 
         test("a transport failure does not open the anti-bot circuit") {
@@ -80,19 +84,64 @@ class EgressRouterChainsTest :
             router.groupState("ip-1").transportSuspended shouldBe true
         }
 
-        test("a throttle is counted apart and does not rest the network") {
+        test("a throttle is counted apart, rests the group, and does not rest the network") {
             val router = routerOf("ip-1" to listOf("p1"))
             val page = router.borrow()
 
-            repeat(3) { router.onOutcome(page, DownloadOutcome.Throttled) }
+            router.onOutcome(page, DownloadOutcome.Throttled)
 
             val state = router.groupState("ip-1")
-            state.counters.throttled shouldBe 3
+            state.counters.throttled shouldBe 1
             // WB asking for less traffic is not a broken cable: the transport chain is
-            // not told about it, and the address stays available.
+            // not told about it.
             state.counters.transportFailures shouldBe 0
             state.transportSuspended shouldBe false
-            state.available shouldBe true
+            // But the group is rested: asking it again right away collects the 429s it
+            // was told to avoid.
+            state.throttled shouldBe true
+            state.available shouldBe false
+        }
+
+        test("the throttle's rest expires on its own") {
+            var clock = 1_000_000L
+            val router = routerOf("ip-1" to listOf("p1"), now = { clock })
+            val page = router.borrow()
+
+            router.onOutcome(page, DownloadOutcome.Throttled)
+            router.groupState("ip-1").available shouldBe false
+
+            // Longer than the default cooldown: the group comes back by itself.
+            clock += EgressRouterConfig.DEFAULT_THROTTLE_COOLDOWN_MS + 1
+            router.groupState("ip-1").available shouldBe true
+            router.groupState("ip-1").throttled shouldBe false
+        }
+
+        test("a second throttle does not shorten the rest that is already running") {
+            var clock = 1_000_000L
+            val router = routerOf("ip-1" to listOf("p1"), now = { clock })
+            val page = router.borrow()
+
+            router.onOutcome(page, DownloadOutcome.Throttled)
+            // A later 429 extends the rest from *now*, so it can never shorten it.
+            clock += EgressRouterConfig.DEFAULT_THROTTLE_COOLDOWN_MS / 2
+            router.onOutcome(page, DownloadOutcome.Throttled)
+
+            // Half a cooldown past the second 429, the group still rests.
+            clock += EgressRouterConfig.DEFAULT_THROTTLE_COOLDOWN_MS / 2
+            router.groupState("ip-1").available shouldBe false
+        }
+
+        test("a throttled group is not borrowed while it rests") {
+            var clock = 1_000_000L
+            val router = routerOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2"), now = { clock })
+            val first = router.borrow()
+            router.onOutcome(first, DownloadOutcome.Throttled)
+            first.close()
+
+            // ip-1 rests after the 429, so the next request goes through ip-2.
+            val second = router.borrow()
+            second.egressGroup shouldBe "ip-2"
+            second.close()
         }
 
         test("a server error is counted apart and does not rest the network") {
@@ -208,6 +257,40 @@ class EgressRouterChainsTest :
             registry
                 .find("crawl.egress.refusals")
                 .tag("kind", "transport")
+                .counter()!!
+                .count() shouldBe 1.0
+        }
+
+        test("a throttle, a 5xx and an unclassified answer are not counted as refusals") {
+            val registry = SimpleMeterRegistry()
+            val router =
+                EgressRouter(
+                    pool = poolOf("ip-1" to listOf("p1")),
+                    pacers = EgressPacerRegistry(groups = listOf("ip-1")),
+                    meterRegistry = registry,
+                )
+            val page = router.borrow()
+
+            router.onOutcome(page, DownloadOutcome.Throttled)
+            router.onOutcome(page, DownloadOutcome.ServerError)
+            router.onOutcome(page, DownloadOutcome.ClientError)
+
+            // The refusal counter keeps meaning what its name says: only refusals.
+            registry.find("crawl.egress.refusals").counters() shouldBe emptyList()
+            // And the answers are visible in their own family.
+            registry
+                .find("crawl.egress.outcomes")
+                .tag("outcome", "throttled")
+                .counter()!!
+                .count() shouldBe 1.0
+            registry
+                .find("crawl.egress.outcomes")
+                .tag("outcome", "server_error")
+                .counter()!!
+                .count() shouldBe 1.0
+            registry
+                .find("crawl.egress.outcomes")
+                .tag("outcome", "client_error")
                 .counter()!!
                 .count() shouldBe 1.0
         }

@@ -110,7 +110,15 @@ class BrowserSession(
     private val requests = AtomicLong(0)
     private val refusals = AtomicLong(0)
     private val answered = AtomicLong(0)
-    private val createdAtMs = now()
+
+    /**
+     * When this session began.
+     *
+     * Not `val`: a deliberate reset ends the session and starts another one, so the age
+     * the policy measures is the age of the current session, not of the object.
+     */
+    @Volatile
+    private var createdAtMs = now()
 
     /**
      * Whether the session is out of the rotation by decision.

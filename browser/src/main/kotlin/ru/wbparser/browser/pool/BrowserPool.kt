@@ -458,8 +458,20 @@ class BrowserPool(
             return try {
                 clear(state.profileConfig)
                 state.session.onReset()
-                log.info("Profile {} was reset", profileId)
-                ProfileReset.RESET
+                // A clean directory does not restore a spent budget or an exceeded age.
+                // The reset did its part, but the policy still keeps the profile out, and
+                // saying RESET here would hand the caller a profile nobody will lend.
+                if (state.isRetired()) {
+                    log.info(
+                        "Profile {} was cleared, but its session policy still retires it " +
+                            "(budget spent or age exceeded)",
+                        profileId,
+                    )
+                    ProfileReset.RESET_OUT_OF_ROTATION
+                } else {
+                    log.info("Profile {} was reset", profileId)
+                    ProfileReset.RESET
+                }
             } catch (e: Exception) {
                 // The reset did not finish, so the profile's state is unknown. It stays out
                 // of the rotation until a reset that does finish puts it back.

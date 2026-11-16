@@ -96,6 +96,12 @@ fun buildParserPipeline(
                         // and its own counter.
                         if (error.isAntibot) {
                             Step.Retry(Retry.Antibot())
+                        } else if (error.isThrottled) {
+                            // A 429 is "less, please", not "no": the request is worth
+                            // repeating, but not on the schedule that caused it. It gets
+                            // its own signal and its own counter, so a crawl that is being
+                            // throttled is distinguishable from one hitting server errors.
+                            Step.Retry(Retry.RateLimited())
                         } else {
                             // Both connection failures and HTTP 5xx errors are retryable.
                             // HTTP 4xx errors from KtorDownloader are non-retryable but KtorDownloader

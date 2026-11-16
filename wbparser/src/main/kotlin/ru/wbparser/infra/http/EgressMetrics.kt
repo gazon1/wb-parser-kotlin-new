@@ -14,12 +14,18 @@ import java.util.concurrent.TimeUnit
  * creates a new series every time, which turns a graph into a graveyard. The address
  * lives in the ledger of the groups, and the health endpoint reads it from there.
  *
- * ## The two kinds of failure
+ * ## Refusals, and the failures that are not refusals
  *
- * `crawl.egress.refusals` carries a `kind` tag: `antibot` is WB's answer, `transport`
- * is the absence of one. They are one counter because they are one question — "how
- * often did this group fail?" — and they are told apart because they have different
- * causes and different cures.
+ * `crawl.egress.refusals` carries a `kind` tag, and its `kind` values mean what the metric
+ * says: `antibot` is WB refusing the session, and `transport` is the request never
+ * reaching WB. Those two are the failures an operator graphs as refusals, and their kinds
+ * keep their meaning.
+ *
+ * A 429, a 5xx and an unclassified status are **answers**, not refusals, and they do not
+ * belong in that counter: putting them there would make "the address refused us" mean
+ * four different things and force every existing dashboard to be re-read. They go to
+ * `crawl.egress.outcomes` with their own `outcome` tag, so the counter's name stays true
+ * and the new numbers are still there.
  */
 internal class EgressMetrics(
     private val registry: MeterRegistry?,
@@ -38,16 +44,36 @@ internal class EgressMetrics(
             DownloadOutcome.Antibot ->
                 meters.counter("crawl.egress.refusals", "egress_group", groupId, "kind", "antibot").increment()
 
-            DownloadOutcome.Throttled ->
-                meters.counter("crawl.egress.refusals", "egress_group", groupId, "kind", "throttled").increment()
-
-            DownloadOutcome.ServerError ->
-                meters.counter("crawl.egress.refusals", "egress_group", groupId, "kind", "server").increment()
-
             DownloadOutcome.Error ->
                 meters.counter("crawl.egress.refusals", "egress_group", groupId, "kind", "transport").increment()
+
+            // Answers that are not refusals: their own family, so the refusal counter keeps
+            // meaning what its name says.
+            DownloadOutcome.Throttled,
+            DownloadOutcome.ServerError,
+            DownloadOutcome.ClientError,
+            ->
+                meters
+                    .counter("crawl.egress.outcomes", "egress_group", groupId, "outcome", outcome.tag())
+                    .increment()
         }
     }
+
+    /**
+     * The name of an outcome in a metric tag.
+     *
+     * A closed, low-cardinality set: the tag is what a dashboard groups by, and a tag whose
+     * value is a free-form message is a metric nobody can graph.
+     */
+    private fun DownloadOutcome.tag(): String =
+        when (this) {
+            DownloadOutcome.Success -> "success"
+            DownloadOutcome.Antibot -> "antibot"
+            DownloadOutcome.Throttled -> "throttled"
+            DownloadOutcome.ServerError -> "server_error"
+            DownloadOutcome.ClientError -> "client_error"
+            DownloadOutcome.Error -> "transport"
+        }
 
     /** Records how long the pacer made the request wait. */
     fun recordPacerWait(

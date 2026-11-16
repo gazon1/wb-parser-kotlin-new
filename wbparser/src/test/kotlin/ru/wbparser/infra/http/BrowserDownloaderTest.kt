@@ -311,11 +311,16 @@ class BrowserDownloaderTest :
             val error = runBlocking { downloader.download(task()) }.swap().getOrNull()
 
             error?.isAntibot shouldBe false
+            // A throttle is its own signal: the retry loop backs off instead of retrying
+            // on the schedule that caused the 429.
+            error?.isThrottled shouldBe true
             error?.message shouldContain "429"
             val state = router.groupState(EgressGroup.DEFAULT_ID)
             state.counters.throttled shouldBe 1
             state.counters.transportFailures shouldBe 0
             state.transportSuspended shouldBe false
+            // And the group rests, so the next request waits rather than collecting 429s.
+            state.throttled shouldBe true
             pool.close()
         }
 
@@ -329,10 +334,31 @@ class BrowserDownloaderTest :
             val error = runBlocking { downloader.download(task()) }.swap().getOrNull()
 
             error?.isAntibot shouldBe false
+            error?.isThrottled shouldBe false
             val state = router.groupState(EgressGroup.DEFAULT_ID)
             state.counters.serverFailures shouldBe 1
             state.counters.transportFailures shouldBe 0
             state.transportSuspended shouldBe false
+            pool.close()
+        }
+
+        test("a 404 is an answer, so it is not a transport failure") {
+            // A wrong API URL answers 404. The answer arrived, so the network is fine, and
+            // charging it to the transport chain would slowly suspend a working address.
+            val page = FakeBrowserPage(evaluateAnswer = answer(status = 404, body = ""))
+            val pool = poolOf(page)
+            val router = EgressRouter(pool, EgressPacerRegistry(groups = listOf(EgressGroup.DEFAULT_ID)))
+            val downloader =
+                BrowserDownloader(router = router, timing = BrowserFetchTiming(pageNavTimeoutMs = 1_000, warmupMs = 0))
+
+            val error = runBlocking { downloader.download(task()) }.swap().getOrNull()
+
+            (error != null) shouldBe true
+            val state = router.groupState(EgressGroup.DEFAULT_ID)
+            state.counters.clientErrors shouldBe 1
+            state.counters.transportFailures shouldBe 0
+            state.transportSuspended shouldBe false
+            state.available shouldBe true
             pool.close()
         }
 
