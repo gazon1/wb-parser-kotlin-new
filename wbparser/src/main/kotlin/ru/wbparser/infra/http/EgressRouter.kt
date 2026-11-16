@@ -248,6 +248,8 @@ class EgressRouter(
                     requests = health?.requestCount ?: 0L,
                     refused = health?.refusedCount ?: 0L,
                     pages = health?.succeededCount ?: 0L,
+                    throttled = health?.throttledCount ?: 0L,
+                    serverFailures = health?.serverFailureCount ?: 0L,
                     transportFailures = health?.transportFailureCount ?: 0L,
                 ),
             refusalRate = health?.refusalRate(now()) ?: 0.0,

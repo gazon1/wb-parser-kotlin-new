@@ -135,38 +135,23 @@ internal class BrowserProfileState(
     val warm: Boolean get() = session.currentState == SessionState.Warm
 
     /**
-     * Epoch milliseconds until which WB is considered to have flagged this profile.
+     * Whether the profile is resting after an anti-bot answer.
      *
-     * WB's 498 belongs to the session that sent the request — its cookies, its
-     * fingerprint. Keeping that profile in the rotation means every following request
-     * of it is refused as well, and the crawl spends its retries on a session that was
-     * never going to answer. The profile rests for [antibotCooldownMs] and is used
-     * again afterwards.
+     * The rest belongs to the session, because the refusal belongs to the session: WB
+     * refused these cookies. Keeping a second deadline next to it here meant the pool
+     * and the health answer could describe the same moment differently.
      */
-    private val flaggedUntil = AtomicLong(0L)
-
-    /** True while the profile is still resting after an anti-bot response. */
-    fun isFlagged(now: Long = System.currentTimeMillis()): Boolean = flaggedUntil.get() > now
+    fun isFlagged(now: Long = System.currentTimeMillis()): Boolean = session.isResting(now)
 
     /**
-     * Puts the profile to rest for [cooldownMs].
+     * Puts the session to rest for [cooldownMs] after an anti-bot answer.
      *
-     * The profile is also marked cold again: WB's anti-bot answer belongs to the
-     * *session*, and the session of this page is now the flagged one. Keeping the page
-     * warm would mean the next request goes out with the same refused cookies — the
-     * profile would stay poisoned until the browser was restarted. Marking it cold
-     * makes the next borrower navigate to the catalog page again and pay the challenge
-     * wait, which is what re-establishes a usable session.
+     * The session does the work: it counts the refusal, clears its warmth and holds the
+     * deadline. The pool only says how long the rest is — that is the deployment's
+     * policy, not the session's.
      */
     fun flagFor(cooldownMs: Long) {
-        val until = System.currentTimeMillis() + cooldownMs.coerceAtLeast(0L)
-        // Never shorten a cooldown that is already running: two anti-bot responses in a
-        // row mean the profile is not going to recover sooner.
-        flaggedUntil.accumulateAndGet(until) { current, candidate -> maxOf(current, candidate) }
-        // The refusal is counted against the session — that is the whole point of
-        // counting it: the session is what WB refused, and the counter is what says
-        // how close it was to the threshold.
-        session.onRefused()
+        session.onRefused(cooldownMs)
     }
 
     /**

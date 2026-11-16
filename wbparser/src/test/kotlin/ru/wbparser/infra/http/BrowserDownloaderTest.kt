@@ -298,6 +298,44 @@ class BrowserDownloaderTest :
             pool.close()
         }
 
+        test("a 429 is a throttle in the group's books, not a transport failure") {
+            // WB asked for less traffic. That is not a cut cable and not a refusal of the
+            // session: the profile keeps its place, the network is not rested, and the
+            // books say which of the three happened.
+            val page = FakeBrowserPage(evaluateAnswer = answer(status = 429, body = ""))
+            val pool = poolOf(page)
+            val router = EgressRouter(pool, EgressPacerRegistry(groups = listOf(EgressGroup.DEFAULT_ID)))
+            val downloader =
+                BrowserDownloader(router = router, timing = BrowserFetchTiming(pageNavTimeoutMs = 1_000, warmupMs = 0))
+
+            val error = runBlocking { downloader.download(task()) }.swap().getOrNull()
+
+            error?.isAntibot shouldBe false
+            error?.message shouldContain "429"
+            val state = router.groupState(EgressGroup.DEFAULT_ID)
+            state.counters.throttled shouldBe 1
+            state.counters.transportFailures shouldBe 0
+            state.transportSuspended shouldBe false
+            pool.close()
+        }
+
+        test("a 5xx is a server failure in the group's books, not a transport failure") {
+            val page = FakeBrowserPage(evaluateAnswer = answer(status = 503, body = ""))
+            val pool = poolOf(page)
+            val router = EgressRouter(pool, EgressPacerRegistry(groups = listOf(EgressGroup.DEFAULT_ID)))
+            val downloader =
+                BrowserDownloader(router = router, timing = BrowserFetchTiming(pageNavTimeoutMs = 1_000, warmupMs = 0))
+
+            val error = runBlocking { downloader.download(task()) }.swap().getOrNull()
+
+            error?.isAntibot shouldBe false
+            val state = router.groupState(EgressGroup.DEFAULT_ID)
+            state.counters.serverFailures shouldBe 1
+            state.counters.transportFailures shouldBe 0
+            state.transportSuspended shouldBe false
+            pool.close()
+        }
+
         test("a browser that died is a failure, not an empty page") {
             val page = FakeBrowserPage(evaluateFailure = IllegalStateException("Target closed"))
             val pool = poolOf(page)

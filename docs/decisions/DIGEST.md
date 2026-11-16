@@ -612,6 +612,16 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** переходить молча на весь каталог шрифтов, когда таблица групп есть, а группы своей ОС в ней нет. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** проверять отсутствие браузера по внутреннему состоянию объекта: процессы спрашиваются у операционной системы, а тест на платформе без такой возможности пропускается. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** путать отсутствующий `fonts/groups.json` со сломанным: отсутствие — старый формат, нечитаемое содержимое — отказ. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Always** выводить состояние сессии из `retired`/`warm`/`restingUntilMs`; **Never** хранить его отдельным полем. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Always** выполнять reset под эксклюзивным permit'ом, после подтверждённой остановки браузера; **Never** трогать данные профиля, пока браузер может быть жив. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Always** держать срок отдыха в сессии, а его длину — в политике деплоя. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Always** различать в `DownloadOutcome` отказ (498/403/401), throttling (429), сбой сервера (5xx) и отсутствие ответа (`Error`). _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Always** считать `throttled` и `serverFailures` в книгах группы и отдавать их в health-ответе рядом с `transportFailures`. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Never** вводить второй rate limiter, пока существующий пул и pacer группы выражают нужные ограничения; числа — после #274. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Never** возвращать профиль в ротацию после неуспешного reset: сессия остаётся retired. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Never** отправлять 429 или 5xx в транспортную цепь: сеть за них не отвечает. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Never** считать восстановление или обычное закрытие поводом снять retire: снимает его только `onReset()` под эксклюзивным permit'ом. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Never** угадывать scope reset'а: очистку задаёт вызывающий. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
 
 ## Per-tag
 
@@ -1340,6 +1350,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-15-a-browser-session-is-started-not-joined` — architecture  browser  boundaries  egress  antibot
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — architecture  egress  operations  antibot  browser
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — architecture  browser  antibot  boundaries  operations
+- `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — browser  antibot  egress  architecture
 
 ## Active entries
 
@@ -1477,3 +1488,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-15-a-browser-session-is-started-not-joined` — Сессию браузера запускают, а не присоединяются к ней; профиль — это каталог и endpoint
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — Camoufox работает локально, адрес приходит прокси, а отпечаток — данные профиля
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — Локальный браузер живёт в persistent-контексте профиля, а каталог занят на время его жизни
+- `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — Состояние профиля выводится, а отказ, throttling и сбой сервера считаются врозь

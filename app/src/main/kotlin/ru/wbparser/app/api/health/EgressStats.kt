@@ -92,6 +92,11 @@ fun egressStats(
                 "requests" to state.requests,
                 "pages" to state.pages,
                 "refused" to state.refused,
+                // WB's answers that are neither a page nor a refusal: it asked for less
+                // traffic, or its own server failed. Neither is the network's fault, and
+                // both are reported apart from the transport failures for that reason.
+                "throttled" to state.counters.throttled,
+                "server_failures" to state.counters.serverFailures,
                 // The transport chain: the requests that never reached WB. They are
                 // counted apart from the refusals — the network is not the address.
                 "transport_failures" to state.counters.transportFailures,

@@ -112,13 +112,20 @@ data class EgressGroupState(
  * is a new identity").
  *
  * @param requests how many requests the group was asked for.
- * @param refused how many of them WB refused.
+ * @param refused how many of them WB refused with an anti-bot status.
  * @param pages how many of them were answered normally.
+ * @param throttled how many of them WB answered with 429 — it asked for less, it did not
+ *   refuse.
+ * @param serverFailures how many of them WB answered with 5xx — its own server failed the
+ *   request, and neither the address nor the network is to blame.
+ * @param transportFailures how many of them never reached WB.
  */
 data class EgressGroupCounters(
     val requests: Long = 0L,
     val refused: Long = 0L,
     val pages: Long = 0L,
+    val throttled: Long = 0L,
+    val serverFailures: Long = 0L,
     /**
      * How many of them never reached WB.
      *

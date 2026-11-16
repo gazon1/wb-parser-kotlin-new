@@ -39,8 +39,28 @@ interface BrowserLifecycle {
      * run left behind: this process never opened them, so nothing else will ever
      * close them.
      *
-     * The permit is taken for the whole operation, so a profile that is in use
-     * right now is left alone — the crawl's own work is never a leftover.
+     * The permit is taken for the whole operation, so a profile that is in use right
+     * now is left alone — the crawl's own work is never a leftover.
      */
     fun reconcileProfile(profileId: String): ProfileReconciliation
+}
+
+/**
+ * What a deliberate reset of one profile achieved.
+ *
+ * A reset is the only operation that puts a retired profile back into the rotation, so
+ * its outcome has to say whether it did — and, when it did not, why. The two failures
+ * are different facts: a browser that would not stop, and a clear that threw. In both
+ * cases the profile stays out of the rotation, because a reset that did not finish left
+ * it in a state nobody confirmed.
+ */
+enum class ProfileReset {
+    /** The browser was stopped and the caller's [clear] finished: the profile is usable. */
+    RESET,
+
+    /** The browser could not be confirmed stopped, so the data was not touched. */
+    BROWSER_RUNNING,
+
+    /** The browser was stopped, but the clear threw: the profile stays unusable. */
+    CLEAR_FAILED,
 }

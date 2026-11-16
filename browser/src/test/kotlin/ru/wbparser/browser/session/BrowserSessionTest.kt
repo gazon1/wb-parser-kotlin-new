@@ -44,7 +44,7 @@ class BrowserSessionTest :
         test("a refusal is counted and flags the session") {
             val session = session()
 
-            session.onRefused()
+            session.onRefused(60_000L)
 
             session.refusalCount shouldBe 1
             session.currentState shouldBe SessionState.Flagged
@@ -57,7 +57,7 @@ class BrowserSessionTest :
             val session = session()
             session.onWarm()
             repeat(13) { session.onRequest() }
-            session.onRefused()
+            session.onRefused(60_000L)
 
             session.onCold()
             session.onWarm()
@@ -71,16 +71,34 @@ class BrowserSessionTest :
             val session = session()
             session.onWarm()
 
-            session.onRefused()
+            session.onRefused(60_000L)
 
             session.currentState shouldBe SessionState.Flagged
+            session.isResting() shouldBe true
+        }
+
+        test("a session stops being flagged when its rest is over") {
+            var now = 1_000L
+            val session = session(now = { now })
+            session.onWarm()
+
+            session.onRefused(60_000L)
+
+            // While the rest runs, the session is flagged and not asked.
+            session.currentState shouldBe SessionState.Flagged
+            // When the rest is over, the session is available again — it comes back cold,
+            // so the next request re-establishes it — but it is not retired.
+            now = 1_000L + 120_000L
+            session.currentState shouldBe SessionState.Cold
+            session.isResting() shouldBe false
+            session.isRetired() shouldBe false
         }
 
         test("a policy without limits never retires a session") {
             val session = session(SessionPolicy())
 
             repeat(100) { session.onRequest() }
-            session.onRefused()
+            session.onRefused(60_000L)
 
             session.shouldRetire() shouldBe false
         }
@@ -109,7 +127,7 @@ class BrowserSessionTest :
         test("a session that is refused for good leaves the rotation") {
             val session = session(SessionPolicy(retireOnRefusal = true))
 
-            session.onRefused()
+            session.onRefused(60_000L)
 
             session.currentState shouldBe SessionState.Retired
             session.shouldRetire() shouldBe true
@@ -117,7 +135,7 @@ class BrowserSessionTest :
 
         test("a retired session does not come back warm") {
             val session = session(SessionPolicy(retireOnRefusal = true))
-            session.onRefused()
+            session.onRefused(60_000L)
 
             session.onWarm()
 
@@ -138,7 +156,7 @@ class BrowserSessionTest :
             session.onWarm()
             repeat(2) { session.onRequest() }
             session.onAnswered()
-            session.onRefused()
+            session.onRefused(60_000L)
 
             val snapshot = session.snapshot()
 

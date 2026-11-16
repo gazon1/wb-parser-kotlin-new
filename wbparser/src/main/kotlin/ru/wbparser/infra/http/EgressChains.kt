@@ -74,6 +74,12 @@ internal class EgressChains(
      * is to be rested. A transport failure goes to the transport chain — the network
      * failed, and the network is to be rested. Neither chain is told about the other
      * one's failures: that is what "separate chains" means.
+     *
+     * A 429 and a 5xx go to **neither**. WB throttling an address asks for less traffic,
+     * and WB's own server failing asks for nothing from the address at all: resting the
+     * network over either of them is the address paying for a cable that was not cut and
+     * a session that was not refused. They are counted by the group's books, and the
+     * retry back-off bounds how often they are repeated.
      */
     fun onOutcome(outcome: DownloadOutcome) {
         when (outcome) {
@@ -85,6 +91,10 @@ internal class EgressChains(
             DownloadOutcome.Antibot -> circuit.onFailure()
 
             DownloadOutcome.Error -> transport.onFailure()
+
+            DownloadOutcome.Throttled, DownloadOutcome.ServerError -> {
+                // Counted by GroupHealth, and neither the network's nor the address's.
+            }
         }
     }
 

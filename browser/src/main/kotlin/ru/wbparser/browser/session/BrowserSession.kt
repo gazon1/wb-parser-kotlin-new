@@ -92,6 +92,12 @@ data class SessionPolicy(
  * [Warm] — the session answers.
  * [Flagged] — WB refused it; it rests, and the next borrower gets another profile.
  * [Retired] — it is out of the rotation and will not be handed out any more.
+ *
+ * The state is **derived**, not stored. Three facts are kept — the rotation, the warmth
+ * and the rest — and the state is what they add up to. A stored state was a fourth fact
+ * that could disagree with them: the health answer said "cold" (the page reconnected
+ * and cleared the state) while the pool was still resting the profile, and the two
+ * described the same moment.
  */
 class BrowserSession(
     /** The profile this session belongs to. */
@@ -106,8 +112,29 @@ class BrowserSession(
     private val answered = AtomicLong(0)
     private val createdAtMs = now()
 
+    /**
+     * Whether the session is out of the rotation by decision.
+     *
+     * Separate from [shouldRetire], which also answers yes for a spent budget or an
+     * expired age: this is the explicit "this session is over", and it survives both.
+     */
     @Volatile
-    private var state: SessionState = SessionState.Cold
+    private var retired = false
+
+    /** Whether a WB page has established the session since it was last closed. */
+    @Volatile
+    private var warm = false
+
+    /**
+     * Epoch milliseconds until which the session is not to be used.
+     *
+     * WB refused this session, so asking it again sends the same refused cookies. The
+     * deadline is the session's fact — the refusal is a statement about the session —
+     * while the *length* of the rest is the deployment's policy, handed in by
+     * [onRefused]. In the pool, this was a second flag next to the session's own state,
+     * and the two could describe the same moment differently.
+     */
+    private val restingUntilMs = AtomicLong(0L)
 
     /** How many requests this session has sent, ever. */
     val requestCount: Long get() = requests.get()
@@ -121,8 +148,15 @@ class BrowserSession(
     /** How long the session has existed. */
     val ageMs: Long get() = now() - createdAtMs
 
-    /** The session's state. */
-    val currentState: SessionState get() = state
+    /** The session's state, derived from the rotation, the warmth and the rest. */
+    val currentState: SessionState
+        get() =
+            when {
+                shouldRetire() -> SessionState.Retired
+                isResting() -> SessionState.Flagged
+                warm -> SessionState.Warm
+                else -> SessionState.Cold
+            }
 
     /** Records a request that went out. */
     fun onRequest() {
@@ -135,33 +169,65 @@ class BrowserSession(
     }
 
     /**
-     * Records a refusal from WB.
+     * Records a refusal from WB, and rests the session for [cooldownMs].
      *
-     * The session is flagged, and — when the policy says so — retired: a refusal that
-     * is permanent ends the session, and a refusal that is not ends the request.
+     * The refusal is counted against the session — that is the whole point of counting
+     * it: the session is what WB refused, and the counter says how many requests it sent
+     * before it was refused.
+     *
+     * The rest is the session's own, and it is cold again: the cookies that were
+     * refused are the ones the page carries, and a session that comes back warm would
+     * skip the navigation that re-establishes them. The next request therefore pays the
+     * challenge wait, which is what makes it a new attempt rather than a repeat.
      */
-    fun onRefused() {
+    fun onRefused(cooldownMs: Long) {
         refusals.incrementAndGet()
-        state = if (policy.retireOnRefusal) SessionState.Retired else SessionState.Flagged
+        if (policy.retireOnRefusal) {
+            retired = true
+            return
+        }
+        warm = false
+        // Never shorten a rest that is already running: two refusals in a row mean the
+        // session is not going to recover sooner.
+        val until = now() + cooldownMs.coerceAtLeast(0L)
+        restingUntilMs.accumulateAndGet(until) { current, candidate -> maxOf(current, candidate) }
     }
+
+    /** Whether the session is resting after a refusal. */
+    fun isResting(at: Long = now()): Boolean = restingUntilMs.get() > at
 
     /** The session answered a WB page: it is established. */
     fun onWarm() {
-        if (state != SessionState.Retired) state = SessionState.Warm
+        if (!retired) warm = true
     }
 
     /** The session is gone: the page was closed, or the browser was reconnected. */
     fun onCold() {
-        if (state != SessionState.Retired) state = SessionState.Cold
+        warm = false
     }
 
     /** Takes the session out of the rotation. */
     fun retire() {
-        state = SessionState.Retired
+        retired = true
+    }
+
+    /**
+     * Starts the profile over after a deliberate reset.
+     *
+     * This is the one operation that un-retires a session, and it is not something a
+     * cooldown or a reconnect may do: a reset is a decision somebody made, under the
+     * pool's exclusive permit, after the browser was confirmed gone. The rest and the
+     * retirement go; the counters stay, because a session's request count is a fact
+     * about the profile and nothing in the reset has changed it.
+     */
+    fun onReset() {
+        retired = false
+        warm = false
+        restingUntilMs.set(0L)
     }
 
     /** Whether the session is out of the rotation. */
-    fun isRetired(): Boolean = state == SessionState.Retired
+    fun isRetired(): Boolean = retired
 
     /** Whether the session has sent as many requests as the policy allows. */
     fun isBudgetSpent(): Boolean = policy.requestsPerSession > 0 && requestCount >= policy.requestsPerSession.toLong()
@@ -183,7 +249,7 @@ class BrowserSession(
         SessionSnapshot(
             profileId = profileId,
             egressGroup = egressGroup,
-            state = state,
+            state = currentState,
             requests = requestCount,
             refusals = refusalCount,
             answered = answeredCount,

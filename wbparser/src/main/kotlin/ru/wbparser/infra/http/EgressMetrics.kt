@@ -38,6 +38,12 @@ internal class EgressMetrics(
             DownloadOutcome.Antibot ->
                 meters.counter("crawl.egress.refusals", "egress_group", groupId, "kind", "antibot").increment()
 
+            DownloadOutcome.Throttled ->
+                meters.counter("crawl.egress.refusals", "egress_group", groupId, "kind", "throttled").increment()
+
+            DownloadOutcome.ServerError ->
+                meters.counter("crawl.egress.refusals", "egress_group", groupId, "kind", "server").increment()
+
             DownloadOutcome.Error ->
                 meters.counter("crawl.egress.refusals", "egress_group", groupId, "kind", "transport").increment()
         }

@@ -80,6 +80,44 @@ class EgressRouterChainsTest :
             router.groupState("ip-1").transportSuspended shouldBe true
         }
 
+        test("a throttle is counted apart and does not rest the network") {
+            val router = routerOf("ip-1" to listOf("p1"))
+            val page = router.borrow()
+
+            repeat(3) { router.onOutcome(page, DownloadOutcome.Throttled) }
+
+            val state = router.groupState("ip-1")
+            state.counters.throttled shouldBe 3
+            // WB asking for less traffic is not a broken cable: the transport chain is
+            // not told about it, and the address stays available.
+            state.counters.transportFailures shouldBe 0
+            state.transportSuspended shouldBe false
+            state.available shouldBe true
+        }
+
+        test("a server error is counted apart and does not rest the network") {
+            val router = routerOf("ip-1" to listOf("p1"))
+            val page = router.borrow()
+
+            repeat(3) { router.onOutcome(page, DownloadOutcome.ServerError) }
+
+            val state = router.groupState("ip-1")
+            state.counters.serverFailures shouldBe 3
+            state.counters.transportFailures shouldBe 0
+            state.transportSuspended shouldBe false
+        }
+
+        test("a throttle does not open the anti-bot circuit") {
+            val router = routerOf("ip-1" to listOf("p1"))
+            val page = router.borrow()
+
+            repeat(5) { router.onOutcome(page, DownloadOutcome.Throttled) }
+
+            // Throttling is not a refusal of the session: the circuit that rests a
+            // refused address stays closed.
+            router.groupState("ip-1").circuitState shouldBe EgressCircuitState.Closed
+        }
+
         test("a group resting after a network failure is not asked for requests") {
             val router = routerOf("ip-1" to listOf("p1"), "ip-2" to listOf("p2"))
             val first = router.borrow()
