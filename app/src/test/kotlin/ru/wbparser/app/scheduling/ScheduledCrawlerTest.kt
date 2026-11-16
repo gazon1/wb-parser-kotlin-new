@@ -3,7 +3,10 @@ package ru.wbparser.app.scheduling
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import ru.wbparser.infra.runner.RunResult
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -75,5 +78,55 @@ class ScheduledCrawlerTest :
             shouldThrow<CancellationException> {
                 runBlocking { ScheduledCrawler(crawler).run() }
             }
+        }
+
+        // Spring does not await a `suspend fun`, so ticks overlap. Each overlapping attempt
+        // takes a pooled connection and holds it while polling the advisory lock, which is
+        // how a thirty-second tick next to a ten-minute lock wait exhausted a pool of ten.
+        test("a tick that arrives while a crawl is running does not start a second one") {
+            val gate = CompletableDeferred<Unit>()
+            val crawler = BlockingCrawlRun(gate)
+            val scheduler = ScheduledCrawler(crawler)
+
+            runBlocking {
+                val first = launch { scheduler.run() }
+                crawler.started.await()
+
+                // The timeout is the assertion. Without the guard the second tick would
+                // enter crawler.run() and wait on the gate for ever — a test suite that
+                // hangs is a test suite that reports nothing, so a regression has to
+                // fail within seconds instead.
+                val second = withTimeoutOrNull(2_000) { scheduler.run() }
+
+                second shouldBe RunResult.AlreadyRunning("a crawl is already running in this process")
+                // The point of the guard: the second tick asked the crawler nothing at all.
+                crawler.calls shouldBe 1
+
+                gate.complete(Unit)
+                first.join()
+            }
+        }
+
+        test("the guard is released after a crawl, so the next tick works") {
+            val crawler = FakeCrawlRun(RunResult.Success(pagesCrawled = 1, itemsSaved = 1))
+            val scheduler = ScheduledCrawler(crawler)
+
+            runBlocking { scheduler.run() }
+            runBlocking { scheduler.run() }
+
+            crawler.calls shouldBe 2
+        }
+
+        test("the guard is released when a crawl is cancelled") {
+            val crawler = FakeCrawlRun(failure = CancellationException("stopped"))
+            val scheduler = ScheduledCrawler(crawler)
+
+            shouldThrow<CancellationException> { runBlocking { scheduler.run() } }
+
+            // A guard that survived cancellation would stop every future tick.
+            val working = FakeCrawlRun(RunResult.NothingDue)
+            val afterCancellation = ScheduledCrawler(working)
+            runBlocking { afterCancellation.run() }
+            working.calls shouldBe 1
         }
     })

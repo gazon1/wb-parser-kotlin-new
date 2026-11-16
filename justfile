@@ -25,6 +25,7 @@ mod tests    '.just/tests'
 mod scripts  '.just/scripts'
 mod deploy   '.just/deploy'
 mod catalog  '.just/catalog'
+mod parser   '.just/parser'
 mod deps     '.just/deps'
 mod lint     '.just/lint'
 
