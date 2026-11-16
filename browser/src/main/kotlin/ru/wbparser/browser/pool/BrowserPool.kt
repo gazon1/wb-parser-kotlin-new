@@ -387,6 +387,104 @@ class BrowserPool(
     override fun manages(profileId: String): Boolean = profiles.any { it.profileId == profileId }
 
     /**
+     * Resets one of the pool's profiles: ends the browser, then lets [clear] decide what
+     * of the persistent data goes.
+     *
+     * ## Why this is a separate operation
+     *
+     * A reset is not a side effect of a cooldown or of an ordinary shutdown. A cooldown
+     * only rests the session; a shutdown only ends the browser. A reset ends the browser
+     * **and** changes the persistent data, and it is the only operation that may put a
+     * retired profile back into the rotation. So it is its own call, made deliberately,
+     * and never reached from the borrow or the close path.
+     *
+     * ## The three safety rules
+     *
+     * - **Exclusive ownership.** The profile's permit is taken for the whole reset and
+     *   nothing else may borrow the profile meanwhile. A borrower that holds it now is
+     *   waited for, not interrupted; a second concurrent reset waits for the first.
+     * - **The browser is gone first.** The persistent directory is only touched once the
+     *   browser that owns it is confirmed gone. A browser still running holds the
+     *   directory's lock and, worse, would keep writing the very files being cleared.
+     * - **What to clear is decided by the caller.** The issue's scope says *do not clear
+     *   anything whose necessity is not proven*, and #267 established only that the
+     *   fingerprint is a stored file — not which files a reused profile needs. So this
+     *   method does not guess: it ends the browser and hands the confirmation to
+     *   [clear], which is the one place that decides what goes.
+     *
+     * ## What a reset that fails does
+     *
+     * A profile whose browser could not be stopped, or whose [clear] threw, stays out of
+     * the rotation. It is not handed back as healthy: a reset that did not finish left
+     * the profile in a state nobody confirmed, and borrowing it would let one request
+     * undo the decision. The session is retired so the next borrow skips it, and the
+     * caller is told.
+     *
+     * ## Why nothing in this process calls it yet
+     *
+     * No operation reaches a reset by itself, and that is the decision, not an omission:
+     * #267 established that the fingerprint is a stored config *outside* the profile
+     * directory, but not which of the directory's files a reused profile still needs.
+     * Until that scope is decided, a caller would have to guess it — so the envelope
+     * (exclusivity, browser-gone-first, failure-keeps-it-unusable) is here and tested,
+     * and the decision of *what to clear* is the [clear] argument's, supplied by whoever
+     * makes that decision.
+     *
+     * @param profileId the profile to reset
+     * @param clear what to remove from the persistent data, once the browser is gone. It
+     *   runs under the profile's exclusive permit, with the browser confirmed stopped.
+     * @return what the reset achieved
+     */
+    fun resetProfile(
+        profileId: String,
+        clear: (BrowserProfileConfig) -> Unit,
+    ): ProfileReset {
+        val state =
+            checkNotNull(profileStates.firstOrNull { it.profileConfig.profileId == profileId }) {
+                "the pool does not manage the profile $profileId"
+            }
+        // The permit is the exclusivity: a borrower that has it finishes first, another
+        // reset waits, and no borrow can start until this one is done.
+        state.lock.acquire()
+        try {
+            if (!state.stop()) {
+                // The browser may still be running: it holds the directory, and touching
+                // the data under it would be fighting the browser for the session. The
+                // profile does not go back into the rotation as if it were fine.
+                state.session.retire()
+                log.warn("Profile {} could not be reset: its browser was not stopped", profileId)
+                return ProfileReset.BROWSER_RUNNING
+            }
+            return try {
+                clear(state.profileConfig)
+                state.session.onReset()
+                // A clean directory does not restore a spent budget or an exceeded age.
+                // The reset did its part, but the policy still keeps the profile out, and
+                // saying RESET here would hand the caller a profile nobody will lend.
+                if (state.isRetired()) {
+                    log.info(
+                        "Profile {} was cleared, but its session policy still retires it " +
+                            "(budget spent or age exceeded)",
+                        profileId,
+                    )
+                    ProfileReset.RESET_OUT_OF_ROTATION
+                } else {
+                    log.info("Profile {} was reset", profileId)
+                    ProfileReset.RESET
+                }
+            } catch (e: Exception) {
+                // The reset did not finish, so the profile's state is unknown. It stays out
+                // of the rotation until a reset that does finish puts it back.
+                state.session.retire()
+                log.warn("Profile {} could not be reset: {}", profileId, e.message)
+                ProfileReset.CLEAR_FAILED
+            }
+        } finally {
+            state.lock.release()
+        }
+    }
+
+    /**
      * Stops the browser of one of this pool's profiles, if it is a leftover.
      *
      * A leftover is a browser that is running in AdsPower and that this process did

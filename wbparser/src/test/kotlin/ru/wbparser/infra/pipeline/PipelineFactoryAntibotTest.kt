@@ -82,6 +82,19 @@ class PipelineFactoryAntibotTest :
                 sides.hasNoAntibot() shouldBe true
             }
         }
+
+        test("a throttle is retried as a rate limit, not as a server error") {
+            runTest {
+                // A 429 is WB asking for less, not its own server failing. It gets its own
+                // signal so the back-off and the counter are distinguishable from a 5xx.
+                val pipeline = pipelineFailingWith(NetworkError("HTTP 429", isThrottled = true))
+
+                val sides = pipeline.run(listOf(task())).sidesOf()
+
+                sides.metricNamed("retries").tags["reason"] shouldBe "rate_limited"
+                sides.hasNoAntibot() shouldBe true
+            }
+        }
     })
 
 private fun List<Side>.hasNoAntibot(): Boolean = filterIsInstance<Side.Metric>().none { it.name == "antibot.responses" }

@@ -45,6 +45,14 @@ data class EgressGroupState(
      */
     val transportSuspended: Boolean = false,
     /**
+     * Whether the group's throttle is resting it after a 429.
+     *
+     * WB answered, and what it said was "less". The group is not asked while it rests,
+     * and it comes back on its own when the bounded rest is over — the anti-bot circuit
+     * does not open because of it.
+     */
+    val throttled: Boolean = false,
+    /**
      * When the group last answered normally, in epoch milliseconds; zero when it never has.
      *
      * Without it, "the address changed" and "the address went quiet" look the same.
@@ -66,10 +74,11 @@ data class EgressGroupState(
      * A group whose circuit is open is not asked: the address it stands for is refusing,
      * and the addresses that still answer must not be silenced with it. A group whose
      * transport chain rests it is not asked either — for the other reason, and it comes
-     * back on its own.
+     * back on its own. A group whose throttle rests it was told by WB to send less, and
+     * asking it anyway only collects the 429s it was told to avoid.
      */
     val available: Boolean
-        get() = circuitState != EgressCircuitState.Open && !transportSuspended
+        get() = circuitState != EgressCircuitState.Open && !transportSuspended && !throttled
 
     /**
      * Whether the group is answering normally.
@@ -112,13 +121,23 @@ data class EgressGroupState(
  * is a new identity").
  *
  * @param requests how many requests the group was asked for.
- * @param refused how many of them WB refused.
+ * @param refused how many of them WB refused with an anti-bot status.
  * @param pages how many of them were answered normally.
+ * @param throttled how many of them WB answered with 429 — it asked for less, it did not
+ *   refuse.
+ * @param serverFailures how many of them WB answered with 5xx — its own server failed the
+ *   request, and neither the address nor the network is to blame.
+ * @param clientErrors how many of them WB answered with a status nothing else classifies —
+ *   a 404 or a 400. An answer arrived, so it is not a transport failure either.
+ * @param transportFailures how many of them never reached WB.
  */
 data class EgressGroupCounters(
     val requests: Long = 0L,
     val refused: Long = 0L,
     val pages: Long = 0L,
+    val throttled: Long = 0L,
+    val serverFailures: Long = 0L,
+    val clientErrors: Long = 0L,
     /**
      * How many of them never reached WB.
      *

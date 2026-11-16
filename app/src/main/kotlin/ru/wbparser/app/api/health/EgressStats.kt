@@ -92,10 +92,19 @@ fun egressStats(
                 "requests" to state.requests,
                 "pages" to state.pages,
                 "refused" to state.refused,
+                // WB's answers that are neither a page nor a refusal: it asked for less
+                // traffic, its own server failed, or it answered with a status nothing else
+                // classifies. None of them is the network's fault, and all are reported apart
+                // from the transport failures for that reason.
+                "throttled" to state.counters.throttled,
+                "server_failures" to state.counters.serverFailures,
+                "client_errors" to state.counters.clientErrors,
                 // The transport chain: the requests that never reached WB. They are
                 // counted apart from the refusals — the network is not the address.
                 "transport_failures" to state.counters.transportFailures,
                 "transport_suspended" to state.transportSuspended,
+                // WB asked this address for less; the group rests a bounded time.
+                "throttled_now" to state.throttled,
                 // When the address last answered normally. Without it, "the address
                 // changed" and "the address went quiet" look the same.
                 "last_healthy_at" to (record.lastHealthyAt?.toString() ?: "never"),

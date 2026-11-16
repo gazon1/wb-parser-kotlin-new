@@ -46,6 +46,7 @@ data class CircuitWindow(
  * @param transportFailureThreshold how many transport failures in the window make the
  *   group rest.
  * @param transportCooldownMs how long the group rests after the last transport failure.
+ * @param throttleCooldownMs how long the group rests after a 429 — WB asking for less.
  */
 data class EgressRouterConfig(
     val circuitConfig: CircuitBreakerConfig = defaultCircuitConfig(),
@@ -56,6 +57,7 @@ data class EgressRouterConfig(
     val transportWindowMs: Long = DEFAULT_TRANSPORT_WINDOW_MS,
     val transportFailureThreshold: Int = DEFAULT_TRANSPORT_FAILURE_THRESHOLD,
     val transportCooldownMs: Long = DEFAULT_TRANSPORT_COOLDOWN_MS,
+    val throttleCooldownMs: Long = DEFAULT_THROTTLE_COOLDOWN_MS,
 ) {
     companion object {
         /**
@@ -113,6 +115,16 @@ data class EgressRouterConfig(
 
         /** How long the group rests after the last transport failure, in milliseconds. */
         const val DEFAULT_TRANSPORT_COOLDOWN_MS: Long = 30_000L
+
+        /**
+         * How long the group rests after a 429, in milliseconds.
+         *
+         * Bounded and short: a 429 is WB asking for less, not refusing. Fifteen seconds is
+         * long enough for the rate limiter's window to clear and short enough that a
+         * single burst does not stall a whole group. It is feedback, not a new rate — the
+         * pacer still owns the planned rate.
+         */
+        const val DEFAULT_THROTTLE_COOLDOWN_MS: Long = 15_000L
 
         /** How long the anti-bot circuit's window looks back, in seconds. */
         const val DEFAULT_CIRCUIT_WINDOW_SECONDS: Int = 600

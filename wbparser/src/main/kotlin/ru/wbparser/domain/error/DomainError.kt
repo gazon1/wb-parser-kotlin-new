@@ -15,6 +15,15 @@ data class NetworkError(
     override val cause: Throwable? = null,
     override val url: String? = null,
     val isAntibot: Boolean = false,
+    /**
+     * Whether WB asked for less traffic (HTTP 429).
+     *
+     * A throttle is neither a refusal nor a server failure: the session is fine, and the
+     * request is worth repeating — but not at the same rate. It is its own signal so the
+     * retry loop gives it its own reason and back-off, and so nothing mistakes it for a
+     * refusal of the session.
+     */
+    val isThrottled: Boolean = false,
 ) : DomainError {
     override fun isRetryable(): Boolean = true
 }

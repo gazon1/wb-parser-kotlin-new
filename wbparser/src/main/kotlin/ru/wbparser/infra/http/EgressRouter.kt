@@ -100,6 +100,7 @@ class EgressRouter(
                         transportWindowMs = config.transportWindowMs,
                         transportFailureThreshold = config.transportFailureThreshold,
                         transportCooldownMs = config.transportCooldownMs,
+                        throttleCooldownMs = config.throttleCooldownMs,
                     ),
                 now = now,
             )
@@ -248,13 +249,17 @@ class EgressRouter(
                     requests = health?.requestCount ?: 0L,
                     refused = health?.refusedCount ?: 0L,
                     pages = health?.succeededCount ?: 0L,
+                    throttled = health?.throttledCount ?: 0L,
+                    serverFailures = health?.serverFailureCount ?: 0L,
+                    clientErrors = health?.clientErrorCount ?: 0L,
                     transportFailures = health?.transportFailureCount ?: 0L,
                 ),
             refusalRate = health?.refusalRate(now()) ?: 0.0,
             refusalThreshold = config.healthRefusalThreshold,
             circuitState = circuitStateOf(groupId),
-            millisUntilSlot = if (chains != null) pacers.millisUntilSlot(groupId) else 0L,
+            millisUntilSlot = if (chains != null) maxOf(pacers.millisUntilSlot(groupId), chains.millisUntilAvailable()) else 0L,
             transportSuspended = chains?.transportSuspended ?: false,
+            throttled = chains?.throttled ?: false,
             lastHealthyAtMs = health?.lastHealthyAtMs() ?: 0L,
         )
     }

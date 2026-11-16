@@ -121,10 +121,11 @@ open class BrowserDownloader(
                             }
 
                             is FetchResult.HttpError -> {
-                                val isAntibot = fetchResult.statusCode in listOf(498, 403, 401)
+                                val status = fetchResult.statusCode
+                                val isAntibot = status in listOf(498, 403, 401)
                                 log.warn(
                                     "BrowserDownloader HTTP {} for {} (antibot={})",
-                                    fetchResult.statusCode,
+                                    status,
                                     apiUrl,
                                     isAntibot,
                                 )
@@ -135,17 +136,16 @@ open class BrowserDownloader(
                                     // next borrower gets another one.
                                     borrowedPage.markAntibot(antibotCooldownMs)
                                 }
-                                router.onOutcome(
-                                    borrowedPage,
-                                    if (isAntibot) DownloadOutcome.Antibot else DownloadOutcome.Error,
-                                    task.targetId,
-                                )
+                                router.onOutcome(borrowedPage, outcomeOf(status), task.targetId)
                                 Either.Left(
                                     NetworkError(
-                                        message = "HTTP ${fetchResult.statusCode}",
+                                        message = "HTTP $status",
                                         cause = null,
                                         url = task.url.toString(),
                                         isAntibot = isAntibot,
+                                        // A 429 is WB asking for less: the retry loop gives it
+                                        // its own reason and back-off, and the group rests.
+                                        isThrottled = status == 429,
                                     ),
                                 )
                             }
@@ -337,3 +337,21 @@ private sealed interface FetchResult {
         val message: String,
     ) : FetchResult
 }
+
+/**
+ * How WB's status code reads in the group's books.
+ *
+ * The failures WB answers with are told apart because they have different causes and
+ * different cures: an anti-bot status is a refusal, a 429 is "less, please", a 5xx is
+ * WB's own server. Any other status is still an answer — [DownloadOutcome.ClientError] —
+ * and it is deliberately not [DownloadOutcome.Error]: only the absence of an answer is a
+ * transport failure, and charging a 404 to the network would slowly suspend a working
+ * address over a wrong URL.
+ */
+private fun outcomeOf(statusCode: Int): DownloadOutcome =
+    when {
+        statusCode in listOf(498, 403, 401) -> DownloadOutcome.Antibot
+        statusCode == 429 -> DownloadOutcome.Throttled
+        statusCode in 500..599 -> DownloadOutcome.ServerError
+        else -> DownloadOutcome.ClientError
+    }
