@@ -184,6 +184,12 @@ data class Pipeline(
             // answer must not throw away the pages next to it. The crawl of this target still
             // ends with the failure — but what was read stays read.
             sides.addAll(batchSides)
+            // The download and parse stages are done: their requests, refusals and pages are
+            // facts now, and the readiness probe is asking. This goes out **before** the page
+            // is enriched and saved, because enrich and save can be slow and have nothing to
+            // do with a request that already happened.
+            flush()
+
             val pageResult = pageProcessor.process(donePages, pending, sides, pagesCrawled)
             pagesCrawled = pageResult.pagesCrawled
             // The items of the last processed page were saved before the stop was decided.
@@ -194,15 +200,12 @@ data class Pipeline(
             // The first answer that carried a total wins: WB reports the same total for
             // every page of a catalog, so the count does not change from page to page.
             wbTotal = wbTotal ?: pageResult.wbTotal
-            // The batch is over: its requests, refusals and pages are facts now, and the
-            // readiness probe is asking. Handing them over here rather than at the end of
-            // the target is what makes the counters describe the crawl while it runs.
+            // What the page work itself produced — preset answers, drops, save retries.
             flush()
 
             // Propagate first failure as Either.Left.
-            // The Left carries all sides accumulated so far — including successful tasks
-            // from the current batch that ran before the hard failure was detected.
-            // PipelineRunner.fold below guarantees these sides are interpreted even on failure.
+            // The sides of everything above are already interpreted: a batch that failed
+            // still delivered what its other tasks produced.
             failureError?.let {
                 return Either.Left(
                     FailedCrawl(
