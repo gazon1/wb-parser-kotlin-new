@@ -5,8 +5,8 @@
 # repository — the catalog is a read API with its own storefront elsewhere, and
 # `items` reads it through the same endpoints the storefront does.
 #
-# The script declares its own dependencies (PEP 723), so every recipe below runs it
-# through `uv run` and needs nothing installed first.
+# The script's dependencies live in `pyproject.toml`, so the only setup step is
+# `uv sync` — every recipe below runs it through `uv run`.
 # ==============================================================================
 
 [group('parser')]

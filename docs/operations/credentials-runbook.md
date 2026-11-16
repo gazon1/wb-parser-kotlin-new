@@ -426,7 +426,9 @@ docker exec wb-parser-debug-postgres psql -U postgres -d wbparser \
 своего доступа к базе. Лог — единственное исключение: строки лога никогда не жили в
 таблице, и их отдаёт `docker logs`.
 
-Запуск — без установки чего-либо: зависимости объявлены в самом файле (PEP 723).
+Зависимости объявлены в `pyproject.toml`, поэтому установка — один шаг: `uv sync`.
+Дальше — `uv run scripts/parser/wbparser.py …` или `just parser::…`, который делает то
+же самое.
 
 ```bash
 just parser::status      # или: uv run scripts/parser/wbparser.py status

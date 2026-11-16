@@ -17,6 +17,11 @@ dependencies = [
     # column arithmetic.
     "typer>=0.12.0",
     "rich>=13.0.0",
+    # Pydantic validates the responses the CLI reads, python-dotenv parses `.env`.
+    # Both are named here rather than only in the script: the venv is the single place
+    # that says what this project needs, and `uv sync` is the only setup step.
+    "pydantic>=2.6.0",
+    "python-dotenv>=1.0.0",
 ]
 
 # Тестовые зависимости: pytest нужен для `uv run pytest scripts/tests/...`.

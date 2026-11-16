@@ -1,8 +1,4 @@
-#!/usr/bin/env -S uv run --script
-# /// script
-# requires-python = ">=3.11"
-# dependencies = ["typer>=0.12", "rich>=13", "httpx>=0.27"]
-# ///
+#!/usr/bin/env -S uv run
 """
 wbparser — observe and drive the local crawler from a terminal.
 
@@ -16,22 +12,33 @@ wbparser — observe and drive the local crawler from a terminal.
     wbparser logs               the application log
     wbparser down               stop the stack (the volume is kept)
 
-Run it with `uv run scripts/parser/wbparser.py …` (the shebang handles the rest),
-or install it once with `uv tool install --editable .`.
+Run it with `uv run scripts/parser/wbparser.py …` — dependencies live in
+`pyproject.toml`, so `uv sync` is the only setup step.
 
 ## Why this exists, and why it is not a web UI
 
 The repository ships no web UI on purpose: the catalog is a read API with its own
 storefront elsewhere, and a second interface inside the crawler would be a second
-consumer of the same data with its own bugs. A terminal client costs no port, no
-dependency beyond three libraries, and no deployment.
+consumer of the same data with its own bugs. A terminal client costs no port and no
+deployment.
 
 ## Why it calls HTTP and never SQL
 
 `docs/decisions/DIGEST.md`: the catalog is read through the API, and the API owns the
 SQL. So this file contains no query — every fact comes from `/api/health/**`,
 `/api/admin/**` or `/api/catalog/v1/**`. The log is the one exception, and it is not
-data: `docker logs` is the only place a log line ever lived.
+data: `docker compose logs` is the only place a log line ever lived.
+
+## Why the responses are validated
+
+The shapes below are hand-written rather than generated: `contract/catalog-v1.openapi.yaml`
+describes the catalog and nothing else, so generation would type half the client and
+leave the admin half untyped. When the server publishes a whole spec (springdoc, or a
+committed `docs/openapi.json`), replace this section with generated models — the rest of
+the file does not change.
+
+Validation earns its lines: a renamed field fails with a message naming the field instead
+of rendering "—", and `--json` becomes `model_dump` rather than a second serialiser.
 
 ## Exit codes
 
@@ -43,25 +50,26 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import subprocess
 import sys
 import time
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
+from functools import cache
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, TypeVar
 
 import httpx
 import typer
+from dotenv import dotenv_values
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+from pydantic.alias_generators import to_camel
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PORT = 8082
-APP_CONTAINER = "wb-parser-debug"
-PG_CONTAINER = "wb-parser-debug-postgres"
-COMPOSE = ROOT / "docker-compose.yml"
 JAR = ROOT / "app" / "build" / "libs" / "app.jar"
 
 console = Console(highlight=False)
@@ -75,59 +83,90 @@ class Unusable(Exception):
 
 
 # `--json` writes one JSON document to stdout and nothing else, so `| jq` works on it
-# without a flag to strip a header. A module-level flag is enough: one process, one run.
+# without a flag to strip a header. One process, one run, one output mode.
 JSON = False
 
-
-def _show_json(payload: Any) -> None:
-    json.dump(payload, sys.stdout, ensure_ascii=False, indent=2, default=str)
-    sys.stdout.write("\n")
+# ── responses ────────────────────────────────────────────────────────────────
 
 
-# ── where the environment comes from ─────────────────────────────────────────
+class Camel(BaseModel):
+    """A response whose JSON is camelCase, as Spring writes it, with snake_case fields here."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
 
 
-def _read_env_file(path: Path) -> dict[str, str]:
-    """
-    `KEY=value`, `# comment`, optional quotes. Parsed, not sourced: the file is data,
-    and sourcing it would let a value that looks like a command run one.
-    """
-    values: dict[str, str] = {}
-    if not path.is_file():
-        return values
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        line = raw.strip().removeprefix("export ").strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, _, value = line.partition("=")
-        values[key.strip()] = value.strip().strip("\"'")
-    return values
+class Item(Camel):
+    id: str
+    target_name: str
+    title: str
+    price_kopecks: int | None = None
+    sale_price_kopecks: int | None = None
+    cashback_percent: float | None = None
+    scraped_at: datetime | None = None
 
 
-def _port() -> int:
-    return int(os.environ.get("SERVER_PORT") or _read_env_file(ROOT / ".env").get("SERVER_PORT") or DEFAULT_PORT)
+class ItemsPage(Camel):
+    items: list[Item]
+    total_count: int
+    page: int
+    total_pages: int
+    data_as_of: datetime | None = None
 
 
-def _base_url() -> str:
-    return os.environ.get("WBPARSER_URL") or f"http://localhost:{_port()}"
+class Stats(Camel):
+    total_items: int
+    total_products: int
+    total_targets: int
+    with_cashback: int
+    products_with_cashback: int
+    newest_scraped_at: datetime | None = None
+    as_of: datetime | None = None
 
 
-def _env() -> dict[str, str]:
-    """
-    The credentials this tool acts with: the `.env` file, then the shell.
+class Target(Camel):
+    id: str
+    name: str
+    active: bool = True
+    wb_catalog_id: str | None = None
+    last_crawled_at: datetime | None = None
+    next_attempt_at: datetime | None = None
+    consecutive_failures: int = 0
 
-    `.env` wins on purpose. It describes the stack these commands start and talk to;
-    an inherited `DB_USER=…` from an unrelated shell session describes something else,
-    and letting it win silently pointed a crawl at a database that did not have that
-    user. A wrong value in the file is visible and editable; a stale exported one is
-    neither.
-    """
-    inherited = {
-        name: value
-        for name, value in os.environ.items()
-        if name in _OVERRIDABLE and name not in _read_env_file(ROOT / ".env")
-    }
-    return {**inherited, **_read_env_file(ROOT / ".env")}
+
+class Job(Camel):
+    id: str
+    status: str
+    pages_crawled: int = 0
+    items_saved: int = 0
+    started_at: datetime | None = None
+    error_message: str | None = None
+
+
+class TargetRun(Camel):
+    target_id: str
+    target_name: str | None = None
+    egress_group: str | None = None
+    egress_ip: str | None = None
+    outcome: str
+    pages: int = 0
+    items: int = 0
+    wb_total: int | None = None
+    started_at: datetime | None = None
+
+
+class RecordedError(Camel):
+    category: str | None = None
+    message: str
+    created_at: datetime | None = None
+
+
+# ── environment ──────────────────────────────────────────────────────────────
+
+
+@cache
+def _file_env() -> dict[str, str]:
+    """The `.env` file, parsed (not sourced: a value that looks like a command is data)."""
+    return {name: value for name, value in dotenv_values(ROOT / ".env").items() if value is not None}
 
 
 # The names a shell may supply when the file does not, and no others: everything else
@@ -144,40 +183,73 @@ _OVERRIDABLE = {
 }
 
 
+@cache
+def _env() -> dict[str, str]:
+    """
+    The credentials this tool acts with: the shell, then the `.env` file.
+
+    The file wins on purpose. It describes the stack these commands start and talk to;
+    an inherited `DB_USER=…` from an unrelated shell session describes something else,
+    and letting it win silently pointed a crawl at a database that did not have that
+    user. A wrong value in the file is visible and editable; a stale exported one is
+    neither.
+    """
+    shell = {name: value for name, value in os.environ.items() if name in _OVERRIDABLE}
+    return {**shell, **_file_env()}
+
+
+@cache
+def _base_url() -> str:
+    port = os.environ.get("SERVER_PORT") or _file_env().get("SERVER_PORT") or DEFAULT_PORT
+    return os.environ.get("WBPARSER_URL") or f"http://localhost:{port}"
+
+
+@cache
 def _client(*, admin: bool = False, catalog: bool = False) -> httpx.Client:
-    """A client that carries the key of the API it is about to call — and only that one."""
-    env = _env()
+    """
+    One client per role, carrying that role's key and no other.
+
+    Two roles, two clients: the admin key must not travel to the catalog API even by
+    accident, and the admin API refuses a request whose key is the catalog's.
+    """
     headers: dict[str, str] = {}
-    if admin:
-        key = env.get("ADMIN_API_KEY", "")
+    env = _env()
+    if admin or catalog:
+        name = "ADMIN_API_KEY" if admin else "CATALOG_API_KEY"
+        key = env.get(name, "")
         if not key:
-            raise Unusable("ADMIN_API_KEY is not set — see docs/operations/credentials-runbook.md")
-        headers["X-Api-Key"] = key
-    if catalog:
-        key = env.get("CATALOG_API_KEY", "")
-        if not key:
-            raise Unusable("CATALOG_API_KEY is not set — see docs/operations/credentials-runbook.md")
+            raise Unusable(f"{name} is not set — see docs/operations/credentials-runbook.md")
         headers["X-Api-Key"] = key
     return httpx.Client(base_url=_base_url(), headers=headers, timeout=15.0)
 
 
-def _get(path: str, *, admin: bool = False, catalog: bool = False, **params: Any) -> Any:
+T = TypeVar("T")
+
+# ── HTTP ─────────────────────────────────────────────────────────────────────
+
+
+def _get(
+    path: str,
+    model: type[T] | None = None,
+    *,
+    admin: bool = False,
+    catalog: bool = False,
+    **params: Any,
+) -> Any:
     """
-    One GET, with the failure modes already translated.
+    One GET, parsed into `model`, with the failure modes already translated.
 
     A caller never sees an `httpx` exception: an unreachable stack says how to start it,
-    and a refused key says which key.
+    a refused key says which key, and a response that does not match the model says so.
     """
     query = {name: value for name, value in params.items() if value not in (None, "")}
     try:
-        with _client(admin=admin, catalog=catalog) as client:
-            response = client.get(path, params=query)
+        response = _client(admin=admin, catalog=catalog).get(path, params=query)
     except httpx.ConnectError as error:
         raise Unusable(f"cannot reach {_base_url()} — start it with `wbparser up`") from error
     except (httpx.TimeoutException, httpx.RemoteProtocolError, httpx.ReadError) as error:
         # A server that accepts the connection and then hangs up is a server that is
-        # starting or restarting. Saying "cannot reach" would be wrong the moment it
-        # finishes booting, so the message says what is actually true.
+        # starting or restarting. "Cannot reach" would be wrong the moment it boots.
         raise Unusable(f"{_base_url()} is not answering yet — is it still starting?") from error
 
     if response.status_code == 401:
@@ -187,50 +259,33 @@ def _get(path: str, *, admin: bool = False, catalog: bool = False, **params: Any
     if response.status_code >= 400:
         detail = response.text.strip()[:200]
         raise Unusable(f"HTTP {response.status_code} on {path}" + (f": {detail}" if detail else ""))
-    return response.json()
 
-
-def _ready() -> dict[str, Any]:
-    return _get("/api/health/ready")
-
-
-def _require_stack() -> None:
-    _ready()
-
-
-def _docker(*argv: str) -> subprocess.CompletedProcess[str]:
+    payload = response.json()
+    if model is None:
+        # A shape this file does not own: `/api/health/ready` reports whatever the
+        # crawler has counters for, and a model would freeze that into a contract the
+        # server never agreed to. `status` prints it as it comes.
+        return payload
     try:
-        return subprocess.run(["docker", *argv], cwd=ROOT, text=True, check=True)
-    except FileNotFoundError as error:
-        raise Unusable("docker is not installed") from error
-    except subprocess.CalledProcessError as error:
-        detail = (error.stderr or error.stdout or "").strip()
-        raise Unusable(f"docker {' '.join(argv[:2])} failed: {detail[:300]}") from error
+        return TypeAdapter(model).validate_python(payload)
+    except ValidationError as error:
+        raise Unusable(f"{path}: the response does not match the model — has the API changed?\n{error}") from error
 
 
-def _running(container: str) -> bool:
-    result = subprocess.run(
-        ["docker", "inspect", "-f", "{{.State.Running}}", container],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    return result.stdout.strip() == "true"
+def _emit(payload: Any, render: Any) -> None:
+    """One code path for `--json` and for the human table: the caller says what to draw."""
+    if JSON:
+        json.dump(payload, sys.stdout, ensure_ascii=False, indent=2, default=str)
+        sys.stdout.write("\n")
+    else:
+        render()
 
 
 # ── formatting ───────────────────────────────────────────────────────────────
 
 
-def _instant(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
-
-
-def _age(value: str | None) -> str:
+def _age(moment: datetime | None) -> str:
     """How long ago, in the unit a human would use. `never` when there is no moment."""
-    moment = _instant(value)
     if moment is None:
         return "never"
     seconds = int((datetime.now(UTC) - moment).total_seconds())
@@ -252,21 +307,90 @@ def _rubles(kopecks: int | None) -> str:
 
 
 def _table(title: str, columns: list[str], rows: list[list[Any]]) -> None:
-    table = Table(title=title, title_justify="left", header_style="bold", expand=False)
+    """
+    A table whose cells are data, not markup.
+
+    Every cell is escaped: a product title is the site's text, and a title containing
+    `[bold]` would otherwise be parsed as Rich markup — a title containing `[/x]` would
+    raise `MarkupError` and take the command down.
+    """
+    table = Table(title=title, title_justify="left", header_style="bold")
     for column in columns:
-        table.add_column(column, overflow="ellipsis", no_wrap=False)
+        table.add_column(column, overflow="ellipsis")
     for row in rows:
-        table.add_row(*("—" if cell is None or cell == "" else str(cell) for cell in row))
+        table.add_row(*(escape("—" if cell is None or cell == "" else str(cell)) for cell in row))
     console.print(table)
 
 
 def _headline(text: str) -> None:
-    console.print(f"\n[bold]{text}[/bold]")
+    console.print(f"\n[bold]{escape(text)}[/bold]")
+
+
+# ── docker ───────────────────────────────────────────────────────────────────
+
+
+def _run(argv: list[str], *, live: bool = False) -> subprocess.CompletedProcess[str]:
+    """
+    Run a command in the repository root.
+
+    `live=True` inherits the terminal: a multi-minute Gradle build prints as it goes,
+    and capturing it would hide the progress *and* the reason it failed. Everything else
+    is captured, so a failure can quote what the command actually said — with the stream
+    inherited, `stderr` is empty and the message has nothing to quote.
+    """
+    try:
+        completed = subprocess.run(  # noqa: S603 - argv is built here, never from user input
+            argv, cwd=ROOT, text=True, capture_output=not live, check=False
+        )
+    except FileNotFoundError as error:
+        raise Unusable(f"'{argv[0]}' is not installed") from error
+    if completed.returncode != 0:
+        detail = (completed.stderr or completed.stdout or "").strip()
+        raise Unusable(f"`{' '.join(argv[:4])}` failed: {detail[:300] or 'no output'}")
+    if not live and completed.stdout.strip():
+        console.print(completed.stdout.rstrip(), style="dim")
+    return completed
+
+
+def _compose(*argv: str, live: bool = False) -> subprocess.CompletedProcess[str]:
+    # Compose finds `docker-compose.yml` in the working directory, so no `-f` is needed.
+    return _run(["docker", "compose", *argv], live=live)
+
+
+def _running(service: str) -> bool:
+    completed = subprocess.run(
+        ["docker", "compose", "ps", "--status", "running", "--services"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return service in completed.stdout.split()
 
 
 # ── commands ─────────────────────────────────────────────────────────────────
 
 
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=True,
+    rich_markup_mode="rich",
+    help="Observe and drive the local crawler. There is no web UI in this repository.",
+)
+
+
+def _global_options(
+    json_output: Annotated[bool, typer.Option("--json", help="one JSON document on stdout, nothing else")] = False,
+) -> None:
+    """Global flags. They go before the command: `wbparser --json status`."""
+    global JSON  # noqa: PLW0603 - one process, one run, one output mode
+    JSON = json_output
+
+
+app.callback()(_global_options)
+
+
+@app.command()
 def up(
     build: Annotated[bool, typer.Option("--build", help="rebuild the jar even if one exists")] = False,
     timeout: Annotated[int, typer.Option(help="seconds to wait for readiness")] = 180,
@@ -274,17 +398,17 @@ def up(
     """Start the stack (Postgres + the application) and wait until it can serve."""
     if build or not JAR.is_file():
         console.print("building the jar…")
-        _docker_run([str(ROOT / "gradlew"), ":app:bootJar", "--no-daemon"])
+        _run([str(ROOT / "gradlew"), ":app:bootJar", "--no-daemon"], live=True)
     else:
         console.print(f"[dim]reusing {JAR.relative_to(ROOT)} (rebuild with --build)[/dim]")
 
     console.print("starting the stack…")
-    _docker("compose", "-f", str(COMPOSE), "up", "-d")
+    _compose("up", "-d")
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
-            if _ready().get("status") == "UP":
+            if _get("/api/health/ready").get("status") == "UP":
                 break
         except Unusable:
             pass
@@ -304,40 +428,30 @@ def up(
     console.print("[dim]there is no web UI in this repository — `wbparser items` reads what was parsed[/dim]")
 
 
-def _docker_run(argv: list[str]) -> None:
-    try:
-        subprocess.run(argv, cwd=ROOT, check=True)  # noqa: S603 - a fixed argv
-    except subprocess.CalledProcessError as error:
-        raise Unusable(f"{argv[0]} failed") from error
-
-
+@app.command()
 def down(
     volumes: Annotated[bool, typer.Option("--volumes", help="also delete the database volume")] = False,
 ) -> None:
     """Stop the stack. The database volume is kept unless --volumes is given."""
     if volumes:
         console.print("[yellow]![/yellow] removing the database volume — every scraped row is lost")
-    _docker("compose", "-f", str(COMPOSE), "down", *(["-v"] if volumes else []))
+    _compose("down", *(["-v"] if volumes else []))
     console.print("[green]✓[/green] stopped" + (" (volume removed)" if volumes else " (volume kept)"))
 
 
+@app.command()
 def status() -> None:
     """Health, readiness, credentials, crawl counters, and the egress groups."""
-    _require_stack()
-    ready = _ready()
+    ready = _get("/api/health/ready")
     keys = {"ADMIN_API_KEY": _key_works(admin=True), "CATALOG_API_KEY": _key_works(admin=False)}
-    if JSON:
-        _show_json({"ready": ready, "keys": keys})
-    else:
-        _print_status(ready, keys)
+    _emit({"ready": ready, "keys": keys}, lambda: _print_status(ready, keys))
     if ready.get("status") != "UP" or not all(keys.values()):
         raise typer.Exit(EXIT_WRONG)
 
 
 def _key_works(*, admin: bool) -> bool:
-    path = "/api/admin/targets" if admin else "/api/catalog/v1/health"
     try:
-        _get(path, admin=admin, catalog=not admin)
+        _get("/api/admin/targets" if admin else "/api/catalog/v1/health", admin=admin, catalog=not admin)
     except Unusable:
         return False
     return True
@@ -353,7 +467,7 @@ def _print_status(ready: dict[str, Any], keys: dict[str, bool]) -> None:
     _headline("checks")
     for name, value in (ready.get("checks") or {}).items():
         mark = "[green]✓[/green]" if str(value).startswith("UP") else "[yellow]![/yellow]"
-        console.print(f"  {mark} {name}: {value}")
+        console.print(f"  {mark} {escape(name)}: {escape(str(value))}")
 
     crawler = ready.get("crawler") or {}
     _headline("crawl")
@@ -362,7 +476,7 @@ def _print_status(ready: dict[str, Any], keys: dict[str, bool]) -> None:
     else:
         console.print(
             f"  requests {crawler.get('requests', 0)}  refusals {crawler.get('antibot_responses', 0)}"
-            f"  share {crawler.get('refusal_share', 'n/a')}"
+            f"  share {escape(str(crawler.get('refusal_share', 'n/a')))}"
         )
         console.print(
             f"  pages {crawler.get('pages', 0)}  items {crawler.get('items', 0)}"
@@ -374,7 +488,7 @@ def _print_status(ready: dict[str, Any], keys: dict[str, bool]) -> None:
     _headline("egress")
     for group in (ready.get("egress") or {}).get("groups") or []:
         console.print(
-            f"  {group.get('group')}: {group.get('address') or 'unknown'}"
+            f"  {escape(str(group.get('group')))}: {escape(str(group.get('address') or 'unknown'))}"
             f"  {'healthy' if group.get('healthy') else 'unhealthy'}"
             f"  isolated={group.get('isolated')}  refusals={group.get('refusal_rate')}"
         )
@@ -387,6 +501,7 @@ def _print_status(ready: dict[str, Any], keys: dict[str, bool]) -> None:
         )
 
 
+@app.command()
 def crawl() -> None:
     """
     Run exactly one crawl, in the foreground, and report the exit code.
@@ -396,16 +511,23 @@ def crawl() -> None:
     """
     if not JAR.is_file():
         raise Unusable(f"{JAR.relative_to(ROOT)} is missing — run `wbparser up` first")
-    if not _running(PG_CONTAINER):
+    if not _running("postgres"):
         raise Unusable("the database is not running — start it with `wbparser up`")
 
-    env = {**_env(), "SPRING_PROFILES_ACTIVE": "once"}
+    # `env=` REPLACES the environment rather than extending it, so PATH, HOME and
+    # JAVA_HOME have to be carried over explicitly: without them `java` is found only
+    # because it happens to sit in /usr/bin, and a JDK-managed one is not found at all.
+    env = {
+        **os.environ,
+        **_env(),
+        "SPRING_PROFILES_ACTIVE": "once",
+        "CAMOUFOX_HOME": _env().get("CAMOUFOX_HOME") or str(Path.home() / ".cache" / "camoufox"),
+        "PROFILES_DIR": _env().get("PROFILES_DIR") or str(Path.home() / ".wbparser" / "profiles"),
+    }
     env.setdefault("DB_HOST", "localhost")
     env.setdefault("DB_PORT", "5433")
     env.setdefault("DB_NAME", "wbparser")
     env.setdefault("DB_USER", "postgres")
-    env.setdefault("CAMOUFOX_HOME", str(Path.home() / ".cache" / "camoufox"))
-    env.setdefault("PROFILES_DIR", str(Path.home() / ".wbparser" / "profiles"))
 
     console.print(f"crawling once against {env['DB_HOST']}:{env['DB_PORT']}/{env['DB_NAME']}…")
     completed = subprocess.run(  # noqa: S603 - a fixed argv
@@ -441,6 +563,7 @@ class Sort(StrEnum):
     title_desc = "TitleDesc"
 
 
+@app.command()
 def items(
     target: Annotated[str | None, typer.Option(help="a target UUID")] = None,
     query: Annotated[str | None, typer.Option("--query", "-q", help="search the title")] = None,
@@ -453,9 +576,9 @@ def items(
     min_cashback: Annotated[float | None, typer.Option(help="minimum cashback, percent")] = None,
 ) -> None:
     """What was scraped, through the catalog API — the same data the storefront reads."""
-    _require_stack()
     result = _get(
         "/api/catalog/v1/items",
+        ItemsPage,
         catalog=True,
         targetId=target,
         q=query,
@@ -467,21 +590,14 @@ def items(
         maxPrice=max_price,
         minCashback=min_cashback,
     )
-    if JSON:
-        _show_json(result)
-    else:
-        _print_items(result)
-    if not result.get("totalCount"):
+    _emit(result.model_dump(mode="json", by_alias=True), lambda: _print_items(result))
+    if not result.total_count:
         raise typer.Exit(EXIT_WRONG)
 
 
-def _print_items(page: dict[str, Any]) -> None:
-    rows = page.get("items") or []
-    _headline(
-        f"products — page {page.get('page', 0) + 1}/{max(1, page.get('totalPages', 0))}"
-        f", {page.get('totalCount', 0)} total"
-    )
-    if not rows:
+def _print_items(result: ItemsPage) -> None:
+    _headline(f"products — page {result.page + 1}/{max(1, result.total_pages)}, {result.total_count} total")
+    if not result.items:
         console.print("  [yellow]![/yellow] nothing matched")
         console.print("[dim]is the crawl done? try `wbparser status` and `wbparser runs`[/dim]")
         return
@@ -490,58 +606,60 @@ def _print_items(page: dict[str, Any]) -> None:
         ["target", "title", "price", "cashback", "scraped"],
         [
             [
-                item.get("targetName"),
-                item.get("title"),
-                _rubles(item.get("salePriceKopecks") or item.get("priceKopecks")),
-                f"{item['cashbackPercent']}%" if item.get("cashbackPercent") is not None else "—",
-                _age(item.get("scrapedAt")),
+                item.target_name,
+                item.title,
+                _rubles(item.sale_price_kopecks or item.price_kopecks),
+                f"{item.cashback_percent}%" if item.cashback_percent is not None else "—",
+                _age(item.scraped_at),
             ]
-            for item in rows
+            for item in result.items
         ],
     )
-    console.print(f"[dim]next page: wbparser items --page {page.get('page', 0) + 1}[/dim]")
-    if data_as_of := page.get("dataAsOf"):
-        console.print(f"[dim]the data on this page is {_age(data_as_of)}[/dim]")
+    console.print(f"[dim]next page: wbparser items --page {result.page + 1}[/dim]")
+    if result.data_as_of:
+        console.print(f"[dim]the data on this page is {_age(result.data_as_of)}[/dim]")
 
 
+@app.command()
 def stats() -> None:
     """Aggregate counters of the catalog: how big it is and how fresh."""
-    _require_stack()
-    payload = _get("/api/catalog/v1/stats", catalog=True)
-    if JSON:
-        _show_json(payload)
-        return
+    payload = _get("/api/catalog/v1/stats", Stats, catalog=True)
+    _emit(payload.model_dump(mode="json", by_alias=True), lambda: _print_stats(payload))
+
+
+def _print_stats(payload: Stats) -> None:
     _headline("catalog")
-    console.print(f"  products            {payload.get('totalProducts', 0)}")
+    console.print(f"  products            {payload.total_products}")
+    console.print(f"  observations        {payload.total_items}  [dim](one row per target × product × price)[/dim]")
+    console.print(f"  targets             {payload.total_targets}")
     console.print(
-        f"  observations        {payload.get('totalItems', 0)}  [dim](one row per target × product × price)[/dim]"
+        f"  with cashback       {payload.products_with_cashback} products / {payload.with_cashback} observations"
     )
-    console.print(f"  targets             {payload.get('totalTargets', 0)}")
-    console.print(
-        f"  with cashback       {payload.get('productsWithCashback', 0)} products"
-        f" / {payload.get('withCashback', 0)} observations"
-    )
-    console.print(f"  newest observation  {_age(payload.get('newestScrapedAt'))}")
-    console.print(f"  [dim]counters computed {_age(payload.get('asOf'))} (cached up to ten minutes)[/dim]")
+    console.print(f"  newest observation  {_age(payload.newest_scraped_at)}")
+    console.print(f"  [dim]counters computed {_age(payload.as_of)} (cached up to ten minutes)[/dim]")
 
 
+@app.command()
 def runs(
     limit: Annotated[int, typer.Option(help="how many rows")] = 20,
     target: Annotated[str | None, typer.Option(help="a target UUID")] = None,
     errors: Annotated[int, typer.Option(help="how many unresolved errors to show")] = 10,
 ) -> None:
     """The journal of runs: what ran, on which address, and what came of it."""
-    _require_stack()
-    jobs = _get("/api/admin/jobs", admin=True, limit=limit, targetId=target)
-    target_runs = _get("/api/admin/target-runs", admin=True, limit=limit, targetId=target)
-    failures = _get("/api/admin/errors", admin=True, limit=errors, unresolvedOnly="true")
-    if JSON:
-        _show_json({"jobs": jobs, "targetRuns": target_runs, "errors": failures})
-        return
-    _print_runs(target_runs, jobs, failures)
+    jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit, targetId=target)
+    target_runs = _get("/api/admin/target-runs", list[TargetRun], admin=True, limit=limit, targetId=target)
+    failures = _get("/api/admin/errors", list[RecordedError], admin=True, limit=errors, unresolvedOnly="true")
+    _emit(
+        {
+            "jobs": [job.model_dump(mode="json", by_alias=True) for job in jobs],
+            "targetRuns": [run.model_dump(mode="json", by_alias=True) for run in target_runs],
+            "errors": [error.model_dump(mode="json", by_alias=True) for error in failures],
+        },
+        lambda: _print_runs(target_runs, jobs, failures),
+    )
 
 
-def _print_runs(target_runs: list[dict], jobs: list[dict], failures: list[dict]) -> None:
+def _print_runs(target_runs: list[TargetRun], jobs: list[Job], failures: list[RecordedError]) -> None:
     _headline(f"target runs — last {len(target_runs)}")
     if target_runs:
         _table(
@@ -549,19 +667,19 @@ def _print_runs(target_runs: list[dict], jobs: list[dict], failures: list[dict])
             ["target", "group", "address", "outcome", "pages", "items", "wb total", "when"],
             [
                 [
-                    run.get("targetName") or str(run.get("targetId"))[:8],
-                    run.get("egressGroup"),
-                    run.get("egressIp"),
-                    run.get("outcome"),
-                    run.get("pages", 0),
-                    run.get("items", 0),
-                    run.get("wbTotal"),
-                    _age(run.get("startedAt")),
+                    run.target_name or run.target_id[:8],
+                    run.egress_group,
+                    run.egress_ip,
+                    run.outcome,
+                    run.pages,
+                    run.items,
+                    run.wb_total,
+                    _age(run.started_at),
                 ]
                 for run in target_runs
             ],
         )
-        refused = sum(1 for run in target_runs if run.get("outcome") == "antibot")
+        refused = sum(1 for run in target_runs if run.outcome == "antibot")
         if refused:
             console.print(
                 f"  [yellow]![/yellow] {refused} of {len(target_runs)} runs were refused by WB"
@@ -575,16 +693,7 @@ def _print_runs(target_runs: list[dict], jobs: list[dict], failures: list[dict])
         _table(
             "",
             ["status", "pages", "items", "started", "error"],
-            [
-                [
-                    job.get("status"),
-                    job.get("pagesCrawled", 0),
-                    job.get("itemsSaved", 0),
-                    _age(job.get("startedAt")),
-                    job.get("errorMessage"),
-                ]
-                for job in jobs
-            ],
+            [[job.status, job.pages_crawled, job.items_saved, _age(job.started_at), job.error_message] for job in jobs],
         )
     else:
         console.print("  [yellow]![/yellow] no jobs recorded yet")
@@ -593,80 +702,78 @@ def _print_runs(target_runs: list[dict], jobs: list[dict], failures: list[dict])
         _headline(f"unresolved errors — {len(failures)}")
         for failure in failures:
             console.print(
-                f"  [yellow]![/yellow] {failure.get('category')}: {failure.get('message')}"
-                f"  [dim]({_age(failure.get('createdAt'))})[/dim]"
+                f"  [yellow]![/yellow] {escape(str(failure.category))}: {escape(failure.message)}"
+                f"  [dim]({_age(failure.created_at)})[/dim]"
             )
 
 
+@app.command()
 def schedule(
     limit: Annotated[int, typer.Option(help="how many targets to list")] = 15,
 ) -> None:
     """
     The tick, the freshness window, and which targets are due.
 
-    The crawler has no "next run at" query and should not have one: a target is due by
-    the same rule the claim uses — active, nothing pending, and past its freshness
-    window. This command applies that rule to what the admin API reports.
+    The rule below is `claimDueTargets`, copied. The copy is deliberate for now and it
+    is also the weak point: the claim has three conditions (active, nothing pending, no
+    live lease) and the admin API reports two, so a target held by an interrupted run's
+    lease is listed here and skipped by the crawl. The durable fix is an
+    `/api/admin/schedule` endpoint that answers the question once, on the side that owns
+    the rule; until then this command says so rather than hiding it.
     """
-    _require_stack()
-    env = _env()
-    cron = env.get("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
-    freshness = int(env.get("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
-    targets = _get("/api/admin/targets", admin=True)
+    targets = _get("/api/admin/targets", list[Target], admin=True)
+    cron = _env().get("CRAWLER_SCHEDULE_CRON") or "0 0 */2 * * *"
+    freshness = int(_env().get("CRAWLER_SCHEDULE_FRESHNESS_MINUTES") or 360)
 
     now = datetime.now(UTC)
     due, upcoming = _partition_by_due(targets, now, freshness)
-    if JSON:
-        _show_json(
-            {
-                "cron": cron,
-                "freshnessMinutes": freshness,
-                "activeTargets": sum(1 for t in targets if t.get("active", True)),
-                "due": due,
-                "upcoming": [{"at": when, "target": t} for when, t in upcoming[:limit]],
-            }
-        )
-        return
-    _print_schedule(cron, freshness, targets, due, upcoming, limit)
+    _emit(
+        {
+            "cron": cron,
+            "freshnessMinutes": freshness,
+            "activeTargets": sum(1 for target in targets if target.active),
+            "due": [target.model_dump(mode="json", by_alias=True) for target in due],
+            "upcoming": [
+                {"at": when, "target": target.model_dump(mode="json", by_alias=True)}
+                for when, target in upcoming[:limit]
+            ],
+        },
+        lambda: _print_schedule(cron, freshness, targets, due, upcoming, limit),
+    )
 
 
 def _partition_by_due(
-    targets: list[dict], now: datetime, freshness_minutes: int
-) -> tuple[list[dict], list[tuple[datetime, dict]]]:
-    """
-    Split the targets by the rule the claim uses — as far as the API exposes it.
-
-    The claim has three conditions (`claimDueTargets`): active, nothing pending, and no
-    live lease. The admin API reports the first two and not the lease, so this can say
-    "due" about a target the crawler will skip because an interrupted run still holds
-    its lease. That was a real confusion once: 132 targets listed as due, and a crawl
-    that found nothing to do. The lease expires on its own (two hours by default), so
-    the disagreement is bounded — and `schedule` says so instead of hiding it.
-    """
+    targets: list[Target], now: datetime, freshness_minutes: int
+) -> tuple[list[Target], list[tuple[datetime, Target]]]:
+    """Split by the claim's rule, as far as the API exposes it — see [schedule]."""
     fresh_before = now - timedelta(minutes=freshness_minutes)
-    due: list[dict] = []
-    upcoming: list[tuple[datetime, dict]] = []
+    due: list[Target] = []
+    upcoming: list[tuple[datetime, Target]] = []
     for target in targets:
-        if not target.get("active", True):
+        if not target.active:
             continue
-        pending = _instant(target.get("nextAttemptAt"))
-        if pending and pending > now:
-            upcoming.append((pending, target))
-            continue
-        last = _instant(target.get("lastCrawledAt"))
-        if last is None or last <= fresh_before:
+        if target.next_attempt_at and target.next_attempt_at > now:
+            upcoming.append((target.next_attempt_at, target))
+        elif target.last_crawled_at is None or target.last_crawled_at <= fresh_before:
             due.append(target)
         else:
-            upcoming.append((last + timedelta(minutes=freshness_minutes), target))
+            upcoming.append((target.last_crawled_at + timedelta(minutes=freshness_minutes), target))
     return due, sorted(upcoming, key=lambda pair: pair[0])
 
 
-def _print_schedule(cron, freshness, targets, due, upcoming, limit: int) -> None:
+def _print_schedule(
+    cron: str,
+    freshness: int,
+    targets: list[Target],
+    due: list[Target],
+    upcoming: list[tuple[datetime, Target]],
+    limit: int,
+) -> None:
     _headline("schedule")
-    console.print(f"  tick       {cron}  [dim](how often the scheduler looks for work)[/dim]")
+    console.print(f"  tick       {escape(cron)}  [dim](how often the scheduler looks for work)[/dim]")
     console.print(f"  freshness  {freshness} min  [dim](how long a target rests after a crawl)[/dim]")
     console.print("  [dim]the tick is not the cadence: a tick that finds nothing due starts nothing[/dim]")
-    console.print(f"\n  active targets  {sum(1 for t in targets if t.get('active', True))} of {len(targets)}")
+    console.print(f"\n  active targets  {sum(1 for t in targets if t.active)} of {len(targets)}")
     console.print(f"  due now         {len(due)}")
     if due:
         console.print("  [dim]a target held by an interrupted run's lease is listed here and[/dim]")
@@ -677,68 +784,39 @@ def _print_schedule(cron, freshness, targets, due, upcoming, limit: int) -> None
         _table(
             "",
             ["target", "wb id", "last crawled", "fails"],
-            [
-                [t.get("name"), t.get("wbCatalogId"), _age(t.get("lastCrawledAt")), t.get("consecutiveFailures", 0)]
-                for t in due[:limit]
-            ],
+            [[t.name, t.wb_catalog_id, _age(t.last_crawled_at), t.consecutive_failures] for t in due[:limit]],
         )
     if upcoming:
         _headline(f"next due — first {min(limit, len(upcoming))}")
-        _table("", ["target", "when"], [[t.get("name"), _age(when.isoformat())] for when, t in upcoming[:limit]])
+        _table("", ["target", "when"], [[t.name, _age(when)] for when, t in upcoming[:limit]])
 
 
+@app.command()
 def logs(
     follow: Annotated[bool, typer.Option("--follow", "-f", help="keep watching")] = False,
     lines: Annotated[int, typer.Option("--lines", "-n", help="how many lines to start from")] = 100,
-    grep: Annotated[str | None, typer.Option(help="only lines matching this regular expression")] = None,
 ) -> None:
     """
-    The application log. Not data, so not the API: `docker logs` is where it lives.
+    The application log. Not data, so not the API: `docker compose logs` is where it lives.
+
+    Filtering is `wbparser logs -f | grep …` rather than a flag. A `--grep` cannot work
+    with `--follow`: reading a captured stream means nothing is printed until the
+    container stops, and a regex flag that silently does nothing is worse than none.
     """
-    if not _running(APP_CONTAINER) and not _running(PG_CONTAINER):
-        raise Unusable("nothing is running — start it with `wbparser up`")
-    argv = ["docker", "logs", *(["--follow"] if follow else []), "--tail", str(lines), APP_CONTAINER]
-    if grep:
-        completed = subprocess.run([*argv], cwd=ROOT, text=True, capture_output=True, check=False)
-        console.print(f"[dim]$ {' '.join(argv)} | grep -E {grep!r}[/dim]")
-        for line in completed.stdout.splitlines():
-            if re.search(grep, line):
-                print(line)
-        return
-    subprocess.run(argv, cwd=ROOT, check=False)  # noqa: S603 - a fixed argv
-
-
-# ── entry point ──────────────────────────────────────────────────────────────
-
-
-app = typer.Typer(
-    add_completion=False,
-    no_args_is_help=True,
-    rich_markup_mode="rich",
-    help="Observe and drive the local crawler. There is no web UI in this repository.",
-)
-for _command in (up, down, status, crawl, items, stats, runs, schedule, logs):
-    app.command()(_command)
-
-
-@app.callback()
-def _global_options(
-    json_output: Annotated[bool, typer.Option("--json", help="one JSON document on stdout, nothing else")] = False,
-) -> None:
-    """Global flags, accepted before or after the command."""
-    global JSON  # noqa: PLW0603 - one process, one run, one output mode
-    JSON = json_output
+    if not _running("app"):
+        raise Unusable("the application is not running — start it with `wbparser up`")
+    _compose("logs", *(["--follow"] if follow else []), "--tail", str(lines), "app", live=True)
 
 
 def _dispatch() -> None:
-    """Run the app, and turn the two failure classes into exit codes instead of tracebacks."""
+    """Run the app, and turn a missing precondition into a message and an exit code."""
     try:
         app()
     except Unusable as error:
-        err_console.print(f"[red]error:[/red] {error}")
+        err_console.print(f"[red]error:[/red] {escape(str(error))}")
         sys.exit(EXIT_UNUSABLE)
     except httpx.HTTPError as error:
-        err_console.print(f"[red]error:[/red] {error}")
+        err_console.print(f"[red]error:[/red] {escape(str(error))}")
         sys.exit(EXIT_UNUSABLE)
     except KeyboardInterrupt:
         sys.exit(130)
