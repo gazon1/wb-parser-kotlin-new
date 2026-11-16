@@ -167,6 +167,75 @@ class PipelineEmitTest :
             }
         }
 
+        test("a retry's request is in the registry before the page work, not after it") {
+            runTest {
+                // A batch holds one page to read and one task WB refused. The refused
+                // attempt is over — `requests` is recorded before the request is made — so
+                // its counter belongs with the batch's, not after enrich and save. The
+                // enrich stage is the observation point: it runs after the batch is
+                // published and before the retry loop, which is where these sides used to
+                // wait.
+                val meters = SimpleMeterRegistry()
+                var requestsInEnrich: Double? = null
+                var refusalsInEnrich: Double? = null
+
+                val pipeline =
+                    pipelineOf(
+                        download =
+                            Stage { t ->
+                                if (t.url.toString().contains("refused")) {
+                                    Step.Retry(Retry.Antibot(delayMs = 1L))
+                                } else {
+                                    Step.Done(fetched(t))
+                                }
+                            },
+                        enrich =
+                            Stage { i ->
+                                requestsInEnrich = meters.countOf("crawl.requests")
+                                refusalsInEnrich = meters.countOf("crawl.antibot.responses")
+                                Step.Done(SavedItem.from(i, targetId))
+                            },
+                    )
+
+                PipelineRunner(pipeline, registryOver(meters), loggingBackgroundFailureHandler())
+                    .run(
+                        listOf(task("http://example.com/good"), task("http://example.com/refused")),
+                        concurrency = 2,
+                    )
+
+                // The good page's request and the refused one's are both visible already.
+                requestsInEnrich shouldBe 2.0
+                refusalsInEnrich shouldBe 1.0
+            }
+        }
+
+        test("a retry's request is counted once, not again when the retry is scheduled") {
+            runTest {
+                // Publishing the retryable sides with the batch and again in the retry loop
+                // would double the denominator of the refusal share on exactly the path it
+                // is read from.
+                val meters = SimpleMeterRegistry()
+                var attempts = 0
+
+                val pipeline =
+                    pipelineOf(
+                        download =
+                            Stage { t ->
+                                attempts++
+                                if (attempts == 1) Step.Retry(Retry.Antibot(delayMs = 1L)) else Step.Done(fetched(t))
+                            },
+                    )
+
+                PipelineRunner(pipeline, registryOver(meters), loggingBackgroundFailureHandler())
+                    .run(listOf(task("http://example.com/1")))
+
+                // Two attempts, two requests, one refusal — each counted exactly once.
+                meters.countOf("crawl.requests") shouldBe 2.0
+                meters.countOf("crawl.antibot.responses") shouldBe 1.0
+                meters.countOf("crawl.retries") shouldBe 1.0
+            }
+        }
+
         test("a refusal is in the registry before the back-off is waited") {
             runTest {
                 // The operator should see the refusal *while* the crawl waits, not after it

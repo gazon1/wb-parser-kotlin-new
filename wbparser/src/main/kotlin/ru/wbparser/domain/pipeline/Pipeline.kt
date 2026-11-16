@@ -184,6 +184,13 @@ data class Pipeline(
             // answer must not throw away the pages next to it. The crawl of this target still
             // ends with the failure — but what was read stays read.
             sides.addAll(batchSides)
+            // A task that asked for a retry is finished with the batch too, and its sides
+            // travel with it rather than with `batchSides`: `requests` is recorded before
+            // the request is made, so the attempt has already happened and its counter
+            // belongs here. Waiting for the retry loop below — after enrich and save — is
+            // the same late publication this flush exists to remove, on the path an operator
+            // watches hardest: the one that is being refused.
+            retryableTasks.forEach { sides += it.sides }
             // The download and parse stages are done: their requests, refusals and pages are
             // facts now, and the readiness probe is asking. This goes out **before** the page
             // is enriched and saved, because enrich and save can be slow and have nothing to
@@ -221,8 +228,8 @@ data class Pipeline(
             // Each retryable task waits its pre-computed back-off outside any async block,
             // then re-adds itself to the pending queue.
             for (retryable in retryableTasks) {
-                sides += retryable.sides
-                flush()
+                // The sides of this task went out with the batch's: publishing them again
+                // after the page work would count the same request twice.
                 if (!coordinator.scheduleRetry(retryable)) {
                     // Retry exhausted at the coordinator level — treat as hard failure.
                     // Do NOT add the task back to pending: it would create an infinite loop
