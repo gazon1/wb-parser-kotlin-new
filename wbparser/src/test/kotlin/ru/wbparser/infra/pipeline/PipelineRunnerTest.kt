@@ -4,6 +4,7 @@ import arrow.core.getOrElse
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry
 import kotlinx.coroutines.test.runTest
 import ru.wbparser.domain.coroutines.loggingBackgroundFailureHandler
 import ru.wbparser.domain.model.Crawling
@@ -140,6 +141,45 @@ class PipelineRunnerTest :
                 result.isRight() shouldBe true
                 val crawled = (result as arrow.core.Either.Right).value
                 crawled.stopReason.shouldBeInstanceOf<Stop.MaxPagesReached>()
+            }
+        }
+
+        test("a counter reaches the registry while the target is still being read") {
+            runTest {
+                // A real registry and a real Micrometer interpreter: the question is what
+                // an operator's readiness probe can see mid-crawl, not what the run returns.
+                val meters = SimpleMeterRegistry()
+                var seenOnSecondPage: Double? = null
+                var pages = 0
+
+                val pipeline =
+                    makePipeline(
+                        download =
+                            Stage { task ->
+                                if (pages++ == 1) {
+                                    // Page 2 starts only after page 1's batch was handed over.
+                                    seenOnSecondPage = meters.find("crawl.requests").counter()?.count() ?: 0.0
+                                }
+                                Step.Done(testFetched(task))
+                            },
+                        parse =
+                            Stage { fetched ->
+                                Step.Done(
+                                    ParsedPage(fetched, emptyList(), testCrawlUrl("http://example.com/page2"), false),
+                                )
+                            },
+                        stopAt = { crawled, _ -> if (crawled >= 2) Stop.MaxPagesReached else null },
+                    )
+                val registry =
+                    SideInterpreterRegistry(
+                        metric = MicrometerMetricInterpreter(meters),
+                        drop = NoOpDropInterpreter(),
+                    )
+
+                PipelineRunner(pipeline, registry, loggingBackgroundFailureHandler()).run(listOf(testCrawling()))
+
+                // The first page's request was already in the registry when page 2 started.
+                seenOnSecondPage shouldBe 1.0
             }
         }
 
