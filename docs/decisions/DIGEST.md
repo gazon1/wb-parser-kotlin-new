@@ -585,6 +585,16 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** складывать 429 с 498 в один счётчик: 429 — ответ про темп, 498 — про потраченный счётчик сессии; в крауле у них разные причины (`rate_limited` / `antibot`) и разные back-off'ы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** считать `EGRESS`-маркер проверкой внешнего адреса: он привязан к endpoint'у, а endpoint может менять egress между запусками; неизменность адреса гарантирует контракт прокси, а `egress` в артефакте — свидетельство, а не защита. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
 - **Never** считать статус навигации проверкой антибота: датацентровый адрес даёт 498 на HTML и 200 на API из страницы. _(from `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy`)
+- **Always** запускать Camoufox persistent-контекстом в каталоге профиля: каталог — это сессия. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Always** резать конфиг по 32767 байт, не разрывая символ. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Always** указывать `FONTCONFIG_FILE` на `fonts.conf` сборки с абсолютными каталогами шрифтов той ОС, которую называет identity. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Always** хранить в `BrowserProfileConfig.fingerprint` сам конфиг Camoufox и отказывать в старте профиля без него. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Always** читать активную сборку из записи установки и отказывать при несовпадении с запиненной. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Never** выпускать типы Playwright в публичные подписи browser-модуля: наружу — `BrowserAutomation` и `BrowserPage`. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Never** генерировать отпечаток в рантайме и не хранить имя пресета вместо конфига. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Never** менять в этом изменении пул, его concurrency, semaphores и round-robin — это #271. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Never** оставлять браузер после неудачного старта: драйвер закрывается вместе с попыткой. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Never** открывать один каталог профиля из двух браузеров в одном процессе; занятость снимается только когда браузер известно ушёл. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 
 ## Per-tag
 
@@ -1312,6 +1322,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-10-the-pool-belongs-to-the-application` — architecture  cleanup  database
 - `2026-11-15-a-browser-session-is-started-not-joined` — architecture  browser  boundaries  egress  antibot
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — architecture  egress  operations  antibot  browser
+- `2026-11-16-the-local-browser-lives-in-the-profile-directory` — architecture  browser  antibot  boundaries  operations
 
 ## Active entries
 
@@ -1448,3 +1459,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-10-the-pool-belongs-to-the-application` — The pool belongs to the application, and the application says so in one place
 - `2026-11-15-a-browser-session-is-started-not-joined` — Сессию браузера запускают, а не присоединяются к ней; профиль — это каталог и endpoint
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — Camoufox работает локально, адрес приходит прокси, а отпечаток — данные профиля
+- `2026-11-16-the-local-browser-lives-in-the-profile-directory` — Локальный браузер живёт в persistent-контексте профиля, а каталог занят на время его жизни
