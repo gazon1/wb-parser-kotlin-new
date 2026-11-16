@@ -1,0 +1,66 @@
+name: Camoufox smoke
+
+# The ordinary CI pipeline runs without a browser: the crawler's Camoufox lives
+# on the operator's machine, and the tests that need a real build skip when it is
+# absent. This workflow is the other half of that contract: an opt-in run on a
+# machine that installs the pinned build and proves the launch contract —
+# launch, persistent context, stored fingerprint, page, clean close.
+#
+# It is `workflow_dispatch` only on purpose. Downloading a pinned Camoufox build
+# is ~2.4 GB and the job is slow; putting it on every pull request would make the
+# ordinary pipeline pay for a check that only the browser path needs.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: camoufox-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Launch, fingerprint and close
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up JDK 22
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "22"
+          cache: gradle
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install the Firefox runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-3-0 libdbus-glib-1-2 libasound2 libxt6 libx11-xcb1 \
+            libxcomposite1 libxdamage1 libxrandr2 libatk-bridge2.0-0 \
+            libpango-1.0-0 libcups2 fontconfig
+
+      - name: Install the pinned Camoufox build
+        run: |
+          python3 -m pip install --disable-pip-version-check uv
+          export PATH="$HOME/.local/bin:$PATH"
+          chmod +x scripts/camoufox.sh
+          scripts/camoufox.sh install
+
+      # The test asserts the launch contract, not the install record: real
+      # executable, persistent profile directory, stored fingerprint, page and
+      # clean process exit.
+      - name: Launch, fingerprint and close
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+          # A missing build must fail this job, not skip its way to green.
+          CAMOUFOX_REQUIRE_SMOKE: "1"
+        run: ./gradlew :browser:test --tests 'ru.wbparser.browser.camoufox.CamoufoxSmokeTest' --no-daemon

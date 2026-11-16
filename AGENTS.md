@@ -91,7 +91,7 @@ just deploy::dry-run <tag> # ansible --check --diff
 
 ## CI-поверхности / CI surfaces
 
-Восемь workflow'а — не украшение, а часть гарантий репозитория. Их связность
+Девять workflow'ов — не украшение, а часть гарантий репозитория. Их связность
 проверяет гейт `scripts/ci/check-ci-workflows.py` (в реестре
 `scripts/ci/static-gates.sh`), поэтому удаление или «опустошение» любого из них —
 это finding, а не тихая потеря.
@@ -106,6 +106,7 @@ just deploy::dry-run <tag> # ansible --check --diff
 | `.github/workflows/lint-autofix.yml` | применяет `scripts/ci/lint-autofix.sh` и **предлагает** правки (ветка `lint-autofix/<run-id>` + PR/комментарий) | push, PR, dispatch |
 | `.github/workflows/dependabot-auto-merge.yml` | мержит PR'ы dependabot: разбирает текст описания, решает по semver, мержит только обновления зависимостей | PR от dependabot, schedule |
 | `.github/workflows/site-compatibility.yml` | спрашивает у витрины, понимает ли она образ, который сейчас собран: контракт между двумя репозиториями | push на main |
+| `.github/workflows/camoufox-smoke.yml` | opt-in: ставит pinned Camoufox и проверяет реальный launch → fingerprint → page → close, а не только наличие executable | dispatch |
 
 Правила, которые из этого следуют:
 

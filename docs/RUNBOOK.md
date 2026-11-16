@@ -221,7 +221,8 @@ just deploy::dry-run <tag> # ansible --check --diff
 "wbparser_compose_src=<repo>/deploy/docker-compose.vps.yml"`.
 
 **Один образ, один тег.** Браузер — локальный Camoufox, он не едет на VPS. Репозиторий
-собирает и публикует один образ краула (`ghcr.io/<owner>/wb-parser`, `Dockerfile.app`);
+собирает и публикует один образ приложения (`ghcr.io/<owner>/wb-parser`, `Dockerfile.app`) —
+на VPS он работает как API, а локально — как краул;
 тег — короткий SHA коммита. CI (джоб `publish-image` в `.github/workflows/ci.yml`: после
 `build`, `lint`, `coverage`, `gate-honesty`, только на push) собирает и пушит его с тегами
 `branch`, короткий `sha` и `latest` для default-ветки. Вручную: `docker login ghcr.io -u
@@ -231,17 +232,41 @@ just deploy::dry-run <tag> # ansible --check --diff
 новым», а тег можно переставить. Роль `Caddy-vps` разрешает тег в digest и поднимает именно
 digest, поэтому тег — это имя, а не то, что работает.
 
-**Что происходит на VPS.** `deploy/docker-compose.vps.yml` — один сервис:
+**Что происходит на VPS.** `deploy/docker-compose.vps.yml` — один сервис, и это
+**API, а не краул**:
 
-- `wb-parser` — краул. Образ по digest (`ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser@${DIGEST:?}`),
-  `env_file: app.env`, порт **не публикуется** — только `expose: 8080` во внешней сети
-  `caddy_net`, которую создаёт и владеет роль из `Caddy-vps`. Healthcheck: `wget -q -O
-  /dev/null http://127.0.0.1:8080/api/health/live || exit 1` — `wget`, а не `curl` (в
+- `wb-parser` — образ по digest (`ghcr.io/${IMAGE_OWNER:-gazon1}/wb-parser@${DIGEST:?}`),
+  `env_file: app.env`, `SPRING_PROFILES_ACTIVE=public` и `CRAWLER_WORKER_ENABLED=false`.
+  Порт **не публикуется** — только `expose: 8080` во внешней сети `caddy_net`, которую
+  создаёт и владеет роль из `Caddy-vps`. Healthcheck: `wget -q -O /dev/null
+  http://127.0.0.1:8080/api/health/live || exit 1` — `wget`, а не `curl` (в
   `eclipse-temurin:22-jre` нет curl), и `/live`, а не `/ready` (краткий блёп БД не должен
-  перезапускать краул посреди обхода).
+  перезапускать API).
 
-Браузера на VPS нет: Camoufox запускается на рабочей машине, как и сам краул. VPS
-предоставляет только proxy endpoints.
+Расписание и браузер на VPS выключены: Camoufox нет в образе, persistent-профилей нет и
+быть не должно. Профили создаются и живут на рабочей машине.
+
+**Краулер запускается на рабочей машине.** База — та же удалённая, прокси — те же, что
+объявлены группам; браузер — локальный Camoufox. Перед запуском: `just browser::verify`,
+`PROFILES_DIR` с каталогами профилей и `<profile>.fingerprint.json`, переменные прокси.
+
+```bash
+SPRING_PROFILES_ACTIVE=worker \
+SERVER_PORT=8071 \
+DB_HOST=91.188.212.209 DB_PORT=5432 DB_NAME=wbparser \
+DB_USER=<crawler-user> DB_PASSWORD=<secret> \
+ADMIN_API_KEY=<secret> \
+PROFILES_DIR="$HOME/.wbparser/profiles" \
+CAMOUFOX_HOME="$HOME/.cache/camoufox" \
+CAMOUFOX_BUILD="browsers/official/158.0.1-beta.41-3f2eb1d0" \
+EGRESS_PROXY_HOST_SOCKS5=<host> EGRESS_PROXY_PORT_SOCKS5=<port> \
+just app::run
+```
+
+Один прогон без веб-сервера: тот же набор переменных с `SPRING_PROFILES_ACTIVE=once`.
+Краул с рабочей машины пишет в ту же базу; витрина читает её через API на VPS. Временные
+потери связи с VPS базой переживаются штатным retry, но браузер и профили остаются
+локальными: переезд на VPS их не касается.
 
 **Как убедиться, что деплой прошёл.** Деплой не считается удачным, пока контейнер не отмечен
 здоровым (`docs/decisions/2026-10-14-deploy-crawler-as-registry-image.md`):
@@ -606,7 +631,7 @@ java -jar app/build/libs/app.jar --spring.profiles.active=once
 | **Читается срез каталога, а не каталог целиком** | Обход идёт `known_pages_limit` страниц на цель; в `wb_catalog_targets.yaml` у всех 132 целей стоит `known_pages_limit: 60` — это измеренная величина, а не круглое число (§8(f)). У 118 целей пагинацию обрезает предел API WB (60 страниц, страница сверх приходит ошибкой), поэтому счётчик `crawl.targets.truncated{reason="pages"}` для них срабатывает честно: каталог длиннее, чем WB отдаёт |
 | **Токен каталога — данные WB, и они протухают** | `searchQuery` узла меню WB меняется, и цель со старым токеном получает живой ответ 200 с популярной ротацией. Единственный признак — `catalog_type = "presets"`, то есть метрика `crawl.presets.responses`. Токены приходится переобогащать по мере старения |
 | **Покрытие модуля `tests` не видно kover** | Kover 0.9.11 не агрегирует покрытие зависимых модулей, поэтому отчёт модуля `tests` пуст; измеримый код переносится в измеримый модуль — `docs/decisions/2026-10-20-coverage-is-measured-where-the-code-lives.md` |
-| **В проде нет ни наблюдений, ни развёрнутого краула** | База `wbparser` на 91.188.212.209 переведена на Flyway-схему v6 и наполнена каталогом (132 цели с измеренным `known_pages_limit`) и словарём предметов (8174 строк), но сам краул на 91.188.212.39 не развёрнут: нет ни контейнера `wb-parser`, ни systemd-юнита `wbparser`. Пока он не запущен, наблюдения не собираются, а витрина не читает эту базу — в её `.env` на VPS `DATABASE_URL` пуст (см. `deploy/provision-readonly-role.sql` в репозитории витрины) |
+| **Краул запускается с рабочей машины, а не с VPS** | На 91.188.212.39 работает только API каталога и админки; расписание и браузер там выключены. Наблюдения собирает локальный краул, подключённый к удалённой базе; пока он не запущен, витрина не получает новых данных |
 | **Два конфликтующих контракта деплоя** | Этот репозиторий везёт образ и запускает его через compose (`deploy/docker-compose.vps.yml`, `just deploy`), а роль `wbparser` в Caddy-vps клонирует репозиторий, собирает JAR на хосте и запускает его через systemd (`/home/user/wbparser`, java 21). Контракты не совпадают, и старый checkout на хосте (`/home/user/wbparser/wbparser-new`, коммит от 13 октября) клонировать заново нельзя: каталог не пуст |
 | **Данные в проде до пересборки — чужие** | §1 и §8(e) |
 | **Деплой разделён между двумя репозиториями** | Compose-файл и образ — здесь, хост, маршрут и переменные — в `Caddy-vps`. Playbook в этом репозитории не лежит: `just deploy` требует checkout `Caddy-vps` (путь — `CADDY_VPS_DIR`, по умолчанию `~/Caddy-vps`) |

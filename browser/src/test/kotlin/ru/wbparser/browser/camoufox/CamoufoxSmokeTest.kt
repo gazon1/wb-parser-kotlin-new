@@ -155,6 +155,22 @@ class CamoufoxSmokeTest :
                 fingerprint = fingerprint,
             )
 
+        test("the pinned build is installed when the smoke run requires it")
+            .config(
+                enabledOrReasonIf = {
+                    if (System.getenv("CAMOUFOX_REQUIRE_SMOKE") == "1") {
+                        Enabled.Companion.enabled
+                    } else {
+                        Enabled.Companion.disabled("CAMOUFOX_REQUIRE_SMOKE is not set")
+                    }
+                },
+            ) {
+                // The other tests skip where Camoufox is absent. A CI job that
+                // explicitly asks for the smoke run must not pass by skipping:
+                // it has installed the build, and a missing install is a failure.
+                install shouldNotBe null
+            }
+
         test("the local Camoufox starts and takes the stored fingerprint")
             .config(enabledOrReasonIf = { enabledHere() }) {
                 val root = Files.createTempDirectory("camoufox-smoke")

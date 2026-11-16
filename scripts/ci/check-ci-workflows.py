@@ -91,6 +91,14 @@ REQUIRED = {
             "scripts/ci/lint-autofix.sh",
         ],
     },
+    "camoufox-smoke.yml": {
+        "why": "the real Camoufox launch contract is checked on a machine with the pinned build",
+        "needles": [
+            "workflow_dispatch:",
+            "scripts/camoufox.sh install",
+            "CamoufoxSmokeTest",
+        ],
+    },
 }
 
 #: The shared corrector. Both surfaces call it: the workflow above and the
@@ -510,6 +518,18 @@ GOOD_WORKFLOWS = {
         "  autofix:\n"
         "    steps:\n"
         "      - run: bash scripts/ci/lint-autofix.sh\n"
+    ),
+    "camoufox-smoke.yml": (
+        "name: Camoufox smoke\n"
+        "on:\n"
+        "  workflow_dispatch:\n"
+        "permissions:\n"
+        "  contents: read\n"
+        "jobs:\n"
+        "  smoke:\n"
+        "    steps:\n"
+        "      - run: scripts/camoufox.sh install\n"
+        "      - run: ./gradlew :browser:test --tests '*CamoufoxSmokeTest*'\n"
     ),
     "ci.yml": (
         "name: CI\n"
