@@ -107,20 +107,19 @@ crawler:
     # "direct".
     #
     # `none` leaves from the address of the machine the crawler runs on.
-    # `socks5` / `http` need the address below: a locally launched browser cannot use
-    # an endpoint it does not know.
+    # `http` / `https` need the address below: a locally launched browser cannot use
+    # an endpoint it does not know. `socks5` is a kind this deployment does not use —
+    # the address it has is an HTTP proxy with Basic auth.
     #
     # The address is stated through the environment so a deployment that keeps its
     # addresses out of the repository still pins them:
-    #   host: ${EGRESS_PROXY_HOST_SOCKS5:}
+    #   host: ${EGRESS_PROXY_HOST_HTTP:}
     #
     # `username` / `password` reach the browser, never the repository: a credential
     # written here would be a credential leaked to every clone of it. They are read
     # from the environment under the names below, next to the address they belong to.
-    # And they may not accompany `socks5` at all — Playwright rejects an authenticated
-    # SOCKS5 endpoint, so a password-protected one has to be limited by network (its
-    # own CIDR rule) or replaced by an HTTP proxy with Basic auth. The crawler refuses
-    # to start rather than fail at the first launch.
+    # Playwright rejects an authenticated SOCKS5 endpoint, so a password-protected
+    # endpoint has to be HTTP with Basic auth — which is what the group below is.
     egress-groups:
       - id: direct
         profiles:
@@ -128,31 +127,28 @@ crawler:
           - k17bnqsi
         proxy:
           type: none
-      - id: socks5
-        profiles:
-          - kxpu63n
-        proxy:
-          type: socks5
-          # The address of the proxy. A group with a non-direct proxy cannot start
-          # without it: the browser is launched with this endpoint.
-          host: ${EGRESS_PROXY_HOST_SOCKS5:}
-          port: ${EGRESS_PROXY_PORT_SOCKS5:0}
-    # The HTTP proxy with Basic auth, for a deployment whose endpoint requires
-    # credentials. It is a second group rather than a credential on the one above: an
-    # authenticated SOCKS5 endpoint is refused, and an HTTP one is not.
-    #
-    # The profile id below stands for whichever profile this deployment puts behind it —
-    # a profile belongs to exactly one group, so it is not `kxpu63n`, which the group
-    # above owns.
-    #   - id: http-auth
-    #     profiles:
-    #       - <profile-id>
-    #     proxy:
-    #       type: http
-    #       host: ${EGRESS_PROXY_HOST_HTTP:}
-    #       port: ${EGRESS_PROXY_PORT_HTTP:0}
-    #       username: ${EGRESS_PROXY_USERNAME_HTTP:}
-    #       password: ${EGRESS_PROXY_PASSWORD_HTTP:}
+      # The HTTP proxy with Basic auth. One profile per address: the address is what
+      # WB counts, and a second profile on the same address buys liveness, not speed.
+      #
+      # This group is commented out until the deployment has the proxy's address. A
+      # group that is declared but cannot launch is not harmless: the router keeps
+      # offering it work, the pool finds no usable profile, and every request pays a
+      # borrow attempt against a profile that has no fingerprint and an endpoint that
+      # has no host. The log fills with "Profile unusable, trying next", and nothing
+      # tells the operator that the address was never configured.
+      #
+      # To enable: set EGRESS_PROXY_HOST_HTTP / _PORT_HTTP / _USERNAME_HTTP /
+      # _PASSWORD_HTTP, create the profile directory and its
+      # `<profile-id>.fingerprint.json`, then uncomment.
+      #   - id: http
+      #     profiles:
+      #       - <profile-id>
+      #     proxy:
+      #       type: http
+      #       host: ${EGRESS_PROXY_HOST_HTTP:}
+      #       port: ${EGRESS_PROXY_PORT_HTTP:0}
+      #       username: ${EGRESS_PROXY_USERNAME_HTTP:}
+      #       password: ${EGRESS_PROXY_PASSWORD_HTTP:}
     # Where the persistent browser profiles live on this machine.
     #
     # A profile is cookies and storage as much as it is configuration, so it has to

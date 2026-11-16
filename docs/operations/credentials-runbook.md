@@ -39,13 +39,14 @@
 
 ### 2.1 Пустое значение ≠ отсутствующее
 
-`crawler.spider.egress-groups[1].proxy.port` имеет тип `Int`. Строка
-`EGRESS_PROXY_PORT_SOCKS5=` (пустая) биндится пустой строкой, и Spring падает:
+`crawler.spider.egress-groups[*].proxy.port` имеет тип `Int`. Строка
+`EGRESS_PROXY_PORT_HTTP=` (пустая) биндится пустой строкой, и Spring падает — ошибка
+называет ту группу, чей порт оказался пустым:
 
 ```
 APPLICATION FAILED TO START
 Property: crawler.spider.egress-groups[1].proxy.port
-Value: "${EGRESS_PROXY_PORT_SOCKS5:0}"
+Value: "${EGRESS_PROXY_PORT_HTTP:0}"
 Reason: failed to convert java.lang.String to int
 A null value cannot be assigned to a primitive type
 ```
@@ -157,29 +158,69 @@ done
 ```
 
 Имена профилей — это `crawler.spider.egress-groups[*].profiles` в
-`app/src/main/resources/application.yml`. Группа `socks5` без адреса прокси остаётся
-без рабочего профиля: это WARN, а не отказ — но прогон на ней тратит попытки
-(см. §3.3).
+`app/src/main/resources/application.yml`. Закоммиченный файл объявляет только группу
+`direct` (профили `k18a6j35`, `k17bnqsi`); группа с HTTP-прокси закомментирована до
+того момента, когда у развёртывания появится адрес прокси (см. §3.3).
 
-### 3.3 Локальный прогон без прокси: оставить одну группу
+### 3.3 Группа с прокси: почему она закомментирована
 
-Закоммиченный `application.yml` объявляет две группы: `direct` (профили
-`k18a6j35`, `k17bnqsi`) и `socks5` (профиль `kxpu63n`, адрес из
-`EGRESS_PROXY_HOST_SOCKS5`). Локально прокси нет, и у `kxpu63n` нет отпечатка,
-поэтому каждый заём этой группы уходит в «нет свободного профиля». Файл
-конфигурации для этого менять не нужно — группа переопределяется окружением:
+Прокси у развёртывания — HTTP с Basic auth (SOCKS5 нет, и Playwright не умеет
+аутентифицироваться в SOCKS5 всё равно). Группа лежит в `application.yml`
+закомментированной, и это не осторожность, а лечение конкретного симптома.
 
-```bash
-export SPRING_APPLICATION_JSON='{"crawler":{"spider":{"egress-groups":[
-  {"id":"direct","profiles":["k18a6j35","k17bnqsi"],"proxy":{"type":"none"}}]}}}'
+Объявленная группа без адреса **не безвредна**. Роутер считает её доступной — она
+никогда не отказывала, она просто не запускалась, — и на каждый запрос предлагает ей
+работу. Пул не находит ни одного пригодного профиля и платит попыткой заёма. В логе
+это выглядит так, десятки раз в минуту:
+
+```
+[kxpu63n] Browser start failed: The profile 'kxpu63n' has no stored fingerprint
+Profile kxpu63n unusable, trying next
+Egress group socks5 has no free profile: No browser profile freed within 120000ms
 ```
 
-Список из `SPRING_APPLICATION_JSON` заменяет список целиком, а не сливается с ним.
-Проверка — в логе одна группа и никаких `unusable`:
+Ни одна из этих строк не говорит оператору правду: «адрес прокси не задан». Хуже
+того, кран всё равно не поедет — `PlaywrightCamoufoxLauncher` отвергает профиль без
+`host`/`port`, так что даже созданный профиль с отпечатком не запустится.
+
+Включение — это четыре шага, и все четыре нужны:
+
+```bash
+# 1. адрес и креды прокси в .env
+EGRESS_PROXY_HOST_HTTP=<host>
+EGRESS_PROXY_PORT_HTTP=<port>
+EGRESS_PROXY_USERNAME_HTTP=<user>
+EGRESS_PROXY_PASSWORD_HTTP=<password>
+
+# 2. каталог профиля под endpoint'ом и его отпечаток (см. §3.2)
+#    endpoint в имени каталога — это адрес: профиль нельзя открыть под другим
+
+# 3. раскомментировать группу в application.yml и вписать profile-id
+
+# 4. проверить, что группа действительно вышла в сеть
+uv run scripts/parser/wbparser.py status
+```
+
+Каталог профиля называется по endpoint'у (`http-<host>-<port>`), поэтому профиль,
+созданный для прямого адреса, в группу с прокси не переносится: cookies привязаны к
+адресу.
+
+### 3.4 Локальный прогон без прокси
+
+Ничего переопределять не нужно: в закоммиченном файле объявлена одна группа `direct`,
+и это ровно то, что работает на машине без прокси. Проверка — в логе обе строки:
 
 ```
 The Camoufox of the profile 'k18a6j35' started.
 Egress group direct: address=<ip>, isolated=true
+```
+
+Если группу с прокси всё же включили, а адреса нет, `SPRING_APPLICATION_JSON`
+заменяет список групп целиком:
+
+```bash
+export SPRING_APPLICATION_JSON='{"crawler":{"spider":{"egress-groups":[
+  {"id":"direct","profiles":["k18a6j35","k17bnqsi"],"proxy":{"type":"none"}}]}}}'
 ```
 
 ---
@@ -347,7 +388,7 @@ docker exec wb-parser-debug-postgres psql -U postgres -d wbparser \
 
 | Симптом | Причина | Действие |
 |---|---|---|
-| `A null value cannot be assigned to a primitive type` на `egress-groups[1].proxy.port` | пустое `EGRESS_PROXY_PORT_SOCKS5=` | удалить строку из `.env`, а не оставлять пустой (§2.1) |
+| `A null value cannot be assigned to a primitive type` на `egress-groups[].proxy.port` | пустое `EGRESS_PROXY_PORT_HTTP=` | удалить строку из `.env`, а не оставлять пустой (§2.1) |
 | `CATALOG_API_KEY is not set` | ключа нет в окружении | §3, затем перезапуск |
 | `CATALOG_API_KEY must not contain ADMIN_API_KEY` | один ключ на оба API | сгенерировать второй ключ |
 | `ADMIN_API_KEY environment variable is not set` | то же для admin | §3 |
