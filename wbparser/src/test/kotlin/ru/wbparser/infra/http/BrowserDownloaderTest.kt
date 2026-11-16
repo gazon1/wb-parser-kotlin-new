@@ -2,11 +2,13 @@ package ru.wbparser.infra.http
 
 import arrow.core.getOrElse
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
 import ru.wbparser.browser.api.BrowserAutomation
 import ru.wbparser.browser.api.BrowserPage
@@ -423,6 +425,36 @@ class BrowserDownloaderTest :
             // The first answer flagged the session; the refused cookies are not warm
             // any more, so the next request pays the navigation again.
             page.navigations.size shouldBe 2
+            pool.close()
+        }
+
+        // ─── cancellation is not a transport failure ─────────────────────────────
+
+        test("a cancelled request is not turned into a network error") {
+            // `CancellationException` extends `IllegalStateException`, so a `catch (e: Exception)`
+            // swallows it. The bug this pins: the crawl was cancelled, the downloader answered
+            // `NetworkError`, the retry loop downloaded again after its caller had given up, and
+            // every shutdown wrote an ERROR with a stack trace about a request nobody awaited.
+            val cancellation = CancellationException("the crawl was cancelled")
+            val page = FakeBrowserPage(evaluateFailure = cancellation)
+            val pool = poolOf(page)
+            val downloader = downloaderOf(pool)
+
+            shouldThrow<CancellationException> { runBlocking { downloader.download(task()) } }
+
+            pool.close()
+        }
+
+        test("a real failure is still a network error, so the retry loop sees it") {
+            // The clause above must not swallow ordinary failures: it is the difference
+            // between "nobody wants this answer" and "this request went wrong".
+            val page = FakeBrowserPage(evaluateFailure = IllegalStateException("page exploded"))
+            val pool = poolOf(page)
+            val downloader = downloaderOf(pool)
+
+            val result = runBlocking { downloader.download(task()) }
+
+            result.isLeft() shouldBe true
             pool.close()
         }
     })

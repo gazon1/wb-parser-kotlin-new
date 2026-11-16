@@ -1,6 +1,7 @@
 package ru.wbparser.infra.http
 
 import arrow.core.Either
+import kotlinx.coroutines.CancellationException
 import ru.wbparser.domain.error.NetworkError
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
@@ -72,6 +73,12 @@ class WbCatalogStage(
             val downloadResult: Either<NetworkError, Fetched> =
                 try {
                     cbDownloader(task)
+                } catch (e: CancellationException) {
+                    // A cancelled crawl is not a failed download: wrapping it into
+                    // `NetworkError` turns it into a retry the caller no longer wants, and
+                    // the shutdown writes an ERROR about a request nobody awaits. Same
+                    // clause as in the downloaders, at the layer that wraps them.
+                    throw e
                 } catch (e: Exception) {
                     Either.Left(
                         NetworkError(
