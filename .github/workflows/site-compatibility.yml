@@ -72,11 +72,6 @@ on:
         type: string
   push:
     branches: [main]
-  # A pull request's image is the one whose contract may have just changed, and
-  # the check has to be visible on the pull request itself — a job in another
-  # workflow would not show up among the pull request's checks.
-  pull_request:
-    branches: [main]
 
 permissions:
   contents: read

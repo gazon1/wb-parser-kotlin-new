@@ -148,8 +148,11 @@ jobs:
       # machine, and the tests that need it skip when it is absent. `camoufoxVerify`
       # is how a machine that has the build proves it is the pinned one.
 
-      - name: Build with Gradle
-        run: ./gradlew build --no-daemon -x ktlintCheck -x detekt
+      # `build` runs the verification lifecycle (including tests); `koverXmlReport`
+      # produces the merged coverage report from the same test run. One Gradle
+      # invocation, one test execution.
+      - name: Build, test, and produce the coverage report
+        run: ./gradlew build koverXmlReport --no-daemon -x ktlintCheck -x detekt
 
       # compileOnly/runtime gate: a compileOnly dep that is missing at runtime causes
       # NoClassDefFoundError at startup — tests pass (test classpath includes it) but
@@ -165,9 +168,6 @@ jobs:
           ./gradlew :app:writeRuntimeClasspath --no-daemon
           python3 scripts/ci/check-runtime-classpath.py
 
-      - name: Run tests
-        run: ./gradlew test --no-daemon
-
       # "Tests passed" is not "the tests ran". Gradle reports BUILD SUCCESSFUL
       # whether a suite executed 227 tests or none, and an UP-TO-DATE task does
       # not rewrite its results directory. This reads the XML this job just
@@ -180,50 +180,6 @@ jobs:
 
       - name: Executed test counts
         run: python3 scripts/check-test-runs.py --max-age 3600
-
-  coverage:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: static
-
-    # The caller's grant is a ceiling, not a gift: without a
-    # declaration of its own, this job would inherit every
-    # permission the caller has — including the registry write that
-    # only the image job needs.
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - name: Set up JDK 22
-        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
-        with:
-          distribution: temurin
-          java-version: "22"
-          # The Gradle cache: without it every job starts with a cold
-          # cache, and six jobs in parallel pull the whole dependency
-          # graph from Maven Central at the same moment. That is slow,
-          # and it fails at random when the registry answers with a
-          # 404 — a CI failure that is about the network, not about the code.
-          cache: gradle
-
-      - name: Configure Gradle
-        run: |
-          mkdir -p ~/.gradle
-          echo "org.gradle.jvmargs=-Xmx2g" >> ~/.gradle/gradle.properties
-          echo "org.gradle.parallel=true" >> ~/.gradle/gradle.properties
-          echo "org.gradle.caching=true" >> ~/.gradle/gradle.properties
-
-      # No browser is installed here — see the build job. The browser module's tests
-      # that need a real Camoufox skip when it is absent, and the rest covers the
-      # decisions.
-
-      # `test koverXmlReport`, not `koverXmlReport`: the merged report is the union of
-      # the modules' reports, and the union can be built before the part it is made of
-      # is regenerated. Asking for the tests in the same invocation makes the report
-      # and the run it describes one thing — the same reason check.sh does it.
-      - name: Produce the coverage report
-        run: ./gradlew test koverXmlReport --no-daemon
 
       # The floor lives in config/gates/coverage-floor.txt, one row per module, and
       # scripts/check-coverage.py is the gate. The build script no longer carries a
@@ -311,8 +267,39 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # PR path checks compare against the base commit.
+          fetch-depth: 0
+
+      # On PRs, run only when dependency/build configuration or source changes
+      # can affect dependency analysis. The filter lives here in ci.yml: changing
+      # this workflow (including this filter) is itself a relevant change, so the
+      # check cannot be silently disabled by editing the filter.
+      - name: Decide whether dependency analysis is relevant
+        id: dependency-health-relevant
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$BASE_SHA" "$HEAD_SHA" > /tmp/dependency-health-changed.txt || {
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          }
+          if grep -Eq '(^|/)(build\.gradle(\.kts)?|settings\.gradle(\.kts)?|gradle\.properties)$|^gradle/|\.kts$|\.kt$|\.java$|^\.github/workflows/ci\.yml$' /tmp/dependency-health-changed.txt; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No dependency-analysis-relevant changes in this PR; skipping DAGP." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Set up JDK 22
+        if: steps.dependency-health-relevant.outputs.relevant == 'true'
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
@@ -325,6 +312,7 @@ jobs:
           cache: gradle
 
       - name: Configure Gradle
+        if: steps.dependency-health-relevant.outputs.relevant == 'true'
         run: |
           mkdir -p ~/.gradle
           echo "org.gradle.jvmargs=-Xmx2g" >> ~/.gradle/gradle.properties
@@ -332,10 +320,11 @@ jobs:
           echo "org.gradle.caching=true" >> ~/.gradle/gradle.properties
 
       - name: Dependency analysis (DAGP)
+        if: steps.dependency-health-relevant.outputs.relevant == 'true'
         run: ./gradlew buildHealth --no-daemon
 
       - name: Upload dependency report
-        if: always()
+        if: always() && steps.dependency-health-relevant.outputs.relevant == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: dependency-health-report
@@ -386,21 +375,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     # Only after the gates: an image from a failing branch is not worth pushing.
-    #
-    # PRs are included on purpose. The plan's cross-repository check answers the
-    # question "does the storefront still understand this crawler?", and the
-    # crawler of a pull request is the one whose contract may have just changed.
-    # The PR image is tagged `pr-<n>` and is immutable: the image built after the
-    # merge is a *different* digest, and only the digest that was checked may be
-    # promoted.
-    needs: [build, lint, coverage, gate-honesty]
-    # A scheduled run is a health check, not a release. It builds the same
-    # pipeline to find out whether the repository is still healthy, and
-    # pushing an image to the registry at 03:00 answers a question nobody
-    # asked. The comparison is spelled out instead of negated because
-    # GitHub's expressions treat a null input as false, and `!= false` would
-    # skip this job exactly when it must not.
-    if: ${{ github.event_name != 'schedule' }}
+    # The PR path no longer publishes an image: nothing in PR CI consumes it, and
+    # the storefront compatibility check runs for released (main/manual) images.
+    needs: [build, lint, gate-honesty]
+    # Release path only: push to main, or an explicit manual dispatch of this
+    # workflow. PRs do not publish, and a scheduled/nightly health check (a
+    # workflow_call from the nightly entry point) is not a release.
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     permissions:
       packages: write
       contents: read
@@ -478,7 +459,7 @@ jobs:
     # It is checked against the real job list by
     # scripts/ci/check-ci-workflows.py, because a wait list that has gone
     # stale reports a run that is not over as one that is.
-    needs: [static, build, coverage, lint, dependency-health, gate-honesty, publish-image]
+    needs: [static, build, lint, dependency-health, gate-honesty, publish-image]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
