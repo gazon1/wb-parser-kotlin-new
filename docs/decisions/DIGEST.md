@@ -600,6 +600,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** выпускать типы Playwright в публичные подписи browser-модуля: наружу — `BrowserAutomation` и `BrowserPage`. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** генерировать отпечаток в рантайме и не хранить имя пресета вместо конфига. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** доверять пути из записи установки: версия сборки задаётся относительно каталога установки, и выход наружу — отказ. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Never** запускать внешний инструмент по относительному имени: путь ищется в `PATH`, проверяется и передаётся абсолютным. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
+- **Never** затирать handle незакрытой сессии новым браузером: новый `start()` при живой сессии прошлого отказывает, а не продолжает. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** менять в этом изменении пул, его concurrency, semaphores и round-robin — это #271. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** называть родительский каталог `fonts`: он хранит лица всех систем, а identity получает только свои. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)
 - **Never** освобождать каталог профиля, пока жив драйвер его браузера; **Always** освобождать каталог, когда браузер ушёл, даже если драйвер ещё жив. _(from `2026-11-16-the-local-browser-lives-in-the-profile-directory`)

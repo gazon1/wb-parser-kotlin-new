@@ -419,6 +419,24 @@ class CamoufoxAutomationTest :
             second.start().let { second.isConnected shouldBe true }
         }
 
+        test("a start after an incomplete cleanup refuses to start a second browser") {
+            val root = Files.createTempDirectory("camoufox-automation")
+            val browser = FakeCamoufoxBrowser(closeResult = true, driverGone = false)
+            val launcher = FakeCamoufoxLauncher(browser)
+            val automation = CamoufoxAutomation(profile(root), launcher)
+            automation.start()
+
+            automation.close()
+
+            // The driver of the previous browser is still there, and it is ours. A
+            // second browser would overwrite its handle, and the driver would be a
+            // process nobody closes.
+            val thrown = shouldThrow<IllegalStateException> { automation.start() }
+
+            thrown.message shouldContain "not cleaned completely"
+            launcher.launched.size shouldBe 1
+        }
+
         test("two profiles work in their own directories") {
             val root = Files.createTempDirectory("camoufox-automation")
             val first = CamoufoxAutomation(profile(root, "profile-1"), FakeCamoufoxLauncher())

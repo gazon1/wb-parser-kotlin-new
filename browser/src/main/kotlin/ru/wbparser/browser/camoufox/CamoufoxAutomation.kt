@@ -141,6 +141,16 @@ class CamoufoxAutomation internal constructor(
         synchronized(lifecycle) {
             // One browser at a time: the previous one goes before the next one starts.
             close()
+            // A session that did not go is still ours. Starting a new browser now would
+            // overwrite its handle, and the driver it holds would be a process nobody
+            // closes — the very thing the handle exists to prevent.
+            val leftover = session
+            check(leftover == null) {
+                "The Camoufox of the profile '${profile.profileId}' was not cleaned completely: " +
+                    "its Playwright driver is still there. A new browser cannot start while the " +
+                    "driver of the previous one lives — the profile would be driven by a browser " +
+                    "nobody owns."
+            }
             val holder = OpenProfiles.claim(profileDir(), profile.profileId)
             claim = holder
             val launched =

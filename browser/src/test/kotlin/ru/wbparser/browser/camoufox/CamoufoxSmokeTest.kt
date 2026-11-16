@@ -10,6 +10,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.pool.DeclaredProxy
+import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -71,6 +72,24 @@ class CamoufoxSmokeTest :
             }
 
         /**
+         * The fontconfig tool of this machine.
+         *
+         * The tool is looked up in the PATH of the machine and then used by its
+         * absolute path: a command named by a relative name is whatever the PATH says
+         * it is, and the answer of this test must not depend on the PATH of whoever
+         * runs it.
+         */
+        fun fcMatchBinary(): Path? {
+            val path = System.getenv("PATH") ?: return null
+            return path
+                .split(File.pathSeparator)
+                .asSequence()
+                .filter { it.isNotBlank() }
+                .map { Path.of(it, "fc-match") }
+                .firstOrNull { Files.isRegularFile(it) && Files.isExecutable(it) }
+        }
+
+        /**
          * What fontconfig resolves a face to, given the file the browser was given.
          *
          * The question is asked of fontconfig itself, with the very file the browser
@@ -80,16 +99,18 @@ class CamoufoxSmokeTest :
         fun fcMatch(
             fontConfig: Path,
             family: String,
-        ): String? =
-            runCatching {
+        ): String? {
+            val binary = fcMatchBinary() ?: return null
+            return runCatching {
                 val process =
-                    ProcessBuilder("fc-match", "-f", "%{family}|%{file}", family)
+                    ProcessBuilder(binary.toString(), "-f", "%{family}|%{file}", family)
                         .redirectErrorStream(true)
                         .apply { environment()["FONTCONFIG_FILE"] = fontConfig.toString() }
                         .start()
                 val output = process.inputStream.bufferedReader().use { it.readText() }
                 if (process.waitFor() == 0) output.trim() else null
             }.getOrNull()
+        }
 
         /** Whether this machine has the tools of fontconfig to ask it a question. */
         fun fontConfigAvailable(): Boolean = fcMatch(Path.of("/etc/fonts/fonts.conf"), "sans-serif") != null
