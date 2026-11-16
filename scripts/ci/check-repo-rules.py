@@ -161,6 +161,69 @@ def _closing_quote(text: str, start: int, quote: str) -> int:
     return len(text)
 
 
+def _scan_interpolation(text: str, start: int, out: list[str]) -> int:
+    """Scans the code inside `${...}` as code — it *is* code, and it can name a runtime.
+
+    A string template is half literal and half code. Dropping the whole thing
+    would drop the code with it, and `"${ru.wbparser.browser.camoufox.CamoufoxAutomation}"`
+    is a reference as plainly as the same name written out.
+    """
+    index = start + 2
+    depth = 0
+    while index < len(text):
+        char = text[index]
+        if char == '"':
+            index = _scan_string(text, index, out)
+            continue
+        if char == "'":
+            index = _closing_quote(text, index, "'")
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            if depth == 0:
+                return index + 1
+            depth -= 1
+        out.append(char)
+        index += 1
+    return index
+
+
+def _scan_string(text: str, start: int, out: list[str]) -> int:
+    """Scans a `"..."` literal: the text goes, the interpolations stay."""
+    index = start + 1
+    while index < len(text):
+        char = text[index]
+        if char == "\\":
+            out.append("\n" * text.count("\n", index, index + 2))
+            index += 2
+            continue
+        if char == '"':
+            return index + 1
+        if char == "$" and text.startswith("${", index):
+            index = _scan_interpolation(text, index, out)
+            continue
+        if char == "\n":
+            out.append("\n")
+        index += 1
+    return index
+
+
+def _scan_raw_string(text: str, start: int, out: list[str]) -> int:
+    """Scans a Kotlin raw string literal: the text goes, the interpolations stay."""
+    index = start + 3
+    while index < len(text):
+        if text.startswith('"""', index):
+            return index + 3
+        if text[index] == "$" and text.startswith("${", index):
+            index = _scan_interpolation(text, index, out)
+            continue
+        if text[index] == "\n":
+            out.append("\n")
+        index += 1
+    return index
+
+
 def strip_comments_and_strings(text: str) -> str:
     """Removes what cannot hold code: comments and string literals.
 
@@ -169,6 +232,9 @@ def strip_comments_and_strings(text: str) -> str:
 
     The line structure survives — every removed line still ends in a newline — so
     a finding can name the line the code was on.
+
+    The code inside a string template is code, not text, so it stays: a runtime
+    named in `${...}` is a runtime named.
     """
     out: list[str] = []
     index = 0
@@ -177,21 +243,25 @@ def strip_comments_and_strings(text: str) -> str:
         char = text[index]
         if char == "/" and text.startswith("//", index):
             end = text.find("\n", index)
-            end = length if end == -1 else end
-        elif char == "/" and text.startswith("/*", index):
+            index = length if end == -1 else end
+            continue
+        if char == "/" and text.startswith("/*", index):
             end = text.find("*/", index + 2)
             end = length if end == -1 else end + 2
-        elif text.startswith('"""', index):
-            end = text.find('"""', index + 3)
-            end = length if end == -1 else end + 3
-        elif char in "\"'":
-            end = _closing_quote(text, index, char)
-        else:
-            out.append(char)
-            index += 1
+            out.append("\n" * text.count("\n", index, end))
+            index = end
             continue
-        out.append("\n" * text.count("\n", index, end))
-        index = end
+        if text.startswith('"""', index):
+            index = _scan_raw_string(text, index, out)
+            continue
+        if char == '"':
+            index = _scan_string(text, index, out)
+            continue
+        if char == "'":
+            index = _closing_quote(text, index, "'")
+            continue
+        out.append(char)
+        index += 1
     return "".join(out)
 
 
@@ -561,6 +631,19 @@ VIOLATIONS = {
     "app/src/main/kotlin/ru/wbparser/app/configuration/Leaky.kt": (
         "package ru.wbparser.app.configuration\n\nimport ru.wbparser.browser.playwright.PlaywrightBrowserPage\n\nclass Leaky\n"
     ),
+    # A string template is half literal and half code. The code names the runtime,
+    # so the rule must see it.
+    "app/src/main/kotlin/ru/wbparser/app/scheduling/InterpolatedLeaky.kt": (
+        "package ru.wbparser.app.scheduling\n\nclass InterpolatedLeaky {\n"
+        '    val name = "${ru.wbparser.browser.camoufox.CamoufoxAutomation::class.java.name}"\n}\n'
+    ),
+    # The runtime named in prose and in plain text only: nothing to report.
+    "app/src/main/kotlin/ru/wbparser/app/scheduling/ProseOnly.kt": (
+        "package ru.wbparser.app.scheduling\n\n"
+        "/**\n * Mentions ru.wbparser.browser.camoufox.CamoufoxAutomation in prose.\n */\n"
+        "class ProseOnly {\n"
+        '    val label = "ru.wbparser.browser.camoufox.CamoufoxAutomation"\n}\n'
+    ),
     "CHANGELOG.md": "# The history that must not be here\n",
     ".github/workflows/ci.yml": "jobs:\n  build:\n    steps:\n      - run: ./gradlew fixDependencies\n",
     "gradle.properties": "org.gradle.java.home=/home/max/.jdks/temurin-21.0.10\n",
@@ -593,6 +676,7 @@ def self_test() -> int:
             "outside its composition root",
             "FullyQualifiedLeaky.kt",
             "configuration/Leaky.kt",
+            "InterpolatedLeaky.kt",
             "outside the browser module",
             "is a double of our own",
             "CHANGELOG.md exists",
@@ -601,6 +685,10 @@ def self_test() -> int:
         ):
             if not any(expected in finding for finding in findings):
                 print(f"self-test FAILED: nothing reported the '{expected}' violation")
+                return 1
+        for unexpected in ("ProseOnly.kt",):
+            if any(unexpected in finding for finding in findings):
+                print(f"self-test FAILED: '{unexpected}' was reported, and prose is not a violation")
                 return 1
         print(f"self-test OK: {len(findings)} findings on a deliberately broken tree")
         return 0
