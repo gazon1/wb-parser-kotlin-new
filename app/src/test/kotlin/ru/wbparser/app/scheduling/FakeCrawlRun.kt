@@ -1,5 +1,6 @@
 package ru.wbparser.app.scheduling
 
+import ru.wbparser.domain.scheduling.CrawlTrigger
 import ru.wbparser.infra.runner.CrawlRun
 import ru.wbparser.infra.runner.RunResult
 
@@ -21,7 +22,7 @@ class FakeCrawlRun(
     var calls: Int = 0
         private set
 
-    override suspend fun run(): RunResult {
+    override suspend fun run(trigger: CrawlTrigger): RunResult {
         calls++
         failure?.let { throw it }
         return outcome
@@ -47,7 +48,7 @@ class BlockingCrawlRun(
     var calls: Int = 0
         private set
 
-    override suspend fun run(): RunResult {
+    override suspend fun run(trigger: CrawlTrigger): RunResult {
         calls++
         started.complete(Unit)
         gate.await()

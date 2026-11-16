@@ -59,14 +59,28 @@ from functools import cache
 from pathlib import Path
 from typing import Annotated, Any, TypeVar
 
-import httpx
-import typer
-from dotenv import dotenv_values
-from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
-from pydantic.alias_generators import to_camel
-from rich.console import Console
-from rich.markup import escape
-from rich.table import Table
+try:
+    import click
+    import httpx
+    import typer
+    from croniter import croniter
+    from dotenv import dotenv_values
+    from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+    from pydantic.alias_generators import to_camel
+    from rich.console import Console
+    from rich.markup import escape
+    from rich.table import Table
+except ModuleNotFoundError as missing:  # pragma: no cover - a wrong interpreter, not a code path
+    # A bare `python3 script.py` does not read `pyproject.toml`, so the dependencies are
+    # simply absent. Saying that beats a traceback that ends in "No module named
+    # 'typer'" — that message names the symptom and not the fix.
+    raise SystemExit(
+        f"error: {missing.name} is not installed for this interpreter.\n"
+        "Run it through the project environment instead:\n"
+        "  uv run scripts/parser/wbparser.py …\n"
+        "  just parser::…        (the same thing)\n"
+        "Setup, once: uv sync"
+    ) from missing
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PORT = 8082
@@ -139,6 +153,9 @@ class Job(Camel):
     pages_crawled: int = 0
     items_saved: int = 0
     started_at: datetime | None = None
+    completed_at: datetime | None = None
+    # `schedule` or `manual`, and null for rows written before the trigger was recorded.
+    triggered_by: str | None = None
     error_message: str | None = None
 
 
@@ -202,6 +219,32 @@ def _env() -> dict[str, str]:
 def _base_url() -> str:
     port = os.environ.get("SERVER_PORT") or _file_env().get("SERVER_PORT") or DEFAULT_PORT
     return os.environ.get("WBPARSER_URL") or f"http://localhost:{port}"
+
+
+@cache
+def _container_env(name: str) -> str | None:
+    """
+    The value the running application actually holds, or None when it is not running.
+
+    The compose file overrides several of these, so the file describes a stack nobody
+    may be running: `CRAWLER_SCHEDULE_CRON` is `*/30 * * * * *` in the container and
+    absent from `.env`. A report that reads the file describes the wrong stack.
+    """
+    if not _running("app"):
+        return None
+    completed = subprocess.run(
+        ["docker", "compose", "exec", "-T", "app", "printenv", name],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return completed.stdout.strip() or None
+
+
+def _effective(name: str, default: str) -> str:
+    """Container, then `.env`, then the default — the most specific answer wins."""
+    return _container_env(name) or _env().get(name) or default
 
 
 @cache
@@ -789,6 +832,144 @@ def _print_schedule(
     if upcoming:
         _headline(f"next due — first {min(limit, len(upcoming))}")
         _table("", ["target", "when"], [[t.name, _age(when)] for when, t in upcoming[:limit]])
+
+
+@app.command()
+def history(
+    limit: Annotated[int, typer.Option(help="how many runs to show")] = 15,
+) -> None:
+    """
+    The last crawler runs, what started each, and when the next one is due.
+
+    "What started it" comes from `crawl_jobs.triggered_by`: `schedule` for a scheduler
+    tick, `manual` for an operator (the `once` profile, `wbparser crawl`). Rows written
+    before the column was filled say `—`, and that is the honest answer for them.
+
+    The next run is a *tick* that will find work. A tick with nothing due starts
+    nothing, so the estimate takes the later of the next tick and the moment the
+    earliest target's freshness expires — a next tick on its own would promise a run
+    that does not happen.
+    """
+    jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit)
+    next_run, due_estimate = _next_run()
+
+    _emit(
+        {
+            "runs": [job.model_dump(mode="json", by_alias=True) for job in jobs],
+            "schedule": {
+                "cron": _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *"),
+                "freshnessMinutes": int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360")),
+                "nextRun": next_run,
+                "earliestDue": due_estimate,
+            },
+        },
+        lambda: _print_history(jobs, next_run, due_estimate),
+    )
+
+
+def _next_run() -> tuple[datetime | None, datetime | None]:
+    """
+    When a tick will start a crawl, and when the earliest target becomes due.
+
+    The two are separate facts and the answer is the later of them: a tick that finds
+    nothing due is a no-op, so "the next tick" alone overstates what will happen.
+    """
+    cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
+    freshness = int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
+    now = datetime.now(UTC)
+
+    try:
+        earliest_due = _earliest_due(freshness, now) if _running("app") else None
+    except Unusable:
+        earliest_due = None
+
+    # Spring's cron has seconds first; croniter can read that layout, and `?` means
+    # "no specific value", which croniter spells `*`.
+    try:
+        iterator = croniter(cron.replace("?", "*"), now, second_at_beginning=True)
+    except (ValueError, KeyError):
+        return None, earliest_due
+
+    tick = iterator.get_next(datetime)
+    if earliest_due is None or earliest_due <= tick:
+        return tick, earliest_due
+    # Nothing is due at the next tick: walk forward to the first tick that finds work.
+    return iterator.get_next(datetime, start_time=earliest_due), earliest_due
+
+
+def _earliest_due(freshness_minutes: int, now: datetime) -> datetime | None:
+    """When the earliest active target becomes claimable, or None when nothing is active."""
+    targets = _get("/api/admin/targets", list[Target], admin=True)
+    moments: list[datetime] = []
+    for target in targets:
+        if not target.active:
+            continue
+        candidate = now
+        if target.next_attempt_at and target.next_attempt_at > candidate:
+            candidate = target.next_attempt_at
+        if target.last_crawled_at:
+            fresh_until = target.last_crawled_at + timedelta(minutes=freshness_minutes)
+            if fresh_until > candidate:
+                candidate = fresh_until
+        moments.append(candidate)
+    return min(moments) if moments else None
+
+
+def _print_history(jobs: list[Job], next_run: datetime | None, earliest_due: datetime | None) -> None:
+    cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
+    freshness = _effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360")
+
+    _headline("schedule")
+    console.print(f"  tick       {escape(cron)}  [dim](how often the scheduler looks for work)[/dim]")
+    console.print(f"  freshness  {freshness} min  [dim](how long a target rests after a crawl)[/dim]")
+    if next_run:
+        console.print(f"  next run   {next_run.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}  ({_age(next_run)})")
+    else:
+        console.print("  next run   [yellow]unknown[/yellow] — the cron expression does not parse")
+    if earliest_due:
+        console.print(f"  [dim]the earliest target is due {_age(earliest_due)}[/dim]")
+
+    _headline(f"runs — last {len(jobs)}")
+    if not jobs:
+        console.print("  [yellow]![/yellow] no runs recorded yet")
+        return
+    _table(
+        "",
+        ["started", "finished", "trigger", "status", "pages", "items", "error"],
+        [
+            [
+                _age(job.started_at),
+                _duration(job),
+                job.triggered_by or "—",
+                job.status,
+                job.pages_crawled,
+                job.items_saved,
+                job.error_message,
+            ]
+            for job in jobs
+        ],
+    )
+
+
+def _duration(job: Job) -> str:
+    """How long the run took — or that it is still going, which is not a duration."""
+    if job.completed_at is None:
+        return "running" if job.status == "Running" else "—"
+    if job.started_at is None:
+        return "—"
+    seconds = int((job.completed_at - job.started_at).total_seconds())
+    return _span(max(0, seconds))
+
+
+@app.command(name="help")
+def help_all() -> None:
+    """Show the help of every command."""
+    group = typer.main.get_command(app)
+    root = click.Context(group, info_name="wbparser")
+    for name, command in group.commands.items():
+        console.print()
+        console.rule(f"[bold]{name}[/bold]", align="left")
+        console.print(command.get_help(click.Context(command, info_name=name, parent=root)).rstrip())
 
 
 @app.command()

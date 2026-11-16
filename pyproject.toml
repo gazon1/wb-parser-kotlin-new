@@ -22,6 +22,7 @@ dependencies = [
     # that says what this project needs, and `uv sync` is the only setup step.
     "pydantic>=2.6.0",
     "python-dotenv>=1.0.0",
+    "croniter>=7.0.0",
 ]
 
 # Тестовые зависимости: pytest нужен для `uv run pytest scripts/tests/...`.

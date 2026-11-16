@@ -4,6 +4,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import ru.wbparser.domain.scheduling.CrawlTrigger
 import ru.wbparser.infra.runner.CrawlRun
 import ru.wbparser.infra.runner.RunResult
 import java.util.concurrent.atomic.AtomicBoolean
@@ -67,7 +68,7 @@ class ScheduledCrawler(
             return RunResult.AlreadyRunning("a crawl is already running in this process")
         }
         try {
-            val result = crawler.run()
+            val result = crawler.run(CrawlTrigger.Schedule)
             when (result) {
                 is RunResult.AlreadyRunning -> {
                     log.info("Crawl not started: {}", result.reason)

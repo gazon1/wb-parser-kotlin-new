@@ -11,6 +11,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.pipeline.Stop
+import ru.wbparser.domain.scheduling.CrawlTrigger
 import ru.wbparser.domain.scheduling.FailureClass
 import ru.wbparser.domain.scheduling.RunOutcome
 import ru.wbparser.domain.scheduling.Target
@@ -89,9 +90,9 @@ class CrawlRunner(
     /**
      * Runs the crawler: acquires advisory lock, crawls all due targets, closes lock.
      */
-    override suspend fun run(): RunResult =
+    override suspend fun run(trigger: CrawlTrigger): RunResult =
         withContext(Dispatchers.IO) {
-            val lockResult: Either<LockUnavailable, RunResult> = advisoryLock.withLock { runUnsafe() }
+            val lockResult: Either<LockUnavailable, RunResult> = advisoryLock.withLock { runUnsafe(trigger) }
             lockResult.fold(
                 // The reason travels with the result: "another instance holds the lock"
                 // and "waited for the lock and gave up" are different situations, and
@@ -101,7 +102,7 @@ class CrawlRunner(
             )
         }
 
-    private suspend fun runUnsafe(): RunResult {
+    private suspend fun runUnsafe(trigger: CrawlTrigger): RunResult {
         val startedAt = java.time.Instant.now()
 
         // The address is asked *before* the work is taken.
@@ -136,7 +137,7 @@ class CrawlRunner(
 
         var jobId: UUID? = null
         return try {
-            jobId = jobStore.openJob(due.first().id)
+            jobId = jobStore.openJob(due.first().id, trigger)
             val ctx = CrawlContext(jobId, startedAt, due.map { it.id })
 
             try {

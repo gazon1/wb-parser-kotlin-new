@@ -7,6 +7,7 @@ import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.ExitCodeGenerator
 import org.springframework.context.annotation.Profile
 import org.springframework.stereotype.Component
+import ru.wbparser.domain.scheduling.CrawlTrigger
 import ru.wbparser.infra.runner.CrawlRun
 import ru.wbparser.infra.runner.RunResult
 import kotlin.coroutines.cancellation.CancellationException
@@ -59,7 +60,7 @@ class OneShotCrawl(
     }
 
     private suspend fun runOnce(): Int {
-        val result = crawler.run()
+        val result = crawler.run(CrawlTrigger.Manual)
         return when (result) {
             is RunResult.Success -> {
                 log.info("Crawl completed: {} pages, {} items", result.pagesCrawled, result.itemsSaved)

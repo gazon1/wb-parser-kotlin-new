@@ -126,6 +126,11 @@ data class Job(
     val completedAt: Instant?,
     val pagesCrawled: Int,
     val itemsSaved: Int,
+    /**
+     * What started the run: `schedule` or `manual`, or null for rows written before the
+     * trigger was recorded.
+     */
+    val triggeredBy: String?,
     val errorMessage: String?,
 )
 
@@ -179,13 +184,13 @@ fun DataSource.fetchAdminJobs(
         if (targetId != null) {
             """
             SELECT id, target_id, status, started_at, completed_at,
-                   pages_crawled, items_saved, error_message
+                   pages_crawled, items_saved, triggered_by, error_message
             FROM crawl_jobs WHERE target_id = ? ORDER BY started_at DESC LIMIT ?
             """.trimIndent()
         } else {
             """
             SELECT id, target_id, status, started_at, completed_at,
-                   pages_crawled, items_saved, error_message
+                   pages_crawled, items_saved, triggered_by, error_message
             FROM crawl_jobs ORDER BY started_at DESC LIMIT ?
             """.trimIndent()
         }
@@ -213,5 +218,6 @@ private fun ResultSet.toAdminJob(): Job =
         completedAt = getTimestamp("completed_at")?.toInstant(),
         pagesCrawled = getInt("pages_crawled"),
         itemsSaved = getInt("items_saved"),
+        triggeredBy = getString("triggered_by"),
         errorMessage = getString("error_message"),
     )

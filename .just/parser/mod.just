@@ -80,3 +80,19 @@ logs *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     uv run scripts/parser/wbparser.py logs {{ARGS}}
+
+[group('parser')]
+[doc('Last crawler runs, what started each, and when the next one is due')]
+[working-directory(justfile_directory())]
+history *ARGS:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uv run scripts/parser/wbparser.py history {{ARGS}}
+
+[group('parser')]
+[doc('Show the help of every command')]
+[working-directory(justfile_directory())]
+help:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    uv run scripts/parser/wbparser.py help
