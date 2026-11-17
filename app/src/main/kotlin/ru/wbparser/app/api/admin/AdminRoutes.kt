@@ -248,7 +248,10 @@ private fun ResultSet.readUuid(column: String): UUID =
     when (val value = getObject(column)) {
         is UUID -> value
         is String -> UUID.fromString(value)
-        is ByteArray -> java.nio.ByteBuffer.wrap(value).let { UUID(it.long, it.long) }
+        is ByteArray ->
+            java.nio.ByteBuffer
+                .wrap(value)
+                .let { UUID(it.long, it.long) }
         else -> UUID.fromString(getString(column))
     }
 
