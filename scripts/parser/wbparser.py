@@ -97,7 +97,6 @@ try:
         TabbedContent,
         TabPane,
     )
-    from textual.worker import Worker
 except ModuleNotFoundError as missing:  # pragma: no cover - a wrong interpreter, not a code path
     if missing.name == "catalog_models":
         raise SystemExit(
@@ -1122,9 +1121,15 @@ class Pane(Vertical):
     """
     A tab body that loads and draws its own data.
 
-    `fetch()` does the I/O and touches no widget; `show()` touches widgets and does no
-    I/O; `reload()` is the only entry point and owns the three states — loading, error,
-    and the time of the last success. The pane carries a `Static#pane-status` for them.
+    `fetch()` does the I/O off the UI thread and touches no widget; `show()` touches
+    widgets and does no I/O; `reload()` is the only entry point and owns the three
+    states — loading, error, and the time of the last success. The pane carries a
+    `Static#pane-status` for them.
+
+    An error, from `fetch()` or from `show()`, replaces the status line and keeps the
+    previous data and `updated_at`: a failed reload must not destroy what the last good
+    one drew. A reload while one is in flight does nothing. Call `reload()` after the
+    pane is mounted; Textual cancels the worker when the pane is unmounted.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -1138,22 +1143,25 @@ class Pane(Vertical):
     def show(self, data: Any) -> None:
         raise NotImplementedError
 
-    def reload(self) -> Worker[None] | None:
+    def reload(self) -> None:
         """Start one load; a reload while a load is in flight does nothing."""
         if self._loading:
-            return None
+            return
         self._loading = True
         self._status("[dim]loading…[/dim]")
-        return self.run_worker(self._load())
+        self.run_worker(self._load())
 
     async def _load(self) -> None:
         try:
             data = await asyncio.to_thread(self.fetch)
+            # Both stages are guarded: a failure to draw is as much a failed reload as
+            # a failure to fetch. CancelledError is not an Exception, so a worker
+            # cancelled on unmount is never shown as an error.
+            self.show(data)
         except Exception as exc:  # noqa: BLE001 - a pane boundary: an error is shown, never raised
             self._status(f"[red]{escape(str(exc))}[/red]")
         else:
             self.updated_at = datetime.now(UTC)
-            self.show(data)
             self._status(f"[dim]updated {self.updated_at.astimezone():%H:%M:%S}[/dim]")
         finally:
             self._loading = False
@@ -1178,8 +1186,7 @@ class StatsPane(Pane):
         return _fetch_stats()
 
     def show(self, payload: Stats) -> None:
-        table = self.query_one("#stats-table", DataTable)
-        table.clear()
+        # Built before the table is touched: a failure here leaves the last good rows.
         rows = [
             ("products", payload.total_products),
             ("observations", f"{payload.total_items} (one row per target × product × price)"),
@@ -1188,6 +1195,8 @@ class StatsPane(Pane):
             ("newest observation", _age(payload.newest_scraped_at)),
             ("counters computed", f"{_age(payload.as_of)} (cached up to ten minutes)"),
         ]
+        table = self.query_one("#stats-table", DataTable)
+        table.clear()
         for key, value in rows:
             table.add_row(_cell(key), _cell(value))
 
