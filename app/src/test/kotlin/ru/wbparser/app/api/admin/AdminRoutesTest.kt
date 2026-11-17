@@ -3,8 +3,10 @@ package ru.wbparser.app.api.admin
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.springframework.http.HttpStatus
 import org.sqlite.SQLiteDataSource
+import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.infra.db.repositories.TargetDraft
 import java.nio.file.Files
 import java.sql.Connection
@@ -143,7 +145,7 @@ class AdminRoutesTest :
         }
 
         test("the errors reach the operator with the message they carry") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val errors = routes.getErrors(limit = 100, unresolvedOnly = false)
 
@@ -156,7 +158,7 @@ class AdminRoutesTest :
         }
 
         test("the operator can ask about the errors nobody resolved yet") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val errors = routes.getErrors(limit = 100, unresolvedOnly = true)
 
@@ -165,7 +167,7 @@ class AdminRoutesTest :
         }
 
         test("the limit caps the errors the operator gets") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val errors = routes.getErrors(limit = 1, unresolvedOnly = false)
 
@@ -181,7 +183,7 @@ class AdminRoutesTest :
         }
 
         test("the jobs reach the operator with the counts they carry") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val jobs = routes.getJobs(limit = 20, targetId = null)
 
@@ -197,7 +199,7 @@ class AdminRoutesTest :
         }
 
         test("a job that never finished carries no completion time") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val job = routes.getJobs(limit = 20, targetId = null).single { it.status == "Failed" }
 
@@ -209,7 +211,7 @@ class AdminRoutesTest :
         }
 
         test("the operator can ask about one target's jobs only") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val jobs = routes.getJobs(limit = 20, targetId = targetId.toString())
 
@@ -226,7 +228,7 @@ class AdminRoutesTest :
         }
 
         test("a created target is served back to the operator") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val response =
                 routes.createTarget(
@@ -246,7 +248,7 @@ class AdminRoutesTest :
         }
 
         test("the targets reach the operator, the switched-off ones included") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
             routes.createTarget(TargetDraft(name = "Карты памяти", startUrl = "https://example.invalid/c"))
             routes.createTarget(
                 TargetDraft(name = "Смартфоны", startUrl = "https://example.invalid/s", isActive = false),
@@ -261,7 +263,7 @@ class AdminRoutesTest :
         }
 
         test("an updated target is served back to the operator") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
             val created = routes.createTarget(TargetDraft(name = "Карты памяти", startUrl = "https://example.invalid/c"))
 
             val response =
@@ -276,7 +278,7 @@ class AdminRoutesTest :
         }
 
         test("a target that does not exist is not found") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val response =
                 routes.updateTarget(
@@ -288,7 +290,7 @@ class AdminRoutesTest :
         }
 
         test("a deleted target is gone") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
             val created = routes.createTarget(TargetDraft(name = "Карты памяти", startUrl = "https://example.invalid/c"))
 
             val response = routes.deleteTarget(created.body!!.id.toString())
@@ -298,7 +300,7 @@ class AdminRoutesTest :
         }
 
         test("a target that does not exist cannot be deleted") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val response = routes.deleteTarget(UUID.randomUUID().toString())
 
@@ -306,7 +308,7 @@ class AdminRoutesTest :
         }
 
         test("a malformed id is refused before the target is looked up") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
             val draft = TargetDraft(name = "Карты памяти", startUrl = "https://example.invalid/c")
 
             // The id is parsed before the database is asked anything, so a malformed id
@@ -314,6 +316,21 @@ class AdminRoutesTest :
             // failure of the server.
             shouldThrow<IllegalArgumentException> { routes.updateTarget("not-a-uuid", draft) }
             shouldThrow<IllegalArgumentException> { routes.deleteTarget("not-a-uuid") }
+        }
+
+        test("the schedule answers with the tick and the freshness the server holds") {
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
+
+            val schedule = routes.getSchedule(limit = 15)
+
+            schedule.cron shouldBe "0 0 */4 * * *"
+            schedule.freshnessMinutes shouldBe 360L
+            schedule.activeTargets shouldBe 0
+            schedule.limit shouldBe 15
+            schedule.nextRun shouldNotBe null
+            schedule.due shouldBe emptyList()
+            schedule.upcoming shouldBe emptyList()
+            schedule.earliestDue shouldBe null
         }
     })
 

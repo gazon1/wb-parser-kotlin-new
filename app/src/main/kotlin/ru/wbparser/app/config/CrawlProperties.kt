@@ -26,6 +26,7 @@ data class Schedule(
      * the first one finished, and the window stops meaning anything.
      */
     val freshnessMinutes: Long = 360L,
+    val cron: String = "0 0 */4 * * *",
 )
 
 data class Lock(

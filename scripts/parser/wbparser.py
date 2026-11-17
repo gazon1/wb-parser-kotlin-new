@@ -53,7 +53,8 @@ import os
 import subprocess
 import sys
 import time
-from datetime import UTC, datetime, timedelta
+from dataclasses import astuple, dataclass
+from datetime import UTC, datetime
 from enum import StrEnum
 from functools import cache
 from pathlib import Path
@@ -63,9 +64,8 @@ try:
     import click
     import httpx
     import typer
-    from croniter import croniter
     from dotenv import dotenv_values
-    from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
+    from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError
     from pydantic.alias_generators import to_camel
     from pydantic_core import to_jsonable_python
     from rich.console import Console
@@ -195,6 +195,25 @@ class RecordedError(Camel):
     created_at: datetime | None = None
 
 
+class Upcoming(Camel):
+    at: datetime | None = None
+    target: Target | None = None
+
+
+class Schedule(Camel):
+    """The schedule as the server answers it: the tick's rule, owned by the server."""
+
+    cron: str = "0 0 */4 * * *"
+    freshness_minutes: int = 360
+    active_targets: int = 0
+    targets: list[Target] = Field(default_factory=list)
+    due: list[Target] = Field(default_factory=list)
+    upcoming: list[Upcoming] = Field(default_factory=list)
+    next_run: datetime | None = None
+    earliest_due: datetime | None = None
+    limit: int = 15
+
+
 # ── environment ──────────────────────────────────────────────────────────────
 
 
@@ -241,32 +260,6 @@ def _base_url() -> str:
 
 
 @cache
-def _container_env(name: str) -> str | None:
-    """
-    The value the running application actually holds, or None when it is not running.
-
-    The compose file overrides several of these, so the file describes a stack nobody
-    may be running: `CRAWLER_SCHEDULE_CRON` is `*/30 * * * * *` in the container and
-    absent from `.env`. A report that reads the file describes the wrong stack.
-    """
-    if not _running("app"):
-        return None
-    completed = subprocess.run(
-        ["docker", "compose", "exec", "-T", "app", "printenv", name],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    return completed.stdout.strip() or None
-
-
-def _effective(name: str, default: str) -> str:
-    """Container, then `.env`, then the default — the most specific answer wins."""
-    return _container_env(name) or _env().get(name) or default
-
-
-@cache
 def _client(*, admin: bool = False, catalog: bool = False) -> httpx.Client:
     """
     One client per role, carrying that role's key and no other.
@@ -283,6 +276,14 @@ def _client(*, admin: bool = False, catalog: bool = False) -> httpx.Client:
             raise Unusable(f"{name} is not set — see docs/operations/credentials-runbook.md")
         headers["X-Api-Key"] = key
     return httpx.Client(base_url=_base_url(), headers=headers, timeout=15.0)
+
+
+def _reset_caches() -> None:
+    """Drop the memoised answers: the stack may have just been started or stopped."""
+    _file_env.cache_clear()
+    _env.cache_clear()
+    _base_url.cache_clear()
+    _client.cache_clear()
 
 
 T = TypeVar("T")
@@ -368,13 +369,37 @@ def _rubles(kopecks: int | None) -> str:
     return "—" if kopecks is None else f"{kopecks / 100:.2f} ₽"
 
 
+def _price(item: Item) -> str:
+    kopecks = item.sale_price_kopecks if item.sale_price_kopecks is not None else item.price_kopecks
+    return _rubles(kopecks)
+
+
+def _cashback(item: Item) -> str:
+    return f"{item.cashback_percent}%" if item.cashback_percent is not None else "—"
+
+
+def _duration(job: Job) -> str:
+    """How long the run took — or that it is still going, which is not a duration."""
+    if job.completed_at is None:
+        return "running" if job.status == "Running" else "—"
+    if job.started_at is None:
+        return "—"
+    seconds = int((job.completed_at - job.started_at).total_seconds())
+    return _span(max(0, seconds))
+
+
+def _cell(value: Any) -> Text:
+    """A table cell: the value, or an em dash when it is empty. Cells are data, not markup."""
+    return Text("—" if value is None or value == "" else str(value))
+
+
 def _table(title: str, columns: list[str], rows: list[list[Any]]) -> None:
     """A table whose cells are data, not markup."""
     table = Table(title=title, title_justify="left", header_style="bold")
     for column in columns:
         table.add_column(column, overflow="ellipsis")
     for row in rows:
-        table.add_row(*(Text("—" if cell is None or cell == "" else str(cell)) for cell in row))
+        table.add_row(*(_cell(cell) for cell in row))
     console.print(table)
 
 
@@ -428,6 +453,109 @@ def _running(service: str) -> bool:
     return service in completed.stdout.split()
 
 
+# ── sections ──────────────────────────────────────────────────────────────────
+
+
+@dataclass
+class Section:
+    """One labelled block of tabular data: the title, the columns, and the rows to put in a table."""
+
+    title: str
+    columns: list[str]
+    rows: list[list[Any]]
+
+
+def items_section(page: ItemsPage) -> Section:
+    """The products of one page, as rows a renderer turns into a table."""
+    return Section(
+        f"products — page {page.page + 1}/{max(1, page.total_pages)}, {page.total_count} total",
+        ["target", "title", "price", "cashback", "scraped"],
+        [
+            [
+                item.target_name,
+                item.title,
+                _price(item),
+                _cashback(item),
+                _age(item.scraped_at),
+            ]
+            for item in page.items
+        ],
+    )
+
+
+def runs_sections(data: dict[str, Any]) -> list[Section]:
+    """The tables of the runs screen: target runs, jobs, and unresolved errors."""
+    return [
+        Section(
+            f"target runs — last {len(data['targetRuns'])}",
+            ["target", "group", "address", "outcome", "pages", "items", "wb total", "when"],
+            [
+                [
+                    run.target_name or (run.target_id[:8] if run.target_id else None),
+                    run.egress_group,
+                    run.egress_ip,
+                    run.outcome,
+                    run.pages,
+                    run.items,
+                    run.wb_total,
+                    _age(run.started_at),
+                ]
+                for run in data["targetRuns"]
+            ],
+        ),
+        Section(
+            f"jobs — last {len(data['jobs'])}",
+            ["status", "pages", "items", "started", "error"],
+            [
+                [job.status, job.pages_crawled, job.items_saved, _age(job.started_at), job.error_message]
+                for job in data["jobs"]
+            ],
+        ),
+        Section(
+            f"unresolved errors — {len(data['errors'])}",
+            ["category", "message", "when"],
+            [[e.category, e.message, _age(e.created_at)] for e in data["errors"]],
+        ),
+    ]
+
+
+def schedule_sections(data: Schedule) -> list[Section]:
+    """The tables of the schedule screen: what is due and what is upcoming."""
+    limit = int(data.limit or 15)
+    return [
+        Section(
+            f"due now — first {min(limit, len(data.due))}",
+            ["target", "wb id", "last crawled", "fails"],
+            [[t.name, t.wb_catalog_id, _age(t.last_crawled_at), t.consecutive_failures] for t in data.due[:limit]],
+        ),
+        Section(
+            f"next due — first {min(limit, len(data.upcoming))}",
+            ["target", "when"],
+            [[item.target.name, _age(item.at)] for item in data.upcoming if item.target is not None][:limit],
+        ),
+    ]
+
+
+def history_section(jobs: list[Job]) -> Section:
+    """The runs table of the history screen: what started each run and how it went."""
+    return Section(
+        f"runs — last {len(jobs)}",
+        ["started", "finished", "trigger", "status", "pages", "items", "error"],
+        [
+            [
+                _age(job.started_at),
+                _duration(job),
+                job.triggered_by or "—",
+                job.status,
+                job.pages_crawled,
+                job.items_saved,
+                job.error_message,
+            ]
+            for job in jobs
+        ],
+    )
+
+
 # ── commands ─────────────────────────────────────────────────────────────────
 
 
@@ -458,6 +586,7 @@ def up(
     timeout: Annotated[int, typer.Option(help="seconds to wait for readiness")] = 180,
 ) -> None:
     """Start the stack (Postgres + the application) and wait until it can serve."""
+    _reset_caches()
     if build or not JAR.is_file():
         console.print("building the jar…")
         _run([str(ROOT / "gradlew"), ":app:bootJar", "--no-daemon"], live=True)
@@ -495,6 +624,7 @@ def down(
     volumes: Annotated[bool, typer.Option("--volumes", help="also delete the database volume")] = False,
 ) -> None:
     """Stop the stack. The database volume is kept unless --volumes is given."""
+    _reset_caches()
     if volumes:
         console.print("[yellow]![/yellow] removing the database volume — every scraped row is lost")
     _compose("down", *(["-v"] if volumes else []))
@@ -682,25 +812,11 @@ def items(
 
 
 def _print_items(result: ItemsPage) -> None:
-    _headline(f"products — page {result.page + 1}/{max(1, result.total_pages)}, {result.total_count} total")
     if not result.items:
         console.print("  [yellow]![/yellow] nothing matched")
         console.print("[dim]is the crawl done? try `wbparser status` and `wbparser runs`[/dim]")
         return
-    _table(
-        "",
-        ["target", "title", "price", "cashback", "scraped"],
-        [
-            [
-                item.target_name,
-                item.title,
-                _rubles(item.sale_price_kopecks if item.sale_price_kopecks is not None else item.price_kopecks),
-                f"{item.cashback_percent}%" if item.cashback_percent is not None else "—",
-                _age(item.scraped_at),
-            ]
-            for item in result.items
-        ],
-    )
+    _table(*astuple(items_section(result)))
     console.print(f"[dim]next page: wbparser items --page {result.page + 1}[/dim]")
     if result.data_as_of:
         console.print(f"[dim]the data on this page is {_age(result.data_as_of)}[/dim]")
@@ -744,76 +860,30 @@ def runs(
 ) -> None:
     """The journal of runs: what ran, on which address, and what came of it."""
     data = _fetch_runs(limit=limit, target=target, errors=errors)
-    _emit(data, lambda: _print_runs(data["targetRuns"], data["jobs"], data["errors"]))
+    _emit(data, lambda: _print_runs(data))
 
 
-def _print_runs(target_runs: list[TargetRun], jobs: list[Job], failures: list[RecordedError]) -> None:
-    _headline(f"target runs — last {len(target_runs)}")
-    if target_runs:
-        _table(
-            "",
-            ["target", "group", "address", "outcome", "pages", "items", "wb total", "when"],
-            [
-                [
-                    run.target_name or run.target_id[:8],
-                    run.egress_group,
-                    run.egress_ip,
-                    run.outcome,
-                    run.pages,
-                    run.items,
-                    run.wb_total,
-                    _age(run.started_at),
-                ]
-                for run in target_runs
-            ],
-        )
-        refused = sum(1 for run in target_runs if run.outcome == "antibot")
+def _print_runs(data: dict[str, Any]) -> None:
+    sections = runs_sections(data)
+    for section, empty in zip(sections, ("no runs recorded yet", "no jobs recorded yet", None), strict=True):
+        _headline(str(section.title))
+        if not section.rows:
+            if empty is not None:
+                console.print(f"  [yellow]![/yellow] {empty}")
+            continue
+        _table("", section.columns, section.rows)
+    if data["targetRuns"]:
+        refused = sum(1 for run in data["targetRuns"] if run.outcome == "antibot")
         if refused:
             console.print(
-                f"  [yellow]![/yellow] {refused} of {len(target_runs)} runs were refused by WB"
+                f"  [yellow]![/yellow] {refused} of {len(data['targetRuns'])} runs were refused by WB"
                 f" — that is the address, not the target"
             )
-    else:
-        console.print("  [yellow]![/yellow] no runs recorded yet")
-
-    _headline(f"jobs — last {len(jobs)}")
-    if jobs:
-        _table(
-            "",
-            ["status", "pages", "items", "started", "error"],
-            [[job.status, job.pages_crawled, job.items_saved, _age(job.started_at), job.error_message] for job in jobs],
-        )
-    else:
-        console.print("  [yellow]![/yellow] no jobs recorded yet")
-
-    if failures:
-        _headline(f"unresolved errors — {len(failures)}")
-        for failure in failures:
-            console.print(
-                f"  [yellow]![/yellow] {escape(str(failure.category))}: {escape(failure.message)}"
-                f"  [dim]({_age(failure.created_at)})[/dim]"
-            )
 
 
-def _fetch_schedule(limit: int = 15) -> dict[str, Any]:
-    targets = _get("/api/admin/targets", list[Target], admin=True)
-    cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
-    freshness = int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
-    now = datetime.now(UTC)
-    due, upcoming, earliest_due = _partition_due(targets, now, freshness)
-    next_run = _next_run(cron, now, earliest_due, targets_known=True)
-    return {
-        "cron": cron,
-        "freshnessMinutes": freshness,
-        "activeTargets": sum(1 for target in targets if target.active),
-        "targets": targets,
-        "due": due,
-        "upcoming": upcoming[:limit],
-        "upcomingRaw": upcoming,
-        "nextRun": next_run,
-        "earliestDue": earliest_due,
-        "limit": limit,
-    }
+def _fetch_schedule(limit: int = 15) -> Schedule:
+    """The schedule as the server answers it: the tick's rule, owned by the server."""
+    return _get("/api/admin/schedule", Schedule, admin=True, limit=limit)
 
 
 @app.command()
@@ -823,68 +893,22 @@ def schedule(
     """
     The tick, the freshness window, and which targets are due.
 
-    The rule below is `claimDueTargets`, copied. The copy is deliberate for now and it
-    is also the weak point: the claim has three conditions (active, nothing pending, no
-    live lease) and the admin API reports two, so a target held by an interrupted run's
-    lease is listed here and skipped by the crawl. The durable fix is an
-    `/api/admin/schedule` endpoint that answers the question once, on the side that owns
-    the rule; until then this command says so rather than hiding it.
+    The answer comes from the server: the `/api/admin/schedule` endpoint reads the same
+    claim the scheduler takes, so what is due here is what the tick will act on.
     """
     data = _fetch_schedule(limit=limit)
     _emit(
         {
-            "cron": data["cron"],
-            "freshnessMinutes": data["freshnessMinutes"],
-            "activeTargets": data["activeTargets"],
-            "due": data["due"],
-            "upcoming": [{"at": when, "target": target} for when, target in data["upcoming"]],
-            "nextRun": data["nextRun"],
-            "earliestDue": data["earliestDue"],
+            "cron": data.cron,
+            "freshnessMinutes": data.freshness_minutes,
+            "activeTargets": data.active_targets,
+            "due": data.due,
+            "upcoming": [{"at": item.at, "target": item.target} for item in data.upcoming],
+            "nextRun": data.next_run,
+            "earliestDue": data.earliest_due,
         },
-        lambda: _print_schedule(
-            data["cron"],
-            data["freshnessMinutes"],
-            data["targets"],
-            data["due"],
-            data["upcoming"],
-            data["nextRun"],
-            data["earliestDue"],
-            data["limit"],
-        ),
+        lambda: _print_schedule(data),
     )
-
-
-def claimable_at(target: Target, now: datetime, freshness_minutes: int) -> datetime | None:
-    """When an active target becomes claimable; None means claimable now (lease is not visible via API)."""
-    moments: list[datetime] = []
-    if target.next_attempt_at and target.next_attempt_at > now:
-        moments.append(target.next_attempt_at)
-    if target.last_crawled_at:
-        fresh_until = target.last_crawled_at + timedelta(minutes=freshness_minutes)
-        if fresh_until > now:
-            moments.append(fresh_until)
-    return max(moments) if moments else None
-
-
-def _partition_due(
-    targets: list[Target], now: datetime, freshness_minutes: int
-) -> tuple[list[Target], list[tuple[datetime, Target]], datetime | None]:
-    """Split active targets by claimability and return (due, upcoming, earliest claimable moment)."""
-    due: list[Target] = []
-    upcoming: list[tuple[datetime, Target]] = []
-    earliest: datetime | None = None
-    for target in targets:
-        if not target.active:
-            continue
-        when = claimable_at(target, now, freshness_minutes)
-        claim_at = when or now
-        if earliest is None or claim_at < earliest:
-            earliest = claim_at
-        if when is None:
-            due.append(target)
-        else:
-            upcoming.append((when, target))
-    return due, sorted(upcoming, key=lambda pair: pair[0]), earliest
 
 
 def _print_schedule_header(cron: str, freshness: int) -> None:
@@ -903,58 +927,27 @@ def _print_next_run(next_run: datetime | None, earliest_due: datetime | None) ->
         console.print(f"  [dim]the earliest target is due {_age(earliest_due)}[/dim]")
 
 
-def _print_schedule(
-    cron: str,
-    freshness: int,
-    targets: list[Target],
-    due: list[Target],
-    upcoming: list[tuple[datetime, Target]],
-    next_run: datetime | None,
-    earliest_due: datetime | None,
-    limit: int,
-) -> None:
-    _print_schedule_header(cron, freshness)
-    _print_next_run(next_run, earliest_due)
-    console.print(f"\n  active targets  {sum(1 for t in targets if t.active)} of {len(targets)}")
-    console.print(f"  due now         {len(due)}")
-    if due:
-        console.print("  [dim]a target held by an interrupted run's lease is listed here and[/dim]")
-        console.print("  [dim]skipped by the crawl until that lease expires (2h by default)[/dim]")
-
-    if due:
-        _headline(f"due now — first {min(limit, len(due))}")
-        _table(
-            "",
-            ["target", "wb id", "last crawled", "fails"],
-            [[t.name, t.wb_catalog_id, _age(t.last_crawled_at), t.consecutive_failures] for t in due[:limit]],
-        )
-    if upcoming:
-        _headline(f"next due — first {min(limit, len(upcoming))}")
-        _table("", ["target", "when"], [[t.name, _age(when)] for when, t in upcoming[:limit]])
+def _print_schedule(data: Schedule) -> None:
+    _print_schedule_header(data.cron, int(data.freshness_minutes))
+    _print_next_run(data.next_run, data.earliest_due)
+    console.print(f"\n  active targets  {sum(1 for t in data.targets if t.active)} of {len(data.targets)}")
+    console.print(f"  due now         {len(data.due)}")
+    for section in schedule_sections(data):
+        _headline(str(section.title))
+        if not section.rows:
+            continue
+        _table("", section.columns, section.rows)
 
 
 def _fetch_history(limit: int = 15) -> dict[str, Any]:
     jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit)
-    cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
-    freshness = int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
-    now = datetime.now(UTC)
-    earliest_due: datetime | None = None
-    targets_known = False
-    if _running("app"):
-        try:
-            targets = _get("/api/admin/targets", list[Target], admin=True)
-            _, _, earliest_due = _partition_due(targets, now, freshness)
-            targets_known = True
-        except Unusable:
-            targets_known = False
-    next_run = _next_run(cron, now, earliest_due, targets_known)
+    schedule = _fetch_schedule()
     return {
         "jobs": jobs,
-        "cron": cron,
-        "freshnessMinutes": freshness,
-        "nextRun": next_run,
-        "earliestDue": earliest_due,
-        "targetsKnown": targets_known,
+        "cron": schedule.cron,
+        "freshnessMinutes": schedule.freshness_minutes,
+        "nextRun": schedule.next_run,
+        "earliestDue": schedule.earliest_due,
     }
 
 
@@ -991,20 +984,6 @@ def history(
     )
 
 
-def _next_run(cron: str, now: datetime, earliest_due: datetime | None, targets_known: bool) -> datetime | None:
-    """When a tick will start a crawl: the later of the next tick and the earliest claimable moment."""
-    if not targets_known or earliest_due is None:
-        return None
-    try:
-        iterator = croniter(cron.replace("?", "*"), now, second_at_beginning=True)
-        tick = iterator.get_next(datetime)
-        if earliest_due <= tick:
-            return tick
-        return iterator.get_next(datetime, start_time=earliest_due)
-    except ValueError:
-        return None
-
-
 def _print_history(
     cron: str,
     freshness: int,
@@ -1019,44 +998,19 @@ def _print_history(
     if not jobs:
         console.print("  [yellow]![/yellow] no runs recorded yet")
         return
-    _table(
-        "",
-        ["started", "finished", "trigger", "status", "pages", "items", "error"],
-        [
-            [
-                _age(job.started_at),
-                _duration(job),
-                job.triggered_by or "—",
-                job.status,
-                job.pages_crawled,
-                job.items_saved,
-                job.error_message,
-            ]
-            for job in jobs
-        ],
-    )
-
-
-def _duration(job: Job) -> str:
-    """How long the run took — or that it is still going, which is not a duration."""
-    if job.completed_at is None:
-        return "running" if job.status == "Running" else "—"
-    if job.started_at is None:
-        return "—"
-    seconds = int((job.completed_at - job.started_at).total_seconds())
-    return _span(max(0, seconds))
+    section = history_section(jobs)
+    _table("", section.columns, section.rows)
 
 
 # ── TUI ─────────────────────────────────────────────────────────────────────
 
 
-def _val(v: Any) -> str:
-    return "—" if v in (None, "") else str(v)
-
-
-def _price(item: Item) -> str:
-    kopecks = item.sale_price_kopecks if item.sale_price_kopecks is not None else item.price_kopecks
-    return _rubles(kopecks)
+def fill(table: DataTable, section: Section) -> None:
+    """One common path from a section to a Textual table: clear, add columns, add rows."""
+    table.clear(columns=True)
+    table.add_columns(*section.columns)
+    for row in section.rows:
+        table.add_row(*(_cell(cell) for cell in row))
 
 
 class WbparserApp(App):
@@ -1125,7 +1079,12 @@ class WbparserApp(App):
                 with Horizontal(id="items-controls", classes="row"):
                     yield Input(placeholder="query (-q)", id="items-q")
                     yield Input(placeholder="target UUID", id="items-target")
-                    yield Select([(s.value, s.value) for s in Sort], value=Sort.date_desc.value, id="items-sort")
+                    yield Select(
+                        [(s.value, s.value) for s in Sort],
+                        value=Sort.date_desc.value,
+                        allow_blank=False,
+                        id="items-sort",
+                    )
                     yield Input(placeholder="page", value="0", id="items-page", classes="small")
                     yield Input(placeholder="size", value="20", id="items-size", classes="small")
                     yield Button("Load", id="btn-items", variant="primary")
@@ -1181,17 +1140,6 @@ class WbparserApp(App):
         self.query_one("#status-checks", DataTable).add_columns("check", "value")
         self.query_one("#status-creds", DataTable).add_columns("key", "status")
         self.query_one("#status-egress", DataTable).add_columns("group", "address", "health", "isolated", "refusals")
-        self.query_one("#items-table", DataTable).add_columns("target", "title", "price", "cashback", "scraped")
-        self.query_one("#runs-targets", DataTable).add_columns(
-            "target", "group", "address", "outcome", "pages", "items", "wb total", "when"
-        )
-        self.query_one("#runs-jobs", DataTable).add_columns("status", "pages", "items", "started", "error")
-        self.query_one("#runs-errors", DataTable).add_columns("category", "message", "when")
-        self.query_one("#sched-due", DataTable).add_columns("target", "wb id", "last crawled", "fails")
-        self.query_one("#sched-upcoming", DataTable).add_columns("target", "when")
-        self.query_one("#history-table", DataTable).add_columns(
-            "started", "finished", "trigger", "status", "pages", "items", "error"
-        )
         self.query_one("#stats-table", DataTable).add_columns("metric", "value")
 
     def action_tab(self, tab_id: str) -> None:
@@ -1269,7 +1217,7 @@ class WbparserApp(App):
     def _render_status(self, ready: dict[str, Any] | None, keys: dict[str, bool] | None, err: str | None) -> None:
         self._note("")
         if err:
-            self.query_one("#status-summary", Static).update(f"[bold red]Unavailable:[/bold red] {err}")
+            self.query_one("#status-summary", Static).update(f"[bold red]Unavailable:[/bold red] {escape(err)}")
             for tid in ("#status-checks", "#status-creds", "#status-egress"):
                 self.query_one(tid, DataTable).clear()
             self.query_one("#status-crawl", Static).update("")
@@ -1277,23 +1225,25 @@ class WbparserApp(App):
         assert ready is not None and keys is not None
         healthy = ready.get("status") == "UP"
         mark = "[green]UP[/green]" if healthy else "[red]DOWN[/red]"
-        self.query_one("#status-summary", Static).update(f"Application at [bold]{_base_url()}[/bold]: {mark}")
+        self.query_one("#status-summary", Static).update(f"Application at [bold]{escape(_base_url())}[/bold]: {mark}")
         t = self.query_one("#status-checks", DataTable)
         t.clear()
         for name, value in (ready.get("checks") or {}).items():
             ok = str(value).startswith("UP")
-            t.add_row(_val(name), Text(str(value), style="green" if ok else "yellow"))
+            t.add_row(_cell(name), Text(str(value), style="green" if ok else "yellow"))
         t = self.query_one("#status-creds", DataTable)
         t.clear()
         for name, works in keys.items():
-            t.add_row(name, Text("accepted", style="green") if works else Text("refused or missing", style="red"))
+            t.add_row(
+                _cell(name), Text("accepted", style="green") if works else Text("refused or missing", style="red")
+            )
         crawler = ready.get("crawler") or {}
         if crawler.get("state") == "not_started":
             crawl_text = "[yellow]not started — no counters yet[/yellow]"
         else:
             crawl_text = (
                 f"requests {crawler.get('requests', 0)}  refusals {crawler.get('antibot_responses', 0)}  "
-                f"share {_val(crawler.get('refusal_share', 'n/a'))}  |  "
+                f"share {_cell(crawler.get('refusal_share', 'n/a'))}  |  "
                 f"pages {crawler.get('pages', 0)}  items {crawler.get('items', 0)}  "
                 f"stale tokens {crawler.get('presets_responses', 0)}"
             )
@@ -1305,11 +1255,11 @@ class WbparserApp(App):
         for g in (ready.get("egress") or {}).get("groups") or []:
             h = Text("healthy", style="green") if g.get("healthy") else Text("unhealthy", style="red")
             t.add_row(
-                _val(g.get("group")),
-                _val(g.get("address") or "unknown"),
+                _cell(g.get("group")),
+                _cell(g.get("address") or "unknown"),
                 h,
-                _val(g.get("isolated")),
-                _val(g.get("refusal_rate")),
+                _cell(g.get("isolated")),
+                _cell(g.get("refusal_rate")),
             )
 
     @work(thread=True, exclusive=True, group="items")
@@ -1335,18 +1285,15 @@ class WbparserApp(App):
     def _render_items(self, result: ItemsPage | None, err: str | None) -> None:
         self._note("")
         t = self.query_one("#items-table", DataTable)
-        t.clear()
         if err:
-            self.query_one("#items-info", Static).update(f"[red]{err}[/red]")
+            self.query_one("#items-info", Static).update(f"[red]{escape(err)}[/red]")
             return
         assert result is not None
         self.query_one("#items-info", Static).update(
             f"page {result.page + 1}/{max(1, result.total_pages)} — {result.total_count} total"
             + (f" (data {_age(result.data_as_of)})" if result.data_as_of else "")
         )
-        for item in result.items:
-            cb = f"{item.cashback_percent}%" if item.cashback_percent is not None else "—"
-            t.add_row(_val(item.target_name), _val(item.title), _price(item), cb, _age(item.scraped_at))
+        fill(t, items_section(result))
 
     @work(thread=True, exclusive=True, group="runs")
     def load_runs(self) -> None:
@@ -1362,33 +1309,13 @@ class WbparserApp(App):
         for tid in ("#runs-targets", "#runs-jobs", "#runs-errors"):
             self.query_one(tid, DataTable).clear()
         if err:
-            self._note(f"[red]{err}[/red]")
+            self._note(f"[red]{escape(err)}[/red]")
             return
         assert data is not None
-        t = self.query_one("#runs-targets", DataTable)
-        for run in data["targetRuns"]:
-            t.add_row(
-                _val(run.target_name or (run.target_id[:8] if run.target_id else None)),
-                _val(run.egress_group),
-                _val(run.egress_ip),
-                _val(run.outcome),
-                _val(run.pages),
-                _val(run.items),
-                _val(run.wb_total),
-                _age(run.started_at),
-            )
-        t = self.query_one("#runs-jobs", DataTable)
-        for job in data["jobs"]:
-            t.add_row(
-                _val(job.status),
-                _val(job.pages_crawled),
-                _val(job.items_saved),
-                _age(job.started_at),
-                _val(job.error_message),
-            )
-        t = self.query_one("#runs-errors", DataTable)
-        for e in data["errors"]:
-            t.add_row(_val(e.category), _val(e.message), _age(e.created_at))
+        sections = runs_sections(data)
+        fill(self.query_one("#runs-targets", DataTable), sections[0])
+        fill(self.query_one("#runs-jobs", DataTable), sections[1])
+        fill(self.query_one("#runs-errors", DataTable), sections[2])
 
     @work(thread=True, exclusive=True, group="schedule")
     def load_schedule(self) -> None:
@@ -1399,36 +1326,29 @@ class WbparserApp(App):
         except Exception as exc:  # noqa: BLE001
             self.call_from_thread(self._render_schedule, None, str(exc))
 
-    def _render_schedule(self, data: dict[str, Any] | None, err: str | None) -> None:
+    def _render_schedule(self, data: Schedule | None, err: str | None) -> None:
         self._note("")
-        self.query_one("#sched-due", DataTable).clear()
-        self.query_one("#sched-upcoming", DataTable).clear()
         if err:
-            self.query_one("#schedule-summary", Static).update(f"[red]{err}[/red]")
+            self.query_one("#schedule-summary", Static).update(f"[red]{escape(err)}[/red]")
             return
         assert data is not None
-        nr = data["nextRun"]
+        nr = data.next_run
         nr_text = (
             f"{nr.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')} ({_age(nr)})" if nr else "[yellow]unknown[/yellow]"
         )
         summary = (
-            f"tick: {data['cron']}  |  freshness: {data['freshnessMinutes']} min  |  "
-            f"active: {data['activeTargets']}/{len(data['targets'])}  |  due now: {len(data['due'])}\n"
+            f"tick: {data.cron}  |  freshness: {data.freshness_minutes} min  |  "
+            f"active: {data.active_targets}/{len(data.targets)}  |  due now: {len(data.due)}\n"
             f"next run: {nr_text}"
         )
-        if data.get("earliestDue"):
-            summary += f"  |  earliest due {_age(data['earliestDue'])}"
-        if data["due"]:
+        if data.earliest_due:
+            summary += f"  |  earliest due {_age(data.earliest_due)}"
+        if data.due:
             summary += "\n[yellow]a target held by an interrupted run's lease may appear due but be skipped[/yellow]"
         self.query_one("#schedule-summary", Static).update(summary)
-        t = self.query_one("#sched-due", DataTable)
-        for tgt in data["due"]:
-            t.add_row(
-                _val(tgt.name), _val(tgt.wb_catalog_id), _age(tgt.last_crawled_at), _val(tgt.consecutive_failures)
-            )
-        t = self.query_one("#sched-upcoming", DataTable)
-        for when, tgt in data["upcoming"]:
-            t.add_row(_val(tgt.name), _age(when))
+        sections = schedule_sections(data)
+        fill(self.query_one("#sched-due", DataTable), sections[0])
+        fill(self.query_one("#sched-upcoming", DataTable), sections[1])
 
     @work(thread=True, exclusive=True, group="history")
     def load_history(self) -> None:
@@ -1441,9 +1361,8 @@ class WbparserApp(App):
 
     def _render_history(self, data: dict[str, Any] | None, err: str | None) -> None:
         self._note("")
-        self.query_one("#history-table", DataTable).clear()
         if err:
-            self.query_one("#history-summary", Static).update(f"[red]{err}[/red]")
+            self.query_one("#history-summary", Static).update(f"[red]{escape(err)}[/red]")
             return
         assert data is not None
         nr = data["nextRun"]
@@ -1454,17 +1373,7 @@ class WbparserApp(App):
         if data.get("earliestDue"):
             summary += f"  |  earliest due {_age(data['earliestDue'])}"
         self.query_one("#history-summary", Static).update(summary)
-        t = self.query_one("#history-table", DataTable)
-        for job in data["jobs"]:
-            t.add_row(
-                _age(job.started_at),
-                _duration(job),
-                _val(job.triggered_by),
-                _val(job.status),
-                _val(job.pages_crawled),
-                _val(job.items_saved),
-                _val(job.error_message),
-            )
+        fill(self.query_one("#history-table", DataTable), history_section(data["jobs"]))
 
     @work(thread=True, exclusive=True, group="stats")
     def load_stats(self) -> None:
@@ -1480,7 +1389,7 @@ class WbparserApp(App):
         t = self.query_one("#stats-table", DataTable)
         t.clear()
         if err:
-            self._note(f"[red]{err}[/red]")
+            self._note(f"[red]{escape(err)}[/red]")
             return
         assert payload is not None
         rows = [
@@ -1492,17 +1401,17 @@ class WbparserApp(App):
             ("counters computed", f"{_age(payload.as_of)} (cached up to ten minutes)"),
         ]
         for k, v in rows:
-            t.add_row(_val(k), _val(v))
+            t.add_row(_cell(k), _cell(v))
 
+    @work(thread=True, exclusive=True, group="logs")
     def load_logs(self) -> None:
         try:
             n = int(self.query_one("#logs-lines", Input).value or "150")
         except ValueError:
             n = 150
         view = self.query_one("#logs-view", RichLog)
-        view.clear()
         if not _running("app"):
-            view.write("app is not running — start it with Up")
+            self.call_from_thread(view.write, "app is not running — start it with Up")
             return
         proc = subprocess.run(
             ["docker", "compose", "logs", "--tail", str(n), "app"],
@@ -1511,7 +1420,8 @@ class WbparserApp(App):
             capture_output=True,
             check=False,
         )
-        view.write(proc.stdout or proc.stderr or "(no output)")
+        self.call_from_thread(view.clear)
+        self.call_from_thread(view.write, proc.stdout or proc.stderr or "(no output)")
 
     @work(thread=True, exclusive=True, group="follow")
     def follow_logs(self) -> None:
@@ -1530,7 +1440,7 @@ class WbparserApp(App):
         assert proc.stdout is not None
         try:
             for line in proc.stdout:
-                self.call_from_thread(self.query_one("#logs-view", RichLog).write, line.rstrip("\n"))
+                self.call_from_thread(self.query_one("#logs-view", RichLog).write, Text.from_ansi(line))
         finally:
             proc.stdout.close()
 
@@ -1553,7 +1463,7 @@ class WbparserApp(App):
                 self._action_crawl(log)
             self.call_from_thread(log.write, f"[green]✔ {action} finished[/green]")
         except Exception as exc:  # noqa: BLE001
-            self.call_from_thread(log.write, f"[red]✖ {action}: {exc}[/red]")
+            self.call_from_thread(log.write, f"[red]✖ {action}: {escape(str(exc))}[/red]")
         self.call_from_thread(self.load_status)
 
     def _stream_cmd(self, argv: list[str], log: RichLog, env: dict[str, str] | None = None) -> int:
@@ -1564,6 +1474,7 @@ class WbparserApp(App):
         return proc.wait()
 
     def _action_up(self, log: RichLog) -> None:
+        _reset_caches()
         if not JAR.is_file():
             self.call_from_thread(log.write, "building jar…")
             rc = self._stream_cmd([str(ROOT / "gradlew"), ":app:bootJar", "--no-daemon"], log)
@@ -1585,6 +1496,7 @@ class WbparserApp(App):
         raise Unusable("application did not become ready in time")
 
     def _action_down(self, log: RichLog) -> None:
+        _reset_caches()
         rc = self._stream_cmd(["docker", "compose", "down"], log)
         if rc != 0:
             raise Unusable(f"docker compose down failed (exit {rc})")

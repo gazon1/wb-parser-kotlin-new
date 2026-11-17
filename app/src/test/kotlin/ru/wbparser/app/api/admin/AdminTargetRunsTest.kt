@@ -6,6 +6,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import org.sqlite.SQLiteDataSource
+import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.domain.scheduling.RunOutcome
 import ru.wbparser.infra.db.repositories.TargetRun
 import java.nio.file.Files
@@ -109,7 +110,7 @@ class AdminTargetRunsTest :
         }
 
         test("the run of a target reaches the operator with the numbers it was about") {
-            val routes = AdminRoutes(runDataSource())
+            val routes = AdminRoutes(runDataSource(), CrawlProperties())
 
             val runs = routes.getTargetRuns(limit = 100, targetId = null)
 
@@ -132,7 +133,7 @@ class AdminTargetRunsTest :
         }
 
         test("a run whose answers carried no count has no number") {
-            val routes = AdminRoutes(runDataSource())
+            val routes = AdminRoutes(runDataSource(), CrawlProperties())
 
             val run = routes.getTargetRuns(limit = 100, targetId = null).single { it.targetId == otherTargetId }
 
@@ -142,7 +143,7 @@ class AdminTargetRunsTest :
         }
 
         test("the operator can ask about one target only") {
-            val routes = AdminRoutes(runDataSource())
+            val routes = AdminRoutes(runDataSource(), CrawlProperties())
 
             val runs = routes.getTargetRuns(limit = 100, targetId = targetId)
 

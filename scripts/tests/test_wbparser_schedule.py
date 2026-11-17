@@ -28,6 +28,8 @@ for model in (
     m.Stats,
     m.TargetRun,
     m.RecordedError,
+    m.Upcoming,
+    m.Schedule,
 ):
     model.model_rebuild(_types_namespace=vars(m))
 NOW = datetime(2026, 11, 17, 10, 0, tzinfo=UTC)
@@ -40,121 +42,36 @@ def target(**kw):
     return m.Target(**base)
 
 
-class ClaimableAtTest(unittest.TestCase):
-    def test_no_previous_crawl_is_due_now(self):
-        self.assertIsNone(m.claimable_at(target(), NOW, 60))
-
-    def test_freshness_expired_is_due_now(self):
-        t = target(last_crawled_at=NOW - timedelta(minutes=61))
-        self.assertIsNone(m.claimable_at(t, NOW, 60))
-
-    def test_freshness_active_is_upcoming(self):
-        t = target(last_crawled_at=NOW - timedelta(minutes=30))
-        self.assertEqual(m.claimable_at(t, NOW, 60), NOW + timedelta(minutes=30))
-
-    def test_retry_in_future_is_upcoming(self):
-        t = target(last_crawled_at=NOW - timedelta(minutes=120), next_attempt_at=NOW + timedelta(minutes=15))
-        self.assertEqual(m.claimable_at(t, NOW, 60), NOW + timedelta(minutes=15))
-
-    def test_retry_and_freshness_in_future_take_later(self):
-        # Freshness ends at 11:00, retry allowed at 12:00 -> claimable at 12:00.
-        t = target(last_crawled_at=NOW - timedelta(minutes=60), next_attempt_at=NOW + timedelta(hours=2))
-        self.assertEqual(m.claimable_at(t, NOW, 120), NOW + timedelta(hours=2))
-
-    def test_freshness_later_than_retry_takes_freshness(self):
-        t = target(last_crawled_at=NOW - timedelta(minutes=30), next_attempt_at=NOW + timedelta(minutes=10))
-        self.assertEqual(m.claimable_at(t, NOW, 60), NOW + timedelta(minutes=30))
-
-    def test_both_expired_is_due_now(self):
-        t = target(last_crawled_at=NOW - timedelta(minutes=90), next_attempt_at=NOW - timedelta(minutes=5))
-        self.assertIsNone(m.claimable_at(t, NOW, 60))
-
-    def test_boundary_equal_now_is_due(self):
-        t1 = target(last_crawled_at=NOW - timedelta(minutes=60))
-        t2 = target(last_crawled_at=NOW - timedelta(minutes=120), next_attempt_at=NOW)
-        self.assertIsNone(m.claimable_at(t1, NOW, 60))
-        self.assertIsNone(m.claimable_at(t2, NOW, 60))
-
-
-class PartitionDueTest(unittest.TestCase):
-    def test_inactive_target_ignored(self):
-        due, upcoming, earliest = m._partition_due([target(active=False)], NOW, 60)
-        self.assertEqual(due, [])
-        self.assertEqual(upcoming, [])
-        self.assertIsNone(earliest)
-
-    def test_no_active_targets(self):
-        due, upcoming, earliest = m._partition_due([], NOW, 60)
-        self.assertEqual((due, upcoming, earliest), ([], [], None))
-
-    def test_one_due_one_upcoming(self):
-        due_t = target(id="due")
-        up_t = target(id="up", last_crawled_at=NOW - timedelta(minutes=30))
-        due, upcoming, earliest = m._partition_due([up_t, due_t], NOW, 60)
-        self.assertEqual([t.id for t in due], ["due"])
-        self.assertEqual([t.id for _, t in upcoming], ["up"])
-        self.assertEqual(earliest, NOW)  # due has priority for nearest run
-
-    def test_upcoming_sorted_by_time(self):
-        t_late = target(id="late", last_crawled_at=NOW - timedelta(minutes=10))
-        t_mid = target(id="mid", last_crawled_at=NOW - timedelta(minutes=30))
-        t_retry = target(
-            id="retry", last_crawled_at=NOW - timedelta(minutes=120), next_attempt_at=NOW + timedelta(minutes=45)
-        )
-        due, upcoming, earliest = m._partition_due([t_late, t_retry, t_mid], NOW, 60)
-        self.assertEqual(due, [])
-        self.assertEqual(
-            [(t.id, when) for when, t in upcoming],
-            [
-                ("mid", NOW + timedelta(minutes=30)),
-                ("retry", NOW + timedelta(minutes=45)),
-                ("late", NOW + timedelta(minutes=50)),
+class ScheduleResponseTest(unittest.TestCase):
+    def test_the_answer_the_server_writes_parses(self):
+        payload = {
+            "cron": CRON,
+            "freshnessMinutes": 360,
+            "activeTargets": 1,
+            "targets": [target()],
+            "due": [target(id="due", last_crawled_at=NOW - timedelta(minutes=90))],
+            "upcoming": [
+                {"at": "2026-11-17T11:30:00Z", "target": target(id="up", last_crawled_at=NOW - timedelta(minutes=30))}
             ],
-        )
-        self.assertEqual(earliest, NOW + timedelta(minutes=30))
+            "nextRun": "2026-11-17T12:00:00Z",
+            "earliestDue": None,
+            "limit": 15,
+        }
+        schedule = m.Schedule.model_validate(payload)
 
+        self.assertEqual(schedule.cron, CRON)
+        self.assertEqual(schedule.freshness_minutes, 360)
+        self.assertEqual(schedule.active_targets, 1)
+        self.assertEqual(schedule.limit, 15)
+        self.assertEqual([t.id for t in schedule.due], ["due"])
+        self.assertEqual(schedule.upcoming[0].target.id, "up")
+        self.assertEqual(schedule.next_run, datetime(2026, 11, 17, 12, 0, tzinfo=UTC))
+        self.assertEqual(schedule.earliest_due, None)
 
-class NextRunTest(unittest.TestCase):
-    def test_targets_not_known_is_unknown(self):
-        self.assertIsNone(m._next_run(CRON, NOW, NOW, targets_known=False))
-
-    def test_known_but_no_active_targets_no_run_expected(self):
-        self.assertIsNone(m._next_run(CRON, NOW, None, targets_known=True))
-
-    def test_known_active_due_now_returns_next_tick(self):
-        # tick at 12:00, due now -> next tick
-        self.assertEqual(m._next_run(CRON, NOW, NOW, targets_known=True), datetime(2026, 11, 17, 12, 0, tzinfo=UTC))
-
-    def test_tick_later_than_availability(self):
-        earliest = NOW + timedelta(minutes=30)  # 10:30, next tick 12:00
-        self.assertEqual(
-            m._next_run(CRON, NOW, earliest, targets_known=True), datetime(2026, 11, 17, 12, 0, tzinfo=UTC)
-        )
-
-    def test_tick_earlier_than_availability_walks_forward(self):
-        earliest = datetime(2026, 11, 17, 13, 0, tzinfo=UTC)  # after 12:00 tick
-        self.assertEqual(
-            m._next_run(CRON, NOW, earliest, targets_known=True), datetime(2026, 11, 17, 14, 0, tzinfo=UTC)
-        )
-
-    def test_cron_with_seconds(self):
-        self.assertEqual(
-            m._next_run("30 0 */2 * * *", NOW, NOW, targets_known=True),
-            datetime(2026, 11, 17, 10, 0, 30, tzinfo=UTC),
-        )
-
-    def test_cron_with_question_mark(self):
-        self.assertEqual(
-            m._next_run("0 0 */2 * * ?", NOW, NOW, targets_known=True),
-            datetime(2026, 11, 17, 12, 0, tzinfo=UTC),
-        )
-
-    def test_invalid_cron_is_unknown(self):
-        self.assertIsNone(m._next_run("not a cron", NOW, NOW, targets_known=True))
-
-    def test_unschedulable_cron_is_unknown(self):
-        # Feb 30 never occurs; croniter raises on next computation.
-        self.assertIsNone(m._next_run("0 0 0 30 2 *", NOW, NOW, targets_known=True))
+        data = to_jsonable_python({"schedule": schedule}, by_alias=True)
+        self.assertEqual(data["schedule"]["freshnessMinutes"], 360)
+        self.assertEqual(data["schedule"]["nextRun"], "2026-11-17T12:00:00Z")
+        self.assertEqual(data["schedule"]["due"][0]["lastCrawledAt"], "2026-11-17T08:30:00Z")
 
 
 class EmitSerializationTest(unittest.TestCase):
