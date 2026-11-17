@@ -1265,11 +1265,11 @@ class WbparserApp(App):
         if bid == "btn-refresh-status":
             self.load_status()
         elif bid == "btn-up":
-            self.run_action("up")
+            self.run_app_action("up")
         elif bid == "btn-down":
-            self.run_action("down")
+            self.run_app_action("down")
         elif bid == "btn-crawl":
-            self.run_action("crawl")
+            self.run_app_action("crawl")
         elif bid == "btn-items":
             self.load_items()
         elif bid == "btn-runs":
@@ -1539,7 +1539,7 @@ class WbparserApp(App):
         self._follow_proc = None
 
     @work(thread=True, exclusive=True, group="action")
-    def run_action(self, action: str) -> None:
+    def run_app_action(self, action: str) -> None:
         log = self.query_one("#activity-log", RichLog)
         self.call_from_thread(log.write, f"[bold]▶ {action}[/bold]")
         try:
