@@ -67,9 +67,11 @@ try:
     from dotenv import dotenv_values
     from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
     from pydantic.alias_generators import to_camel
+    from pydantic_core import to_jsonable_python
     from rich.console import Console
     from rich.markup import escape
     from rich.table import Table
+    from rich.text import Text
 except ModuleNotFoundError as missing:  # pragma: no cover - a wrong interpreter, not a code path
     # A bare `python3 script.py` does not read `pyproject.toml`, so the dependencies are
     # simply absent. Saying that beats a traceback that ends in "No module named
@@ -217,7 +219,8 @@ def _env() -> dict[str, str]:
 
 @cache
 def _base_url() -> str:
-    port = os.environ.get("SERVER_PORT") or _file_env().get("SERVER_PORT") or DEFAULT_PORT
+    """Explicit WBPARSER_URL wins; otherwise the port follows the same precedence as credentials."""
+    port = _env().get("SERVER_PORT") or str(DEFAULT_PORT)
     return os.environ.get("WBPARSER_URL") or f"http://localhost:{port}"
 
 
@@ -318,7 +321,7 @@ def _get(
 def _emit(payload: Any, render: Any) -> None:
     """One code path for `--json` and for the human table: the caller says what to draw."""
     if JSON:
-        json.dump(payload, sys.stdout, ensure_ascii=False, indent=2, default=str)
+        json.dump(to_jsonable_python(payload, by_alias=True), sys.stdout, ensure_ascii=False, indent=2)
         sys.stdout.write("\n")
     else:
         render()
@@ -350,19 +353,17 @@ def _rubles(kopecks: int | None) -> str:
 
 
 def _table(title: str, columns: list[str], rows: list[list[Any]]) -> None:
-    """
-    A table whose cells are data, not markup.
-
-    Every cell is escaped: a product title is the site's text, and a title containing
-    `[bold]` would otherwise be parsed as Rich markup — a title containing `[/x]` would
-    raise `MarkupError` and take the command down.
-    """
+    """A table whose cells are data, not markup."""
     table = Table(title=title, title_justify="left", header_style="bold")
     for column in columns:
         table.add_column(column, overflow="ellipsis")
     for row in rows:
-        table.add_row(*(escape("—" if cell is None or cell == "" else str(cell)) for cell in row))
+        table.add_row(*(Text("—" if cell is None or cell == "" else str(cell)) for cell in row))
     console.print(table)
+
+
+def _mark(ok: bool) -> str:
+    return "[green]✓[/green]" if ok else "[red]✗[/red]"
 
 
 def _headline(text: str) -> None:
@@ -457,11 +458,11 @@ def up(
             pass
         time.sleep(2)
     else:
-        console.print(f"[red]✗[/red] the application did not become ready in {timeout}s")
+        console.print(f"{_mark(False)} the application did not become ready in {timeout}s")
         console.print("[dim]see what it said: wbparser logs -n 50[/dim]")
         raise typer.Exit(EXIT_WRONG)
 
-    console.print(f"[green]✓[/green] ready at {_base_url()}")
+    console.print(f"{_mark(True)} ready at {_base_url()}")
     console.print(
         f"  health   {_base_url()}/api/health/ready\n"
         f"  catalog  {_base_url()}/api/catalog/v1/stats  (X-Api-Key)\n"
@@ -479,7 +480,7 @@ def down(
     if volumes:
         console.print("[yellow]![/yellow] removing the database volume — every scraped row is lost")
     _compose("down", *(["-v"] if volumes else []))
-    console.print("[green]✓[/green] stopped" + (" (volume removed)" if volumes else " (volume kept)"))
+    console.print(f"{_mark(True)} stopped" + (" (volume removed)" if volumes else " (volume kept)"))
 
 
 @app.command()
@@ -502,10 +503,7 @@ def _key_works(*, admin: bool) -> bool:
 
 def _print_status(ready: dict[str, Any], keys: dict[str, bool]) -> None:
     healthy = ready.get("status") == "UP"
-    console.print(
-        f"{'[green]✓[/green]' if healthy else '[red]✗[/red]'} application at {_base_url()}: "
-        f"{'UP' if healthy else 'DOWN'}"
-    )
+    console.print(f"{_mark(healthy)} application at {_base_url()}: {'UP' if healthy else 'DOWN'}")
 
     _headline("checks")
     for name, value in (ready.get("checks") or {}).items():
@@ -538,10 +536,7 @@ def _print_status(ready: dict[str, Any], keys: dict[str, bool]) -> None:
 
     _headline("credentials")
     for name, works in keys.items():
-        console.print(
-            f"  {'[green]✓[/green]' if works else '[red]✗[/red]'} {name}: "
-            f"{'accepted' if works else 'refused or missing'}"
-        )
+        console.print(f"  {_mark(works)} {name}: {'accepted' if works else 'refused or missing'}")
 
 
 @app.command()
@@ -587,7 +582,7 @@ def crawl() -> None:
         3: "the crawl was cancelled",
     }
     reason = codes.get(completed.returncode, "an unexpected exit")
-    mark = "[green]✓[/green]" if completed.returncode == EXIT_OK else "[red]✗[/red]"
+    mark = _mark(completed.returncode == EXIT_OK)
     console.print(f"{mark} exit {completed.returncode}: {reason}")
     if completed.returncode != EXIT_OK:
         raise typer.Exit(EXIT_WRONG)
@@ -633,7 +628,7 @@ def items(
         maxPrice=max_price,
         minCashback=min_cashback,
     )
-    _emit(result.model_dump(mode="json", by_alias=True), lambda: _print_items(result))
+    _emit(result, lambda: _print_items(result))
     if not result.total_count:
         raise typer.Exit(EXIT_WRONG)
 
@@ -651,7 +646,7 @@ def _print_items(result: ItemsPage) -> None:
             [
                 item.target_name,
                 item.title,
-                _rubles(item.sale_price_kopecks or item.price_kopecks),
+                _rubles(item.sale_price_kopecks if item.sale_price_kopecks is not None else item.price_kopecks),
                 f"{item.cashback_percent}%" if item.cashback_percent is not None else "—",
                 _age(item.scraped_at),
             ]
@@ -667,7 +662,7 @@ def _print_items(result: ItemsPage) -> None:
 def stats() -> None:
     """Aggregate counters of the catalog: how big it is and how fresh."""
     payload = _get("/api/catalog/v1/stats", Stats, catalog=True)
-    _emit(payload.model_dump(mode="json", by_alias=True), lambda: _print_stats(payload))
+    _emit(payload, lambda: _print_stats(payload))
 
 
 def _print_stats(payload: Stats) -> None:
@@ -693,11 +688,7 @@ def runs(
     target_runs = _get("/api/admin/target-runs", list[TargetRun], admin=True, limit=limit, targetId=target)
     failures = _get("/api/admin/errors", list[RecordedError], admin=True, limit=errors, unresolvedOnly="true")
     _emit(
-        {
-            "jobs": [job.model_dump(mode="json", by_alias=True) for job in jobs],
-            "targetRuns": [run.model_dump(mode="json", by_alias=True) for run in target_runs],
-            "errors": [error.model_dump(mode="json", by_alias=True) for error in failures],
-        },
+        {"jobs": jobs, "targetRuns": target_runs, "errors": failures},
         lambda: _print_runs(target_runs, jobs, failures),
     )
 
@@ -765,43 +756,73 @@ def schedule(
     the rule; until then this command says so rather than hiding it.
     """
     targets = _get("/api/admin/targets", list[Target], admin=True)
-    cron = _env().get("CRAWLER_SCHEDULE_CRON") or "0 0 */2 * * *"
-    freshness = int(_env().get("CRAWLER_SCHEDULE_FRESHNESS_MINUTES") or 360)
+    cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
+    freshness = int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
 
     now = datetime.now(UTC)
-    due, upcoming = _partition_by_due(targets, now, freshness)
+    due, upcoming, earliest_due = _partition_due(targets, now, freshness)
+    next_run = _next_run(cron, now, earliest_due, targets_known=True)
     _emit(
         {
             "cron": cron,
             "freshnessMinutes": freshness,
             "activeTargets": sum(1 for target in targets if target.active),
-            "due": [target.model_dump(mode="json", by_alias=True) for target in due],
-            "upcoming": [
-                {"at": when, "target": target.model_dump(mode="json", by_alias=True)}
-                for when, target in upcoming[:limit]
-            ],
+            "due": due,
+            "upcoming": [{"at": when, "target": target} for when, target in upcoming[:limit]],
+            "nextRun": next_run,
+            "earliestDue": earliest_due,
         },
-        lambda: _print_schedule(cron, freshness, targets, due, upcoming, limit),
+        lambda: _print_schedule(cron, freshness, targets, due, upcoming, next_run, earliest_due, limit),
     )
 
 
-def _partition_by_due(
+def claimable_at(target: Target, now: datetime, freshness_minutes: int) -> datetime | None:
+    """When an active target becomes claimable; None means claimable now (lease is not visible via API)."""
+    moments: list[datetime] = []
+    if target.next_attempt_at and target.next_attempt_at > now:
+        moments.append(target.next_attempt_at)
+    if target.last_crawled_at:
+        fresh_until = target.last_crawled_at + timedelta(minutes=freshness_minutes)
+        if fresh_until > now:
+            moments.append(fresh_until)
+    return max(moments) if moments else None
+
+
+def _partition_due(
     targets: list[Target], now: datetime, freshness_minutes: int
-) -> tuple[list[Target], list[tuple[datetime, Target]]]:
-    """Split by the claim's rule, as far as the API exposes it — see [schedule]."""
-    fresh_before = now - timedelta(minutes=freshness_minutes)
+) -> tuple[list[Target], list[tuple[datetime, Target]], datetime | None]:
+    """Split active targets by claimability and return (due, upcoming, earliest claimable moment)."""
     due: list[Target] = []
     upcoming: list[tuple[datetime, Target]] = []
+    earliest: datetime | None = None
     for target in targets:
         if not target.active:
             continue
-        if target.next_attempt_at and target.next_attempt_at > now:
-            upcoming.append((target.next_attempt_at, target))
-        elif target.last_crawled_at is None or target.last_crawled_at <= fresh_before:
+        when = claimable_at(target, now, freshness_minutes)
+        claim_at = when or now
+        if earliest is None or claim_at < earliest:
+            earliest = claim_at
+        if when is None:
             due.append(target)
         else:
-            upcoming.append((target.last_crawled_at + timedelta(minutes=freshness_minutes), target))
-    return due, sorted(upcoming, key=lambda pair: pair[0])
+            upcoming.append((when, target))
+    return due, sorted(upcoming, key=lambda pair: pair[0]), earliest
+
+
+def _print_schedule_header(cron: str, freshness: int) -> None:
+    _headline("schedule")
+    console.print(f"  tick       {escape(cron)}  [dim](how often the scheduler looks for work)[/dim]")
+    console.print(f"  freshness  {freshness} min  [dim](how long a target rests after a crawl)[/dim]")
+    console.print("  [dim]the tick is not the cadence: a tick that finds nothing due starts nothing[/dim]")
+
+
+def _print_next_run(next_run: datetime | None, earliest_due: datetime | None) -> None:
+    if next_run:
+        console.print(f"  next run   {next_run.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}  ({_age(next_run)})")
+    else:
+        console.print("  next run   [yellow]unknown[/yellow]")
+    if earliest_due:
+        console.print(f"  [dim]the earliest target is due {_age(earliest_due)}[/dim]")
 
 
 def _print_schedule(
@@ -810,12 +831,12 @@ def _print_schedule(
     targets: list[Target],
     due: list[Target],
     upcoming: list[tuple[datetime, Target]],
+    next_run: datetime | None,
+    earliest_due: datetime | None,
     limit: int,
 ) -> None:
-    _headline("schedule")
-    console.print(f"  tick       {escape(cron)}  [dim](how often the scheduler looks for work)[/dim]")
-    console.print(f"  freshness  {freshness} min  [dim](how long a target rests after a crawl)[/dim]")
-    console.print("  [dim]the tick is not the cadence: a tick that finds nothing due starts nothing[/dim]")
+    _print_schedule_header(cron, freshness)
+    _print_next_run(next_run, earliest_due)
     console.print(f"\n  active targets  {sum(1 for t in targets if t.active)} of {len(targets)}")
     console.print(f"  due now         {len(due)}")
     if due:
@@ -851,83 +872,58 @@ def history(
     that does not happen.
     """
     jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit)
-    next_run, due_estimate = _next_run()
-
-    _emit(
-        {
-            "runs": [job.model_dump(mode="json", by_alias=True) for job in jobs],
-            "schedule": {
-                "cron": _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *"),
-                "freshnessMinutes": int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360")),
-                "nextRun": next_run,
-                "earliestDue": due_estimate,
-            },
-        },
-        lambda: _print_history(jobs, next_run, due_estimate),
-    )
-
-
-def _next_run() -> tuple[datetime | None, datetime | None]:
-    """
-    When a tick will start a crawl, and when the earliest target becomes due.
-
-    The two are separate facts and the answer is the later of them: a tick that finds
-    nothing due is a no-op, so "the next tick" alone overstates what will happen.
-    """
     cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
     freshness = int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
     now = datetime.now(UTC)
 
-    try:
-        earliest_due = _earliest_due(freshness, now) if _running("app") else None
-    except Unusable:
-        earliest_due = None
+    earliest_due: datetime | None = None
+    targets_known = False
+    if _running("app"):
+        try:
+            targets = _get("/api/admin/targets", list[Target], admin=True)
+            _, _, earliest_due = _partition_due(targets, now, freshness)
+            targets_known = True
+        except Unusable:
+            targets_known = False
+    next_run = _next_run(cron, now, earliest_due, targets_known)
 
-    # Spring's cron has seconds first; croniter can read that layout, and `?` means
-    # "no specific value", which croniter spells `*`.
+    _emit(
+        {
+            "runs": jobs,
+            "schedule": {
+                "cron": cron,
+                "freshnessMinutes": freshness,
+                "nextRun": next_run,
+                "earliestDue": earliest_due,
+            },
+        },
+        lambda: _print_history(cron, freshness, jobs, next_run, earliest_due),
+    )
+
+
+def _next_run(cron: str, now: datetime, earliest_due: datetime | None, targets_known: bool) -> datetime | None:
+    """When a tick will start a crawl: the later of the next tick and the earliest claimable moment."""
+    if not targets_known or earliest_due is None:
+        return None
     try:
         iterator = croniter(cron.replace("?", "*"), now, second_at_beginning=True)
-    except (ValueError, KeyError):
-        return None, earliest_due
-
-    tick = iterator.get_next(datetime)
-    if earliest_due is None or earliest_due <= tick:
-        return tick, earliest_due
-    # Nothing is due at the next tick: walk forward to the first tick that finds work.
-    return iterator.get_next(datetime, start_time=earliest_due), earliest_due
+        tick = iterator.get_next(datetime)
+        if earliest_due <= tick:
+            return tick
+        return iterator.get_next(datetime, start_time=earliest_due)
+    except ValueError:
+        return None
 
 
-def _earliest_due(freshness_minutes: int, now: datetime) -> datetime | None:
-    """When the earliest active target becomes claimable, or None when nothing is active."""
-    targets = _get("/api/admin/targets", list[Target], admin=True)
-    moments: list[datetime] = []
-    for target in targets:
-        if not target.active:
-            continue
-        candidate = now
-        if target.next_attempt_at and target.next_attempt_at > candidate:
-            candidate = target.next_attempt_at
-        if target.last_crawled_at:
-            fresh_until = target.last_crawled_at + timedelta(minutes=freshness_minutes)
-            if fresh_until > candidate:
-                candidate = fresh_until
-        moments.append(candidate)
-    return min(moments) if moments else None
-
-
-def _print_history(jobs: list[Job], next_run: datetime | None, earliest_due: datetime | None) -> None:
-    cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
-    freshness = _effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360")
-
-    _headline("schedule")
-    console.print(f"  tick       {escape(cron)}  [dim](how often the scheduler looks for work)[/dim]")
-    console.print(f"  freshness  {freshness} min  [dim](how long a target rests after a crawl)[/dim]")
-    if next_run:
-        console.print(f"  next run   {next_run.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}  ({_age(next_run)})")
-    else:
-        console.print("  next run   [yellow]unknown[/yellow] — the cron expression does not parse")
-    if earliest_due:
-        console.print(f"  [dim]the earliest target is due {_age(earliest_due)}[/dim]")
+def _print_history(
+    cron: str,
+    freshness: int,
+    jobs: list[Job],
+    next_run: datetime | None,
+    earliest_due: datetime | None,
+) -> None:
+    _print_schedule_header(cron, freshness)
+    _print_next_run(next_run, earliest_due)
 
     _headline(f"runs — last {len(jobs)}")
     if not jobs:
