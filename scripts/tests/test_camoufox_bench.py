@@ -11,7 +11,7 @@ deliberately not tested here — it needs a real profile, and the measurement it
 check for that.
 
 `unittest.TestCase` by the convention of the neighbouring tests: the same file runs
-under the gate (`python3 -m unittest discover -s scripts/tests`) and under pytest.
+under the gate, which runs the suite with pytest (`uv run pytest scripts/tests`).
 """
 
 import importlib.util

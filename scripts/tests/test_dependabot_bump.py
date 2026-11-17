@@ -7,7 +7,7 @@
 версий, как по ним считается бамп и что скрипт решает сливать ли.
 
 Файл написан на `unittest.TestCase` по конвенции соседних тестов: тот же файл
-запускается и гейтом (`python3 -m unittest discover -s scripts/tests`), и pytest.
+запускается гейтом (`uv run pytest scripts/tests`).
 """
 
 import importlib.util

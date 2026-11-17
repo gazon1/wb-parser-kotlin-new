@@ -21,7 +21,7 @@
 чужие тексты.
 
 Файл написан на `unittest.TestCase` по конвенции соседних тестов: тот же файл
-запускается и гейтом (`python3 -m unittest discover -s scripts/tests`), и pytest.
+запускается гейтом (`uv run pytest scripts/tests`).
 """
 
 import shutil

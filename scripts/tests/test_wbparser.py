@@ -17,6 +17,7 @@ from pathlib import Path
 from unittest import mock
 
 import httpx
+import pytest
 from typer.testing import CliRunner
 
 
@@ -659,6 +660,615 @@ def test_closing_the_app_while_a_load_is_in_flight_leaves_the_pane_silent() -> N
         release.set()
 
 
+# ── the migrated tabs ────────────────────────────────────────────────────────
+
+
+def _items_page(mod):
+    """One page of products, as the catalog answers it."""
+    body = json.loads((FIXTURES / "catalog-items.json").read_text(encoding="utf-8"))
+    return mod.ItemsPage.model_validate(body)
+
+
+def test_the_items_pane_sends_the_filters_it_read(monkeypatch) -> None:
+    mod = _load_wbparser()
+    sent: list[dict] = []
+
+    async def fake_items(api, **kwargs):
+        sent.append(kwargs)
+        return _items_page(mod)
+
+    monkeypatch.setattr(mod, "_fetch_items", fake_items)
+
+    async def scenario() -> None:
+        pane = mod.ItemsPane()
+        async with _host(mod, pane).run_test():
+            pane.query_one("#items-q", mod.Input).value = "shoes"
+            pane.query_one("#items-target", mod.Input).value = "target-1"
+            pane.query_one("#items-sort", mod.Select).value = mod.Sort.price_asc.value
+            await _reload(pane)
+            assert sent == [
+                {
+                    "target": "target-1",
+                    "query": "shoes",
+                    "page": 0,
+                    "page_size": 20,
+                    "sort": "PriceAsc",
+                }
+            ], "the filters the user typed are the filters the request carries"
+
+    asyncio.run(scenario())
+
+
+def test_the_items_pane_sends_the_page_and_the_size_it_read(monkeypatch) -> None:
+    mod = _load_wbparser()
+    sent: list[dict] = []
+
+    async def fake_items(api, **kwargs):
+        sent.append(kwargs)
+        return _items_page(mod)
+
+    monkeypatch.setattr(mod, "_fetch_items", fake_items)
+
+    async def scenario() -> None:
+        pane = mod.ItemsPane()
+        async with _host(mod, pane).run_test():
+            pane.query_one("#items-page", mod.Input).value = "3"
+            pane.query_one("#items-size", mod.Input).value = "50"
+            await _reload(pane)
+            assert sent[0]["page"] == 3
+            assert sent[0]["page_size"] == 50
+
+            # A page that is not a number falls back to the first page, and a size
+            # that is not a number to the default — as it did before the migration.
+            pane.query_one("#items-page", mod.Input).value = "not a page"
+            pane.query_one("#items-size", mod.Input).value = ""
+            await _reload(pane)
+            assert sent[1]["page"] == 0
+            assert sent[1]["page_size"] == 20
+
+    asyncio.run(scenario())
+
+
+def test_the_items_pane_keeps_the_page_after_a_load(monkeypatch) -> None:
+    mod = _load_wbparser()
+
+    async def fake_items(api, **kwargs):
+        return _items_page(mod)
+
+    monkeypatch.setattr(mod, "_fetch_items", fake_items)
+
+    async def scenario() -> None:
+        pane = mod.ItemsPane()
+        async with _host(mod, pane).run_test():
+            pane.query_one("#items-page", mod.Input).value = "3"
+            await _reload(pane)
+            assert pane.query_one("#items-page", mod.Input).value == "3", "a load does not reset the page"
+
+    asyncio.run(scenario())
+
+
+def test_the_items_pane_draws_the_page_it_fetched(monkeypatch) -> None:
+    mod = _load_wbparser()
+
+    async def fake_items(api, **kwargs):
+        return _items_page(mod)
+
+    monkeypatch.setattr(mod, "_fetch_items", fake_items)
+
+    async def scenario() -> None:
+        pane = mod.ItemsPane()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            assert pane.query_one("#items-table", mod.DataTable).row_count == 1
+            assert pane.urls == ["https://example.invalid/p/1"]
+            assert "1 total" in pane.query_one("#items-info", mod.Static).content
+
+    asyncio.run(scenario())
+
+
+def _fake_tabs(monkeypatch, mod, calls: list[str]) -> None:
+    """Every tab answers without a network, and says which tab answered."""
+
+    async def fake_status(api):
+        calls.append("status")
+        return ({"status": "UP", "checks": {}, "crawler": {}, "egress": {}}, {})
+
+    async def fake_items(api, **kwargs):
+        calls.append("items")
+        return _items_page(mod)
+
+    async def fake_runs(api):
+        calls.append("runs")
+        return {"targetRuns": [], "jobs": [], "errors": []}
+
+    async def fake_schedule(api):
+        calls.append("schedule")
+        return mod.Schedule()
+
+    async def fake_history(api):
+        calls.append("history")
+        return {"jobs": [], "cron": "0 0 */4 * * *", "freshnessMinutes": 360, "nextRun": None, "earliestDue": None}
+
+    async def fake_stats(api):
+        calls.append("stats")
+        return _stats(mod)
+
+    monkeypatch.setattr(mod, "_fetch_status", fake_status)
+    monkeypatch.setattr(mod, "_fetch_items", fake_items)
+    monkeypatch.setattr(mod, "_fetch_runs", fake_runs)
+    monkeypatch.setattr(mod, "_fetch_schedule", fake_schedule)
+    monkeypatch.setattr(mod, "_fetch_history", fake_history)
+    monkeypatch.setattr(mod, "_fetch_stats", fake_stats)
+
+
+def test_the_app_loads_the_tab_it_shows_and_leaves_the_hidden_tabs_alone(monkeypatch) -> None:
+    mod = _load_wbparser()
+    calls: list[str] = []
+    _fake_tabs(monkeypatch, mod, calls)
+
+    async def scenario() -> None:
+        app = mod.WbparserApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert calls == ["status"], "the tab the app opens with is the tab that loads"
+
+            for tab, pane_cls, name in (
+                ("tab-items", mod.ItemsPane, "items"),
+                ("tab-runs", mod.RunsPane, "runs"),
+                ("tab-schedule", mod.SchedulePane, "schedule"),
+                ("tab-history", mod.HistoryPane, "history"),
+            ):
+                app.action_tab(tab)
+                await pilot.pause()
+                pane = app.query_one(pane_cls)
+                await pane.workers.wait_for_complete()
+                assert calls[-1] == name, "the tab the operator opened is the tab that loads"
+                assert "updated" in pane.query_one("#pane-status", mod.Static).content, "the pane drew what it fetched"
+                assert calls.count(name) == 1, "a hidden tab never polls the API"
+
+    asyncio.run(scenario())
+
+
+def test_the_auto_refresh_reloads_the_active_pane_only(monkeypatch) -> None:
+    mod = _load_wbparser()
+    calls: list[str] = []
+    _fake_tabs(monkeypatch, mod, calls)
+
+    async def scenario() -> None:
+        app = mod.WbparserApp()
+        # The cadence is a class attribute, so the instance may shorten it: the test
+        # waits for the timer, not for half a minute.
+        app.REFRESH_EVERY = 0.05
+        async with app.run_test() as pilot:
+            app.action_tab("tab-items")
+            await pilot.pause()
+            await app.query_one(mod.ItemsPane).workers.wait_for_complete()
+            calls.clear()
+
+            for _ in range(100):
+                await asyncio.sleep(0.02)
+                if calls:
+                    break
+            assert calls == ["items"], "the timer refreshes the active pane and nothing else"
+
+    asyncio.run(scenario())
+
+
+def test_an_error_in_one_pane_does_not_break_the_other_tabs(monkeypatch) -> None:
+    mod = _load_wbparser()
+    calls: list[str] = []
+    _fake_tabs(monkeypatch, mod, calls)
+
+    async def failing_status(api):
+        raise mod.Unusable("cannot reach http://localhost:8082")
+
+    monkeypatch.setattr(mod, "_fetch_status", failing_status)
+
+    async def scenario() -> None:
+        app = mod.WbparserApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            status = app.query_one(mod.StatusPane)
+            assert "cannot reach" in status.query_one("#pane-status", mod.Static).content
+            assert status.updated_at is None, "a failed load is not an update"
+
+            app.action_tab("tab-items")
+            await pilot.pause()
+            items = app.query_one(mod.ItemsPane)
+            await items.workers.wait_for_complete()
+            assert items.query_one("#items-table", mod.DataTable).row_count == 1
+            assert items.updated_at is not None
+
+    asyncio.run(scenario())
+
+
+# ── the panes' buttons and their tables ──────────────────────────────────────
+
+
+async def _wait_for(predicate, timeout: float = 5.0) -> bool:
+    """Wait for a condition the event loop is going to satisfy, or give up."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        await asyncio.sleep(0.02)
+    return False
+
+
+def _rows(table) -> list[list[str]]:
+    """The rows of a table, as plain strings."""
+    return [[str(cell) for cell in table.get_row_at(index)] for index in range(table.row_count)]
+
+
+#: The tab, the button that reloads its pane, and the fetch that button must call.
+PANE_REFRESH_BUTTONS = [
+    ("tab-status", "#btn-refresh-status", "status"),
+    ("tab-items", "#btn-items", "items"),
+    ("tab-runs", "#btn-runs", "runs"),
+    ("tab-schedule", "#btn-schedule", "schedule"),
+    ("tab-history", "#btn-history", "history"),
+    ("tab-stats", "#btn-stats", "stats"),
+]
+
+
+@pytest.mark.parametrize(("tab", "button", "name"), PANE_REFRESH_BUTTONS)
+def test_each_pane_refresh_button_reloads_only_that_pane(monkeypatch, tab, button, name) -> None:
+    """A click on a pane's own button reloads that pane — once, and nothing else."""
+    mod = _load_wbparser()
+    calls: list[str] = []
+    _fake_tabs(monkeypatch, mod, calls)
+    monkeypatch.setattr(mod, "_running", lambda service: False)
+
+    async def scenario() -> None:
+        app = mod.WbparserApp()
+        # A wide terminal: the items row is wider than the default 80 columns, and a
+        # click that lands outside the screen is not a click.
+        async with app.run_test(size=(160, 50)) as pilot:
+            app.action_tab(tab)
+            await pilot.pause()
+            pane = app.query_one(mod.WbparserApp.PANES[tab])
+            assert await _wait_for(lambda: calls.count(name) >= 1), "opening the tab loads it"
+            assert calls.count(name) == 1, "opening a tab loads it once"
+            opened = len(calls)
+
+            landed = await pilot.click(button)
+            assert landed, "the click landed on the button"
+            await pilot.pause()
+            assert await _wait_for(lambda: len(calls) > opened), "the button started a load"
+            await pane.workers.wait_for_complete()
+
+            assert calls[opened:] == [name], (
+                "one click, one request, and it is this pane's own fetch — "
+                "the app's button handler must not start a second load"
+            )
+
+    asyncio.run(scenario())
+
+
+def test_opening_a_tab_loads_it_once(monkeypatch) -> None:
+    """A tab switch is one load — the tab activation does not double up with the timer."""
+    mod = _load_wbparser()
+    calls: list[str] = []
+    _fake_tabs(monkeypatch, mod, calls)
+    monkeypatch.setattr(mod, "_running", lambda service: False)
+
+    async def scenario() -> None:
+        app = mod.WbparserApp()
+        # The timer stays out of the way: this is about the switch itself.
+        app.REFRESH_EVERY = 3600.0
+        async with app.run_test() as pilot:
+            for tab, name in (
+                ("tab-items", "items"),
+                ("tab-runs", "runs"),
+                ("tab-schedule", "schedule"),
+                ("tab-history", "history"),
+                ("tab-stats", "stats"),
+            ):
+                app.action_tab(tab)
+                await pilot.pause()
+                assert await _wait_for(lambda name=name: calls.count(name) >= 1), f"{tab} loads when it opens"
+                assert calls.count(name) == 1, f"opening {tab} loads it once, not twice"
+
+    asyncio.run(scenario())
+
+
+def test_the_auto_refresh_follows_the_tab_the_operator_opened(monkeypatch) -> None:
+    """The timer refreshes whichever pane is on screen — and nothing when none is."""
+    mod = _load_wbparser()
+    calls: list[str] = []
+    _fake_tabs(monkeypatch, mod, calls)
+    monkeypatch.setattr(mod, "_running", lambda service: False)
+
+    async def scenario() -> None:
+        app = mod.WbparserApp()
+        app.REFRESH_EVERY = 0.05
+        async with app.run_test() as pilot:
+            app.action_tab("tab-items")
+            await pilot.pause()
+            assert await _wait_for(lambda: calls.count("items") >= 1), "opening the tab loads it"
+            calls.clear()
+            assert await _wait_for(lambda: calls), "the timer refreshes the active pane"
+            assert set(calls) == {"items"}, "the timer refreshes the active pane and nothing else"
+
+            # The operator opens another tab: the next tick refreshes that one.
+            app.action_tab("tab-runs")
+            await pilot.pause()
+            assert await _wait_for(lambda: calls.count("runs") >= 1), "opening the tab loads it"
+            calls.clear()
+            assert await _wait_for(lambda: calls), "the timer follows the operator"
+            assert set(calls) == {"runs"}, "the timer refreshes the tab that is on screen"
+
+            # The log tab is not a pane: there is nothing to refresh, and nothing to ask.
+            app.action_tab("tab-logs")
+            await pilot.pause()
+            calls.clear()
+            await asyncio.sleep(0.3)
+            assert calls == [], "the log tab never polls the API"
+
+    asyncio.run(scenario())
+
+
+def _job(mod, **kwargs):
+    base = {
+        "id": "11111111-1111-1111-1111-111111111111",
+        "status": "Completed",
+        "pagesCrawled": 10,
+        "itemsSaved": 5,
+        "startedAt": "2026-11-17T10:00:00Z",
+        "completedAt": "2026-11-17T10:05:00Z",
+        "triggeredBy": "schedule",
+        "errorMessage": None,
+    }
+    base.update(kwargs)
+    return mod.Job.model_validate(base)
+
+
+def _target_run(mod, **kwargs):
+    base = {
+        "targetId": "22222222-2222-2222-2222-222222222222",
+        "targetName": "Cards",
+        "egressGroup": "g1",
+        "egressIp": "1.2.3.4",
+        "outcome": "success",
+        "pages": 60,
+        "items": 6000,
+        "wbTotal": 1000,
+        "startedAt": "2026-11-17T10:00:00Z",
+    }
+    base.update(kwargs)
+    return mod.TargetRun.model_validate(base)
+
+
+def _recorded_error(mod, **kwargs):
+    base = {"category": "network", "message": "timeout", "createdAt": "2026-11-17T09:00:00Z"}
+    base.update(kwargs)
+    return mod.RecordedError.model_validate(base)
+
+
+def test_the_runs_pane_draws_the_three_tables(monkeypatch) -> None:
+    """The journal: the target runs, the jobs and the unresolved errors."""
+    mod = _load_wbparser()
+    answers = [
+        {
+            "targetRuns": [_target_run(mod)],
+            "jobs": [_job(mod)],
+            "errors": [_recorded_error(mod)],
+        },
+        {"targetRuns": [], "jobs": [], "errors": []},
+    ]
+
+    async def fake_runs(api):
+        return answers.pop(0)
+
+    monkeypatch.setattr(mod, "_fetch_runs", fake_runs)
+
+    async def scenario() -> None:
+        pane = mod.RunsPane()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            targets = _rows(pane.query_one("#runs-targets", mod.DataTable))
+            jobs = _rows(pane.query_one("#runs-jobs", mod.DataTable))
+            errors = _rows(pane.query_one("#runs-errors", mod.DataTable))
+
+            assert len(targets) == 1
+            assert targets[0][0] == "Cards"
+            assert targets[0][3] == "success"
+            assert len(jobs) == 1
+            assert jobs[0][0] == "Completed"
+            assert jobs[0][4] == "—", "a job without an error says so"
+            assert len(errors) == 1
+            assert errors[0][0] == "network"
+            assert errors[0][1] == "timeout"
+
+            # An empty answer leaves empty tables, not the rows of the last load.
+            await _reload(pane)
+            assert pane.query_one("#runs-targets", mod.DataTable).row_count == 0
+            assert pane.query_one("#runs-jobs", mod.DataTable).row_count == 0
+            assert pane.query_one("#runs-errors", mod.DataTable).row_count == 0
+
+    asyncio.run(scenario())
+
+
+def test_the_schedule_pane_draws_the_due_and_the_upcoming(monkeypatch) -> None:
+    """The tick, the freshness window, and the targets that are due."""
+    mod = _load_wbparser()
+    due = _target(mod, "Shoes", lastCrawledAt="2026-11-17T08:00:00Z")
+    later = _target(mod, "Cards")
+    schedule = mod.Schedule.model_validate(
+        {
+            "cron": "0 0 */4 * * *",
+            "freshnessMinutes": 360,
+            "activeTargets": 2,
+            "targets": [due.model_dump(by_alias=True), later.model_dump(by_alias=True)],
+            "due": [due.model_dump(by_alias=True)],
+            "upcoming": [{"at": "2026-11-17T14:00:00Z", "target": later.model_dump(by_alias=True)}],
+            "nextRun": "2026-11-17T12:00:00Z",
+            "earliestDue": "2026-11-17T08:00:00Z",
+            "limit": 15,
+        }
+    )
+    answers = [schedule, mod.Schedule.model_validate({})]
+
+    async def fake_schedule(api):
+        return answers.pop(0)
+
+    monkeypatch.setattr(mod, "_fetch_schedule", fake_schedule)
+
+    async def scenario() -> None:
+        pane = mod.SchedulePane()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            due_rows = _rows(pane.query_one("#sched-due", mod.DataTable))
+            upcoming_rows = _rows(pane.query_one("#sched-upcoming", mod.DataTable))
+            summary = pane.query_one("#schedule-summary", mod.Static).content
+
+            assert len(due_rows) == 1
+            assert due_rows[0][0] == "Shoes"
+            assert due_rows[0][1] == "9467"
+            assert len(upcoming_rows) == 1
+            assert upcoming_rows[0][0] == "Cards"
+            assert "tick: 0 0 */4 * * *" in summary
+            assert "due now: 1" in summary
+            assert "next run:" in summary
+
+            # An empty answer leaves empty tables, not the rows of the last load.
+            await _reload(pane)
+            assert pane.query_one("#sched-due", mod.DataTable).row_count == 0
+            assert pane.query_one("#sched-upcoming", mod.DataTable).row_count == 0
+
+    asyncio.run(scenario())
+
+
+def test_the_history_pane_draws_the_jobs_and_the_schedule(monkeypatch) -> None:
+    """The last runs, what started each of them, and when the next one is due."""
+    mod = _load_wbparser()
+    answers = [
+        {
+            "jobs": [_job(mod)],
+            "cron": "0 0 */4 * * *",
+            "freshnessMinutes": 360,
+            "nextRun": datetime(2026, 11, 17, 12, 0, tzinfo=UTC),
+            "earliestDue": None,
+        },
+        {
+            "jobs": [],
+            "cron": "0 0 */4 * * *",
+            "freshnessMinutes": 360,
+            "nextRun": None,
+            "earliestDue": None,
+        },
+    ]
+
+    async def fake_history(api):
+        return answers.pop(0)
+
+    monkeypatch.setattr(mod, "_fetch_history", fake_history)
+
+    async def scenario() -> None:
+        pane = mod.HistoryPane()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            rows = _rows(pane.query_one("#history-table", mod.DataTable))
+            summary = pane.query_one("#history-summary", mod.Static).content
+
+            assert len(rows) == 1
+            assert rows[0][2] == "schedule"
+            assert rows[0][3] == "Completed"
+            assert rows[0][4] == "10"
+            assert "tick: 0 0 */4 * * *" in summary
+            assert "freshness: 360 min" in summary
+            assert "next run:" in summary
+
+            # An empty answer leaves an empty table, not the rows of the last load.
+            await _reload(pane)
+            assert pane.query_one("#history-table", mod.DataTable).row_count == 0
+
+    asyncio.run(scenario())
+
+
+def test_the_items_pane_keeps_its_rows_and_urls_when_a_reload_fails(monkeypatch) -> None:
+    """The rows on screen and the URLs behind them stay in step when a load fails."""
+    mod = _load_wbparser()
+    attempts = {"n": 0}
+
+    async def fake_items(api, **kwargs):
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            return _items_page(mod)
+        raise mod.Unusable("cannot reach http://localhost:8082")
+
+    monkeypatch.setattr(mod, "_fetch_items", fake_items)
+
+    async def scenario() -> None:
+        pane = mod.ItemsPane()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            table = pane.query_one("#items-table", mod.DataTable)
+            assert table.row_count == 1
+            urls = list(pane.urls)
+            assert urls == ["https://example.invalid/p/1"], "the row on screen has its url"
+            updated = pane.updated_at
+
+            await _reload(pane)
+            assert table.row_count == 1, "a failed reload keeps the last good rows"
+            assert pane.urls == urls, "the rows on screen and the urls behind them stay in step"
+            assert pane.updated_at == updated, "a failed reload is not an update"
+            assert "cannot reach" in pane.query_one("#pane-status", mod.Static).content
+
+    asyncio.run(scenario())
+
+
+def test_the_status_pane_keeps_its_data_when_the_answer_is_malformed(monkeypatch) -> None:
+    """A malformed answer must not leave the status pane half-drawn."""
+    mod = _load_wbparser()
+    good = (
+        {
+            "status": "UP",
+            "checks": {"database": "UP"},
+            "crawler": {"state": "not_started"},
+            "egress": {"groups": [{"group": "g1", "address": "1.2.3.4", "healthy": True}]},
+        },
+        {"ADMIN_API_KEY": True},
+    )
+    # `checks` is a list, not a map: the pane fails while building the rows.
+    malformed = (
+        {"status": "UP", "checks": ["not", "a", "map"], "crawler": {}, "egress": {}},
+        {},
+    )
+    answers = [good, malformed]
+
+    async def fake_status(api):
+        return answers.pop(0)
+
+    monkeypatch.setattr(mod, "_fetch_status", fake_status)
+
+    async def scenario() -> None:
+        pane = mod.StatusPane()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            summary = pane.query_one("#status-summary", mod.Static).content
+            assert "UP" in summary
+            assert pane.query_one("#status-checks", mod.DataTable).row_count == 1
+            assert pane.query_one("#status-creds", mod.DataTable).row_count == 1
+            assert pane.query_one("#status-egress", mod.DataTable).row_count == 1
+            updated = pane.updated_at
+
+            await _reload(pane)
+            status = pane.query_one("#pane-status", mod.Static).content
+            assert "has no attribute 'items'" in status, "the malformed answer is reported"
+            assert pane.query_one("#status-summary", mod.Static).content == summary, (
+                "the summary on screen is the last good one"
+            )
+            assert pane.query_one("#status-checks", mod.DataTable).row_count == 1, (
+                "the rows on screen are the last good ones"
+            )
+            assert pane.query_one("#status-creds", mod.DataTable).row_count == 1
+            assert pane.query_one("#status-egress", mod.DataTable).row_count == 1
+            assert pane.updated_at == updated, "a failed draw is not an update"
+
+    asyncio.run(scenario())
+
+
 # ── the HTTP layer ───────────────────────────────────────────────────────────
 
 
@@ -707,9 +1317,9 @@ class ApiHttpTest(_TransportCase):
     """
     The HTTP layer: what a role sends, what a failure says, and how long a client lives.
 
-    These are `unittest` cases on purpose: the CI gate runs `unittest discover`, so a
-    pytest-style function here would never be executed by the pipeline that is
-    supposed to prove the client works.
+    These are `unittest` cases on purpose: the gate runs the suite with pytest, which
+    collects both shapes, and these are the cases that need a patch around the
+    transport.
     """
 
     def _message(self, handler, *, path="/api/health/ready", role="public", model=None) -> str:

@@ -8,7 +8,7 @@
 отчёт превращается в `known_pages_limit` в YAML. Всё, что связано с браузером, намеренно не тестируется — это требует живого профиля.
 
 Файл написан на `unittest.TestCase` по конвенции соседних тестов: тот же файл
-запускается и гейтом (`python3 -m unittest discover -s scripts/tests`), и pytest.
+запускается гейтом (`uv run pytest scripts/tests`).
 """
 
 import importlib.util
@@ -36,10 +36,10 @@ def load(name: str, path: Path):
     return module
 
 
-# The gate that runs these tests (`python3 -m unittest discover -s scripts/tests`)
-# runs on a bare Python: no `click`, no `PyYAML`. So the tested modules are the ones
-# that import nothing outside the standard library, and the YAML round-trip is
-# skipped where PyYAML is absent rather than failing the gate.
+# The gate that runs these tests (`uv run pytest scripts/tests`) must not need a
+# browser or a third-party package to be installed: no `click`, no `PyYAML`. So the
+# tested modules are the ones that import nothing outside the standard library, and
+# the YAML round-trip is skipped where PyYAML is absent rather than failing the gate.
 LENGTH = load("catalog_length", CATALOG_SCRIPTS / "catalog_length.py")
 REPORT = load("catalog_report", CATALOG_SCRIPTS / "catalog_report.py")
 

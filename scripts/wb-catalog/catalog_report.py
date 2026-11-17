@@ -11,9 +11,8 @@ report record that says "blocked" or "failed" carries no number at all.
 
 That rule is pure logic — it reads a dict and produces a plan — so it lives here,
 in a module with no third-party imports. The gate that runs the script tests
-(`python3 -m unittest discover -s scripts/tests`) executes on a bare Python
-without `click` or `PyYAML` installed, and a test that cannot run there is a
-test that does not protect anything.
+(`uv run pytest scripts/tests`) needs neither `click` nor `PyYAML` installed, and a
+test that cannot run there is a test that does not protect anything.
 
 The policy between two measurements
 ----------------------------------
