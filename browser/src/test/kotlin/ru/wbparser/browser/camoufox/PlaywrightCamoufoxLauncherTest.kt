@@ -12,6 +12,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import ru.wbparser.browser.playwright.LazyCamoufoxLauncher
 import ru.wbparser.browser.playwright.PlaywrightCamoufoxLauncher
 import ru.wbparser.browser.pool.BrowserProfileConfig
 import ru.wbparser.browser.pool.DeclaredProxy
@@ -322,5 +323,45 @@ class PlaywrightCamoufoxLauncherTest :
             Files.exists(profileDir.resolve("lock")) shouldBe false
             Files.exists(profileDir.resolve(".parentlock")) shouldBe false
             Files.exists(profileDir.resolve("parent.lock")) shouldBe false
+        }
+
+        test("a lock marker that cannot be removed does not stop the launch") {
+            val doubles = Doubles()
+            val profile = profile()
+            val profileDir = checkNotNull(profile.profileDir)
+            Files.createDirectories(profileDir.resolve("lock"))
+            // A directory that is not empty cannot be deleted, and the marker is then
+            // exactly what a crashed run left behind.
+            Files.writeString(profileDir.resolve("lock/child"), "")
+
+            doubles.launcher(install()).launch(profile)
+
+            // A lock nobody could remove is a fact about the profile, not a reason to
+            // refuse the browser: the launch goes on.
+            verify { doubles.browserType.launchPersistentContext(any(), any()) }
+        }
+
+        test("a profile without a directory is refused before the driver exists") {
+            val doubles = Doubles()
+            val profile = profile().copy(profileDir = null)
+
+            val thrown = shouldThrow<IllegalStateException> { doubles.launcher(install()).launch(profile) }
+
+            thrown.message shouldContain "no local directory"
+            // Nothing that may be wrong is allowed to start a process.
+            doubles.created shouldBe 0
+            verify(exactly = 0) { doubles.browserType.launchPersistentContext(any(), any()) }
+        }
+
+        test("the install of the lazy launcher is resolved only when a browser is started") {
+            var resolved = 0
+            LazyCamoufoxLauncher {
+                resolved++
+                install()
+            }
+
+            // A process that never opens a browser must not fail because the machine
+            // has no Camoufox: the build is looked up when it is needed.
+            resolved shouldBe 0
         }
     })
