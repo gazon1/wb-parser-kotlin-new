@@ -91,6 +91,13 @@ gate blocking "the repository's rules" python3 scripts/ci/check-repo-rules.py
 # is exactly what this gate exists to catch, and it costs one file comparison.
 gate blocking "the catalog YAML agrees with the measurement artifact" python3 scripts/check-measurements.py
 
+# --- the generated Python models -----------------------------------------------
+# The models are generated from the contract and committed, so the two can drift in
+# the one direction no test can see: the contract changes and the file is not
+# regenerated. The recipe records the contract's hash in the file; this compares it.
+# It needs no generator and no network — see scripts/ci/check-catalog-models.py.
+gate blocking "the generated catalog models are current" python3 scripts/ci/check-catalog-models.py
+
 # --- the egress measurement blocks --------------------------------------------
 # The report of a measurement block is what a decision rests on, and a report is prose:
 # a number in a table can be edited and a rule can be written as met without anything

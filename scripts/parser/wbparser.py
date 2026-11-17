@@ -31,11 +31,11 @@ data: `docker compose logs` is the only place a log line ever lived.
 
 ## Why the responses are validated
 
-The shapes below are hand-written rather than generated: `contract/catalog-v1.openapi.yaml`
-describes the catalog and nothing else, so generation would type half the client and
-leave the admin half untyped. When the server publishes a whole spec (springdoc, or a
-committed `docs/openapi.json`), replace this section with generated models — the rest of
-the file does not change.
+The catalog's shapes are generated from `contract/catalog-v1.openapi.yaml` into
+`catalog_models.py` (`just parser::models`); the admin shapes stay hand-written below,
+because the contract describes the catalog and nothing else. Validating the catalog
+against the generated model is what makes a contract drift a message naming the field
+instead of a table cell rendered as "—".
 
 Validation earns its lines: a renamed field fails with a message naming the field instead
 of rendering "—", and `--json` becomes `model_dump` rather than a second serialiser.
@@ -54,6 +54,7 @@ import subprocess
 import sys
 import time
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from enum import StrEnum
 from functools import cache
 from pathlib import Path
@@ -62,7 +63,14 @@ from typing import Annotated, Any, TypeVar
 try:
     import click
     import httpx
+    import simplejson
     import typer
+
+    # The catalog half of the responses — generated, not hand-written, so a change to
+    # the contract reaches this client as a file that no longer matches the payloads.
+    # `just parser::models` regenerates it from `contract/catalog-v1.openapi.yaml`.
+    from catalog_models import PagedProductCard as ItemsPage
+    from catalog_models import SiteStats as Stats
     from croniter import croniter
     from dotenv import dotenv_values
     from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
@@ -71,6 +79,12 @@ try:
     from rich.markup import escape
     from rich.table import Table
 except ModuleNotFoundError as missing:  # pragma: no cover - a wrong interpreter, not a code path
+    if missing.name == "catalog_models":
+        raise SystemExit(
+            "error: catalog_models.py is missing next to this script.\n"
+            "It is generated from the contract, not installed — restore it with:\n"
+            "  just parser::models"
+        ) from missing
     # A bare `python3 script.py` does not read `pyproject.toml`, so the dependencies are
     # simply absent. Saying that beats a traceback that ends in "No module named
     # 'typer'" — that message names the symptom and not the fix.
@@ -107,34 +121,6 @@ class Camel(BaseModel):
     """A response whose JSON is camelCase, as Spring writes it, with snake_case fields here."""
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
-
-
-class Item(Camel):
-    id: str
-    target_name: str
-    title: str
-    price_kopecks: int | None = None
-    sale_price_kopecks: int | None = None
-    cashback_percent: float | None = None
-    scraped_at: datetime | None = None
-
-
-class ItemsPage(Camel):
-    items: list[Item]
-    total_count: int
-    page: int
-    total_pages: int
-    data_as_of: datetime | None = None
-
-
-class Stats(Camel):
-    total_items: int
-    total_products: int
-    total_targets: int
-    with_cashback: int
-    products_with_cashback: int
-    newest_scraped_at: datetime | None = None
-    as_of: datetime | None = None
 
 
 class Target(Camel):
@@ -306,7 +292,9 @@ def _get(
         detail = response.text.strip()[:200]
         raise Unusable(f"HTTP {response.status_code} on {path}" + (f": {detail}" if detail else ""))
 
-    payload = response.json()
+    # The catalog is the one place the contract promises decimals, and a JSON fraction
+    # parsed as a float has already lost its value before a `Decimal` field sees it.
+    payload = _decode_json(response.content, decimal_numbers=catalog)
     if model is None:
         # A shape this file does not own: `/api/health/ready` reports whatever the
         # crawler has counters for, and a model would freeze that into a contract the
@@ -318,11 +306,39 @@ def _get(
         raise Unusable(f"{path}: the response does not match the model — has the API changed?\n{error}") from error
 
 
+def _decode_json(body: bytes, *, decimal_numbers: bool = False) -> Any:
+    """
+    Decode a response body. `decimal_numbers` keeps catalog fractions exact.
+
+    The stdlib decoder turns every JSON fraction into a float first, and a float cannot
+    hold `0.1000000000000000000000000001`. The catalog is the only API whose contract
+    promises decimals, so only that path asks for `Decimal`.
+    """
+    return json.loads(body, parse_float=Decimal) if decimal_numbers else json.loads(body)
+
+
+def _encode_json(payload: Any) -> str:
+    """
+    One JSON document, with money as JSON numbers rather than strings.
+
+    `Decimal` has no stdlib `json` support, and Pydantic's JSON mode writes it as a
+    quoted string. `simplejson` writes the exact decimal literal unquoted, so `--json`
+    keeps the shape the API itself sends.
+    """
+
+    def default(value: Any) -> str:
+        # Pydantic's python-mode dump leaves the rest typed: UUID, AnyUrl, datetime.
+        if isinstance(value, datetime):
+            return value.isoformat().replace("+00:00", "Z")
+        return str(value)
+
+    return simplejson.dumps(payload, ensure_ascii=False, indent=2, use_decimal=True, default=default)
+
+
 def _emit(payload: Any, render: Any) -> None:
     """One code path for `--json` and for the human table: the caller says what to draw."""
     if JSON:
-        json.dump(payload, sys.stdout, ensure_ascii=False, indent=2, default=str)
-        sys.stdout.write("\n")
+        sys.stdout.write(_encode_json(payload) + "\n")
     else:
         render()
 
@@ -636,7 +652,7 @@ def items(
         maxPrice=max_price,
         minCashback=min_cashback,
     )
-    _emit(result.model_dump(mode="json", by_alias=True), lambda: _print_items(result))
+    _emit(result.model_dump(by_alias=True), lambda: _print_items(result))
     if not result.total_count:
         raise typer.Exit(EXIT_WRONG)
 
@@ -670,7 +686,7 @@ def _print_items(result: ItemsPage) -> None:
 def stats() -> None:
     """Aggregate counters of the catalog: how big it is and how fresh."""
     payload = _get("/api/catalog/v1/stats", Stats, catalog=True)
-    _emit(payload.model_dump(mode="json", by_alias=True), lambda: _print_stats(payload))
+    _emit(payload.model_dump(by_alias=True), lambda: _print_stats(payload))
 
 
 def _print_stats(payload: Stats) -> None:
