@@ -8,7 +8,13 @@ from decimal import Decimal
 from pathlib import Path
 from uuid import UUID
 
-from pydantic import ValidationError
+try:
+    from pydantic import ValidationError
+except ModuleNotFoundError:
+    # The gate registry's unit-test run uses a stdlib-only interpreter. The models are
+    # Pydantic, so there is nothing to check there; `uv run pytest scripts/tests` is the
+    # run that exercises them, and a skip here is honest about which one ran.
+    raise unittest.SkipTest("pydantic is not installed in this interpreter") from None
 
 
 def _load_models():
