@@ -88,6 +88,12 @@ jobs:
         with:
           install: true
 
+      - name: Set up the Python project environment
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          uv sync --frozen
+
       - name: Static gates (shared registry)
         run: |
           chmod +x scripts/ci/static-gates.sh scripts/*.sh
