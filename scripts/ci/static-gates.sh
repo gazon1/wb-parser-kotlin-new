@@ -50,7 +50,7 @@ gate() {
 
 gate blocking "decisions digest is current" bash scripts/check-decisions-digest.sh
 gate blocking "detekt baseline may shrink only" python3 scripts/check-baseline-ratchet.py --allow-growth --reason "pre-existing: wbparser baseline inherited 3 LongParameterList entries from infrastructure baseline (module merge)"
-gate blocking "gate scripts' own unit tests" python3 -m unittest discover -s scripts/tests --quiet
+gate blocking "gate scripts' own unit tests" uv run python -m unittest discover -s scripts/tests --quiet
 
 # Gate governance: Parts A (wiring), D (no `|| true`), E (declared asymmetry),
 # F (positive control per gate) and G (this file is called by both surfaces).
