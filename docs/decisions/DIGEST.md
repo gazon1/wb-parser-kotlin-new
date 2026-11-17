@@ -790,7 +790,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `contract`
 
-- The pipeline re-runs `scripts/parser/generate-models.sh` and fails on `git diff --exit-code`. That is the literal check: whatever the flags, the generator version or a hand-edit did to the file, regenerating it must produce no diff. It needs PyPI, so — like the action-pin check — it runs in the pipeline, and `scripts/ci/check-ci-workflows.py` fails if the step is deleted. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
+- The pipeline re-runs `scripts/parser/generate-models.sh` and fails on `git diff --exit-code`. That is the literal check: whatever the flags, the generator version or a hand-edit did to the file, regenerating it must produce no diff. It needs PyPI, so — like the action-pin check — it runs in the pipeline, and `scripts/ci/check-ci-workflows.py` fails unless one step of the `static` job runs the generator **and** diffs the generated file: the diff is the check, so keeping the generator and dropping the diff is the same defect as deleting the step, and both are findings. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
 - The recipe also appends the contract's SHA-256 as `# source-sha256: …`, and `scripts/ci/check-catalog-models.py` compares it in the static registry. That one needs no generator and no network, so it answers the same question the moment a contract edit lands, without waiting for a pipeline that can reach PyPI. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role are removed only after the rollback window has closed and a rollback drill has been run — not before. _(from `2026-10-19-catalog-read-api-contract`)_
 
@@ -1033,7 +1033,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `python`
 
-- The pipeline re-runs `scripts/parser/generate-models.sh` and fails on `git diff --exit-code`. That is the literal check: whatever the flags, the generator version or a hand-edit did to the file, regenerating it must produce no diff. It needs PyPI, so — like the action-pin check — it runs in the pipeline, and `scripts/ci/check-ci-workflows.py` fails if the step is deleted. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
+- The pipeline re-runs `scripts/parser/generate-models.sh` and fails on `git diff --exit-code`. That is the literal check: whatever the flags, the generator version or a hand-edit did to the file, regenerating it must produce no diff. It needs PyPI, so — like the action-pin check — it runs in the pipeline, and `scripts/ci/check-ci-workflows.py` fails unless one step of the `static` job runs the generator **and** diffs the generated file: the diff is the check, so keeping the generator and dropping the diff is the same defect as deleting the step, and both are findings. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
 - The recipe also appends the contract's SHA-256 as `# source-sha256: …`, and `scripts/ci/check-catalog-models.py` compares it in the static registry. That one needs no generator and no network, so it answers the same question the moment a contract edit lands, without waiting for a pipeline that can reach PyPI. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
 
 ### `refactoring`

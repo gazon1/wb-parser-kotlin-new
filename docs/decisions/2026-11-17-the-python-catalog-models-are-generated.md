@@ -68,7 +68,10 @@ different reasons:
   `git diff --exit-code`. That is the literal check: whatever the flags, the
   generator version or a hand-edit did to the file, regenerating it must produce
   no diff. It needs PyPI, so — like the action-pin check — it runs in the
-  pipeline, and `scripts/ci/check-ci-workflows.py` fails if the step is deleted.
+  pipeline, and `scripts/ci/check-ci-workflows.py` fails unless one step of the
+  `static` job runs the generator **and** diffs the generated file: the diff is
+  the check, so keeping the generator and dropping the diff is the same defect
+  as deleting the step, and both are findings.
 - The recipe also appends the contract's SHA-256 as `# source-sha256: …`, and
   `scripts/ci/check-catalog-models.py` compares it in the static registry. That
   one needs no generator and no network, so it answers the same question the

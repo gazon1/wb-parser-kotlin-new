@@ -37,6 +37,12 @@ What it checks
    would then be made before the new job finished, and the issue would say
    "nothing failed" while something did. The report itself comes from the
    run's own API; this list is only about *when* to report.
+6. **The generated catalog models** — the `static` job regenerates them and
+   fails on a diff of the generated file. The check names all three parts and
+   requires them in one step of that job: the generator, `git diff --exit-code`,
+   and the file the diff is about. A search for the script name anywhere in the
+   file would be satisfied by a step that regenerates and throws the result
+   away, which is the failure this check exists to prevent, one level up.
 
 Usage
 -----
@@ -116,6 +122,12 @@ PIN_CHECKER = "scripts/ci/check-action-pins.py"
 #: proof a committed generated file still describes the contract it was made from.
 MODEL_GENERATOR = "scripts/parser/generate-models.sh"
 
+#: The generated file the diff is about, and the job both commands must sit in.
+#: Regenerating without diffing proves nothing, and a step in a job that never runs
+#: proves less — so the check names all three parts, not just the script.
+MODEL_OUTPUT = "scripts/parser/catalog_models.py"
+MODEL_JOB = "static"
+
 #: The pipeline, and the job inside it that reports a failed nightly run.
 PIPELINE = "ci.yml"
 ALERT_JOB = "nightly-alert"
@@ -187,8 +199,14 @@ def job_names(text: str) -> list[str]:
     return names
 
 
-def job_needs(text: str, job: str) -> list[str] | None:
-    """The `needs:` of a job, `[]` when it has none, `None` when it has no such job."""
+def job_body(text: str, job: str) -> list[str] | None:
+    """The lines of a job, `None` when there is no such job.
+
+    A check that finds a command anywhere in the file cannot tell whether the job
+    that holds it ever runs, or whether the command is part of the step it looks
+    like. This narrows the search to one job, which is the smallest thing that
+    makes "the pipeline does X" a statement about a job rather than about a file.
+    """
     lines = text.splitlines()
     start: int | None = None
     for index, line in enumerate(lines):
@@ -197,9 +215,20 @@ def job_needs(text: str, job: str) -> list[str] | None:
             break
     if start is None:
         return None
+    body: list[str] = []
     for line in lines[start + 1 :]:
-        if re.match(r"^  [A-Za-z0-9_-]+:\s*$", line):
-            break  # the next job starts
+        if re.match(r"^[A-Za-z]", line) or re.match(r"^  [A-Za-z0-9_-]+:\s*$", line):
+            break  # a new top-level key, or the next job
+        body.append(line)
+    return body
+
+
+def job_needs(text: str, job: str) -> list[str] | None:
+    """The `needs:` of a job, `[]` when it has none, `None` when it has no such job."""
+    body = job_body(text, job)
+    if body is None:
+        return None
+    for line in body:
         match = re.match(r"^\s+needs:\s*\[(.*)\]\s*$", line)
         if match:
             return [name.strip() for name in match.group(1).split(",") if name.strip()]
@@ -287,6 +316,33 @@ def check_action_pins_are_checked(root: Path) -> list[str]:
     return findings
 
 
+def job_steps(text: str, job: str) -> list[str] | None:
+    """The text of each step of a job. `None` when there is no such job."""
+    body = job_body(text, job)
+    if body is None:
+        return None
+    steps: list[list[str]] = []
+    for line in body:
+        if re.match(r"^ {4,6}- ", line):
+            steps.append([line])
+        elif steps:
+            steps[-1].append(line)
+    return ["\n".join(step) for step in steps]
+
+
+def step_regenerates(step: str) -> bool:
+    return MODEL_GENERATOR in step
+
+
+def step_diffs_output(step: str) -> bool:
+    """The step fails the job when the generated file changed.
+
+    `git diff --exit-code` is what makes the job red, and the file it names is what
+    makes it about the generated models rather than about something else.
+    """
+    return "git diff --exit-code" in step and MODEL_OUTPUT in step
+
+
 def check_models_are_regenerated(root: Path) -> list[str]:
     """The pipeline regenerates the committed models and fails on a diff, and the
     generator exists.
@@ -296,6 +352,17 @@ def check_models_are_regenerated(root: Path) -> list[str]:
     generator whose flags changed, or a hand-edit that kept the marker. Re-running the
     generator and diffing is the only check that covers both, and it needs PyPI — so
     it lives in the pipeline, and this is what keeps it from being deleted.
+
+    Three parts are checked, and in the job that runs: the generator, the
+    `git diff --exit-code`, and the file the diff is about — in that order. Looking for
+    the script name anywhere in the file would be satisfied by a workflow that
+    regenerates the file and throws the result away, which is the failure this check
+    exists to prevent, one level up.
+
+    The two commands may be separate steps: a job fails on the first failing step, and
+    both orders that put regeneration first are the same guarantee. What is not
+    allowed is a diff before the regeneration, which compares the file with its own
+    previous commit and would stay green on a contract edit.
     """
     findings: list[str] = []
     generator = root / MODEL_GENERATOR
@@ -304,12 +371,46 @@ def check_models_are_regenerated(root: Path) -> list[str]:
             f"{MODEL_GENERATOR} does not exist. The pipeline runs it and fails on a "
             "diff; without it the committed models are a file nobody can show is current."
         )
+
     texts = read_workflows(root)
-    called = any(MODEL_GENERATOR in text for text in texts.values())
-    if not called:
+    pipeline = texts.get(PIPELINE)
+    if pipeline is None:
+        return [*findings, f"{PIPELINE} does not exist, so nothing regenerates the models."]
+
+    steps = job_steps(pipeline, MODEL_JOB)
+    if steps is None:
+        return [
+            *findings,
+            f"{PIPELINE} has no `{MODEL_JOB}` job. The regeneration runs there, "
+            "and a step in a job that does not exist proves nothing.",
+        ]
+
+    regenerating = [index for index, step in enumerate(steps) if step_regenerates(step)]
+    diffing = [index for index, step in enumerate(steps) if step_diffs_output(step)]
+
+    if not regenerating and not diffing:
         findings.append(
-            f"no workflow runs {MODEL_GENERATOR}. A generated file that nothing "
-            "regenerates in CI is a file that drifts from its contract in silence."
+            f"the `{MODEL_JOB}` job of {PIPELINE} does not regenerate {MODEL_OUTPUT} and "
+            "fail on a diff. A generated file that nothing regenerates in CI is a file "
+            "that drifts from its contract in silence."
+        )
+    elif not diffing:
+        findings.append(
+            f"the `{MODEL_JOB}` job of {PIPELINE} runs {MODEL_GENERATOR} without failing "
+            f"on a diff of {MODEL_OUTPUT}. Regenerating and discarding the result proves "
+            "nothing: the check that matters is `git diff --exit-code` on the file."
+        )
+    elif not regenerating:
+        findings.append(
+            f"the `{MODEL_JOB}` job of {PIPELINE} diffs {MODEL_OUTPUT} but never runs "
+            f"{MODEL_GENERATOR}. A diff against a file nobody regenerated is a comparison "
+            "with the previous commit, not with the contract."
+        )
+    elif min(diffing) < min(regenerating):
+        findings.append(
+            f"the `{MODEL_JOB}` job of {PIPELINE} diffs {MODEL_OUTPUT} before it runs "
+            f"{MODEL_GENERATOR}. The diff must come after the regeneration, or it compares "
+            "the file with itself."
         )
     return findings
 
@@ -573,7 +674,9 @@ GOOD_WORKFLOWS = {
         "    steps:\n"
         "      - run: echo static\n"
         "      - run: python3 scripts/ci/check-action-pins.py\n"
-        "      - run: bash scripts/parser/generate-models.sh\n"
+        "      - run: |\n"
+        "          bash scripts/parser/generate-models.sh\n"
+        "          git diff --exit-code -- scripts/parser/catalog_models.py\n"
         "  build:\n"
         "    steps:\n"
         "      - run: echo build\n"
@@ -733,10 +836,101 @@ def run_self_test() -> int:
                 "workflows": {
                     **GOOD_WORKFLOWS,
                     "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
-                        "      - run: bash scripts/parser/generate-models.sh\n", ""
+                        "      - run: |\n"
+                        "          bash scripts/parser/generate-models.sh\n"
+                        "          git diff --exit-code -- scripts/parser/catalog_models.py\n",
+                        "",
                     ),
                 },
-                "expect": "no workflow runs",
+                "expect": "does not regenerate",
+            },
+            "the generator runs and the diff is thrown away": {
+                # The defect this check exists to catch: the script name is still in
+                # the file, so a search for the name alone would pass.
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "          git diff --exit-code -- scripts/parser/catalog_models.py\n", ""
+                    ),
+                },
+                "expect": "without failing on a diff",
+            },
+            "the diff is about another file": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "git diff --exit-code -- scripts/parser/catalog_models.py",
+                        "git diff --exit-code -- README.md",
+                    ),
+                },
+                "expect": "without failing on a diff",
+            },
+            "the diff runs but nothing regenerates first": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "      - run: |\n"
+                        "          bash scripts/parser/generate-models.sh\n"
+                        "          git diff --exit-code -- scripts/parser/catalog_models.py\n",
+                        "      - run: git diff --exit-code -- scripts/parser/catalog_models.py\n",
+                    ),
+                },
+                "expect": "but never runs",
+            },
+            "the diff runs before the regeneration": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "      - run: |\n"
+                        "          bash scripts/parser/generate-models.sh\n"
+                        "          git diff --exit-code -- scripts/parser/catalog_models.py\n",
+                        "      - run: git diff --exit-code -- scripts/parser/catalog_models.py\n"
+                        "      - run: bash scripts/parser/generate-models.sh\n",
+                    ),
+                },
+                "expect": "before it runs",
+            },
+            "the regeneration and the diff are separate steps": {
+                # Allowed on purpose: the job fails on the first failing step, so
+                # both orders that put regeneration first are the same guarantee.
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "      - run: |\n"
+                        "          bash scripts/parser/generate-models.sh\n"
+                        "          git diff --exit-code -- scripts/parser/catalog_models.py\n",
+                        "      - run: bash scripts/parser/generate-models.sh\n"
+                        "      - run: git diff --exit-code -- scripts/parser/catalog_models.py\n",
+                    ),
+                },
+                "expect": None,
+            },
+            "the regeneration is not in the static job": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"]
+                    .replace(
+                        "      - run: |\n"
+                        "          bash scripts/parser/generate-models.sh\n"
+                        "          git diff --exit-code -- scripts/parser/catalog_models.py\n",
+                        "",
+                    )
+                    .replace(
+                        "  build:\n    steps:\n      - run: echo build\n",
+                        "  build:\n    steps:\n      - run: |\n"
+                        "          bash scripts/parser/generate-models.sh\n"
+                        "          git diff --exit-code -- scripts/parser/catalog_models.py\n"
+                        "      - run: echo build\n",
+                    ),
+                },
+                "expect": "does not regenerate",
+            },
+            "the static job is gone": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace("  static:\n", "  checks:\n"),
+                },
+                "expect": "has no `static` job",
             },
             "the model generator does not exist": {
                 "workflows": GOOD_WORKFLOWS,
@@ -832,6 +1026,19 @@ def run_self_test() -> int:
                 with_generator=case.get("generator", True),
             )
             findings = check(root)
+            # `expect: None` is a case that must stay quiet — the rule it exercises
+            # permits what the fixture does, and a check that flagged it would be
+            # stricter than the guarantee it states.
+            if case["expect"] is None:
+                if findings:
+                    print(
+                        f"self-test FAILED — the check reports findings where the rule allows it: {name}",
+                        file=sys.stderr,
+                    )
+                    for line in findings:
+                        print(f"  · {line}", file=sys.stderr)
+                    return 1
+                continue
             if not any(case["expect"] in f for f in findings):
                 print(
                     f"self-test FAILED — the check did not detect: {name}",
