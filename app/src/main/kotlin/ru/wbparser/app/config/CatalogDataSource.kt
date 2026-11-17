@@ -105,8 +105,16 @@ class CatalogDataSource(
             return CatalogDataSource(HikariDataSource(config), config.jdbcUrl)
         }
 
-        /** The statement timeout of a catalog session, in milliseconds. */
-        const val STATEMENT_TIMEOUT_MS: Long = 8_000
+        /**
+         * The statement timeout of a catalog session, in milliseconds.
+         *
+         * The catalog's read model builds "latest observation per product" across the full
+         * scraped set (and can sort/count over hundreds of thousands of rows), so a tight
+         * limit turns valid reads into statement timeouts on real-sized databases. The
+         * timeout still bounds a runaway query and frees the connection, but leaves room
+         * for the heaviest list queries to complete.
+         */
+        const val STATEMENT_TIMEOUT_MS: Long = 30_000
 
         /** How long a readiness probe waits for a statement, in milliseconds. */
         const val READINESS_STATEMENT_TIMEOUT_MS: Long = 2_000
