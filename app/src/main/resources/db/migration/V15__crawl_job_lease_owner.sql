@@ -10,3 +10,15 @@
 -- the job `Crashed` and releases the leases of exactly those owners, and nothing else.
 ALTER TABLE crawl_jobs
     ADD COLUMN IF NOT EXISTS lease_owner VARCHAR(128);
+
+-- Backfill jobs left running by the previous version: it opened the job on the first
+-- claimed target and leased targets under the same owner, so the target row still knows
+-- who held the run. Without this, the first reconcile after upgrade would crash such jobs
+-- but could not release their leases because the owner was not recorded on the job.
+UPDATE crawl_jobs j
+   SET lease_owner = t.lease_owner
+  FROM crawl_targets t
+ WHERE j.target_id = t.id
+   AND j.status = 'Running'
+   AND j.lease_owner IS NULL
+   AND t.lease_owner IS NOT NULL;
