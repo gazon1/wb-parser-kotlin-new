@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import java.io.File
+import java.nio.file.Path
 
 /**
  * Repository rules that describe the shape of the code, checked as tests.
@@ -116,15 +117,9 @@ class RepositoryArchitectureTest :
                 .distinct()
                 .shouldBeEmpty()
 
-            val compositionRoot =
-                repoRoot
-                    .resolve("app/src/main/kotlin/ru/wbparser/app/config")
-                    .absolutePath
-                    .replace('\\', '/')
+            val compositionRoot = repoRoot.resolve("app/src/main/kotlin/ru/wbparser/app/config").toPath()
             val appOutsideCompositionRoot =
-                filesUnder(listOf("app/src/main/kotlin")).filterNot { file ->
-                    file.absolutePath.replace('\\', '/').startsWith(compositionRoot)
-                }
+                filesOutsideDirectory(filesUnder(listOf("app/src/main/kotlin")), compositionRoot)
             codeMentions(appOutsideCompositionRoot, runtimePackages).distinct().shouldBeEmpty()
         }
 
@@ -224,6 +219,35 @@ class RepositoryArchitectureRuleChecksTest :
             mockDoublesOfOurTypes(listOf(own), prod).map { it.detail } shouldBe listOf("MockBrowserPool")
             mockDoublesOfOurTypes(listOf(foreign), prod).shouldBeEmpty()
         }
+
+        test("composition root boundary excludes only config directory, not config* siblings") {
+            val base =
+                kotlin.io.path
+                    .createTempDirectory("repo")
+                    .toFile()
+            val configFile =
+                base
+                    .resolve("app/src/main/kotlin/ru/wbparser/app/config/BrowserConfig.kt")
+                    .apply {
+                        parentFile.mkdirs()
+                        writeText("package ru.wbparser.app.config\nclass BrowserConfig\n")
+                    }
+            val siblingFile =
+                base
+                    .resolve("app/src/main/kotlin/ru/wbparser/app/configuration/Leaky.kt")
+                    .apply {
+                        parentFile.mkdirs()
+                        writeText(
+                            "package ru.wbparser.app.configuration\n" +
+                                "class Leaky { val x = ru.wbparser.browser.camoufox.CamoufoxAutomation::class }\n",
+                        )
+                    }
+            val compositionRoot = base.resolve("app/src/main/kotlin/ru/wbparser/app/config").toPath()
+            val outside = filesOutsideDirectory(listOf(configFile, siblingFile), compositionRoot)
+            outside.map { it.name } shouldBe listOf("Leaky.kt")
+            codeMentions(outside, listOf("ru.wbparser.browser.camoufox")).map { it.detail } shouldBe
+                listOf("ru.wbparser.browser.camoufox")
+        }
     })
 
 internal data class CodeRef(
@@ -258,6 +282,20 @@ internal fun importsStartingWithAny(
             .map { CodeRef(file, it) }
             .toList()
     }
+
+internal fun filesOutsideDirectory(
+    files: List<File>,
+    directory: Path,
+): List<File> {
+    val normalizedDirectory = directory.toAbsolutePath().normalize()
+    return files.filterNot { file ->
+        file
+            .toPath()
+            .toAbsolutePath()
+            .normalize()
+            .startsWith(normalizedDirectory)
+    }
+}
 
 internal fun codeMentions(
     files: List<File>,
