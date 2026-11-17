@@ -2,9 +2,9 @@
 
 **Этот файл читает ревьюер, а не тот, кто пишет код.** Правила, которые может
 проверить машина, живут в проверках сборки и видны тому, кто пишет код, сразу:
-`scripts/ci/check-repo-rules.py` (механические правила ниже) и остальные гейты из
-`scripts/ci/static-gates.sh`. Правила, которые машина решить не может, — здесь, и
-их вводит ревью.
+`RepositoryArchitectureTest` в `app`, гейты из `scripts/ci/static-gates.sh`,
+`scripts/ci/check-ci-workflows.py` и остальные автоматические проверки. Правила,
+которые машина решить не может, — здесь, и их вводит ревью.
 
 Правило, которое живёт только в документе, соблюдается тем, кто документ прочитал,
 и никем больше. Поэтому всё, что можно выразить шаблоном, вынесено в проверку, а
@@ -44,7 +44,7 @@
    `BrowserPage`, а не Playwright's `Page`; `:browser` — `implementation`, а не
    `api` (ADR `2026-10-22-the-browser-stack-is-a-library`). Механическая часть
    правила проверяется: Playwright не должен появляться в `wbparser` и `app`
-   (`scripts/ci/check-repo-rules.py`) — граница проверяется с обеих сторон, иначе
+   (`RepositoryArchitectureTest`) — граница проверяется с обеих сторон, иначе
    она проверяется только наполовину.
 
    Тот же принцип — между контрактом и рантаймом. Контракт браузера живёт в
@@ -79,7 +79,7 @@
    который отвечает и запоминает. Мок, который отвечает `relaxed = true` на всё,
    проверяет не контракт, а своё собственное существование. Имя проверяется
    машиной: двойник нашего типа, названный `Mock*`, — это finding
-   (`scripts/ci/check-repo-rules.py`). Чужие `Mock*` (Spring-овские
+   (`RepositoryArchitectureTest`). Чужие `Mock*` (Spring-овские
    `MockHttpServletRequest`) — не наш двойник, и правило про них молчит.
 
 10. **Тест, который не может упасть, — не тест.** Признак: он проходит и когда
@@ -116,16 +116,16 @@
 
 | Правило | Кто проверяет |
 |---|---|
-| Нет `!!` в prod-коде | `scripts/ci/check-repo-rules.py` |
+| Нет `!!` в prod-коде | `RepositoryArchitectureTest` (`app:test`) |
 | Нет `delay(-1L)` как sentinel | там же |
 | Нет Spring вне `app/` | там же |
 | `:browser` и `:browser-api` не знают ни о базе, ни о фреймворке, ни о HTTP-клиенте | там же |
-| Playwright не назван вне `:browser` | там же |
+| Playwright не назван вне адаптера рантайма | там же |
 | Контракт `:browser-api` не называет рантайм; рантайм назван только в composition root | там же |
 | Двойник нашего типа назван `Fake*`, а не `Mock*` | там же |
-| Нет `CHANGELOG.md` | там же |
-| Нет `fixDependencies` в CI | там же |
-| Нет запинненного `org.gradle.java.home` | там же |
+| Нет `CHANGELOG.md` | `scripts/ci/static-gates.sh` |
+| Нет `fixDependencies` в CI | `scripts/ci/check-ci-workflows.py` |
+| Нет запинненного `org.gradle.java.home` | `scripts/ci/static-gates.sh` |
 | `compileOnly` не течёт в рантайм | `scripts/ci/check-compileonly-runtime.sh` |
 | Тип в публичной сигнатуре объявлен в `api` | DAGP (`./gradlew buildHealth`) |
 | Домен без инфраструктурных импортов | `scripts/ci/check-domain-purity.sh` |

@@ -559,6 +559,24 @@ def check_actions_are_pinned(root: Path) -> list[str]:
     return findings
 
 
+def check_no_fix_dependencies_in_workflows(root: Path) -> list[str]:
+    """No `fixDependencies` in CI workflows.
+
+    The task rewrites build scripts and cannot see runtime-only dependencies,
+    so running it in CI would rewrite a build nobody asked to change. It is a
+    manual tool used with a reviewed diff.
+    """
+    findings: list[str] = []
+    for path in workflow_paths(root):
+        text = strip_yaml_comments(path.read_text(encoding="utf-8"))
+        if "fixDependencies" in text:
+            findings.append(
+                f"{path.name} runs `fixDependencies`. The task rewrites build scripts "
+                "and is a manual tool with a reviewed diff — never a CI step."
+            )
+    return findings
+
+
 def check_watchdog(root: Path) -> list[str]:
     """Something watches the nightly, and it watches something that exists.
 
@@ -604,6 +622,7 @@ def check(root: Path) -> list[str]:
         + check_failure_becomes_an_issue(root)
         + check_wait_list(root)
         + check_actions_are_pinned(root)
+        + check_no_fix_dependencies_in_workflows(root)
         + check_watchdog(root)
     )
 
@@ -817,6 +836,16 @@ def run_self_test() -> int:
                     "nightly.yml": GOOD_WORKFLOWS["nightly.yml"].replace("permissions:\n  contents: read\n", ""),
                 },
                 "expect": "declares no top-level permissions",
+            },
+            "fixDependencies runs in a workflow": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "      - run: echo static\n",
+                        "      - run: ./gradlew fixDependencies\n",
+                    ),
+                },
+                "expect": "fixDependencies",
             },
             "nobody checks that the pins are commits": {
                 "workflows": {

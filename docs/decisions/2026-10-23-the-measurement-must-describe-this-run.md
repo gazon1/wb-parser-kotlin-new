@@ -26,7 +26,7 @@ module is at 90.4%" and "the union never saw the browser module's latest run".
 
 Two smaller holes sat next to it:
 
-- The Playwright boundary was declared on one side only. `check-repo-rules.py`
+- The Playwright boundary was declared on one side only. The repository checks
   forbade the browser module from naming a database or a framework, and nothing
   forbade `wbparser` from naming Playwright — which is exactly how it got there
   the first time, and why the crawler needed `implementation(libs.playwright)`.
@@ -91,10 +91,10 @@ coverage job both run `test koverXmlReport` rather than `koverXmlReport`. The
 report and the run it describes become one thing instead of two tasks that
 happen to be in the same build.
 
-**The boundary is checked from both sides.** `FORBIDDEN_IN_BROWSER` said the
-browser module knows about a browser and nothing else; `FORBIDDEN_OUTSIDE_BROWSER`
-says the rest of the repository does not know about Playwright. The browser
-module's own adapter may name it — that is what an adapter is.
+**The boundary is checked from both sides.** `RepositoryArchitectureTest` forbids
+the browser modules from naming databases, frameworks, HTTP clients or metrics,
+and forbids the rest of the repository from naming Playwright. The browser
+runtime's own adapter may name it — that is what an adapter is.
 
 **The naming rule is checked where it can be decided.** A double of a type this
 repository declares, named `Mock*`, is a finding. Spring's `MockHttpServletRequest`

@@ -83,6 +83,7 @@ dependencies {
     testImplementation(libs.micrometer.core)
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter.api)
+
 }
 
 // JUnit 4 arrives through Testcontainers, and it carries `hamcrest-core:1.3`, whose
