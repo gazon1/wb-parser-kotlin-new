@@ -79,8 +79,10 @@ gate blocking "domain purity: no infra imports in domain" bash scripts/ci/check-
 
 # --- repository/config invariants -----------------------------------------------
 # Small, specific repository rules that are not about Kotlin source structure.
-# Kotlin/module boundary rules moved to architecture tests (Konsist) in the
-# tests module so they run in the normal test lifecycle instead of a custom lexer.
+# Kotlin/module boundary rules moved to architecture tests in
+# app/src/test/kotlin/ru/wbparser/architecture/RepositoryArchitectureTest.kt
+# (plain Kotlin/Kotest source checks, no Konsist) so they run in the normal test
+# lifecycle instead of a custom lexer.
 gate blocking "CHANGELOG.md is absent" bash -c 'test ! -e CHANGELOG.md'
 gate blocking "gradle.properties does not pin a JDK path" bash -c '! grep -Eq "^[[:space:]]*org\.gradle\.java\.home[[:space:]]*=" gradle.properties'
 
