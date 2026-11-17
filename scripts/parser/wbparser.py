@@ -631,14 +631,21 @@ def up(
 ) -> None:
     """Start the stack (Postgres + the application) and wait until it can serve."""
     _reset_caches()
-    if build or not JAR.is_file():
+    rebuilt = build or not JAR.is_file()
+    if rebuilt:
         console.print("building the jar…")
         _run([str(ROOT / "gradlew"), ":app:bootJar", "--no-daemon"], live=True)
     else:
         console.print(f"[dim]reusing {JAR.relative_to(ROOT)} (rebuild with --build)[/dim]")
 
     console.print("starting the stack…")
-    _compose("up", "-d")
+    # When the jar was rebuilt, recreate the app container so it picks up the new
+    # bind-mounted jar (the debug stack mounts the jar as a file, and a rebuilt jar
+    # can leave the running JVM reading a stale/corrupt archive).
+    up_args = ["up", "-d"]
+    if rebuilt:
+        up_args.extend(["--force-recreate", "app"])
+    _compose(*up_args)
 
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -927,7 +934,15 @@ def _print_runs(data: dict[str, Any]) -> None:
 
 def _fetch_schedule(limit: int = 15) -> Schedule:
     """The schedule as the server answers it: the tick's rule, owned by the server."""
-    return _get("/api/admin/schedule", Schedule, admin=True, limit=limit)
+    try:
+        return _get("/api/admin/schedule", Schedule, admin=True, limit=limit)
+    except Unusable as error:
+        if "HTTP 404 on /api/admin/schedule" in str(error):
+            raise Unusable(
+                "HTTP 404 on /api/admin/schedule — the running application does not serve this endpoint. "
+                "Rebuild and restart it: `wbparser up --build` (or rebuild the jar and recreate the app container)."
+            ) from error
+        raise
 
 
 @app.command()
