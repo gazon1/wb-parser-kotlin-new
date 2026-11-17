@@ -1117,6 +1117,9 @@ def fill(table: DataTable, section: Section) -> None:
 
 
 class WbparserApp(App):
+    # Enable mouse text selection and clipboard copy (Ctrl+C / Cmd+C) in supported widgets.
+    ALLOW_SELECT = True
+
     TITLE = "wbparser"
     SUB_TITLE = "crawler console"
     CSS = """
