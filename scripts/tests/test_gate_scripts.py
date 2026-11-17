@@ -526,6 +526,7 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
             "jobs:\n"
             "  static:\n    steps:\n      - run: echo static\n"
             "      - run: python3 scripts/ci/check-action-pins.py\n"
+            "      - run: bash scripts/parser/generate-models.sh\n"
             "  build:\n    steps:\n      - run: echo build\n"
             "  nightly-alert:\n    needs: [static, build]\n"
             "    steps:\n      - run: gh issue create --title x\n"
@@ -552,6 +553,7 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         workflows: dict[str, str] | None = None,
         with_script: bool = True,
         with_checker: bool = True,
+        with_generator: bool = True,
     ) -> Path:
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
@@ -566,6 +568,10 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         checker = tmp / "scripts" / "ci" / "check-action-pins.py"
         if with_checker:
             checker.write_text("#!/usr/bin/env python3\nexit 0\n", encoding="utf-8")
+        generator = tmp / "scripts" / "parser" / "generate-models.sh"
+        generator.parent.mkdir(parents=True, exist_ok=True)
+        if with_generator:
+            generator.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
         return tmp
 
     def _check(self, root: Path) -> list[str]:
@@ -594,6 +600,23 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
     def test_a_missing_corrector_is_a_finding(self):
         findings = self._check(self._fixture(with_script=False))
         self.assertTrue(any("lint-autofix.sh does not exist" in f for f in findings), findings)
+
+    def test_nobody_regenerating_the_catalog_models_is_a_finding(self):
+        """A committed generated file that CI never regenerates can drift silently.
+
+        The offline hash gate catches an edited contract; it cannot catch a changed
+        generator flag or a hand-edit that kept the marker. That is why the pipeline
+        must re-run the generator, and this is what keeps the step from being
+        deleted.
+        """
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace("      - run: bash scripts/parser/generate-models.sh\n", "")
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("no workflow runs" in f for f in findings), findings)
+
+    def test_a_missing_model_generator_is_a_finding(self):
+        findings = self._check(self._fixture(with_generator=False))
+        self.assertTrue(any("generate-models.sh does not exist" in f for f in findings), findings)
 
     def test_a_nightly_run_without_a_schedule_is_a_finding(self):
         """No workflow has a schedule — the tests are supposed to run on their own.

@@ -596,10 +596,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** считать восстановление или обычное закрытие поводом снять retire: снимает его только `onReset()` под эксклюзивным permit'ом. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
 - **Never** угадывать scope reset'а: очистку задаёт вызывающий. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
 - **Always** decode catalog responses with `parse_float=Decimal` and encode `--json` with a decimal-aware writer; a `float` on either side rounds the value the contract calls a number. _(from `2026-11-17-the-python-catalog-models-are-generated`)
-- **Always** keep the generator version pinned in the recipe. A different version rewrites the file for reasons that are not a change to the contract. _(from `2026-11-17-the-python-catalog-models-are-generated`)
-- **Always** regenerate with `just parser::models` when the contract changes; the file is committed and reviewed with the change that caused it. _(from `2026-11-17-the-python-catalog-models-are-generated`)
-- **Never** hand-edit `scripts/parser/catalog_models.py`; the next generation overwrites it. _(from `2026-11-17-the-python-catalog-models-are-generated`)
-- **Never** let the recorded `# source-sha256` marker drift from the recipe that writes it; it is the only offline evidence that the models match the contract. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Always** keep the generator version pinned in that script. A different version rewrites the file for reasons that are not a change to the contract. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Always** regenerate when the contract changes, with `scripts/parser/generate-models.sh` (`just parser::models`); the recipe and the pipeline both call that script, so the command exists once, and the file is committed and reviewed with the change that caused it. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Never** hand-edit `scripts/parser/catalog_models.py`; the next generation overwrites it, and the CI diff check would fail on an edit that kept the marker. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Never** let the recorded `# source-sha256` marker drift from the command that writes it; it is the only offline evidence that the models match the contract. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 - **Never** widen the generation to `paths` without deciding what to do with the operational bodies it brings in. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 
 ## Per-tag
@@ -790,6 +790,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `contract`
 
+- The pipeline re-runs `scripts/parser/generate-models.sh` and fails on `git diff --exit-code`. That is the literal check: whatever the flags, the generator version or a hand-edit did to the file, regenerating it must produce no diff. It needs PyPI, so — like the action-pin check — it runs in the pipeline, and `scripts/ci/check-ci-workflows.py` fails if the step is deleted. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
+- The recipe also appends the contract's SHA-256 as `# source-sha256: …`, and `scripts/ci/check-catalog-models.py` compares it in the static registry. That one needs no generator and no network, so it answers the same question the moment a contract edit lands, without waiting for a pipeline that can reach PyPI. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role are removed only after the rollback window has closed and a rollback drill has been run — not before. _(from `2026-10-19-catalog-read-api-contract`)_
 
 ### `conventions`
@@ -1028,6 +1030,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `Stage` is no longer a typealias — `Stage(...)` construction required in a few places _(from `2026-10-17-stage-data-class-dsl`)_
 - `TaskOutcome` and `CrawlingFingerprint` are now in `Coordinator.kt` instead of `Pipeline.kt` _(from `2026-10-17-coordinator-extraction`)_
 - `WbCatalogStage` now exposes `.stage` property instead of being a `Stage` _(from `2026-10-17-stage-data-class-dsl`)_
+
+### `python`
+
+- The pipeline re-runs `scripts/parser/generate-models.sh` and fails on `git diff --exit-code`. That is the literal check: whatever the flags, the generator version or a hand-edit did to the file, regenerating it must produce no diff. It needs PyPI, so — like the action-pin check — it runs in the pipeline, and `scripts/ci/check-ci-workflows.py` fails if the step is deleted. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
+- The recipe also appends the contract's SHA-256 as `# source-sha256: …`, and `scripts/ci/check-catalog-models.py` compares it in the static registry. That one needs no generator and no network, so it answers the same question the moment a contract edit lands, without waiting for a pipeline that can reach PyPI. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
 
 ### `refactoring`
 

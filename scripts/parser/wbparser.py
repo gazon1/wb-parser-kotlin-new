@@ -797,8 +797,11 @@ def schedule(
             "leaseMinutes": leaseMinutes,
             "activeTargets": sum(1 for target in targets if target.active),
             "due": [target.model_dump(mode="json", by_alias=True) for target in due],
+            # `str()` and not the encoder's datetime branch: this payload used to be
+            # written with `json.dump(default=str)`, and the point of generated models
+            # is that the command's output does not change under it.
             "upcoming": [
-                {"at": when, "target": target.model_dump(mode="json", by_alias=True)}
+                {"at": str(when), "target": target.model_dump(mode="json", by_alias=True)}
                 for when, target in upcoming[:limit]
             ],
         },
@@ -887,8 +890,10 @@ def history(
             "schedule": {
                 "cron": _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *"),
                 "freshnessMinutes": int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360")),
-                "nextRun": next_run,
-                "earliestDue": due_estimate,
+                # `str()` for the same reason as `schedule`: this payload was written
+                # with `json.dump(default=str)` before, and stays that way.
+                "nextRun": None if next_run is None else str(next_run),
+                "earliestDue": None if due_estimate is None else str(due_estimate),
                 "leasedTargets": leased,
             },
         },

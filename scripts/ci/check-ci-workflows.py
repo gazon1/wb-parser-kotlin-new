@@ -111,6 +111,11 @@ AUTOFIX_SCRIPT = "scripts/ci/lint-autofix.sh"
 #: it cannot be deleted unnoticed.
 PIN_CHECKER = "scripts/ci/check-action-pins.py"
 
+#: The generator behind the committed Python models, and the recipe that runs it.
+#: The pipeline regenerates the file and fails on a diff, because that is the only
+#: proof a committed generated file still describes the contract it was made from.
+MODEL_GENERATOR = "scripts/parser/generate-models.sh"
+
 #: The pipeline, and the job inside it that reports a failed nightly run.
 PIPELINE = "ci.yml"
 ALERT_JOB = "nightly-alert"
@@ -278,6 +283,33 @@ def check_action_pins_are_checked(root: Path) -> list[str]:
             f"no workflow calls {PIN_CHECKER}. A checker that nothing calls is dead "
             "code, and the pin it checks is the one thing a green run cannot tell you "
             "is wrong."
+        )
+    return findings
+
+
+def check_models_are_regenerated(root: Path) -> list[str]:
+    """The pipeline regenerates the committed models and fails on a diff, and the
+    generator exists.
+
+    The offline gate (`scripts/ci/check-catalog-models.py`) compares the contract's
+    hash recorded in the file, which catches an edited contract. It cannot catch a
+    generator whose flags changed, or a hand-edit that kept the marker. Re-running the
+    generator and diffing is the only check that covers both, and it needs PyPI — so
+    it lives in the pipeline, and this is what keeps it from being deleted.
+    """
+    findings: list[str] = []
+    generator = root / MODEL_GENERATOR
+    if not generator.exists():
+        findings.append(
+            f"{MODEL_GENERATOR} does not exist. The pipeline runs it and fails on a "
+            "diff; without it the committed models are a file nobody can show is current."
+        )
+    texts = read_workflows(root)
+    called = any(MODEL_GENERATOR in text for text in texts.values())
+    if not called:
+        findings.append(
+            f"no workflow runs {MODEL_GENERATOR}. A generated file that nothing "
+            "regenerates in CI is a file that drifts from its contract in silence."
         )
     return findings
 
@@ -465,6 +497,7 @@ def check(root: Path) -> list[str]:
         check_required_files(root)
         + check_autofix_script(root)
         + check_action_pins_are_checked(root)
+        + check_models_are_regenerated(root)
         + check_top_level_permissions(root)
         + check_scheduled_run(root)
         + check_failure_becomes_an_issue(root)
@@ -540,6 +573,7 @@ GOOD_WORKFLOWS = {
         "    steps:\n"
         "      - run: echo static\n"
         "      - run: python3 scripts/ci/check-action-pins.py\n"
+        "      - run: bash scripts/parser/generate-models.sh\n"
         "  build:\n"
         "    steps:\n"
         "      - run: echo build\n"
@@ -581,6 +615,7 @@ def write_fixture(
     workflows: dict[str, str],
     with_script: bool = True,
     with_checker: bool = True,
+    with_generator: bool = True,
 ) -> None:
     workflows_dir = root / ".github" / "workflows"
     workflows_dir.mkdir(parents=True, exist_ok=True)
@@ -602,6 +637,12 @@ def write_fixture(
         checker.write_text("#!/usr/bin/env python3\nexit 0\n", encoding="utf-8")
     elif checker.exists():
         checker.unlink()
+    generator = root / MODEL_GENERATOR
+    if with_generator:
+        generator.parent.mkdir(parents=True, exist_ok=True)
+        generator.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    elif generator.exists():
+        generator.unlink()
 
 
 def run_self_test() -> int:
@@ -686,6 +727,20 @@ def run_self_test() -> int:
             "the pin checker does not exist": {
                 "workflows": GOOD_WORKFLOWS,
                 "checker": False,
+                "expect": "does not exist",
+            },
+            "nobody regenerates the catalog models in CI": {
+                "workflows": {
+                    **GOOD_WORKFLOWS,
+                    "ci.yml": GOOD_WORKFLOWS["ci.yml"].replace(
+                        "      - run: bash scripts/parser/generate-models.sh\n", ""
+                    ),
+                },
+                "expect": "no workflow runs",
+            },
+            "the model generator does not exist": {
+                "workflows": GOOD_WORKFLOWS,
+                "generator": False,
                 "expect": "does not exist",
             },
             "the publication is not checked against the API": {
@@ -774,6 +829,7 @@ def run_self_test() -> int:
                 case.get("workflows", GOOD_WORKFLOWS),
                 with_script=case.get("script", True),
                 with_checker=case.get("checker", True),
+                with_generator=case.get("generator", True),
             )
             findings = check(root)
             if not any(case["expect"] in f for f in findings):
