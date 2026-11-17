@@ -78,6 +78,25 @@ class CrawlJobQueriesPostgresTest :
             }
         }
 
+        test("a completed job does not renew its leases") {
+            PostgresTestDatabase.withSchema(schema, tables = listOf("crawl_jobs", "crawl_targets")) { dataSource ->
+                val id = UUID.randomUUID()
+                val targetId = UUID.randomUUID()
+                val before = OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(5)
+                val leasedUntil = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(10)
+                dataSource.execute(jobRow(id, "Completed", before, owner = "test-owner"))
+                dataSource.execute(targetRow(targetId, owner = "test-owner", leasedUntil = leasedUntil))
+
+                dataSource.touchJobHeartbeat(id, leaseOwner = "test-owner", leaseFor = Duration.ofHours(2))
+
+                dataSource.heartbeatOf(id)!!.isAfter(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(1)) shouldBe false
+                dataSource.leaseOwnerOf(targetId) shouldBe "test-owner"
+                dataSource.leaseUntilOf(targetId)!!
+                    .toInstant()
+                    .truncatedTo(ChronoUnit.SECONDS) shouldBe leasedUntil.toInstant().truncatedTo(ChronoUnit.SECONDS)
+            }
+        }
+
         test("a running job with a stale heartbeat is marked crashed") {
             PostgresTestDatabase.withSchema(schema, tables = listOf("crawl_jobs", "crawl_targets")) { dataSource ->
                 val id = UUID.randomUUID()

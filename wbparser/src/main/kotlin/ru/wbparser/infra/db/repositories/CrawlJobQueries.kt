@@ -75,12 +75,13 @@ fun DataSource.touchJobHeartbeat(
     val database = exposedOnce()
     val now = OffsetDateTime.now(ZoneOffset.UTC)
     transaction(database) {
-        CrawlJobsTable.update({
-            (CrawlJobsTable.id eq jobId) and (CrawlJobsTable.status eq JobStatus.Running.name)
-        }) {
-            it[CrawlJobsTable.lastHeartbeatAt] = now
-        }
-        if (leaseOwner != null && leaseFor != null) {
+        val touched =
+            CrawlJobsTable.update({
+                (CrawlJobsTable.id eq jobId) and (CrawlJobsTable.status eq JobStatus.Running.name)
+            }) {
+                it[CrawlJobsTable.lastHeartbeatAt] = now
+            }
+        if (touched == 1 && leaseOwner != null && leaseFor != null) {
             CrawlTargetsTable.update({
                 CrawlTargetsTable.leaseOwner eq leaseOwner
             }) {
