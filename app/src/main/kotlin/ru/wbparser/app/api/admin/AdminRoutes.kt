@@ -244,6 +244,14 @@ private fun ResultSet.toRecordedError(): RecordedError =
         createdAt = getTimestamp("created_at")?.toInstant() ?: Instant.now(),
     )
 
+private fun ResultSet.readUuid(column: String): UUID =
+    when (val value = getObject(column)) {
+        is UUID -> value
+        is String -> UUID.fromString(value)
+        is ByteArray -> java.nio.ByteBuffer.wrap(value).let { UUID(it.long, it.long) }
+        else -> UUID.fromString(getString(column))
+    }
+
 /**
  * The schedule's own question: which targets are due now, and which are coming.
  *
@@ -280,7 +288,7 @@ fun DataSource.fetchSchedule(
                     ps.executeQuery().use { rs ->
                         val ids = mutableListOf<UUID>()
                         while (rs.next()) {
-                            ids += UUID.fromString(rs.getString("id"))
+                            ids += rs.readUuid("id")
                         }
                         ids
                     }
@@ -293,20 +301,19 @@ fun DataSource.fetchSchedule(
         allTargets
             .filter { it.isActive && it.id !in dueIdSet }
             .mapNotNull { target ->
-                val claimAt = claimMoment(target.nextAttemptAt, target.lastCrawledAt, freshnessMinutes, target.leaseUntil)
-                if (claimAt != null && claimAt > now) {
+                val claimAt = claimMoment(target.nextAttemptAt, target.lastCrawledAt, freshnessMinutes, target.leaseUntil, now)
+                if (claimAt > now) {
                     claimAt to target
                 } else {
                     null
                 }
-            }.filter { it.first > now }
-            .sortedBy { it.first }
+            }.sortedBy { it.first }
             .take(limit)
             .map { Upcoming(at = it.first, target = it.second) }
     val earliestDue: Instant? =
         allTargets
             .filter { it.isActive }
-            .mapNotNull { target -> claimMoment(target.nextAttemptAt, target.lastCrawledAt, freshnessMinutes, target.leaseUntil) }
+            .map { target -> claimMoment(target.nextAttemptAt, target.lastCrawledAt, freshnessMinutes, target.leaseUntil, now) }
             .minOrNull()
     return ScheduleSnapshot(due = due, upcoming = upcoming, earliestDue = earliestDue)
 }
@@ -315,7 +322,7 @@ fun DataSource.fetchSchedule(
  * The next tick after [now], or after [earliestDue] when that is later: a tick that finds
  * nothing due starts nothing, so the promise of a run has to be the later of the two.
  */
-private fun nextTick(
+internal fun nextTick(
     cron: String,
     now: Instant,
     earliestDue: Instant?,

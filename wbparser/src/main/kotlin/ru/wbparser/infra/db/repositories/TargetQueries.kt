@@ -206,18 +206,21 @@ fun DataSource.fetchAllTargets(limit: Int? = null): List<Target> {
  * window ends does not make the target due before the window ends, and a lease that holds
  * the target past both does not make it claimable before the lease expires - and the
  * schedule answer has to say the same moment the claim would.
+ *
+ * A target with no constraints has no reason to wait and is claimable at [now].
  */
 fun claimMoment(
     nextAttemptAt: Instant?,
     lastCrawledAt: Instant?,
     freshnessMinutes: Long,
     leaseUntil: Instant?,
-): Instant? =
+    now: Instant,
+): Instant =
     listOfNotNull(
         nextAttemptAt,
         lastCrawledAt?.plus(Duration.ofMinutes(freshnessMinutes)),
         leaseUntil,
-    ).maxOrNull()
+    ).maxOrNull() ?: now
 
 /**
  * Returns the first active target id by `ORDER BY created_at LIMIT 1`, used to

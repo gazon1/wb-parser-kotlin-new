@@ -10,6 +10,7 @@ import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.infra.db.repositories.TargetDraft
 import ru.wbparser.infra.db.repositories.claimMoment
+import ru.wbparser.infra.db.repositories.markTargetCrawled
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.PreparedStatement
@@ -337,7 +338,7 @@ class AdminRoutesTest :
         }
 
         test("the upcoming answer takes the later of the retry and the freshness") {
-            val now = Instant.now()
+            val now = Instant.parse("2026-01-01T00:00:00Z")
             val target =
                 Target(
                     id = UUID.randomUUID(),
@@ -351,13 +352,19 @@ class AdminRoutesTest :
                 )
 
             val moment =
-                claimMoment(target.nextAttemptAt, target.lastCrawledAt, CrawlProperties().schedule.freshnessMinutes, target.leaseUntil)
+                claimMoment(
+                    target.nextAttemptAt,
+                    target.lastCrawledAt,
+                    CrawlProperties().schedule.freshnessMinutes,
+                    target.leaseUntil,
+                    now,
+                )
 
             moment shouldBe now.plus(Duration.ofMinutes(330))
         }
 
         test("the upcoming answer takes the later of the retry, the freshness, and the lease") {
-            val now = Instant.now()
+            val now = Instant.parse("2026-01-01T00:00:00Z")
             val target =
                 Target(
                     id = UUID.randomUUID(),
@@ -372,9 +379,45 @@ class AdminRoutesTest :
                 )
 
             val moment =
-                claimMoment(target.nextAttemptAt, target.lastCrawledAt, CrawlProperties().schedule.freshnessMinutes, target.leaseUntil)
+                claimMoment(
+                    target.nextAttemptAt,
+                    target.lastCrawledAt,
+                    CrawlProperties().schedule.freshnessMinutes,
+                    target.leaseUntil,
+                    now,
+                )
 
             moment shouldBe now.plus(Duration.ofMinutes(400))
+        }
+
+        test("a brand-new target is due now, so the schedule points at the next tick") {
+            val now = Instant.parse("2026-01-01T02:00:00Z")
+            val properties = CrawlProperties()
+            val dataSource = adminDataSource()
+            val routes = AdminRoutes(dataSource, properties)
+
+            val newTarget =
+                routes.createTarget(
+                    TargetDraft(name = "Новая цель", startUrl = "https://example.invalid/new"),
+                )
+            val futureTarget =
+                routes.createTarget(
+                    TargetDraft(name = "Будущая цель", startUrl = "https://example.invalid/future"),
+                )
+
+            // The brand-new target has no crawl, no retry, and no lease, so it is due now.
+            // The future target was crawled an hour ago, so its freshness window ends in
+            // five hours — after the next cron tick in two hours — and must not pull the
+            // schedule's earliest moment past it.
+            dataSource.markTargetCrawled(futureTarget.body!!.id, now.minus(Duration.ofHours(1)))
+
+            val snapshot = dataSource.fetchSchedule(now, properties.schedule.freshnessMinutes, limit = 15)
+
+            snapshot.due.map { it.id }.contains(newTarget.body!!.id) shouldBe true
+            snapshot.due.map { it.id }.contains(futureTarget.body!!.id) shouldBe false
+            snapshot.earliestDue shouldBe now
+            nextTick(properties.schedule.cron, now, snapshot.earliestDue) shouldBe
+                Instant.parse("2026-01-01T04:00:00Z")
         }
     })
 
