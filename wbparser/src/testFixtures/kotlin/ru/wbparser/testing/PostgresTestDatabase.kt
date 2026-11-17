@@ -66,3 +66,29 @@ fun DataSource.execute(sql: String) {
         }
     }
 }
+
+/**
+ * The `crawl_targets` columns the repository suites write, as one definition.
+ *
+ * The container is shared per JVM and `withSchema` creates tables with `IF NOT
+ * EXISTS`, so two suites that each spell out their own version of this table do not
+ * get two tables — they get whichever ran first, and the other suite fails on a
+ * column that version does not have. That is exactly what happened: the job suite
+ * declared three columns for the lease, the subject suite declared five for the
+ * token, and the order of the run decided which of them broke.
+ *
+ * The columns are a union and nullable on purpose: each suite fills in what it needs
+ * and ignores the rest, and neither can narrow what the other sees.
+ */
+val CRAWL_TARGETS_SCHEMA: String =
+    """
+    CREATE TABLE IF NOT EXISTS crawl_targets (
+        id uuid PRIMARY KEY,
+        name varchar(255),
+        start_url text,
+        wb_search_query text,
+        is_active boolean NOT NULL DEFAULT true,
+        lease_owner varchar(128),
+        lease_until timestamptz
+    )
+    """.trimIndent()

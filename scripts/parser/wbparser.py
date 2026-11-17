@@ -145,6 +145,9 @@ class Target(Camel):
     last_crawled_at: datetime | None = None
     next_attempt_at: datetime | None = None
     consecutive_failures: int = 0
+    # Until when another run holds the target. A leased target is not claimable, so a
+    # target that looks due can still be skipped by the crawl.
+    lease_until: datetime | None = None
 
 
 class Job(Camel):
@@ -795,7 +798,12 @@ def _partition_by_due(
     for target in targets:
         if not target.active:
             continue
-        if target.next_attempt_at and target.next_attempt_at > now:
+        # The lease comes first: `claimDueTargets` skips a leased target whatever its
+        # freshness says, so reporting it as due would promise work the crawl will not
+        # start. A lease from a run that died holds the target for its full duration.
+        if target.lease_until and target.lease_until > now:
+            upcoming.append((target.lease_until, target))
+        elif target.next_attempt_at and target.next_attempt_at > now:
             upcoming.append((target.next_attempt_at, target))
         elif target.last_crawled_at is None or target.last_crawled_at <= fresh_before:
             due.append(target)
@@ -851,7 +859,7 @@ def history(
     that does not happen.
     """
     jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit)
-    next_run, due_estimate = _next_run()
+    next_run, due_estimate, leased = _next_run()
 
     _emit(
         {
@@ -861,50 +869,67 @@ def history(
                 "freshnessMinutes": int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360")),
                 "nextRun": next_run,
                 "earliestDue": due_estimate,
+                "leasedTargets": leased,
             },
         },
-        lambda: _print_history(jobs, next_run, due_estimate),
+        lambda: _print_history(jobs, next_run, due_estimate, leased),
     )
 
 
-def _next_run() -> tuple[datetime | None, datetime | None]:
+def _next_run() -> tuple[datetime | None, datetime | None, int]:
     """
-    When a tick will start a crawl, and when the earliest target becomes due.
+    When a tick will start a crawl, when the earliest target is claimable, and how many
+    targets a lease is holding away.
 
-    The two are separate facts and the answer is the later of them: a tick that finds
-    nothing due is a no-op, so "the next tick" alone overstates what will happen.
+    The first two are separate facts and the answer is the later of them: a tick that
+    finds nothing due is a no-op, so "the next tick" alone overstates what will happen.
+    The lease count is what explains a "due" that never turns into a run — a lease from
+    a run that died holds its targets for the full duration, and no tick can start on
+    them.
     """
     cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
     freshness = int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
     now = datetime.now(UTC)
 
+    earliest_due: datetime | None
     try:
-        earliest_due = _earliest_due(freshness, now) if _running("app") else None
+        earliest_due, leased = _earliest_due(freshness, now) if _running("app") else (None, 0)
     except Unusable:
-        earliest_due = None
+        earliest_due, leased = None, 0
 
     # Spring's cron has seconds first; croniter can read that layout, and `?` means
     # "no specific value", which croniter spells `*`.
     try:
         iterator = croniter(cron.replace("?", "*"), now, second_at_beginning=True)
     except (ValueError, KeyError):
-        return None, earliest_due
+        return None, earliest_due, leased
 
     tick = iterator.get_next(datetime)
     if earliest_due is None or earliest_due <= tick:
-        return tick, earliest_due
+        return tick, earliest_due, leased
     # Nothing is due at the next tick: walk forward to the first tick that finds work.
-    return iterator.get_next(datetime, start_time=earliest_due), earliest_due
+    return iterator.get_next(datetime, start_time=earliest_due), earliest_due, leased
 
 
-def _earliest_due(freshness_minutes: int, now: datetime) -> datetime | None:
-    """When the earliest active target becomes claimable, or None when nothing is active."""
+def _earliest_due(freshness_minutes: int, now: datetime) -> tuple[datetime | None, int]:
+    """
+    When the earliest active target becomes claimable, and how many are leased away.
+
+    The lease is part of "claimable": `claimDueTargets` skips a leased target, so a
+    target whose freshness has expired is still not work while another run holds it.
+    Without this the answer was "due now" for 132 targets that the crawl then refused
+    to touch — the estimate promised a run that could not start.
+    """
     targets = _get("/api/admin/targets", list[Target], admin=True)
     moments: list[datetime] = []
+    leased = 0
     for target in targets:
         if not target.active:
             continue
         candidate = now
+        if target.lease_until and target.lease_until > candidate:
+            candidate = target.lease_until
+            leased += 1
         if target.next_attempt_at and target.next_attempt_at > candidate:
             candidate = target.next_attempt_at
         if target.last_crawled_at:
@@ -912,10 +937,15 @@ def _earliest_due(freshness_minutes: int, now: datetime) -> datetime | None:
             if fresh_until > candidate:
                 candidate = fresh_until
         moments.append(candidate)
-    return min(moments) if moments else None
+    return (min(moments) if moments else None), leased
 
 
-def _print_history(jobs: list[Job], next_run: datetime | None, earliest_due: datetime | None) -> None:
+def _print_history(
+    jobs: list[Job],
+    next_run: datetime | None,
+    earliest_due: datetime | None,
+    leased: int,
+) -> None:
     cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
     freshness = _effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360")
 
@@ -927,7 +957,12 @@ def _print_history(jobs: list[Job], next_run: datetime | None, earliest_due: dat
     else:
         console.print("  next run   [yellow]unknown[/yellow] — the cron expression does not parse")
     if earliest_due:
-        console.print(f"  [dim]the earliest target is due {_age(earliest_due)}[/dim]")
+        console.print(f"  [dim]the earliest target is claimable {_age(earliest_due)}[/dim]")
+    if leased:
+        # Without this line the report contradicts the log: it says a target is due
+        # while every tick answers "nothing to crawl", because the claim skips leased
+        # targets. The lease from a run that died holds them for its full duration.
+        console.print(f"  [yellow]![/yellow] {leased} target(s) leased by another run — the crawl skips them")
 
     _headline(f"runs — last {len(jobs)}")
     if not jobs:

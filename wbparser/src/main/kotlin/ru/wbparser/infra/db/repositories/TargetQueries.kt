@@ -235,6 +235,7 @@ private fun ResultRow.toTarget(): Target =
         nextAttemptAt = this[CrawlTargetsTable.nextAttemptAt]?.toInstant(),
         egressFailureCount = this[CrawlTargetsTable.egressFailureCount],
         anomalyGroup = this[CrawlTargetsTable.anomalyGroup],
+        leaseUntil = this[CrawlTargetsTable.leaseUntil]?.toInstant(),
     )
 
 /**

@@ -84,6 +84,13 @@ services:
       # hardcoded 4-hour freshness window) and the hardcoded value could not be changed
       # without a rebuild.
       CRAWLER_SCHEDULE_FRESHNESS_MINUTES: "240"
+      # How long a target stays leased to a run. The production default is two hours,
+      # which is right for a host that dies once in a while and wrong for this stack: a
+      # killed debug run holds all 132 targets for the full lease, and with a 30-second
+      # tick every one of those ticks reports "nothing to crawl" — which reads like the
+      # scheduler is broken. Ten minutes keeps the same shape of failure (a lease really
+      # does outlive a dead run) without stalling debugging for two hours.
+      CRAWLER_LOCK_LEASE_MINUTES: "10"
       # Nextcloud owns 8080 on this host; 8082 keeps both up.
       SERVER_PORT: "8082"
       # The application is debugged, the libraries are not. `ROOT=DEBUG` turns on the
