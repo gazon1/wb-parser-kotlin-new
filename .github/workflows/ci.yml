@@ -117,6 +117,16 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python3 scripts/ci/check-action-pins.py
 
+      # The generated catalog models are committed, so the only way to know they
+      # still describe the contract is to regenerate and look at the diff. This
+      # needs the generator, which needs PyPI — that is why it runs here and not in
+      # the static registry, exactly like the pin check above. The offline half of
+      # the same guarantee (`# source-sha256`, no network) is a registry gate.
+      - name: The generated models are what the contract generates
+        run: |
+          bash scripts/parser/generate-models.sh
+          git diff --exit-code -- scripts/parser/catalog_models.py
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30

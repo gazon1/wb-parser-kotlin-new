@@ -97,33 +97,12 @@ help:
     set -euo pipefail
     uv run scripts/parser/wbparser.py help
 
-# The generator version is pinned: the output is committed and reviewed, and a
-# different version rewrites the file for reasons that are not a change to the
-# contract. `schemas` and not `paths` on purpose — the catalog's shapes are the
-# components, and the health/ready/contract bodies are operations outside the
-# generated models. Cashback is Decimal because the server sends BigDecimal and
-# the generator's default `float` would discard the value it was given.
+# The generator version, the flags and the Decimal overrides live in the script, so
+# this recipe and the CI job that re-runs it cannot drift apart.
 [group('parser')]
 [doc('Regenerate scripts/parser/catalog_models.py from the OpenAPI contract')]
 [working-directory(justfile_directory())]
 models:
     #!/usr/bin/env bash
     set -euo pipefail
-    uvx --from datamodel-code-generator==0.97.0 datamodel-codegen \
-        --input contract/catalog-v1.openapi.yaml \
-        --input-file-type openapi \
-        --output scripts/parser/catalog_models.py \
-        --openapi-scopes schemas \
-        --output-model-type pydantic_v2.BaseModel \
-        --target-python-version 3.11 \
-        --snake-case-field \
-        --disable-timestamp \
-        --use-union-operator \
-        --type-overrides '{"ProductCard.cashback_percent":"decimal.Decimal","ProductCard.cashback_rubles":"decimal.Decimal","PricePoint.cashback_percent":"decimal.Decimal","PricePoint.cashback_rubles":"decimal.Decimal"}'
-    # The gate reads this marker, so a contract edit without a regeneration is a
-    # finding rather than a file that merely looks old.
-    python3 -c 'import hashlib, pathlib; print("\n\n# source-sha256: " + hashlib.sha256(pathlib.Path("contract/catalog-v1.openapi.yaml").read_bytes()).hexdigest() + "\n", end="")' >> scripts/parser/catalog_models.py
-    # The repository's ruff is the formatter the gate checks the file with, so the
-    # generated file is brought to that shape here rather than left for a surprise.
-    ruff format scripts/parser/catalog_models.py
-    ruff check --fix scripts/parser/catalog_models.py
+    bash scripts/parser/generate-models.sh

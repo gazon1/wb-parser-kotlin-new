@@ -921,10 +921,21 @@ def schedule(
             "cron": data.cron,
             "freshnessMinutes": data.freshness_minutes,
             "activeTargets": data.active_targets,
-            "due": data.due,
-            "upcoming": [{"at": item.at, "target": item.target} for item in data.upcoming],
-            "nextRun": data.next_run,
-            "earliestDue": data.earliest_due,
+            "due": [target.model_dump(mode="json", by_alias=True) for target in data.due],
+            # `str()` and not the encoder's datetime branch: this payload used to be
+            # written with `json.dump(default=str)`, and the point of generated models
+            # is that the command's output does not change under it.
+            "upcoming": [
+                {
+                    "at": None if item.at is None else str(item.at),
+                    "target": None
+                    if item.target is None
+                    else item.target.model_dump(mode="json", by_alias=True),
+                }
+                for item in data.upcoming
+            ],
+            "nextRun": None if data.next_run is None else str(data.next_run),
+            "earliestDue": None if data.earliest_due is None else str(data.earliest_due),
         },
         lambda: _print_schedule(data),
     )
@@ -1034,16 +1045,18 @@ def history(
     data = _fetch_history(limit=limit)
     _emit(
         {
-            "runs": data["jobs"],
+            "runs": [job.model_dump(mode="json", by_alias=True) for job in data["jobs"]],
             "schedule": {
                 "cron": data["cron"],
-                "freshnessMinutes": data["freshness_minutes"],
-                "nextRun": data["next_run"],
-                "earliestDue": data["earliest_due"],
+                "freshnessMinutes": data["freshnessMinutes"],
+                # `str()` for the same reason as `schedule`: this payload was written
+                # with `json.dump(default=str)` before, and stays that way.
+                "nextRun": None if data["nextRun"] is None else str(data["nextRun"]),
+                "earliestDue": None if data["earliestDue"] is None else str(data["earliestDue"]),
             },
         },
         lambda: _print_history(
-            data["cron"], data["freshnessMinutes"], data["jobs"], data["nextRun"], data["earliest_due"]
+            data["cron"], data["freshnessMinutes"], data["jobs"], data["nextRun"], data["earliestDue"]
         ),
     )
 
