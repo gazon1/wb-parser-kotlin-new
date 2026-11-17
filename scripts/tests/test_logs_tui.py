@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from itertools import count
 
 import pytest
 from test_wbparser import _load_wbparser
@@ -47,6 +48,7 @@ print('second line', flush=True)
 def _compose(mod, monkeypatch, *, pidfile=None, running=True, tail=TAIL) -> list[str]:
     """Replace Compose with a substitute, and record the commands it was asked for."""
     calls: list[tuple[str, ...]] = []
+    follows = count(1)
 
     def compose(*argv: str) -> list[str]:
         calls.append(argv)
@@ -54,11 +56,19 @@ def _compose(mod, monkeypatch, *, pidfile=None, running=True, tail=TAIL) -> list
             script = "print('app')" if running else "print('')"
             return [sys.executable, "-c", script]
         if pidfile is not None and "--follow" in argv:
-            return [sys.executable, "-c", FOLLOWER, str(pidfile)]
+            # Every follow gets a pid file of its own: the first follow and the
+            # second one have to be tellable apart.
+            path = _follow_pidfile(pidfile, next(follows))
+            return [sys.executable, "-c", FOLLOWER, str(path)]
         return [sys.executable, "-c", tail]
 
     monkeypatch.setattr(mod, "_compose_command", compose)
     return calls
+
+
+def _follow_pidfile(pidfile, n: int):
+    """The pid file of the n-th follow."""
+    return pidfile.with_name(f"{pidfile.name}.{n}")
 
 
 def _alive(pid: int) -> bool:
@@ -201,13 +211,14 @@ def test_the_stop_button_kills_the_follow_process(mod, monkeypatch, tmp_path) ->
         async with host.run_test(size=(140, 40)) as pilot:
             await _open_the_log_tab(mod, pilot)
             await pilot.click("#btn-logs-follow")
-            await _wait_for_child(pidfile)
+            pid = await _wait_for_child(_follow_pidfile(pidfile, 1))
             await pilot.click("#btn-logs-stop")
             await asyncio.sleep(1.0)
+            # The check happens while the TUI is still open: closing it kills the
+            # child too, so an assertion afterwards would prove nothing.
+            _assert_gone(pid)
 
     asyncio.run(scenario())
-
-    _assert_gone(int(pidfile.read_text()))
 
 
 def test_a_second_follow_leaves_no_first_process_running(mod, monkeypatch, tmp_path) -> None:
@@ -220,12 +231,15 @@ def test_a_second_follow_leaves_no_first_process_running(mod, monkeypatch, tmp_p
         async with host.run_test(size=(140, 40)) as pilot:
             await _open_the_log_tab(mod, pilot)
             await pilot.click("#btn-logs-follow")
-            first = await _wait_for_child(pidfile)
+            first = await _wait_for_child(_follow_pidfile(pidfile, 1))
             # A button ignores a click while it is still lit up from the last one.
             await asyncio.sleep(0.3)
             await pilot.click("#btn-logs-follow")
-            await asyncio.sleep(1.0)
+            second = await _wait_for_child(_follow_pidfile(pidfile, 2))
+            await asyncio.sleep(0.5)
             _assert_gone(first)
+            # And the second follow is the one that is running now.
+            assert _alive(second)
 
     asyncio.run(scenario())
 
@@ -240,8 +254,9 @@ def test_closing_the_tui_leaves_no_follow_process(mod, monkeypatch, tmp_path) ->
         async with host.run_test(size=(140, 40)) as pilot:
             await _open_the_log_tab(mod, pilot)
             await pilot.click("#btn-logs-follow")
-            await _wait_for_child(pidfile)
+            await _wait_for_child(_follow_pidfile(pidfile, 1))
 
     asyncio.run(scenario())
 
-    _assert_gone(int(pidfile.read_text()))
+    # The check is after the TUI is gone: that is the whole point of this one.
+    _assert_gone(int(_follow_pidfile(pidfile, 1).read_text()))
