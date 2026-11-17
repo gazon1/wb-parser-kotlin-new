@@ -337,6 +337,32 @@ def _decode_json(body: bytes, *, decimal_numbers: bool = False) -> Any:
     return json.loads(body, parse_float=Decimal) if decimal_numbers else json.loads(body)
 
 
+def _jsonable(value: Any) -> Any:
+    """Convert a response value into JSON-compatible Python data.
+
+    Nested Pydantic models become dicts, Decimals stay as numbers, and datetimes become
+    ISO strings — so `--json` emits objects where the API returns objects, not `str(...)`
+    fallbacks that only look right until a consumer reads them.
+    """
+    if isinstance(value, BaseModel):
+        # Python mode keeps Decimal and datetime as values we can normalize below; JSON
+        # mode would stringify Decimals, which must remain numbers in the output.
+        return _jsonable(value.model_dump(by_alias=True))
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, datetime):
+        return value.isoformat().replace("+00:00", "Z")
+    if isinstance(value, StrEnum):
+        return value.value
+    if isinstance(value, Path):
+        return str(value)
+    return value
+
+
 def _encode_json(payload: Any) -> str:
     """
     One JSON document, with money as JSON numbers rather than strings.
@@ -345,14 +371,13 @@ def _encode_json(payload: Any) -> str:
     quoted string. `simplejson` writes the exact decimal literal unquoted, so `--json`
     keeps the shape the API itself sends.
     """
-
-    def default(value: Any) -> str:
-        # Pydantic's python-mode dump leaves the rest typed: UUID, AnyUrl, datetime.
-        if isinstance(value, datetime):
-            return value.isoformat().replace("+00:00", "Z")
-        return str(value)
-
-    return simplejson.dumps(payload, ensure_ascii=False, indent=2, use_decimal=True, default=default)
+    return simplejson.dumps(
+        _jsonable(payload),
+        ensure_ascii=False,
+        indent=2,
+        use_decimal=True,
+        default=str,
+    )
 
 
 def _emit(payload: Any, render: Any) -> None:
@@ -825,7 +850,7 @@ def items(
         max_price=max_price,
         min_cashback=min_cashback,
     )
-    _emit(result.model_dump(by_alias=True), lambda: _print_items(result))
+    _emit(result, lambda: _print_items(result))
     if not result.total_count:
         raise typer.Exit(EXIT_WRONG)
 
@@ -849,7 +874,7 @@ def _fetch_stats() -> Stats:
 def stats() -> None:
     """Aggregate counters of the catalog: how big it is and how fresh."""
     payload = _get("/api/catalog/v1/stats", Stats, catalog=True)
-    _emit(payload.model_dump(by_alias=True), lambda: _print_stats(payload))
+    _emit(payload, lambda: _print_stats(payload))
 
 
 def _print_stats(payload: Stats) -> None:
@@ -921,19 +946,10 @@ def schedule(
             "cron": data.cron,
             "freshnessMinutes": data.freshness_minutes,
             "activeTargets": data.active_targets,
-            "due": [target.model_dump(mode="json", by_alias=True) for target in data.due],
-            # `str()` and not the encoder's datetime branch: this payload used to be
-            # written with `json.dump(default=str)`, and the point of generated models
-            # is that the command's output does not change under it.
-            "upcoming": [
-                {
-                    "at": None if item.at is None else str(item.at),
-                    "target": None if item.target is None else item.target.model_dump(mode="json", by_alias=True),
-                }
-                for item in data.upcoming
-            ],
-            "nextRun": None if data.next_run is None else str(data.next_run),
-            "earliestDue": None if data.earliest_due is None else str(data.earliest_due),
+            "due": data.due,
+            "upcoming": [{"at": item.at, "target": item.target} for item in data.upcoming],
+            "nextRun": data.next_run,
+            "earliestDue": data.earliest_due,
         },
         lambda: _print_schedule(data),
     )
@@ -1043,14 +1059,12 @@ def history(
     data = _fetch_history(limit=limit)
     _emit(
         {
-            "runs": [job.model_dump(mode="json", by_alias=True) for job in data["jobs"]],
+            "runs": data["jobs"],
             "schedule": {
                 "cron": data["cron"],
                 "freshnessMinutes": data["freshnessMinutes"],
-                # `str()` for the same reason as `schedule`: this payload was written
-                # with `json.dump(default=str)` before, and stays that way.
-                "nextRun": None if data["nextRun"] is None else str(data["nextRun"]),
-                "earliestDue": None if data["earliestDue"] is None else str(data["earliestDue"]),
+                "nextRun": data["nextRun"],
+                "earliestDue": data["earliestDue"],
             },
         },
         lambda: _print_history(

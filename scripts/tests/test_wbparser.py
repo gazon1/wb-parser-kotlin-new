@@ -84,33 +84,37 @@ def test_the_answer_the_server_writes_parses() -> None:
 
 def test_mixed_payload_contract() -> None:
     mod = _load_wbparser()
-    inner = mod.Stats(
-        total_items=1,
-        total_products=2,
-        total_targets=3,
-        with_cashback=4,
-        products_with_cashback=5,
-        newest_scraped_at=datetime(2026, 11, 17, 9, 0, tzinfo=UTC),
-        as_of=None,
+    inner = mod.Stats.model_validate(
+        {
+            "totalItems": 1,
+            "totalProducts": 2,
+            "totalTargets": 3,
+            "withCashback": 4,
+            "productsWithCashback": 5,
+            "newestScrapedAt": "2026-11-17T09:00:00Z",
+            "asOf": "2026-11-17T09:00:00Z",
+            "instanceId": "i",
+            "dataAsOf": None,
+        }
     )
     data = {
-        "mixed": [inner.model_dump(mode="json", by_alias=True), {"plain": None}],
+        "mixed": [inner, {"plain": None}],
         "freshnessMinutes": 360,
         "nextRun": "2026-11-17T12:00:00Z",
         "when": None,
         "status": mod.Sort.date_desc,
     }
-    text = json.dumps(data)
+    text = mod._encode_json(data)
     assert "[green]" not in text
-    assert data["freshnessMinutes"] == 360
-    assert data["when"] is None
-    assert data["status"] == "DateDesc"
-    assert data["nextRun"] == "2026-11-17T12:00:00Z"
-    assert data["mixed"][0]["totalItems"] == 1
-    assert data["mixed"][0]["asOf"] is None
-    assert data["mixed"][0]["newestScrapedAt"] == "2026-11-17T09:00:00Z"
-    assert data["mixed"][1] == {"plain": None}
-    assert json.loads(text) == data
+    parsed = json.loads(text)
+    assert parsed["freshnessMinutes"] == 360
+    assert parsed["nextRun"] == "2026-11-17T12:00:00Z"
+    assert parsed["when"] is None
+    assert parsed["status"] == "DateDesc"
+    assert parsed["mixed"][0]["totalItems"] == 1
+    assert parsed["mixed"][0]["asOf"] == "2026-11-17T09:00:00Z"
+    assert parsed["mixed"][0]["newestScrapedAt"] == "2026-11-17T09:00:00Z"
+    assert parsed["mixed"][1] == {"plain": None}
 
 
 def test_partition_by_due_uses_latest_of_lease_and_backoff() -> None:
@@ -187,3 +191,131 @@ def test_real_stats_response_matches_the_generated_model() -> None:
 
     assert stats.total_products == 2
     assert stats.instance_id == "b2d4f6a8-1c3e-4f5a-9b7c-0d1e2f3a4b5c"
+
+
+def test_history_json_exercises_command(monkeypatch, capsys) -> None:
+    mod = _load_wbparser()
+    job = mod.Job.model_validate(
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "status": "Completed",
+            "pagesCrawled": 10,
+            "itemsSaved": 5,
+            "startedAt": "2026-11-17T10:00:00Z",
+            "completedAt": "2026-11-17T10:05:00Z",
+            "triggeredBy": "schedule",
+            "errorMessage": None,
+        }
+    )
+    monkeypatch.setattr(
+        mod,
+        "_fetch_history",
+        lambda limit=15: {
+            "jobs": [job],
+            "cron": "0 0 */4 * * *",
+            "freshnessMinutes": 360,
+            "nextRun": datetime(2026, 11, 17, 12, 0, tzinfo=UTC),
+            "earliestDue": datetime(2026, 11, 17, 11, 0, tzinfo=UTC),
+        },
+    )
+    monkeypatch.setattr(mod, "JSON", True)
+
+    mod.history(limit=15)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload["runs"][0], dict)
+    assert payload["runs"][0]["id"] == "11111111-1111-1111-1111-111111111111"
+    assert payload["runs"][0]["status"] == "Completed"
+    assert payload["schedule"] == {
+        "cron": "0 0 */4 * * *",
+        "freshnessMinutes": 360,
+        "nextRun": "2026-11-17T12:00:00Z",
+        "earliestDue": "2026-11-17T11:00:00Z",
+    }
+
+
+def test_schedule_json_emits_nested_objects(monkeypatch, capsys) -> None:
+    mod = _load_wbparser()
+    due = _target(mod, "due", lastCrawledAt=datetime(2026, 11, 17, 8, 0, tzinfo=UTC))
+    upcoming_target = _target(mod, "later", lastCrawledAt=datetime(2026, 11, 17, 9, 0, tzinfo=UTC))
+    schedule = mod.Schedule.model_validate(
+        {
+            "cron": "0 0 */4 * * *",
+            "freshnessMinutes": 360,
+            "activeTargets": 2,
+            "targets": [due.model_dump(by_alias=True), upcoming_target.model_dump(by_alias=True)],
+            "due": [due.model_dump(by_alias=True)],
+            "upcoming": [{"at": "2026-11-17T14:00:00Z", "target": upcoming_target.model_dump(by_alias=True)}],
+            "nextRun": "2026-11-17T12:00:00Z",
+            "earliestDue": "2026-11-17T10:00:00Z",
+            "limit": 15,
+        }
+    )
+    monkeypatch.setattr(mod, "_fetch_schedule", lambda limit=15: schedule)
+    monkeypatch.setattr(mod, "JSON", True)
+
+    mod.schedule(limit=15)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload["due"][0], dict)
+    assert payload["due"][0]["name"] == "due"
+    assert isinstance(payload["upcoming"][0], dict)
+    assert isinstance(payload["upcoming"][0]["target"], dict)
+    assert payload["upcoming"][0]["target"]["name"] == "later"
+    assert payload["nextRun"] == "2026-11-17T12:00:00Z"
+
+
+def test_runs_json_emits_nested_objects(monkeypatch, capsys) -> None:
+    mod = _load_wbparser()
+    job = mod.Job.model_validate(
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "status": "Completed",
+            "pagesCrawled": 60,
+            "itemsSaved": 6000,
+            "startedAt": "2026-11-17T10:00:00Z",
+            "completedAt": "2026-11-17T10:05:00Z",
+            "triggeredBy": "schedule",
+            "errorMessage": None,
+        }
+    )
+    target_run = mod.TargetRun.model_validate(
+        {
+            "targetId": "22222222-2222-2222-2222-222222222222",
+            "targetName": "Cards",
+            "egressGroup": "g1",
+            "egressIp": "1.2.3.4",
+            "outcome": "success",
+            "pages": 60,
+            "items": 6000,
+            "wbTotal": 1000,
+            "startedAt": "2026-11-17T10:00:00Z",
+        }
+    )
+    error = mod.RecordedError.model_validate(
+        {
+            "category": "network",
+            "message": "timeout",
+            "createdAt": "2026-11-17T09:00:00Z",
+        }
+    )
+    monkeypatch.setattr(
+        mod,
+        "_fetch_runs",
+        lambda limit=20, target=None, errors=10: {
+            "jobs": [job],
+            "targetRuns": [target_run],
+            "errors": [error],
+        },
+    )
+    monkeypatch.setattr(mod, "JSON", True)
+
+    mod.runs(limit=20)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert isinstance(payload["jobs"][0], dict)
+    assert payload["jobs"][0]["status"] == "Completed"
+    assert isinstance(payload["targetRuns"][0], dict)
+    assert payload["targetRuns"][0]["outcome"] == "success"
+    assert isinstance(payload["errors"][0], dict)
+    assert payload["errors"][0]["message"] == "timeout"
