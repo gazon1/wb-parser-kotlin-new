@@ -928,9 +928,7 @@ def schedule(
             "upcoming": [
                 {
                     "at": None if item.at is None else str(item.at),
-                    "target": None
-                    if item.target is None
-                    else item.target.model_dump(mode="json", by_alias=True),
+                    "target": None if item.target is None else item.target.model_dump(mode="json", by_alias=True),
                 }
                 for item in data.upcoming
             ],
