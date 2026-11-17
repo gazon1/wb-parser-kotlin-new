@@ -393,15 +393,6 @@ async def _with_api(job: Callable[[Api], Awaitable[T]]) -> T:
         return await job(api)
 
 
-def _bridge_fetch(job: Callable[[Api], Awaitable[T]]) -> T:
-    """
-    shortcut: the tabs that are not panes yet fetch from a thread worker, so the
-    async fetch runs in an event loop of its own; #298 moves those tabs onto panes
-    and this bridge goes with them.
-    """
-    return asyncio.run(_with_api(job))
-
-
 async def _gather(*jobs: Awaitable[Any]) -> list[Any]:
     """
     Independent requests, run together, and the first failure is the answer.
@@ -526,6 +517,14 @@ def _duration(job: Job) -> str:
 def _cell(value: Any) -> Text:
     """A table cell: the value, or an em dash when it is empty. Cells are data, not markup."""
     return Text("—" if value is None or value == "" else str(value))
+
+
+def _number(value: str, fallback: int) -> int:
+    """The number the user typed, or the fallback when it is not a number."""
+    try:
+        return int(value)
+    except ValueError:
+        return fallback
 
 
 def _table(title: str, columns: list[str], rows: list[list[Any]]) -> None:
@@ -1248,6 +1247,10 @@ class Pane(Vertical):
     pane is mounted; Textual cancels the worker when the pane is unmounted.
     """
 
+    # The id of this pane's own refresh button. The base class watches for it, so
+    # the app does not have to know which button belongs to which pane.
+    REFRESH_BUTTON = ""
+
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self._loading = False
@@ -1258,6 +1261,12 @@ class Pane(Vertical):
 
     def show(self, data: Any) -> None:
         raise NotImplementedError
+
+    @on(Button.Pressed)
+    def _on_refresh_button(self, event: Button.Pressed) -> None:
+        """This pane's refresh button reloads this pane and nothing else."""
+        if event.button.id == self.REFRESH_BUTTON:
+            self.reload()
 
     def reload(self) -> None:
         """Start one load; a reload while a load is in flight does nothing."""
@@ -1289,6 +1298,8 @@ class Pane(Vertical):
 class StatsPane(Pane):
     """The catalog's counters, fetched and drawn by the pane itself — the pilot."""
 
+    REFRESH_BUTTON = "btn-stats"
+
     def compose(self) -> ComposeResult:
         with Horizontal(classes="row"):
             yield Button("Refresh", id="btn-stats", variant="primary")
@@ -1319,6 +1330,263 @@ class StatsPane(Pane):
         table.clear()
         for row in cells:
             table.add_row(*row)
+
+
+class StatusPane(Pane):
+    """The application's health, its credentials, its counters and its egress groups."""
+
+    REFRESH_BUTTON = "btn-refresh-status"
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="status-actions", classes="row"):
+            yield Button("Refresh", id="btn-refresh-status", variant="primary")
+            yield Button("Up", id="btn-up")
+            yield Button("Down", id="btn-down", variant="warning")
+            yield Button("Crawl once", id="btn-crawl")
+        yield Static("", id="pane-status", classes="box")
+        yield Static("", id="status-summary", classes="box")
+        with Horizontal(classes="row"):
+            with Vertical(classes="box", id="box-checks"):
+                yield Static("Checks", classes="title")
+                yield DataTable(id="status-checks")
+            with Vertical(classes="box", id="box-creds"):
+                yield Static("Credentials", classes="title")
+                yield DataTable(id="status-creds")
+        with Vertical(classes="box"):
+            yield Static("Crawl & egress", classes="title")
+            yield Static("", id="status-crawl")
+            yield DataTable(id="status-egress")
+        with Vertical(classes="box"):
+            yield Static("Activity", classes="title")
+            yield RichLog(id="activity-log", highlight=True, markup=True, wrap=True)
+
+    def on_mount(self) -> None:
+        self.query_one("#status-checks", DataTable).add_columns("check", "value")
+        self.query_one("#status-creds", DataTable).add_columns("key", "status")
+        self.query_one("#status-egress", DataTable).add_columns("group", "address", "health", "isolated", "refusals")
+
+    async def fetch(self) -> tuple[dict[str, Any], dict[str, bool]]:
+        async with Api() as api:
+            return await _fetch_status(api)
+
+    def show(self, data: tuple[dict[str, Any], dict[str, bool]]) -> None:
+        ready, keys = data
+        # Phase one — prepare. Nothing here touches a widget: the base class cannot
+        # roll a widget back, so a malformed answer has to fail while the content is
+        # built, and leave the last good data on screen.
+        healthy = ready.get("status") == "UP"
+        mark = "[green]UP[/green]" if healthy else "[red]DOWN[/red]"
+        summary = f"Application at [bold]{escape(_base_url())}[/bold]: {mark}"
+
+        checks_rows = []
+        for name, value in (ready.get("checks") or {}).items():
+            ok = str(value).startswith("UP")
+            checks_rows.append((_cell(name), Text(str(value), style="green" if ok else "yellow")))
+
+        creds_rows = []
+        for name, works in keys.items():
+            creds_rows.append(
+                (_cell(name), Text("accepted", style="green") if works else Text("refused or missing", style="red"))
+            )
+
+        crawler = ready.get("crawler") or {}
+        if crawler.get("state") == "not_started":
+            crawl_text = "[yellow]not started — no counters yet[/yellow]"
+        else:
+            crawl_text = (
+                f"requests {crawler.get('requests', 0)}  refusals {crawler.get('antibot_responses', 0)}  "
+                f"share {_cell(crawler.get('refusal_share', 'n/a'))}  |  "
+                f"pages {crawler.get('pages', 0)}  items {crawler.get('items', 0)}  "
+                f"stale tokens {crawler.get('presets_responses', 0)}"
+            )
+            if retries := crawler.get("retries"):
+                crawl_text += "\nretries: " + ", ".join(f"{r}={c}" for r, c in retries.items())
+
+        egress_rows = []
+        for g in (ready.get("egress") or {}).get("groups") or []:
+            health = Text("healthy", style="green") if g.get("healthy") else Text("unhealthy", style="red")
+            egress_rows.append(
+                (
+                    _cell(g.get("group")),
+                    _cell(g.get("address") or "unknown"),
+                    health,
+                    _cell(g.get("isolated")),
+                    _cell(g.get("refusal_rate")),
+                )
+            )
+
+        # Phase two — draw.
+        self._update_summary(summary)
+        self._update_checks(checks_rows)
+        self._update_credentials(creds_rows)
+        self._update_crawl(crawl_text)
+        self._update_egress(egress_rows)
+
+    def _update_summary(self, summary: str) -> None:
+        self.query_one("#status-summary", Static).update(summary)
+
+    def _update_checks(self, rows: list[tuple[Any, ...]]) -> None:
+        table = self.query_one("#status-checks", DataTable)
+        table.clear()
+        for row in rows:
+            table.add_row(*row)
+
+    def _update_credentials(self, rows: list[tuple[Any, ...]]) -> None:
+        table = self.query_one("#status-creds", DataTable)
+        table.clear()
+        for row in rows:
+            table.add_row(*row)
+
+    def _update_crawl(self, text: str) -> None:
+        self.query_one("#status-crawl", Static).update(text)
+
+    def _update_egress(self, rows: list[tuple[Any, ...]]) -> None:
+        table = self.query_one("#status-egress", DataTable)
+        table.clear()
+        for row in rows:
+            table.add_row(*row)
+
+
+class ItemsPane(Pane):
+    """The scraped products, filtered and paged by the widgets above the table."""
+
+    REFRESH_BUTTON = "btn-items"
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        # The product URLs of the rows on screen, so a click can open one.
+        self.urls: list[str] = []
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(id="items-controls", classes="row"):
+            yield Input(placeholder="query (-q)", id="items-q")
+            yield Input(placeholder="target UUID", id="items-target")
+            yield Select(
+                [(s.value, s.value) for s in Sort],
+                value=Sort.date_desc.value,
+                allow_blank=False,
+                id="items-sort",
+            )
+            yield Input(placeholder="page", value="0", id="items-page", classes="small")
+            yield Input(placeholder="size", value="20", id="items-size", classes="small")
+            yield Button("Load", id="btn-items", variant="primary")
+        yield Static("", id="pane-status", classes="box")
+        yield Static("", id="items-info")
+        yield DataTable(id="items-table")
+
+    async def fetch(self) -> ItemsPage:
+        # The filters are read here, on the app's event loop: a widget read from a
+        # thread worker is a widget read while it may be changing.
+        query = self.query_one("#items-q", Input).value or None
+        target = self.query_one("#items-target", Input).value or None
+        sort = str(self.query_one("#items-sort", Select).value)
+        page = _number(self.query_one("#items-page", Input).value, 0)
+        size = _number(self.query_one("#items-size", Input).value, 20)
+        async with Api() as api:
+            return await _fetch_items(api, target=target, query=query, page=page, page_size=size, sort=sort)
+
+    def show(self, result: ItemsPage) -> None:
+        self.query_one("#items-info", Static).update(
+            f"page {result.page + 1}/{max(1, result.total_pages)} — {result.total_count} total"
+            + (f" (data {_age(result.data_as_of)})" if result.data_as_of else "")
+            + "  [dim](click a row to open)[/dim]"
+        )
+        self.urls = [str(item.product_url) for item in result.items]
+        fill(self.query_one("#items-table", DataTable), items_section(result))
+
+
+class RunsPane(Pane):
+    """The journal of runs: the target runs, the jobs and the unresolved errors."""
+
+    REFRESH_BUTTON = "btn-runs"
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(classes="row"):
+            yield Button("Refresh", id="btn-runs", variant="primary")
+        yield Static("", id="pane-status", classes="box")
+        yield Static("Target runs", classes="title")
+        yield DataTable(id="runs-targets")
+        yield Static("Jobs", classes="title")
+        yield DataTable(id="runs-jobs")
+        yield Static("Unresolved errors", classes="title")
+        yield DataTable(id="runs-errors")
+
+    async def fetch(self) -> dict[str, Any]:
+        async with Api() as api:
+            return await _fetch_runs(api)
+
+    def show(self, data: dict[str, Any]) -> None:
+        sections = runs_sections(data)
+        fill(self.query_one("#runs-targets", DataTable), sections[0])
+        fill(self.query_one("#runs-jobs", DataTable), sections[1])
+        fill(self.query_one("#runs-errors", DataTable), sections[2])
+
+
+class SchedulePane(Pane):
+    """The tick, the freshness window and the targets that are due."""
+
+    REFRESH_BUTTON = "btn-schedule"
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(classes="row"):
+            yield Button("Refresh", id="btn-schedule", variant="primary")
+        yield Static("", id="pane-status", classes="box")
+        yield Static("", id="schedule-summary", classes="box")
+        yield Static("Due now", classes="title")
+        yield DataTable(id="sched-due")
+        yield Static("Upcoming", classes="title")
+        yield DataTable(id="sched-upcoming")
+
+    async def fetch(self) -> Schedule:
+        async with Api() as api:
+            return await _fetch_schedule(api)
+
+    def show(self, data: Schedule) -> None:
+        nr = data.next_run
+        nr_text = (
+            f"{nr.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')} ({_age(nr)})" if nr else "[yellow]unknown[/yellow]"
+        )
+        summary = (
+            f"tick: {data.cron}  |  freshness: {data.freshness_minutes} min  |  "
+            f"active: {data.active_targets}/{len(data.targets)}  |  due now: {len(data.due)}\n"
+            f"next run: {nr_text}"
+        )
+        if data.earliest_due:
+            summary += f"  |  earliest due {_age(data.earliest_due)}"
+        if data.due:
+            summary += "\n[yellow]a target held by an interrupted run's lease may appear due but be skipped[/yellow]"
+        self.query_one("#schedule-summary", Static).update(summary)
+        sections = schedule_sections(data)
+        fill(self.query_one("#sched-due", DataTable), sections[0])
+        fill(self.query_one("#sched-upcoming", DataTable), sections[1])
+
+
+class HistoryPane(Pane):
+    """The last runs, what started each of them, and when the next one is due."""
+
+    REFRESH_BUTTON = "btn-history"
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(classes="row"):
+            yield Button("Refresh", id="btn-history", variant="primary")
+        yield Static("", id="pane-status", classes="box")
+        yield Static("", id="history-summary", classes="box")
+        yield DataTable(id="history-table")
+
+    async def fetch(self) -> dict[str, Any]:
+        async with Api() as api:
+            return await _fetch_history(api)
+
+    def show(self, data: dict[str, Any]) -> None:
+        nr = data["nextRun"]
+        nr_text = (
+            f"{nr.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')} ({_age(nr)})" if nr else "[yellow]unknown[/yellow]"
+        )
+        summary = f"tick: {data['cron']}  |  freshness: {data['freshnessMinutes']} min  |  next run: {nr_text}"
+        if data.get("earliestDue"):
+            summary += f"  |  earliest due {_age(data['earliestDue'])}"
+        self.query_one("#history-summary", Static).update(summary)
+        fill(self.query_one("#history-table", DataTable), history_section(data["jobs"]))
 
 
 class WbparserApp(App):
@@ -1361,71 +1629,38 @@ class WbparserApp(App):
         Binding("7", "tab('tab-logs')", "Logs", show=False),
     ]
 
+    # The read-only tabs and the pane that draws each of them. The app assembles the
+    # tabs, routes the common actions and refreshes the active pane; a pane loads and
+    # draws its own data.
+    PANES: dict[str, type[Pane]] = {
+        "tab-status": StatusPane,
+        "tab-items": ItemsPane,
+        "tab-runs": RunsPane,
+        "tab-schedule": SchedulePane,
+        "tab-history": HistoryPane,
+        "tab-stats": StatsPane,
+    }
+
+    # How often the active pane reloads itself. One cadence for every pane.
+    REFRESH_EVERY = 30.0
+
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with TabbedContent(initial="tab-status", id="tabs"):
-            with TabPane("Status", id="tab-status"), Vertical(classes="pane"):
-                with Horizontal(id="status-actions", classes="row"):
-                    yield Button("Refresh", id="btn-refresh-status", variant="primary")
-                    yield Button("Up", id="btn-up")
-                    yield Button("Down", id="btn-down", variant="warning")
-                    yield Button("Crawl once", id="btn-crawl")
-                yield Static("Loading…", id="status-summary", classes="box")
-                with Horizontal(classes="row"):
-                    with Vertical(classes="box", id="box-checks"):
-                        yield Static("Checks", classes="title")
-                        yield DataTable(id="status-checks")
-                    with Vertical(classes="box", id="box-creds"):
-                        yield Static("Credentials", classes="title")
-                        yield DataTable(id="status-creds")
-                with Vertical(classes="box"):
-                    yield Static("Crawl & egress", classes="title")
-                    yield Static("", id="status-crawl")
-                    yield DataTable(id="status-egress")
-                with Vertical(classes="box"):
-                    yield Static("Activity", classes="title")
-                    yield RichLog(id="activity-log", highlight=True, markup=True, wrap=True)
+            with TabPane("Status", id="tab-status"):
+                yield StatusPane(classes="pane")
 
-            with TabPane("Items", id="tab-items"), Vertical(classes="pane"):
-                with Horizontal(id="items-controls", classes="row"):
-                    yield Input(placeholder="query (-q)", id="items-q")
-                    yield Input(placeholder="target UUID", id="items-target")
-                    yield Select(
-                        [(s.value, s.value) for s in Sort],
-                        value=Sort.date_desc.value,
-                        allow_blank=False,
-                        id="items-sort",
-                    )
-                    yield Input(placeholder="page", value="0", id="items-page", classes="small")
-                    yield Input(placeholder="size", value="20", id="items-size", classes="small")
-                    yield Button("Load", id="btn-items", variant="primary")
-                yield Static("", id="items-info")
-                yield DataTable(id="items-table")
+            with TabPane("Items", id="tab-items"):
+                yield ItemsPane(classes="pane")
 
-            with TabPane("Runs", id="tab-runs"), Vertical(classes="pane"):
-                with Horizontal(classes="row"):
-                    yield Button("Refresh", id="btn-runs", variant="primary")
-                yield Static("Target runs", classes="title")
-                yield DataTable(id="runs-targets")
-                yield Static("Jobs", classes="title")
-                yield DataTable(id="runs-jobs")
-                yield Static("Unresolved errors", classes="title")
-                yield DataTable(id="runs-errors")
+            with TabPane("Runs", id="tab-runs"):
+                yield RunsPane(classes="pane")
 
-            with TabPane("Schedule", id="tab-schedule"), Vertical(classes="pane"):
-                with Horizontal(classes="row"):
-                    yield Button("Refresh", id="btn-schedule", variant="primary")
-                yield Static("", id="schedule-summary", classes="box")
-                yield Static("Due now", classes="title")
-                yield DataTable(id="sched-due")
-                yield Static("Upcoming", classes="title")
-                yield DataTable(id="sched-upcoming")
+            with TabPane("Schedule", id="tab-schedule"):
+                yield SchedulePane(classes="pane")
 
-            with TabPane("History", id="tab-history"), Vertical(classes="pane"):
-                with Horizontal(classes="row"):
-                    yield Button("Refresh", id="btn-history", variant="primary")
-                yield Static("", id="history-summary", classes="box")
-                yield DataTable(id="history-table")
+            with TabPane("History", id="tab-history"):
+                yield HistoryPane(classes="pane")
 
             with TabPane("Stats", id="tab-stats"):
                 yield StatsPane(classes="pane")
@@ -1442,39 +1677,42 @@ class WbparserApp(App):
 
     def on_mount(self) -> None:
         self._follow_proc: subprocess.Popen[str] | None = None
-        self._items_urls: list[str] = []
         self._last_item_open: tuple[int, float] | None = None
-        self._init_tables()
-        self.action_refresh()
-
-    def _init_tables(self) -> None:
-        self.query_one("#status-checks", DataTable).add_columns("check", "value")
-        self.query_one("#status-creds", DataTable).add_columns("key", "status")
-        self.query_one("#status-egress", DataTable).add_columns("group", "address", "health", "isolated", "refusals")
+        # The tab that is active when the app opens loads itself: the first
+        # TabActivated is what loads the first tab. The timer keeps the active pane
+        # fresh from then on, and only the active one.
+        self.set_interval(self.REFRESH_EVERY, self._refresh_active_pane)
 
     def action_tab(self, tab_id: str) -> None:
         self.query_one("#tabs", TabbedContent).active = tab_id
 
     def action_refresh(self) -> None:
-        tab = self.query_one("#tabs", TabbedContent).active
-        self._refresh_tab(tab)
+        """Refresh the active tab: its pane, or the log view."""
+        self.query_one("#msg", Static).update("")
+        self._refresh_tab(self.query_one("#tabs", TabbedContent).active)
 
     def _refresh_tab(self, tab: str) -> None:
-        self.query_one("#msg", Static).update("")
-        if tab == "tab-status":
-            self.load_status()
-        elif tab == "tab-items":
-            self.load_items()
-        elif tab == "tab-runs":
-            self.load_runs()
-        elif tab == "tab-schedule":
-            self.load_schedule()
-        elif tab == "tab-history":
-            self.load_history()
-        elif tab == "tab-stats":
-            self.query_one(StatsPane).reload()
+        """One tab's refresh. A pane reloads itself; the log tab is not a pane."""
+        pane = self._pane(tab)
+        if pane is not None:
+            pane.reload()
         elif tab == "tab-logs":
             self.load_logs()
+
+    def _refresh_active_pane(self) -> None:
+        """The automatic refresh: the active pane only, so a hidden tab never polls the API."""
+        pane = self._pane(self.query_one("#tabs", TabbedContent).active)
+        if pane is not None:
+            pane.reload()
+
+    def _pane(self, tab: str) -> Pane | None:
+        """The pane of one tab, if that tab has one."""
+        cls = self.PANES.get(tab)
+        return None if cls is None else self.query_one(cls)
+
+    def _reload_status(self) -> None:
+        """Reload the status pane — the action buttons change what the status says."""
+        self.query_one(StatusPane).reload()
 
     @on(TabbedContent.TabActivated)
     def _on_tab(self, event: TabbedContent.TabActivated) -> None:
@@ -1483,25 +1721,19 @@ class WbparserApp(App):
 
     @on(Button.Pressed)
     def _on_button(self, event: Button.Pressed) -> None:
+        """
+        The app's own buttons: the actions of the status tab and the log buttons.
+
+        A pane's refresh button is the pane's business — the base class reloads the
+        pane that owns the button.
+        """
         bid = event.button.id or ""
-        if bid == "btn-refresh-status":
-            self.load_status()
-        elif bid == "btn-up":
+        if bid == "btn-up":
             self.run_app_action("up")
         elif bid == "btn-down":
             self.run_app_action("down")
         elif bid == "btn-crawl":
             self.run_app_action("crawl")
-        elif bid == "btn-items":
-            self.load_items()
-        elif bid == "btn-runs":
-            self.load_runs()
-        elif bid == "btn-schedule":
-            self.load_schedule()
-        elif bid == "btn-history":
-            self.load_history()
-        elif bid == "btn-stats":
-            self.query_one(StatsPane).reload()
         elif bid == "btn-logs":
             self.load_logs()
         elif bid == "btn-logs-follow":
@@ -1515,104 +1747,9 @@ class WbparserApp(App):
     def _along(self, text: str) -> None:
         self.query_one("#activity-log", RichLog).write(text)
 
-    @work(thread=True, exclusive=True, group="status")
-    def load_status(self) -> None:
-        self.call_from_thread(self._note, "Loading status…")
-        try:
-            ready, keys = _bridge_fetch(_fetch_status)
-            self.call_from_thread(self._render_status, ready, keys, None)
-        except Exception as exc:  # noqa: BLE001
-            self.call_from_thread(self._render_status, None, None, str(exc))
-
-    def _render_status(self, ready: dict[str, Any] | None, keys: dict[str, bool] | None, err: str | None) -> None:
-        self._note("")
-        if err:
-            self.query_one("#status-summary", Static).update(f"[bold red]Unavailable:[/bold red] {escape(err)}")
-            for tid in ("#status-checks", "#status-creds", "#status-egress"):
-                self.query_one(tid, DataTable).clear()
-            self.query_one("#status-crawl", Static).update("")
-            return
-        assert ready is not None and keys is not None
-        healthy = ready.get("status") == "UP"
-        mark = "[green]UP[/green]" if healthy else "[red]DOWN[/red]"
-        self.query_one("#status-summary", Static).update(f"Application at [bold]{escape(_base_url())}[/bold]: {mark}")
-        t = self.query_one("#status-checks", DataTable)
-        t.clear()
-        for name, value in (ready.get("checks") or {}).items():
-            ok = str(value).startswith("UP")
-            t.add_row(_cell(name), Text(str(value), style="green" if ok else "yellow"))
-        t = self.query_one("#status-creds", DataTable)
-        t.clear()
-        for name, works in keys.items():
-            t.add_row(
-                _cell(name), Text("accepted", style="green") if works else Text("refused or missing", style="red")
-            )
-        crawler = ready.get("crawler") or {}
-        if crawler.get("state") == "not_started":
-            crawl_text = "[yellow]not started — no counters yet[/yellow]"
-        else:
-            crawl_text = (
-                f"requests {crawler.get('requests', 0)}  refusals {crawler.get('antibot_responses', 0)}  "
-                f"share {_cell(crawler.get('refusal_share', 'n/a'))}  |  "
-                f"pages {crawler.get('pages', 0)}  items {crawler.get('items', 0)}  "
-                f"stale tokens {crawler.get('presets_responses', 0)}"
-            )
-            if retries := crawler.get("retries"):
-                crawl_text += "\nretries: " + ", ".join(f"{r}={c}" for r, c in retries.items())
-        self.query_one("#status-crawl", Static).update(crawl_text)
-        t = self.query_one("#status-egress", DataTable)
-        t.clear()
-        for g in (ready.get("egress") or {}).get("groups") or []:
-            h = Text("healthy", style="green") if g.get("healthy") else Text("unhealthy", style="red")
-            t.add_row(
-                _cell(g.get("group")),
-                _cell(g.get("address") or "unknown"),
-                h,
-                _cell(g.get("isolated")),
-                _cell(g.get("refusal_rate")),
-            )
-
-    @work(thread=True, exclusive=True, group="items")
-    def load_items(self) -> None:
-        self.call_from_thread(self._note, "Loading items…")
-        try:
-            q = self.query_one("#items-q", Input).value or None
-            target = self.query_one("#items-target", Input).value or None
-            sort = self.query_one("#items-sort", Select).value
-            try:
-                page = int(self.query_one("#items-page", Input).value or "0")
-            except ValueError:
-                page = 0
-            try:
-                size = int(self.query_one("#items-size", Input).value or "20")
-            except ValueError:
-                size = 20
-            result = _bridge_fetch(
-                lambda api: _fetch_items(api, target=target, query=q, page=page, page_size=size, sort=str(sort))
-            )
-            self.call_from_thread(self._render_items, result, None)
-        except Exception as exc:  # noqa: BLE001
-            self.call_from_thread(self._render_items, None, str(exc))
-
-    def _render_items(self, result: ItemsPage | None, err: str | None) -> None:
-        self._note("")
-        t = self.query_one("#items-table", DataTable)
-        if err:
-            self.query_one("#items-info", Static).update(f"[red]{escape(err)}[/red]")
-            self._items_urls = []
-            return
-        assert result is not None
-        self.query_one("#items-info", Static).update(
-            f"page {result.page + 1}/{max(1, result.total_pages)} — {result.total_count} total"
-            + (f" (data {_age(result.data_as_of)})" if result.data_as_of else "")
-            + "  [dim](click a row to open)[/dim]"
-        )
-        self._items_urls = [str(item.product_url) for item in result.items]
-        fill(t, items_section(result))
-
     def _open_item_by_row(self, idx: int) -> None:
         """Open the product URL for a table row in the default browser."""
-        urls = getattr(self, "_items_urls", [])
+        urls = self.query_one(ItemsPane).urls
         if idx < 0 or idx >= len(urls):
             return
         now = time.monotonic()
@@ -1648,86 +1785,6 @@ class WbparserApp(App):
     def _open_item_selected(self, event: DataTable.CellSelected) -> None:
         """Open the selected product in the default browser (e.g. Enter)."""
         self._open_item_by_row(event.coordinate.row)
-
-    @work(thread=True, exclusive=True, group="runs")
-    def load_runs(self) -> None:
-        self.call_from_thread(self._note, "Loading runs…")
-        try:
-            data = _bridge_fetch(_fetch_runs)
-            self.call_from_thread(self._render_runs, data, None)
-        except Exception as exc:  # noqa: BLE001
-            self.call_from_thread(self._render_runs, None, str(exc))
-
-    def _render_runs(self, data: dict[str, Any] | None, err: str | None) -> None:
-        self._note("")
-        for tid in ("#runs-targets", "#runs-jobs", "#runs-errors"):
-            self.query_one(tid, DataTable).clear()
-        if err:
-            self._note(f"[red]{escape(err)}[/red]")
-            return
-        assert data is not None
-        sections = runs_sections(data)
-        fill(self.query_one("#runs-targets", DataTable), sections[0])
-        fill(self.query_one("#runs-jobs", DataTable), sections[1])
-        fill(self.query_one("#runs-errors", DataTable), sections[2])
-
-    @work(thread=True, exclusive=True, group="schedule")
-    def load_schedule(self) -> None:
-        self.call_from_thread(self._note, "Loading schedule…")
-        try:
-            data = _bridge_fetch(_fetch_schedule)
-            self.call_from_thread(self._render_schedule, data, None)
-        except Exception as exc:  # noqa: BLE001
-            self.call_from_thread(self._render_schedule, None, str(exc))
-
-    def _render_schedule(self, data: Schedule | None, err: str | None) -> None:
-        self._note("")
-        if err:
-            self.query_one("#schedule-summary", Static).update(f"[red]{escape(err)}[/red]")
-            return
-        assert data is not None
-        nr = data.next_run
-        nr_text = (
-            f"{nr.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')} ({_age(nr)})" if nr else "[yellow]unknown[/yellow]"
-        )
-        summary = (
-            f"tick: {data.cron}  |  freshness: {data.freshness_minutes} min  |  "
-            f"active: {data.active_targets}/{len(data.targets)}  |  due now: {len(data.due)}\n"
-            f"next run: {nr_text}"
-        )
-        if data.earliest_due:
-            summary += f"  |  earliest due {_age(data.earliest_due)}"
-        if data.due:
-            summary += "\n[yellow]a target held by an interrupted run's lease may appear due but be skipped[/yellow]"
-        self.query_one("#schedule-summary", Static).update(summary)
-        sections = schedule_sections(data)
-        fill(self.query_one("#sched-due", DataTable), sections[0])
-        fill(self.query_one("#sched-upcoming", DataTable), sections[1])
-
-    @work(thread=True, exclusive=True, group="history")
-    def load_history(self) -> None:
-        self.call_from_thread(self._note, "Loading history…")
-        try:
-            data = _bridge_fetch(_fetch_history)
-            self.call_from_thread(self._render_history, data, None)
-        except Exception as exc:  # noqa: BLE001
-            self.call_from_thread(self._render_history, None, str(exc))
-
-    def _render_history(self, data: dict[str, Any] | None, err: str | None) -> None:
-        self._note("")
-        if err:
-            self.query_one("#history-summary", Static).update(f"[red]{escape(err)}[/red]")
-            return
-        assert data is not None
-        nr = data["nextRun"]
-        nr_text = (
-            f"{nr.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')} ({_age(nr)})" if nr else "[yellow]unknown[/yellow]"
-        )
-        summary = f"tick: {data['cron']}  |  freshness: {data['freshnessMinutes']} min  |  next run: {nr_text}"
-        if data.get("earliestDue"):
-            summary += f"  |  earliest due {_age(data['earliestDue'])}"
-        self.query_one("#history-summary", Static).update(summary)
-        fill(self.query_one("#history-table", DataTable), history_section(data["jobs"]))
 
     @work(thread=True, exclusive=True, group="logs")
     def load_logs(self) -> None:
@@ -1790,7 +1847,7 @@ class WbparserApp(App):
             self.call_from_thread(log.write, f"[green]✔ {action} finished[/green]")
         except Exception as exc:  # noqa: BLE001
             self.call_from_thread(log.write, f"[red]✖ {action}: {escape(str(exc))}[/red]")
-        self.call_from_thread(self.load_status)
+        self.call_from_thread(self._reload_status)
 
     def _stream_cmd(self, argv: list[str], log: RichLog, env: dict[str, str] | None = None) -> int:
         proc = subprocess.Popen(argv, cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
@@ -1809,7 +1866,7 @@ class WbparserApp(App):
         rc = self._stream_cmd(["docker", "compose", "up", "-d"], log)
         if rc != 0:
             raise Unusable(f"docker compose up failed (exit {rc})")
-        if not _bridge_fetch(lambda api: _wait_ready(api, 180)):
+        if not asyncio.run(_with_api(lambda api: _wait_ready(api, 180))):
             raise Unusable("application did not become ready in time")
         self.call_from_thread(log.write, f"ready at {_base_url()}")
 

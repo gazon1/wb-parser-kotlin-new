@@ -80,8 +80,8 @@ from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 # The browser is imported where it is launched, not at module load: the gate that runs
-# the pure parts of this file (`python3 -m unittest discover -s scripts/tests`) runs on a
-# bare Python, and a Camoufox install is not something `static` should need.
+# the pure parts of this file (`uv run pytest scripts/tests`) needs no browser, and a
+# Camoufox install is not something `static` should need.
 Camoufox = None
 
 API = "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search"

@@ -62,7 +62,8 @@ class TestDiscoveryIsNotVacuous(unittest.TestCase):
     about, reproduced inside the fix for it.
 
     So this asserts that discovery finds tests, rather than trusting the exit
-    code that `static-gates.sh` uses.
+    code. The gate itself runs pytest, which exits 5 when it collects nothing;
+    this guards the unittest runner, which exits 0 in that case.
     """
 
     def test_discovery_finds_this_suite(self):
@@ -71,7 +72,7 @@ class TestDiscoveryIsNotVacuous(unittest.TestCase):
         self.assertGreater(
             suite.countTestCases(),
             0,
-            "unittest discovery found no tests; the gate that runs them would pass vacuously",
+            "unittest discovery found no tests; a run of it would pass vacuously",
         )
 
     def test_this_file_declares_a_main(self):
@@ -1028,6 +1029,74 @@ class TestActionPinsGateCanFail(unittest.TestCase):
             check=False,
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
+
+
+class TestTheTestSuiteGateIsRecognisedByWhatItRuns(unittest.TestCase):
+    """The gate that runs the suite is exempt from needing a `--self-test`.
+
+    Its control is the suite itself, so the wiring checker has to recognise it —
+    and it has to recognise it by what the command *runs*, not by what the command
+    says. `echo pytest scripts/tests` names the suite and runs nothing: a gate
+    like that would be "proved" while testing nothing at all.
+    """
+
+    def setUp(self):
+        self.wiring = load("gate_wiring", "check-gate-wiring.py")
+
+    def test_the_registry_gate_runs_the_suite(self):
+        gates = self.wiring.read_registry()
+        suite_gates = [command for _mode, name, command in gates if "unit tests" in name]
+        self.assertTrue(suite_gates, "the registry has no gate for the scripts' own tests")
+        for command in suite_gates:
+            self.assertTrue(self.wiring.runs_the_test_suite(command), command)
+
+    def test_a_command_that_merely_names_the_suite_does_not_run_it(self):
+        self.assertFalse(self.wiring.runs_the_test_suite(["echo", "pytest", "scripts/tests"]))
+        self.assertTrue(self.wiring.mentions_the_test_suite(["echo", "pytest", "scripts/tests"]))
+
+    def test_uv_run_echo_does_not_run_the_test_suite(self):
+        """`uv run echo pytest scripts/tests` starts echo — the words are not the run."""
+        self.assertFalse(self.wiring.runs_the_test_suite(["uv", "run", "echo", "pytest", "scripts/tests"]))
+
+    def test_both_runners_are_recognised(self):
+        self.assertTrue(self.wiring.runs_the_test_suite(["uv", "run", "pytest", "scripts/tests", "--quiet"]))
+        self.assertTrue(self.wiring.runs_the_test_suite(["uvx", "pytest", "scripts/tests"]))
+        self.assertTrue(self.wiring.runs_the_test_suite(["pytest", "scripts/tests"]))
+        self.assertTrue(self.wiring.runs_the_test_suite(["python", "-m", "pytest", "scripts/tests"]))
+        self.assertTrue(
+            self.wiring.runs_the_test_suite(["python", "-m", "unittest", "discover", "-s", "scripts/tests"])
+        )
+
+    def test_a_runner_flag_does_not_hide_the_program_behind_it(self):
+        self.assertTrue(self.wiring.runs_the_test_suite(["uv", "run", "--frozen", "pytest", "scripts/tests"]))
+
+    def test_a_runner_flag_that_takes_a_value_does_not_hide_the_program(self):
+        """`--with pytest` names pytest as the flag's value, not as the program."""
+        self.assertFalse(self.wiring.runs_the_test_suite(["uv", "run", "--with", "pytest", "scripts/tests"]))
+        self.assertTrue(self.wiring.runs_the_test_suite(["uv", "run", "--with", "pytest", "pytest", "scripts/tests"]))
+
+    def test_a_command_form_the_checker_does_not_know_does_not_run_the_suite(self):
+        """Only the known forms count; anything else is rejected, not assumed."""
+        self.assertFalse(self.wiring.runs_the_test_suite(["make", "test"]))
+        self.assertFalse(self.wiring.runs_the_test_suite(["bash", "-c", "pytest scripts/tests"]))
+        self.assertFalse(self.wiring.runs_the_test_suite(["uv", "run"]))
+        self.assertFalse(self.wiring.runs_the_test_suite([]))
+
+    def test_the_registry_is_read_with_the_shell_s_rules(self):
+        """A quoted argument keeps its spaces: the checker must see the runner's command."""
+        gates = self.wiring.read_registry()
+        by_name = {name: command for _mode, name, command in gates}
+        ratchet = by_name["detekt baseline may shrink only"]
+        self.assertIn("--reason", ratchet)
+        reason = ratchet[ratchet.index("--reason") + 1]
+        self.assertIn(" ", reason, reason)
+        self.assertNotIn('"', reason, reason)
+
+    def test_a_gate_that_only_names_the_suite_is_a_finding(self):
+        gates = [("blocking", "gate scripts' own unit tests", ["echo", "pytest", "scripts/tests"])]
+        findings = self.wiring.part_f(gates)
+        self.assertTrue(findings, "a gate that names the suite but runs nothing must be reported")
+        self.assertIn("does not run it", findings[0])
 
 
 if __name__ == "__main__":

@@ -80,6 +80,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -115,6 +116,22 @@ CONTROL_EXEMPTIONS = GATE_DIR / "control-exemptions.tsv"
 #: Gradle tasks that represent a check. A module that configures one of these
 #: and is not named by any gate has a decorative configuration.
 CHECK_TASKS = {"test", "check", "build", "detekt", "ktlintCheck"}
+
+#: The gate that runs the scripts' own tests, by the runner it invokes. Its
+#: control is the suite itself — a failing test fails the gate. Both runners
+#: are named because the gate moved from `unittest discover` to pytest, and the
+#: pytest-style tests are exactly the ones `unittest discover` never ran.
+TEST_SUITE_MARKERS = ("unittest discover", "pytest scripts/tests")
+
+#: The runner flags that take a value, so the program behind them is not mistaken
+#: for one of those values.
+RUNNER_VALUE_FLAGS = ("--with", "--python", "--directory", "--project", "--index", "--index-url")
+
+#: The programs that can run the scripts' own test suite. A command that starts
+#: anything else runs something else, however many of the suite's words it
+#: carries — `uv run echo pytest scripts/tests` starts echo.
+TEST_PROGRAMS = ("pytest", "unittest")
+
 
 #: Plugins whose application creates a check task worth demanding a gate for.
 PLUGIN_TASKS = {
@@ -152,10 +169,19 @@ class CannotRun(Exception):
 
 
 def read_registry() -> list[tuple[str, str, list[str]]]:
+    """The gates the registry declares, with their commands split into arguments.
+
+    The split is `shlex.split`, not `str.split`, because the registry is a
+    shell registry: `bash -c 'test ! -e CHANGELOG.md'` and
+    `--reason "pre-existing: …"` carry spaces inside quotes, and `str.split`
+    tears them into fragments the shell would never have produced. The parser
+    has to see the command the runner sees, or it is checking a different
+    command than the one that runs.
+    """
     if not REGISTRY.exists():
         raise CannotRun(f"{REGISTRY.relative_to(ROOT)} does not exist")
     gates: list[tuple[str, str, list[str]]] = []
-    for line in REGISTRY.read_text(encoding="utf-8").splitlines():
+    for lineno, line in enumerate(REGISTRY.read_text(encoding="utf-8").splitlines(), 1):
         stripped = line.strip()
         if stripped.startswith("#"):
             continue
@@ -163,7 +189,11 @@ def read_registry() -> list[tuple[str, str, list[str]]]:
         if not match:
             continue
         mode, name, command = match.groups()
-        gates.append((mode, name, command.split()))
+        try:
+            arguments = shlex.split(command)
+        except ValueError as exc:
+            raise CannotRun(f"{REGISTRY.relative_to(ROOT)}:{lineno}: cannot read the gate command: {exc}") from exc
+        gates.append((mode, name, arguments))
     if not gates:
         raise CannotRun(f"no gate lines found in {REGISTRY.relative_to(ROOT)}")
     return gates
@@ -429,6 +459,86 @@ def gradle_tasks_on_line(line: str) -> set[str]:
     return tasks
 
 
+def mentions_the_test_suite(command: list[str]) -> bool:
+    """Does the command name the scripts' test suite at all?"""
+    if _names_the_suite(command):
+        return True
+    joined = " ".join(command)
+    return any(marker in joined for marker in TEST_SUITE_MARKERS)
+
+
+def runs_the_test_suite(command: list[str]) -> bool:
+    """
+    Does the command actually run the scripts' own test suite?
+
+    Naming the suite is not running it, and neither is naming a runner: `uv run
+    echo pytest scripts/tests` starts `echo`. The command is read as the chain it
+    is — `uv run <program>`, `uvx <program>`, `python -m <module>` — and the
+    program behind it has to be pytest (or `unittest discover`) with the suite as
+    its argument. A form this function does not know is not running the suite.
+    """
+    if not command:
+        return False
+    runner = Path(command[0]).name
+    if runner not in ("uv", "uvx"):
+        return _runs_the_suite(command)
+    rest = command[1:]
+    if runner == "uv":
+        if not rest or rest[0] != "run":
+            return False
+        rest = rest[1:]
+    return _runs_the_suite(_program_behind(rest))
+
+
+def _runs_the_suite(tokens: list[str]) -> bool:
+    """Does this tool invocation run the suite?
+
+    The two known forms: pytest with the suite among its arguments, and
+    `unittest discover` with the suite among its arguments — the runner before
+    pytest, still a form of the same gate.
+    """
+    if not tokens:
+        return False
+    name = Path(tokens[0]).name
+    if name == "pytest":
+        return _names_the_suite(tokens[1:])
+    module, arguments = _python_module(tokens)
+    if module == "pytest":
+        return _names_the_suite(arguments)
+    if module == "unittest":
+        return "discover" in arguments and _names_the_suite(arguments)
+    return False
+
+
+def _python_module(tokens: list[str]) -> tuple[str, list[str]]:
+    """The `-m` module of a python invocation and the arguments after it."""
+    if not tokens or Path(tokens[0]).name not in ("python", "python3"):
+        return ("", [])
+    rest = tokens[1:]
+    if not rest or rest[0] != "-m":
+        return ("", [])
+    module = rest[1] if len(rest) > 1 else ""
+    return (module, rest[2:])
+
+
+def _program_behind(tokens: list[str]) -> list[str]:
+    """The tokens of the program a runner starts, past the runner's own flags."""
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if not token.startswith("-"):
+            break
+        index += 1
+        if token in RUNNER_VALUE_FLAGS:
+            index += 1
+    return tokens[index:]
+
+
+def _names_the_suite(arguments: list[str]) -> bool:
+    """Is the suite among these arguments?"""
+    return any(arg == "scripts/tests" or arg.startswith("scripts/tests/") for arg in arguments)
+
+
 def gate_script(command: list[str]) -> Path | None:
     """The script a gate invokes, if it invokes one.
 
@@ -456,7 +566,13 @@ def part_f(gates: list[tuple[str, str, list[str]]]) -> list[str]:
 
     for _, name, command in gates:
         joined = " ".join(command)
-        if "unittest discover" in joined:
+        if runs_the_test_suite(command):
+            continue
+        if mentions_the_test_suite(command):
+            findings.append(
+                f"Part F: gate `{name}` names the scripts' test suite but does not run it. A command "
+                "that only mentions the suite proves nothing — the gate must invoke the runner on it."
+            )
             continue
         script = gate_script(command)
         has_self_test = "--self-test" in joined or (
@@ -509,8 +625,7 @@ def part_b(gates: list[tuple[str, str, list[str]]]) -> list[str]:
     ran = 0
 
     for _mode, name, command in gates:
-        joined = " ".join(command)
-        if "unittest discover" in joined:
+        if runs_the_test_suite(command):
             # The unit-test gate proves itself by failing when a test fails.
             # Its own trap — a suite that discovers zero tests and exits 0 — is
             # guarded inside scripts/tests/test_gate_scripts.py.

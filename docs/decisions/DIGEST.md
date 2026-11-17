@@ -601,6 +601,18 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** hand-edit `scripts/parser/catalog_models.py`; the next generation overwrites it, and the CI diff check would fail on an edit that kept the marker. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 - **Never** let the recorded `# source-sha256` marker drift from the command that writes it; it is the only offline evidence that the models match the contract. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 - **Never** widen the generation to `paths` without deciding what to do with the operational bodies it brings in. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Always** give a read-only tab a pane, not a `load_*` / `_render_*` pair on the app. A tab's data, its loading state and its error belong to the tab. _(from `2026-11-17-the-read-only-tabs-are-panes`)
+- **Always** prepare a pane's content before touching its widgets. The base class cannot roll a widget back, so a malformed answer has to fail while the content is built — otherwise a failed draw leaves the screen half-updated. _(from `2026-11-17-the-read-only-tabs-are-panes`)
+- **Always** press a pane's button in a test of its refresh, rather than calling the method behind it. The method and the button are two paths, and only the button is the one the operator uses. _(from `2026-11-17-the-read-only-tabs-are-panes`)
+- **Always** read a filter from its widget inside `fetch()`, on the app's event loop; a widget read from a worker thread is a widget read while it may change. _(from `2026-11-17-the-read-only-tabs-are-panes`)
+- **Never** add a per-tab branch to `_refresh_tab` or `_on_button`. The registry is the map; a branch is a tab the app knows about twice. _(from `2026-11-17-the-read-only-tabs-are-panes`)
+- **Never** let a failed refresh empty the pane. The error belongs in the status line and the last good data stays on screen. _(from `2026-11-17-the-read-only-tabs-are-panes`)
+- **Never** let a pane refresh itself on a timer. The app knows which tab is visible, and only the app can aim a refresh at it. _(from `2026-11-17-the-read-only-tabs-are-panes`)
+- **Always** keep `scripts/tests/test_gate_scripts.py` green. It is the guard against a suite that reports success having verified nothing. _(from `2026-11-17-the-test-gate-runs-the-suite-that-exists`)
+- **Always** write a test in `scripts/tests/` in the shape the gate's runner collects, and check that it is collected: a test the pipeline never executes guards nothing, whatever the local run says. _(from `2026-11-17-the-test-gate-runs-the-suite-that-exists`)
+- **Never** let a gate be recognised by a phrase in its command. A gate is recognised by what it runs. _(from `2026-11-17-the-test-gate-runs-the-suite-that-exists`)
+- **Never** rely on `unittest discover` to find the suite: it does not collect plain test functions, and it exits 0 when it finds nothing. _(from `2026-11-17-the-test-gate-runs-the-suite-that-exists`)
+- **Never** treat a green gate as proof that a suite ran. Ask what the runner collected; if the answer is "the classes and not the functions", the gate is guarding a subset. _(from `2026-11-17-the-test-gate-runs-the-suite-that-exists`)
 
 ## Per-tag
 
@@ -1284,6 +1296,8 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — architecture  browser  antibot  boundaries  operations
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — browser  antibot  egress  architecture
 - `2026-11-17-the-python-catalog-models-are-generated` — contract  python
+- `2026-11-17-the-read-only-tabs-are-panes` — python  tui
+- `2026-11-17-the-test-gate-runs-the-suite-that-exists` — gates  python
 
 ## Active entries
 
@@ -1412,3 +1426,5 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — Локальный браузер живёт в persistent-контексте профиля, а каталог занят на время его жизни
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — Состояние профиля выводится, а отказ, throttling и сбой сервера считаются врозь
 - `2026-11-17-the-python-catalog-models-are-generated` — The operator CLI's catalog models are generated from the contract, the admin models are not
+- `2026-11-17-the-read-only-tabs-are-panes` — The read-only tabs are panes, and the app refreshes only the active one
+- `2026-11-17-the-test-gate-runs-the-suite-that-exists` — The scripts' test gate runs pytest, so the gate guards the suite that exists

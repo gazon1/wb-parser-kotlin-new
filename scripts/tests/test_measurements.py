@@ -18,9 +18,8 @@ The tests below are the pure part: no browser, no network, no database. The gate
 own `--self-test` proves the end-to-end behaviour on a deliberately broken fixture.
 
 Written on `unittest.TestCase` by the convention of the neighbouring tests: the same
-file runs under the gate (`python3 -m unittest discover -s scripts/tests`) and under
-pytest. It imports nothing outside the standard library — the gate's Python has no
-`click` and no `PyYAML`.
+file runs under the gate (`uv run pytest scripts/tests`). It imports nothing outside
+the standard library — the gate's Python needs no `click` and no `PyYAML`.
 """
 
 import importlib.util

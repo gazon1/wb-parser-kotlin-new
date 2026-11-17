@@ -17,9 +17,8 @@ ended, where the number came from, and which WB subject the catalog's products c
 This module is the pure part of that. It decides what a target's measurement metadata
 is, reduces a run of measurements to the artifact the repository keeps, and compares
 the YAML with the artifact. It imports nothing outside the standard library: the gate
-that runs the tests (`python3 -m unittest discover -s scripts/tests`) runs on a bare
-Python without `click` or `PyYAML`, and the CI `static` job runs the gate itself on
-such a Python too.
+that runs the tests (`uv run pytest scripts/tests`) needs neither `click` nor
+`PyYAML`, and the CI `static` job runs that gate too.
 
 The policy: the maximum, never the last
 ----------------------------------------
