@@ -51,7 +51,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import subprocess
 import sys
 import time
 import webbrowser
@@ -66,6 +65,11 @@ from typing import Annotated, Any, TypeVar
 try:
     import click
     import httpx
+
+    # The one way a child process is started in this tool: argv, no shell, and the
+    # child's life owned by the call that started it. It knows nothing about Rich,
+    # Textual or the crawler.
+    import proc
     import simplejson
     import typer
 
@@ -86,6 +90,8 @@ try:
     from textual.app import App, ComposeResult
     from textual.binding import Binding
     from textual.containers import Horizontal, Vertical
+    from textual.message import Message
+    from textual.screen import ModalScreen
     from textual.widgets import (
         Button,
         DataTable,
@@ -98,12 +104,19 @@ try:
         TabbedContent,
         TabPane,
     )
+    from textual.worker import Worker
 except ModuleNotFoundError as missing:  # pragma: no cover - a wrong interpreter, not a code path
     if missing.name == "catalog_models":
         raise SystemExit(
             "error: catalog_models.py is missing next to this script.\n"
             "It is generated from the contract, not installed — restore it with:\n"
             "  just parser::models"
+        ) from missing
+    if missing.name == "proc":
+        raise SystemExit(
+            "error: proc.py is missing next to this script.\n"
+            "It is the subprocess layer and it is not installed — restore it with:\n"
+            "  git checkout scripts/parser/proc.py"
         ) from missing
     # A bare `python3 script.py` does not read `pyproject.toml`, so the dependencies are
     # simply absent. Saying that beats a traceback that ends in "No module named
@@ -545,46 +558,39 @@ def _headline(text: str) -> None:
     console.print(f"\n[bold]{escape(text)}[/bold]")
 
 
-# ── docker ───────────────────────────────────────────────────────────────────
+def _console_say(text: str) -> None:
+    """Print one line of an action's output. The CLI half of the `say` callback."""
+    console.print(text)
 
 
-def _run(argv: list[str], *, live: bool = False) -> subprocess.CompletedProcess[str]:
-    """
-    Run a command in the repository root.
+# ── the commands that start something ────────────────────────────────────────
+#
+# The argv of every child process this tool starts. They live in one place so
+# that a rule — where compose looks for its file, which profile the crawl runs
+# under — is written once.
 
-    `live=True` inherits the terminal: a multi-minute Gradle build prints as it goes,
-    and capturing it would hide the progress *and* the reason it failed. Everything else
-    is captured, so a failure can quote what the command actually said — with the stream
-    inherited, `stderr` is empty and the message has nothing to quote.
-    """
+
+def _gradle_command() -> list[str]:
+    """The command that builds the jar."""
+    return [str(ROOT / "gradlew"), ":app:bootJar", "--no-daemon"]
+
+
+def _compose_command(*argv: str) -> list[str]:
+    """The command that talks to the stack. Compose finds `docker-compose.yml` in the working directory."""
+    return ["docker", "compose", *argv]
+
+
+def _java_command() -> list[str]:
+    """The command that runs exactly one crawl."""
+    return ["java", "-jar", str(JAR), "--spring.profiles.active=once"]
+
+
+def _jar_label() -> str:
+    """The jar's path, relative to the repository when it sits inside it."""
     try:
-        completed = subprocess.run(  # noqa: S603 - argv is built here, never from user input
-            argv, cwd=ROOT, text=True, capture_output=not live, check=False
-        )
-    except FileNotFoundError as error:
-        raise Unusable(f"'{argv[0]}' is not installed") from error
-    if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout or "").strip()
-        raise Unusable(f"`{' '.join(argv[:4])}` failed: {detail[:300] or 'no output'}")
-    if not live and completed.stdout.strip():
-        console.print(completed.stdout.rstrip(), style="dim")
-    return completed
-
-
-def _compose(*argv: str, live: bool = False) -> subprocess.CompletedProcess[str]:
-    # Compose finds `docker-compose.yml` in the working directory, so no `-f` is needed.
-    return _run(["docker", "compose", *argv], live=live)
-
-
-def _running(service: str) -> bool:
-    completed = subprocess.run(
-        ["docker", "compose", "ps", "--status", "running", "--services"],
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    return service in completed.stdout.split()
+        return str(JAR.relative_to(ROOT))
+    except ValueError:
+        return str(JAR)
 
 
 # ── sections ──────────────────────────────────────────────────────────────────
@@ -690,6 +696,155 @@ def history_section(jobs: list[Job]) -> Section:
     )
 
 
+# ── actions ──────────────────────────────────────────────────────────────────
+#
+# The three things an operator can do to the stack: up, down, crawl. The CLI and
+# the TUI call the same functions, so the rules — how the jar is built, what the
+# crawl's environment is, when the stack is ready — live in one place.
+#
+# An action reports through a callback and returns an exit code. The callback is
+# the only difference between the two front ends: a Rich console in the CLI, a
+# RichLog in the TUI.
+
+
+async def _stream(say: Callable[[str], None], *argv: str, env: dict[str, str] | None = None) -> int:
+    """
+    Run a command and hand its output to the operator, line by line, as it arrives.
+
+    The child's own output is escaped: a log line that looks like markup is a log
+    line, not a style.
+    """
+    try:
+        return await proc.stream(lambda line: say(escape(line)), *argv, env=env)
+    except proc.ProcError as error:
+        raise Unusable(str(error)) from error
+
+
+async def _running(service: str) -> bool:
+    """Whether a compose service is running right now."""
+    try:
+        result = await proc.sh(*_compose_command("ps", "--status", "running", "--services"))
+    except proc.ProcError as error:
+        raise Unusable(str(error)) from error
+    return service in result.stdout.split()
+
+
+async def _wait_ready(timeout: int) -> bool:
+    """
+    Wait until the application answers as ready. `False` when it did not in time.
+
+    The polling lives inside one coroutine: the loop is the action's, and the
+    clients it uses are closed when the action ends.
+    """
+    async with Api() as api:
+        deadline = time.monotonic() + timeout
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return False
+            try:
+                if (await api.get("/api/health/ready")).get("status") == "UP":
+                    return True
+            except Unusable:
+                pass
+            # The wait ends at the deadline, not two seconds after it.
+            await asyncio.sleep(min(2, remaining))
+
+
+def _crawl_env() -> dict[str, str]:
+    """
+    The environment one crawl runs in.
+
+    `env=` replaces the environment rather than extending it, so PATH, HOME and
+    JAVA_HOME have to be carried over explicitly: without them `java` is found only
+    because it happens to sit in /usr/bin, and a JDK-managed one is not found at all.
+    """
+    file_env = _env()
+    env = {
+        **os.environ,
+        **file_env,
+        "SPRING_PROFILES_ACTIVE": "once",
+        "CAMOUFOX_HOME": file_env.get("CAMOUFOX_HOME") or str(Path.home() / ".cache" / "camoufox"),
+        "PROFILES_DIR": file_env.get("PROFILES_DIR") or str(Path.home() / ".wbparser" / "profiles"),
+    }
+    env.setdefault("DB_HOST", "localhost")
+    env.setdefault("DB_PORT", "5433")
+    env.setdefault("DB_NAME", "wbparser")
+    env.setdefault("DB_USER", "postgres")
+    return env
+
+
+async def action_up(say: Callable[[str], None], *, build: bool = False, timeout: int = 180) -> int:
+    """Start the stack (Postgres + the application) and wait until it can serve."""
+    rebuilt = build or not JAR.is_file()
+    if rebuilt:
+        say("building the jar…")
+        if await _stream(say, *_gradle_command()) != 0:
+            raise Unusable("the jar build failed")
+    else:
+        say(f"[dim]reusing {_jar_label()} (rebuild with --build)[/dim]")
+
+    say("starting the stack…")
+    # When the jar was rebuilt, recreate the app container so it picks up the new
+    # bind-mounted jar (the debug stack mounts the jar as a file, and a rebuilt jar
+    # can leave the running JVM reading a stale/corrupt archive).
+    compose = _compose_command("up", "-d", *(["--force-recreate", "app"] if rebuilt else []))
+    if await _stream(say, *compose) != 0:
+        raise Unusable("`docker compose up` failed")
+
+    if not await _wait_ready(timeout):
+        say(f"{_mark(False)} the application did not become ready in {timeout}s")
+        say("[dim]see what it said: wbparser logs -n 50[/dim]")
+        return EXIT_WRONG
+
+    say(f"{_mark(True)} ready at {_base_url()}")
+    return EXIT_OK
+
+
+async def action_down(say: Callable[[str], None], *, volumes: bool = False) -> int:
+    """Stop the stack. The database volume is kept unless it is asked for."""
+    if volumes:
+        say("[yellow]![/yellow] removing the database volume — every scraped row is lost")
+    if await _stream(say, *_compose_command("down", *(["-v"] if volumes else []))) != 0:
+        raise Unusable("`docker compose down` failed")
+    say(f"{_mark(True)} stopped" + (" (volume removed)" if volumes else " (volume kept)"))
+    return EXIT_OK
+
+
+async def action_crawl(say: Callable[[str], None]) -> int:
+    """
+    Run exactly one crawl, in the foreground, and report the exit code.
+
+    The `once` profile switches the web server and the security config off, so a crawl
+    runs on a machine that has no API keys at all.
+    """
+    if not JAR.is_file():
+        raise Unusable(f"{_jar_label()} is missing — run `wbparser up` first")
+    if not await _running("postgres"):
+        raise Unusable("the database is not running — start it with `wbparser up`")
+
+    env = _crawl_env()
+    say(f"crawling once against {env['DB_HOST']}:{env['DB_PORT']}/{env['DB_NAME']}…")
+    code = await _stream(say, *_java_command(), env=env)
+    reasons = {
+        0: "a crawl ran and succeeded",
+        1: "a crawl ran and failed",
+        2: "no crawl ran — the advisory lock is held elsewhere",
+        3: "the crawl was cancelled",
+    }
+    say(f"{_mark(code == EXIT_OK)} exit {code}: {reasons.get(code, 'an unexpected exit')}")
+    return EXIT_OK if code == EXIT_OK else EXIT_WRONG
+
+
+# The actions the operator can start, by name. The TUI's buttons and the CLI's
+# commands both come from here.
+_ACTIONS: dict[str, Callable[[Callable[[str], None]], Awaitable[int]]] = {
+    "up": action_up,
+    "down": action_down,
+    "crawl": action_crawl,
+}
+
+
 # ── commands ─────────────────────────────────────────────────────────────────
 
 
@@ -714,52 +869,15 @@ def _global_options(
         WbparserApp().run()
 
 
-async def _wait_ready(api: Api, timeout: int) -> bool:
-    """Wait until the application answers as ready. `False` when it did not in time."""
-    deadline = time.monotonic() + timeout
-    while True:
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return False
-        try:
-            if (await api.get("/api/health/ready")).get("status") == "UP":
-                return True
-        except Unusable:
-            pass
-        # The wait ends at the deadline, not two seconds after it.
-        await asyncio.sleep(min(2, remaining))
-
-
 @app.command()
 def up(
     build: Annotated[bool, typer.Option("--build", help="rebuild the jar even if one exists")] = False,
     timeout: Annotated[int, typer.Option(help="seconds to wait for readiness")] = 180,
 ) -> None:
     """Start the stack (Postgres + the application) and wait until it can serve."""
-    rebuilt = build or not JAR.is_file()
-    if rebuilt:
-        console.print("building the jar…")
-        _run([str(ROOT / "gradlew"), ":app:bootJar", "--no-daemon"], live=True)
-    else:
-        console.print(f"[dim]reusing {JAR.relative_to(ROOT)} (rebuild with --build)[/dim]")
-
-    console.print("starting the stack…")
-    # When the jar was rebuilt, recreate the app container so it picks up the new
-    # bind-mounted jar (the debug stack mounts the jar as a file, and a rebuilt jar
-    # can leave the running JVM reading a stale/corrupt archive).
-    up_args = ["up", "-d"]
-    if rebuilt:
-        up_args.extend(["--force-recreate", "app"])
-    _compose(*up_args)
-
-    # The polling lives inside one coroutine: the loop is the command's, and the
-    # clients it uses are closed when the command ends.
-    if not asyncio.run(_with_api(lambda api: _wait_ready(api, timeout))):
-        console.print(f"{_mark(False)} the application did not become ready in {timeout}s")
-        console.print("[dim]see what it said: wbparser logs -n 50[/dim]")
-        raise typer.Exit(EXIT_WRONG)
-
-    console.print(f"{_mark(True)} ready at {_base_url()}")
+    code = asyncio.run(action_up(_console_say, build=build, timeout=timeout))
+    if code != EXIT_OK:
+        raise typer.Exit(code)
     console.print(
         f"  health   {_base_url()}/api/health/ready\n"
         f"  catalog  {_base_url()}/api/catalog/v1/stats  (X-Api-Key)\n"
@@ -774,10 +892,9 @@ def down(
     volumes: Annotated[bool, typer.Option("--volumes", help="also delete the database volume")] = False,
 ) -> None:
     """Stop the stack. The database volume is kept unless --volumes is given."""
-    if volumes:
-        console.print("[yellow]![/yellow] removing the database volume — every scraped row is lost")
-    _compose("down", *(["-v"] if volumes else []))
-    console.print(f"{_mark(True)} stopped" + (" (volume removed)" if volumes else " (volume kept)"))
+    code = asyncio.run(action_down(_console_say, volumes=volumes))
+    if code != EXIT_OK:
+        raise typer.Exit(code)
 
 
 async def _fetch_status(api: Api) -> tuple[dict[str, Any], dict[str, bool]]:
@@ -853,45 +970,9 @@ def crawl() -> None:
     The `once` profile switches the web server and the security config off, so a crawl
     runs on a machine that has no API keys at all.
     """
-    if not JAR.is_file():
-        raise Unusable(f"{JAR.relative_to(ROOT)} is missing — run `wbparser up` first")
-    if not _running("postgres"):
-        raise Unusable("the database is not running — start it with `wbparser up`")
-
-    # `env=` REPLACES the environment rather than extending it, so PATH, HOME and
-    # JAVA_HOME have to be carried over explicitly: without them `java` is found only
-    # because it happens to sit in /usr/bin, and a JDK-managed one is not found at all.
-    env = {
-        **os.environ,
-        **_env(),
-        "SPRING_PROFILES_ACTIVE": "once",
-        "CAMOUFOX_HOME": _env().get("CAMOUFOX_HOME") or str(Path.home() / ".cache" / "camoufox"),
-        "PROFILES_DIR": _env().get("PROFILES_DIR") or str(Path.home() / ".wbparser" / "profiles"),
-    }
-    env.setdefault("DB_HOST", "localhost")
-    env.setdefault("DB_PORT", "5433")
-    env.setdefault("DB_NAME", "wbparser")
-    env.setdefault("DB_USER", "postgres")
-
-    console.print(f"crawling once against {env['DB_HOST']}:{env['DB_PORT']}/{env['DB_NAME']}…")
-    completed = subprocess.run(  # noqa: S603 - a fixed argv
-        ["java", "-jar", str(JAR), "--spring.profiles.active=once"],
-        cwd=ROOT,
-        env=env,
-        text=True,
-        check=False,
-    )
-    codes = {
-        0: "a crawl ran and succeeded",
-        1: "a crawl ran and failed",
-        2: "no crawl ran — the advisory lock is held elsewhere",
-        3: "the crawl was cancelled",
-    }
-    reason = codes.get(completed.returncode, "an unexpected exit")
-    mark = _mark(completed.returncode == EXIT_OK)
-    console.print(f"{mark} exit {completed.returncode}: {reason}")
-    if completed.returncode != EXIT_OK:
-        raise typer.Exit(EXIT_WRONG)
+    code = asyncio.run(action_crawl(_console_say))
+    if code != EXIT_OK:
+        raise typer.Exit(code)
 
 
 class Sort(StrEnum):
@@ -1332,6 +1413,125 @@ class StatsPane(Pane):
             table.add_row(*row)
 
 
+class ConfirmDown(ModalScreen[bool]):
+    """
+    The operator's confirmation: the stack stops only when they say so.
+
+    The button is a stop, not a delete: the database volume is kept, and the answer
+    is a plain yes or no — anything else (Escape) counts as no.
+    """
+
+    DEFAULT_CSS = """
+    ConfirmDown > Vertical {
+        width: 60;
+        height: auto;
+        border: round $warning;
+        background: $surface;
+        padding: 1 2;
+    }
+    ConfirmDown Horizontal {
+        height: auto;
+        align: right middle;
+    }
+    """
+
+    BINDINGS = [Binding("escape", "refuse", "Keep running")]
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Static("Stop the stack?\n\nThe database volume is kept — nothing is deleted.")
+            with Horizontal():
+                yield Button("Stop", id="confirm-stop", variant="warning")
+                yield Button("Keep running", id="confirm-keep")
+
+    @on(Button.Pressed)
+    def _on_button(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "confirm-stop")
+
+    def action_refuse(self) -> None:
+        """Escape is a refusal: the stack keeps running, and nothing is started."""
+        self.dismiss(False)
+
+
+class Actions(Horizontal):
+    """
+    The stack actions — Up, Down, Crawl — as buttons that run one at a time.
+
+    The buttons call the shared actions in a worker, so the event loop keeps
+    running while Gradle builds or a crawl runs: the screen stays alive, and
+    cancelling the worker stops the child process instead of leaving it behind.
+
+    Down asks first: the stack stops only when the operator confirms it.
+    """
+
+    class Finished(Message):
+        """An action has finished: its name and its exit code."""
+
+        def __init__(self, action: str, code: int) -> None:
+            super().__init__()
+            self.action = action
+            self.code = code
+
+    DEFAULT_CSS = """
+    Actions { height: auto; }
+    """
+
+    def compose(self) -> ComposeResult:
+        yield Button("Up", id="btn-up")
+        yield Button("Down", id="btn-down", variant="warning")
+        yield Button("Crawl once", id="btn-crawl")
+
+    def _say(self, text: str) -> None:
+        self.screen.query_one("#activity-log", RichLog).write(text)
+
+    @on(Button.Pressed)
+    def _on_button(self, event: Button.Pressed) -> None:
+        action = {"btn-up": "up", "btn-down": "down", "btn-crawl": "crawl"}.get(event.button.id or "")
+        if action is not None:
+            # The buttons wait for the action, and they wait from the click: a second
+            # click must not start a second action.
+            self._set_enabled(False)
+            if action == "down":
+                # The stack stops only when the operator confirms it.
+                self.app.push_screen(ConfirmDown(), self._on_confirmed)
+            else:
+                self.run_action(action)
+
+    def _on_confirmed(self, confirmed: bool | None) -> None:
+        """The operator answered the confirmation: yes starts the stop, no changes nothing."""
+        if confirmed:
+            self.run_action("down")
+            return
+        self._say("down was not confirmed — the stack was left running")
+        self._set_enabled(True)
+
+    @work(group="action")
+    async def run_action(self, action: str) -> None:
+        """Run one action. The buttons wait for it, and the child process dies with the worker."""
+        self._say(f"[bold]▶ {action}[/bold]")
+        try:
+            code = await _ACTIONS[action](self._say)
+        except Unusable as error:
+            self._say(f"[red]✖ {action}: {escape(str(error))}[/red]")
+            code = EXIT_UNUSABLE
+        except asyncio.CancelledError:
+            self._say(f"[yellow]■ {action} was cancelled[/yellow]")
+            raise
+        except Exception as error:  # noqa: BLE001 - the operator must see what went wrong
+            self._say(f"[red]✖ {action}: {escape(str(error))}[/red]")
+            code = EXIT_UNUSABLE
+        else:
+            self._say(f"[green]✔ {action} finished[/green]" if code == EXIT_OK else f"[red]✖ {action} failed[/red]")
+        finally:
+            self._set_enabled(True)
+        self.post_message(self.Finished(action, code))
+
+    def _set_enabled(self, enabled: bool) -> None:
+        """The buttons wait: one action at a time, and no cancelled action under the operator's feet."""
+        for button in self.query(Button):
+            button.disabled = not enabled
+
+
 class StatusPane(Pane):
     """The application's health, its credentials, its counters and its egress groups."""
 
@@ -1340,9 +1540,7 @@ class StatusPane(Pane):
     def compose(self) -> ComposeResult:
         with Horizontal(id="status-actions", classes="row"):
             yield Button("Refresh", id="btn-refresh-status", variant="primary")
-            yield Button("Up", id="btn-up")
-            yield Button("Down", id="btn-down", variant="warning")
-            yield Button("Crawl once", id="btn-crawl")
+            yield Actions()
         yield Static("", id="pane-status", classes="box")
         yield Static("", id="status-summary", classes="box")
         with Horizontal(classes="row"):
@@ -1676,7 +1874,7 @@ class WbparserApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._follow_proc: subprocess.Popen[str] | None = None
+        self._follow_worker: Worker | None = None
         self._last_item_open: tuple[int, float] | None = None
         # The tab that is active when the app opens loads itself: the first
         # TabActivated is what loads the first tab. The timer keeps the active pane
@@ -1728,24 +1926,20 @@ class WbparserApp(App):
         pane that owns the button.
         """
         bid = event.button.id or ""
-        if bid == "btn-up":
-            self.run_app_action("up")
-        elif bid == "btn-down":
-            self.run_app_action("down")
-        elif bid == "btn-crawl":
-            self.run_app_action("crawl")
-        elif bid == "btn-logs":
+        if bid == "btn-logs":
             self.load_logs()
         elif bid == "btn-logs-follow":
-            self.follow_logs()
+            self._follow_worker = self.follow_logs()
         elif bid == "btn-logs-stop":
             self.stop_follow()
 
+    @on(Actions.Finished)
+    def _on_action(self, event: Actions.Finished) -> None:
+        """An action has finished: the status it changed is worth showing again."""
+        self._reload_status()
+
     def _note(self, text: str) -> None:
         self.query_one("#msg", Static).update(text)
-
-    def _along(self, text: str) -> None:
-        self.query_one("#activity-log", RichLog).write(text)
 
     def _open_item_by_row(self, idx: int) -> None:
         """Open the product URL for a table row in the default browser."""
@@ -1786,116 +1980,46 @@ class WbparserApp(App):
         """Open the selected product in the default browser (e.g. Enter)."""
         self._open_item_by_row(event.coordinate.row)
 
-    @work(thread=True, exclusive=True, group="logs")
-    def load_logs(self) -> None:
+    @work(exclusive=True, group="logs")
+    async def load_logs(self) -> None:
+        """The last lines of the application log, read without blocking the screen."""
         try:
             n = int(self.query_one("#logs-lines", Input).value or "150")
         except ValueError:
             n = 150
         view = self.query_one("#logs-view", RichLog)
-        if not _running("app"):
-            self.call_from_thread(view.write, "app is not running — start it with Up")
-            return
-        proc = subprocess.run(
-            ["docker", "compose", "logs", "--tail", str(n), "app"],
-            cwd=ROOT,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        self.call_from_thread(view.clear)
-        self.call_from_thread(view.write, proc.stdout or proc.stderr or "(no output)")
-
-    @work(thread=True, exclusive=True, group="follow")
-    def follow_logs(self) -> None:
-        self.stop_follow()
-        if not _running("app"):
-            self.call_from_thread(self.query_one("#logs-view", RichLog).write, "app is not running")
-            return
-        proc = subprocess.Popen(
-            ["docker", "compose", "logs", "--follow", "--tail", "50", "app"],
-            cwd=ROOT,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-        self._follow_proc = proc
-        assert proc.stdout is not None
         try:
-            for line in proc.stdout:
-                self.call_from_thread(self.query_one("#logs-view", RichLog).write, Text.from_ansi(line))
-        finally:
-            proc.stdout.close()
+            if not await _running("app"):
+                view.write("app is not running — start it with Up")
+                return
+            result = await proc.sh(*_compose_command("logs", "--tail", str(n), "app"))
+        except (Unusable, proc.ProcError) as error:
+            view.write(str(error))
+            return
+        view.clear()
+        view.write(result.stdout or result.stderr or "(no output)")
+
+    @work(exclusive=True, group="follow")
+    async def follow_logs(self) -> None:
+        """Follow the log until the worker is cancelled — and the child process goes with it."""
+        view = self.query_one("#logs-view", RichLog)
+        try:
+            if not await _running("app"):
+                view.write("app is not running")
+                return
+            await proc.stream(
+                lambda line: view.write(Text.from_ansi(line)),
+                *_compose_command("logs", "--follow", "--tail", "50", "app"),
+            )
+        except (Unusable, proc.ProcError) as error:
+            view.write(str(error))
 
     def stop_follow(self) -> None:
-        proc = getattr(self, "_follow_proc", None)
-        if proc and proc.poll() is None:
-            proc.terminate()
-        self._follow_proc = None
-
-    @work(thread=True, exclusive=True, group="action")
-    def run_app_action(self, action: str) -> None:
-        log = self.query_one("#activity-log", RichLog)
-        self.call_from_thread(log.write, f"[bold]▶ {action}[/bold]")
-        try:
-            if action == "up":
-                self._action_up(log)
-            elif action == "down":
-                self._action_down(log)
-            elif action == "crawl":
-                self._action_crawl(log)
-            self.call_from_thread(log.write, f"[green]✔ {action} finished[/green]")
-        except Exception as exc:  # noqa: BLE001
-            self.call_from_thread(log.write, f"[red]✖ {action}: {escape(str(exc))}[/red]")
-        self.call_from_thread(self._reload_status)
-
-    def _stream_cmd(self, argv: list[str], log: RichLog, env: dict[str, str] | None = None) -> int:
-        proc = subprocess.Popen(argv, cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
-        assert proc.stdout is not None
-        for line in proc.stdout:
-            self.call_from_thread(log.write, line.rstrip("\n"))
-        return proc.wait()
-
-    def _action_up(self, log: RichLog) -> None:
-        if not JAR.is_file():
-            self.call_from_thread(log.write, "building jar…")
-            rc = self._stream_cmd([str(ROOT / "gradlew"), ":app:bootJar", "--no-daemon"], log)
-            if rc != 0:
-                raise Unusable(f"jar build failed (exit {rc})")
-        self.call_from_thread(log.write, "starting stack…")
-        rc = self._stream_cmd(["docker", "compose", "up", "-d"], log)
-        if rc != 0:
-            raise Unusable(f"docker compose up failed (exit {rc})")
-        if not asyncio.run(_with_api(lambda api: _wait_ready(api, 180))):
-            raise Unusable("application did not become ready in time")
-        self.call_from_thread(log.write, f"ready at {_base_url()}")
-
-    def _action_down(self, log: RichLog) -> None:
-        rc = self._stream_cmd(["docker", "compose", "down"], log)
-        if rc != 0:
-            raise Unusable(f"docker compose down failed (exit {rc})")
-
-    def _action_crawl(self, log: RichLog) -> None:
-        if not JAR.is_file():
-            raise Unusable(f"{JAR.relative_to(ROOT)} is missing — run Up first")
-        if not _running("postgres"):
-            raise Unusable("database is not running — start it with Up")
-        env = {
-            **os.environ,
-            **_env(),
-            "SPRING_PROFILES_ACTIVE": "once",
-            "CAMOUFOX_HOME": _env().get("CAMOUFOX_HOME") or str(Path.home() / ".cache" / "camoufox"),
-            "PROFILES_DIR": _env().get("PROFILES_DIR") or str(Path.home() / ".wbparser" / "profiles"),
-        }
-        env.setdefault("DB_HOST", "localhost")
-        env.setdefault("DB_PORT", "5433")
-        env.setdefault("DB_NAME", "wbparser")
-        env.setdefault("DB_USER", "postgres")
-        rc = self._stream_cmd(["java", "-jar", str(JAR), "--spring.profiles.active=once"], log, env=env)
-        codes = {0: "succeeded", 1: "failed", 2: "lock held elsewhere", 3: "cancelled"}
-        self.call_from_thread(log.write, f"crawl exit {rc}: {codes.get(rc, 'unexpected')}")
-        if rc != 0:
-            raise Unusable(f"crawl exit {rc}")
+        """Stop following: the worker is cancelled, and the child process dies with it."""
+        worker = getattr(self, "_follow_worker", None)
+        if worker is not None:
+            worker.cancel()
+            self._follow_worker = None
 
 
 @app.command()
@@ -1915,6 +2039,16 @@ def help_all() -> None:
         console.print(command.get_help(click.Context(command, info_name=name, parent=root)).rstrip())
 
 
+async def _action_logs(say: Callable[[str], None], *, follow: bool, lines: int) -> int:
+    """The application log, streamed to the operator. `--follow` never returns on its own."""
+    if not await _running("app"):
+        raise Unusable("the application is not running — start it with `wbparser up`")
+    logs = _compose_command("logs", *(["--follow"] if follow else []), "--tail", str(lines), "app")
+    if await _stream(say, *logs) != EXIT_OK:
+        raise Unusable("`docker compose logs` failed")
+    return EXIT_OK
+
+
 @app.command()
 def logs(
     follow: Annotated[bool, typer.Option("--follow", "-f", help="keep watching")] = False,
@@ -1927,9 +2061,9 @@ def logs(
     with `--follow`: reading a captured stream means nothing is printed until the
     container stops, and a regex flag that silently does nothing is worse than none.
     """
-    if not _running("app"):
-        raise Unusable("the application is not running — start it with `wbparser up`")
-    _compose("logs", *(["--follow"] if follow else []), "--tail", str(lines), "app", live=True)
+    code = asyncio.run(_action_logs(_console_say, follow=follow, lines=lines))
+    if code != EXIT_OK:
+        raise typer.Exit(code)
 
 
 def _dispatch() -> None:
