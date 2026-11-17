@@ -1126,10 +1126,12 @@ class Pane(Vertical):
     states — loading, error, and the time of the last success. The pane carries a
     `Static#pane-status` for them.
 
-    An error, from `fetch()` or from `show()`, replaces the status line and keeps the
-    previous data and `updated_at`: a failed reload must not destroy what the last good
-    one drew. A reload while one is in flight does nothing. Call `reload()` after the
-    pane is mounted; Textual cancels the worker when the pane is unmounted.
+    An error from `fetch()` replaces the status line and keeps the previous data and
+    `updated_at`. An error from `show()` also keeps `updated_at`, but the base class
+    cannot roll back widgets that `show()` already changed: `show()` must prepare its
+    content before touching widgets, and must not leave a partially updated pane.
+    A reload while one is in flight does nothing. Call `reload()` after the pane is
+    mounted; Textual cancels the worker when the pane is unmounted.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -1153,6 +1155,8 @@ class Pane(Vertical):
 
     async def _load(self) -> None:
         try:
+            # Cancelling the worker stops this await, not the thread: a synchronous
+            # fetch runs to completion and its result is dropped.
             data = await asyncio.to_thread(self.fetch)
             # Both stages are guarded: a failure to draw is as much a failed reload as
             # a failure to fetch. CancelledError is not an Exception, so a worker
@@ -1186,7 +1190,8 @@ class StatsPane(Pane):
         return _fetch_stats()
 
     def show(self, payload: Stats) -> None:
-        # Built before the table is touched: a failure here leaves the last good rows.
+        # Every cell is built before the table is touched: a failure here leaves the
+        # last good rows, and the pane is never drawn half-updated.
         rows = [
             ("products", payload.total_products),
             ("observations", f"{payload.total_items} (one row per target × product × price)"),
@@ -1195,10 +1200,11 @@ class StatsPane(Pane):
             ("newest observation", _age(payload.newest_scraped_at)),
             ("counters computed", f"{_age(payload.as_of)} (cached up to ten minutes)"),
         ]
+        cells = [(_cell(key), _cell(value)) for key, value in rows]
         table = self.query_one("#stats-table", DataTable)
         table.clear()
-        for key, value in rows:
-            table.add_row(_cell(key), _cell(value))
+        for row in cells:
+            table.add_row(*row)
 
 
 class WbparserApp(App):
