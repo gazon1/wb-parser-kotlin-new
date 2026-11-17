@@ -9,9 +9,7 @@ import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.infra.db.CrawlJobsTable
 import ru.wbparser.infra.db.CrawlTargetsTable
 import ru.wbparser.infra.db.exposedOnce
-import ru.wbparser.infra.scheduler.FreshnessPolicy
 import java.time.Duration
-import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.util.UUID
@@ -203,20 +201,16 @@ fun DataSource.reconcileOrphanedJobs(staleAfter: Duration = CrawlJobQueries.DEFA
  *
  * @return the new job id and the ids of the claimed targets, or `null` when nothing was due.
  */
-fun DataSource.claimDueTargetsAndOpenJob(
-    owner: String,
-    now: Instant,
-    freshness: FreshnessPolicy,
-    limit: Int,
-    leaseFor: Duration,
+internal fun DataSource.claimDueTargetsAndOpenJob(
+    request: TargetClaimRequest,
     trigger: CrawlTrigger,
     jobId: UUID = UUID.randomUUID(),
 ): Pair<UUID, List<UUID>>? {
-    val nowOffset = OffsetDateTime.ofInstant(now, ZoneOffset.UTC)
+    val nowOffset = OffsetDateTime.ofInstant(request.now, ZoneOffset.UTC)
     return connection.use { conn ->
         conn.autoCommit = false
         try {
-            val claimed = claimDueTargets(conn, owner, now, freshness, limit, leaseFor)
+            val claimed = claimDueTargets(conn, request)
             if (claimed.isEmpty()) {
                 conn.rollback()
                 return null
@@ -237,7 +231,7 @@ fun DataSource.claimDueTargetsAndOpenJob(
                     ps.setObject(5, nowOffset)
                     ps.setObject(6, nowOffset)
                     ps.setString(7, trigger.dbValue)
-                    ps.setString(8, owner)
+                    ps.setString(8, request.owner)
                     ps.executeUpdate()
                 }
 

@@ -37,6 +37,15 @@ import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
+/** Parameters of a target claim: who takes the targets, as of when, and for how long. */
+internal data class TargetClaimRequest(
+    val owner: String,
+    val now: Instant,
+    val freshness: FreshnessPolicy,
+    val limit: Int,
+    val leaseFor: Duration,
+)
+
 /**
  * Returns the targets with the given ids.
  *
@@ -70,14 +79,6 @@ fun DataSource.fetchTargetsByIds(ids: List<UUID>): List<Target> {
  * tried again, who holds it — and the lease is a statement about the database too. So
  * the rules live in the query, and the runner asks the database which targets are
  * due instead of fetching everything and deciding in memory.
- *
- * @param owner who holds the lease. A host identifies itself; the lease is released
- *   under the same name.
- * @param now the current time; the caller's clock, so a test can say what "now" is.
- * @param freshness how long a target stays fresh.
- * @param limit how many targets to claim at most.
- * @param leaseFor how long the lease holds. It must outlive the crawl of the target,
- *   and it must expire on its own: a host that dies must not hold its targets.
  */
 fun DataSource.claimDueTargets(
     owner: String,
@@ -85,7 +86,10 @@ fun DataSource.claimDueTargets(
     freshness: FreshnessPolicy,
     limit: Int,
     leaseFor: Duration,
-): List<UUID> = connection.use { conn -> claimDueTargets(conn, owner, now, freshness, limit, leaseFor) }
+): List<UUID> = claimDueTargets(TargetClaimRequest(owner, now, freshness, limit, leaseFor))
+
+/** Claims due targets described by [request], leasing them to its owner. */
+internal fun DataSource.claimDueTargets(request: TargetClaimRequest): List<UUID> = connection.use { conn -> claimDueTargets(conn, request) }
 
 /**
  * Claims due targets on [conn] without managing the connection or transaction.
@@ -95,14 +99,10 @@ fun DataSource.claimDueTargets(
  */
 internal fun claimDueTargets(
     conn: java.sql.Connection,
-    owner: String,
-    now: Instant,
-    freshness: FreshnessPolicy,
-    limit: Int,
-    leaseFor: Duration,
+    request: TargetClaimRequest,
 ): List<UUID> {
-    val freshBefore = now.minus(Duration.ofMinutes(freshness.defaultFreshnessMinutes))
-    val leaseUntil = now.plus(leaseFor)
+    val freshBefore = request.now.minus(Duration.ofMinutes(request.freshness.defaultFreshnessMinutes))
+    val leaseUntil = request.now.plus(request.leaseFor)
     return conn
         .prepareStatement(
             """
@@ -124,11 +124,11 @@ internal fun claimDueTargets(
             RETURNING t.id
             """.trimIndent(),
         ).use { ps ->
-            ps.setObject(1, now.atOffset(ZoneOffset.UTC))
+            ps.setObject(1, request.now.atOffset(ZoneOffset.UTC))
             ps.setObject(2, freshBefore.atOffset(ZoneOffset.UTC))
-            ps.setObject(3, now.atOffset(ZoneOffset.UTC))
-            ps.setInt(4, limit)
-            ps.setString(5, owner)
+            ps.setObject(3, request.now.atOffset(ZoneOffset.UTC))
+            ps.setInt(4, request.limit)
+            ps.setString(5, request.owner)
             ps.setObject(6, leaseUntil.atOffset(ZoneOffset.UTC))
             ps.executeQuery().use { rs ->
                 val ids = mutableListOf<UUID>()

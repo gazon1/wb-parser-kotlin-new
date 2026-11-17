@@ -20,6 +20,7 @@ import ru.wbparser.infra.advisory.LockUnavailable
 import ru.wbparser.infra.advisory.PostgresAdvisoryLock
 import ru.wbparser.infra.advisory.withLock
 import ru.wbparser.infra.db.DatabaseHandle
+import ru.wbparser.infra.db.repositories.TargetClaimRequest
 import ru.wbparser.infra.db.repositories.TargetRun
 import ru.wbparser.infra.db.repositories.claimDueTargetsAndOpenJob
 import ru.wbparser.infra.db.repositories.fetchTargetsByIds
@@ -123,11 +124,14 @@ class CrawlRunner(
         // reconciliation to tie to the dead process.
         val (jobId, claimed) =
             db.ds.claimDueTargetsAndOpenJob(
-                owner = config.instanceId,
-                now = startedAt,
-                freshness = config.freshness,
-                limit = config.claimLimit,
-                leaseFor = config.leaseDuration,
+                request =
+                    TargetClaimRequest(
+                        owner = config.instanceId,
+                        now = startedAt,
+                        freshness = config.freshness,
+                        limit = config.claimLimit,
+                        leaseFor = config.leaseDuration,
+                    ),
                 trigger = trigger,
             ) ?: return RunResult.NothingDue
 
