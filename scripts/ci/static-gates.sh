@@ -77,11 +77,14 @@ gate blocking "the CI workflows are wired" python3 scripts/ci/check-ci-workflows
 # the domain names no Exposed type, and the gate says so.
 gate blocking "domain purity: no infra imports in domain" bash scripts/ci/check-domain-purity.sh
 
-# --- the repository's own rules --------------------------------------------------
-# The rules that a machine can decide are decided by a machine. They used to live in
-# AGENTS.md, where they cost context on every turn and enforced nothing; the ones a
-# machine cannot decide moved to CODING_STANDARDS.md, where a reviewer reads them.
-gate blocking "the repository's rules" python3 scripts/ci/check-repo-rules.py
+# --- repository/config invariants -----------------------------------------------
+# Small, specific repository rules that are not about Kotlin source structure.
+# Kotlin/module boundary rules moved to architecture tests in
+# app/src/test/kotlin/ru/wbparser/architecture/RepositoryArchitectureTest.kt
+# (plain Kotlin/Kotest source checks, no Konsist) so they run in the normal test
+# lifecycle instead of a custom lexer.
+gate blocking "CHANGELOG.md is absent" bash -c 'test ! -e CHANGELOG.md'
+gate blocking "gradle.properties does not pin a JDK path" bash -c '! grep -Eq "^[[:space:]]*org\.gradle\.java\.home[[:space:]]*=" gradle.properties'
 
 # --- the catalog measurement ---------------------------------------------------
 # `known_pages_limit` is a number about a catalog, and a number without its evidence

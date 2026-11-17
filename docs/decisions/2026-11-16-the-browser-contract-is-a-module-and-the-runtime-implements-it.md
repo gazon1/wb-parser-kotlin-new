@@ -35,7 +35,7 @@ wiring'ом в composition root, а краулер, его use cases и доме
 ## Idea
 
 1. Оставить всё в `:browser`, разнести по пакетам (`api`, `camoufox`, `playwright`) и
-   объявить правило в `check-repo-rules.py`.
+   объявить правило отдельным гейтом.
    Отвергнуто: пакет — соглашение, а не проверка сборкой. Ровно этот аргумент уже
    закрывал ADR `2026-10-22-the-browser-stack-is-a-library`, когда стек выезжал из
    `wbparser`; повторять его здесь означало бы отменить собственное решение.
@@ -91,7 +91,8 @@ Camoufox, путей к исполняемым файлам или полей Ad
 **Направление зависимостей — `app → wbparser → browser-api`, и `:browser → browser-api`.**
 Обратного ребра нет: контракт не знает о реализации, краулер не знает о реализации.
 
-**Правило проверяется машиной.** `scripts/ci/check-repo-rules.py`:
+**Правило проверяется машиной.** `app/src/test/kotlin/ru/wbparser/architecture/RepositoryArchitectureTest.kt`
+(в обычном жизненном цикле тестов, `:app:test`):
 - контрактный модуль не называет `ru.wbparser.browser.camoufox` и
   `ru.wbparser.browser.playwright` — «контракт не знает рантайм»;
 - приложение называет их только в composition root (`app/config`) — «рантайм
@@ -145,7 +146,7 @@ classpath вообще — он компилируется против `:browse
   правка `:browser` и `app/config`, и больше ничего.
 - **Always** объявлять границу сборкой, а не соглашением: новый модуль — это
   `include` в `settings.gradle.kts`, build-скрипт, строка в floors гейтов и правило
-  в `check-repo-rules.py`.
+  в `RepositoryArchitectureTest`.
 - **Always** публиковать общие тестовые двойники как `java-test-fixtures` — теперь у
   контракта, а не у реализации.
 - **Never** переносить в контракт политику рантайма. Ограничение SOCKS5 с паролем

@@ -20,6 +20,11 @@ reviewed by somebody else.
 `CHANGELOG.md`, a `fixDependencies` in CI, a pinned JDK path: each of these is a
 pattern. A pattern can be checked, and a checked rule is impossible to forget.
 
+*Update (#284):* the custom Python lexer that first mechanised these rules was
+removed and replaced by established mechanisms in the normal build/CI lifecycle
+(architecture tests in `:app:test`, trivial static gates, and existing CI
+workflow checks), without widening rule meaning.
+
 The rules were not all mechanical. "A side effect must go through the registry",
 "an error caught must reach a `StageFailure` or a log", "a save stage needs a
 retry loop" — these are judgements about the code, and no linter can decide them.
@@ -36,10 +41,15 @@ retry loop" — these are judgements about the code, and no linter can decide th
 ## Decision
 
 The rules that a machine can decide are decided by a machine.
-`scripts/ci/check-repo-rules.py` checks the force-unwrap, the negative delay, the
-Spring import outside the application, the purity of the browser module, the
-`CHANGELOG.md`, the `fixDependencies` in CI and the pinned JDK. It has a
-`--self-test` that proves it can fail on a deliberately broken tree.
+`RepositoryArchitectureTest` in `app:test` checks the Kotlin/module boundary
+and code-shape rules (force-unwrap, the negative delay, Spring outside the
+application, the purity of the browser modules, the Playwright/runtime
+boundaries, and test-double naming) as part of the normal test lifecycle, with
+positive and negative tests. Repository/config invariants live in existing
+gates: `scripts/ci/static-gates.sh` checks the absence of `CHANGELOG.md` and
+the absence of a pinned JDK in `gradle.properties`, and
+`scripts/ci/check-ci-workflows.py` checks that `fixDependencies` never runs in
+CI workflows. The former custom lexer script was removed in #284.
 
 The rules that a machine cannot decide live in `CODING_STANDARDS.md`, which is read
 during review. `AGENTS.md` keeps what an agent needs on every turn — the

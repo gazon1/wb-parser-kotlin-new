@@ -21,3 +21,5 @@ ruff format (Python)	External tool; unformatted Python fails it. Trivially audit
 vacuum (OpenAPI)	External tool; a malformed OpenAPI spec fails it. Trivially auditable.
 squawk (PostgreSQL migrations)	External tool (advisory); a dangerous migration fails it. Trivially auditable.
 agnix (agent config)	External tool; a malformed agent config fails it. Trivially auditable.
+CHANGELOG.md is absent	Trivial filesystem check (`test ! -e CHANGELOG.md`): a committed CHANGELOG.md fails it immediately; logic is one shell predicate.
+gradle.properties does not pin a JDK path	Trivial config check (grep for `org.gradle.java.home=` setting): a pinned path line fails it immediately; logic is one regex.

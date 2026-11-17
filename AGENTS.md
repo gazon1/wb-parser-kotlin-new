@@ -32,9 +32,9 @@ wb-parser-kotlin/
   реализацией. Всё, что не пересекает границу, — `internal` (в Kotlin `internal` —
   это модуль Gradle, поэтому переезд меняет видимость, и её надо ревизовать).
 - `browser` — реализация этого контракта: Camoufox и Playwright. Playwright модуль
-  наружу не отдаёт: его имя проверяет `scripts/ci/check-repo-rules.py` — ни в
-  `wbparser`, ни в `app` его быть не должно. Рантайм называет только composition root
-  приложения — это проверяет то же правило.
+  наружу не отдаёт — ни в `wbparser`, ни в `app` его быть не должно. Рантайм
+  называет только composition root приложения. Эти границы проверяет архитектурный
+  тест `app/src/test/kotlin/ru/wbparser/architecture/RepositoryArchitectureTest.kt`.
 - `wbparser` — `java-library` (`api` — только то, что действительно в типе публичного API
   модуля), `app` — потребитель. Flyway-миграции живут в `app`, `app` зависит от
   `wbparser`, обратной зависимости нет.
@@ -248,10 +248,12 @@ Commit с ADR **всегда** включает обновлённый `DIGEST.m
 ## ❌ Что НЕ делать / What NOT to do
 
 Правила, которые может проверить машина, проверяет сборка — нарушение видно сразу:
-`scripts/ci/check-repo-rules.py` (force-unwrap, `delay(-1L)`, Spring вне `app/`,
-чистота `:browser`/`:browser-api`, рантайм только в composition root, `CHANGELOG.md`,
-`fixDependencies` в CI, запинненный JDK),
-`check-compileonly-runtime.sh`, `check-domain-purity.sh`, DAGP, ratchet baseline.
+`RepositoryArchitectureTest` в `app` (force-unwrap, `delay(-1L)`, Spring вне `app/`,
+чистота `:browser`/`:browser-api`, Playwright только в адаптере рантайма, рантайм
+только в composition root, имена тестовых двойников), `scripts/ci/static-gates.sh`
+(`CHANGELOG.md`, запинненный JDK), `scripts/ci/check-ci-workflows.py`
+(`fixDependencies` в CI), `check-compileonly-runtime.sh`, `check-domain-purity.sh`,
+DAGP, ratchet baseline.
 
 Правила, которые машина решить не может, — в **[CODING_STANDARDS.md](CODING_STANDARDS.md)**.
 Их вводит ревьюер, а не автор кода. Ключевые из них:
