@@ -153,15 +153,17 @@ internal class PlaywrightCamoufoxLauncher(
      */
     private fun clearStaleProfileLocks(profileDir: java.nio.file.Path) {
         for (name in STALE_PROFILE_LOCKS) {
-            runCatching { java.nio.file.Files.deleteIfExists(profileDir.resolve(name)) }
-                .onFailure { error ->
-                    log.debug(
-                        "Could not remove stale profile lock '{}' in '{}': {}",
-                        name,
-                        profileDir,
-                        error.message,
-                    )
-                }
+            runCatching {
+                java.nio.file.Files
+                    .deleteIfExists(profileDir.resolve(name))
+            }.onFailure { error ->
+                log.debug(
+                    "Could not remove stale profile lock '{}' in '{}': {}",
+                    name,
+                    profileDir,
+                    error.message,
+                )
+            }
         }
     }
 
