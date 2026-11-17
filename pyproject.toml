@@ -23,6 +23,7 @@ dependencies = [
     "pydantic>=2.6.0",
     "python-dotenv>=1.0.0",
     "croniter>=7.0.0",
+    "textual>=8.2.8",
 ]
 
 # Тестовые зависимости: pytest нужен для `uv run pytest scripts/tests/...`.

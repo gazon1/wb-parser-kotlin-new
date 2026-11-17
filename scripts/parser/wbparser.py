@@ -72,6 +72,22 @@ try:
     from rich.markup import escape
     from rich.table import Table
     from rich.text import Text
+    from textual import on, work
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.containers import Horizontal, Vertical
+    from textual.widgets import (
+        Button,
+        DataTable,
+        Footer,
+        Header,
+        Input,
+        RichLog,
+        Select,
+        Static,
+        TabbedContent,
+        TabPane,
+    )
 except ModuleNotFoundError as missing:  # pragma: no cover - a wrong interpreter, not a code path
     # A bare `python3 script.py` does not read `pyproject.toml`, so the dependencies are
     # simply absent. Saying that beats a traceback that ends in "No module named
@@ -417,21 +433,23 @@ def _running(service: str) -> bool:
 
 app = typer.Typer(
     add_completion=False,
-    no_args_is_help=True,
+    no_args_is_help=False,
+    invoke_without_command=True,
     rich_markup_mode="rich",
-    help="Observe and drive the local crawler. There is no web UI in this repository.",
+    help="Observe and drive the local crawler with a Textual TUI (default) or CLI subcommands.",
 )
 
 
+@app.callback(invoke_without_command=True)
 def _global_options(
+    ctx: typer.Context,
     json_output: Annotated[bool, typer.Option("--json", help="one JSON document on stdout, nothing else")] = False,
 ) -> None:
     """Global flags. They go before the command: `wbparser --json status`."""
     global JSON  # noqa: PLW0603 - one process, one run, one output mode
     JSON = json_output
-
-
-app.callback()(_global_options)
+    if ctx.invoked_subcommand is None:
+        WbparserApp().run()
 
 
 @app.command()
@@ -483,11 +501,16 @@ def down(
     console.print(f"{_mark(True)} stopped" + (" (volume removed)" if volumes else " (volume kept)"))
 
 
+def _fetch_status() -> tuple[dict[str, Any], dict[str, bool]]:
+    ready = _get("/api/health/ready")
+    keys = {"ADMIN_API_KEY": _key_works(admin=True), "CATALOG_API_KEY": _key_works(admin=False)}
+    return ready, keys
+
+
 @app.command()
 def status() -> None:
     """Health, readiness, credentials, crawl counters, and the egress groups."""
-    ready = _get("/api/health/ready")
-    keys = {"ADMIN_API_KEY": _key_works(admin=True), "CATALOG_API_KEY": _key_works(admin=False)}
+    ready, keys = _fetch_status()
     _emit({"ready": ready, "keys": keys}, lambda: _print_status(ready, keys))
     if ready.get("status") != "UP" or not all(keys.values()):
         raise typer.Exit(EXIT_WRONG)
@@ -601,6 +624,34 @@ class Sort(StrEnum):
     title_desc = "TitleDesc"
 
 
+def _fetch_items(
+    *,
+    target: str | None = None,
+    query: str | None = None,
+    page: int = 0,
+    page_size: int = 20,
+    sort: str = Sort.date_desc.value,
+    in_stock: bool = False,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    min_cashback: float | None = None,
+) -> ItemsPage:
+    return _get(
+        "/api/catalog/v1/items",
+        ItemsPage,
+        catalog=True,
+        targetId=target,
+        q=query,
+        sort=sort,
+        page=page,
+        pageSize=page_size,
+        inStock="true" if in_stock else None,
+        minPrice=min_price,
+        maxPrice=max_price,
+        minCashback=min_cashback,
+    )
+
+
 @app.command()
 def items(
     target: Annotated[str | None, typer.Option(help="a target UUID")] = None,
@@ -614,19 +665,16 @@ def items(
     min_cashback: Annotated[float | None, typer.Option(help="minimum cashback, percent")] = None,
 ) -> None:
     """What was scraped, through the catalog API — the same data the storefront reads."""
-    result = _get(
-        "/api/catalog/v1/items",
-        ItemsPage,
-        catalog=True,
-        targetId=target,
-        q=query,
-        sort=sort.value,
+    result = _fetch_items(
+        target=target,
+        query=query,
         page=page,
-        pageSize=page_size,
-        inStock="true" if in_stock else None,
-        minPrice=min_price,
-        maxPrice=max_price,
-        minCashback=min_cashback,
+        page_size=page_size,
+        sort=sort.value,
+        in_stock=in_stock,
+        min_price=min_price,
+        max_price=max_price,
+        min_cashback=min_cashback,
     )
     _emit(result, lambda: _print_items(result))
     if not result.total_count:
@@ -658,10 +706,14 @@ def _print_items(result: ItemsPage) -> None:
         console.print(f"[dim]the data on this page is {_age(result.data_as_of)}[/dim]")
 
 
+def _fetch_stats() -> Stats:
+    return _get("/api/catalog/v1/stats", Stats, catalog=True)
+
+
 @app.command()
 def stats() -> None:
     """Aggregate counters of the catalog: how big it is and how fresh."""
-    payload = _get("/api/catalog/v1/stats", Stats, catalog=True)
+    payload = _fetch_stats()
     _emit(payload, lambda: _print_stats(payload))
 
 
@@ -677,6 +729,13 @@ def _print_stats(payload: Stats) -> None:
     console.print(f"  [dim]counters computed {_age(payload.as_of)} (cached up to ten minutes)[/dim]")
 
 
+def _fetch_runs(limit: int = 20, target: str | None = None, errors: int = 10) -> dict[str, Any]:
+    jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit, targetId=target)
+    target_runs = _get("/api/admin/target-runs", list[TargetRun], admin=True, limit=limit, targetId=target)
+    failures = _get("/api/admin/errors", list[RecordedError], admin=True, limit=errors, unresolvedOnly="true")
+    return {"jobs": jobs, "targetRuns": target_runs, "errors": failures}
+
+
 @app.command()
 def runs(
     limit: Annotated[int, typer.Option(help="how many rows")] = 20,
@@ -684,13 +743,8 @@ def runs(
     errors: Annotated[int, typer.Option(help="how many unresolved errors to show")] = 10,
 ) -> None:
     """The journal of runs: what ran, on which address, and what came of it."""
-    jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit, targetId=target)
-    target_runs = _get("/api/admin/target-runs", list[TargetRun], admin=True, limit=limit, targetId=target)
-    failures = _get("/api/admin/errors", list[RecordedError], admin=True, limit=errors, unresolvedOnly="true")
-    _emit(
-        {"jobs": jobs, "targetRuns": target_runs, "errors": failures},
-        lambda: _print_runs(target_runs, jobs, failures),
-    )
+    data = _fetch_runs(limit=limit, target=target, errors=errors)
+    _emit(data, lambda: _print_runs(data["targetRuns"], data["jobs"], data["errors"]))
 
 
 def _print_runs(target_runs: list[TargetRun], jobs: list[Job], failures: list[RecordedError]) -> None:
@@ -741,6 +795,27 @@ def _print_runs(target_runs: list[TargetRun], jobs: list[Job], failures: list[Re
             )
 
 
+def _fetch_schedule(limit: int = 15) -> dict[str, Any]:
+    targets = _get("/api/admin/targets", list[Target], admin=True)
+    cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
+    freshness = int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
+    now = datetime.now(UTC)
+    due, upcoming, earliest_due = _partition_due(targets, now, freshness)
+    next_run = _next_run(cron, now, earliest_due, targets_known=True)
+    return {
+        "cron": cron,
+        "freshnessMinutes": freshness,
+        "activeTargets": sum(1 for target in targets if target.active),
+        "targets": targets,
+        "due": due,
+        "upcoming": upcoming[:limit],
+        "upcomingRaw": upcoming,
+        "nextRun": next_run,
+        "earliestDue": earliest_due,
+        "limit": limit,
+    }
+
+
 @app.command()
 def schedule(
     limit: Annotated[int, typer.Option(help="how many targets to list")] = 15,
@@ -755,24 +830,27 @@ def schedule(
     `/api/admin/schedule` endpoint that answers the question once, on the side that owns
     the rule; until then this command says so rather than hiding it.
     """
-    targets = _get("/api/admin/targets", list[Target], admin=True)
-    cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
-    freshness = int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
-
-    now = datetime.now(UTC)
-    due, upcoming, earliest_due = _partition_due(targets, now, freshness)
-    next_run = _next_run(cron, now, earliest_due, targets_known=True)
+    data = _fetch_schedule(limit=limit)
     _emit(
         {
-            "cron": cron,
-            "freshnessMinutes": freshness,
-            "activeTargets": sum(1 for target in targets if target.active),
-            "due": due,
-            "upcoming": [{"at": when, "target": target} for when, target in upcoming[:limit]],
-            "nextRun": next_run,
-            "earliestDue": earliest_due,
+            "cron": data["cron"],
+            "freshnessMinutes": data["freshnessMinutes"],
+            "activeTargets": data["activeTargets"],
+            "due": data["due"],
+            "upcoming": [{"at": when, "target": target} for when, target in data["upcoming"]],
+            "nextRun": data["nextRun"],
+            "earliestDue": data["earliestDue"],
         },
-        lambda: _print_schedule(cron, freshness, targets, due, upcoming, next_run, earliest_due, limit),
+        lambda: _print_schedule(
+            data["cron"],
+            data["freshnessMinutes"],
+            data["targets"],
+            data["due"],
+            data["upcoming"],
+            data["nextRun"],
+            data["earliestDue"],
+            data["limit"],
+        ),
     )
 
 
@@ -855,6 +933,31 @@ def _print_schedule(
         _table("", ["target", "when"], [[t.name, _age(when)] for when, t in upcoming[:limit]])
 
 
+def _fetch_history(limit: int = 15) -> dict[str, Any]:
+    jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit)
+    cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
+    freshness = int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
+    now = datetime.now(UTC)
+    earliest_due: datetime | None = None
+    targets_known = False
+    if _running("app"):
+        try:
+            targets = _get("/api/admin/targets", list[Target], admin=True)
+            _, _, earliest_due = _partition_due(targets, now, freshness)
+            targets_known = True
+        except Unusable:
+            targets_known = False
+    next_run = _next_run(cron, now, earliest_due, targets_known)
+    return {
+        "jobs": jobs,
+        "cron": cron,
+        "freshnessMinutes": freshness,
+        "nextRun": next_run,
+        "earliestDue": earliest_due,
+        "targetsKnown": targets_known,
+    }
+
+
 @app.command()
 def history(
     limit: Annotated[int, typer.Option(help="how many runs to show")] = 15,
@@ -871,33 +974,20 @@ def history(
     earliest target's freshness expires — a next tick on its own would promise a run
     that does not happen.
     """
-    jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit)
-    cron = _effective("CRAWLER_SCHEDULE_CRON", "0 0 */2 * * *")
-    freshness = int(_effective("CRAWLER_SCHEDULE_FRESHNESS_MINUTES", "360"))
-    now = datetime.now(UTC)
-
-    earliest_due: datetime | None = None
-    targets_known = False
-    if _running("app"):
-        try:
-            targets = _get("/api/admin/targets", list[Target], admin=True)
-            _, _, earliest_due = _partition_due(targets, now, freshness)
-            targets_known = True
-        except Unusable:
-            targets_known = False
-    next_run = _next_run(cron, now, earliest_due, targets_known)
-
+    data = _fetch_history(limit=limit)
     _emit(
         {
-            "runs": jobs,
+            "runs": data["jobs"],
             "schedule": {
-                "cron": cron,
-                "freshnessMinutes": freshness,
-                "nextRun": next_run,
-                "earliestDue": earliest_due,
+                "cron": data["cron"],
+                "freshnessMinutes": data["freshnessMinutes"],
+                "nextRun": data["nextRun"],
+                "earliestDue": data["earliestDue"],
             },
         },
-        lambda: _print_history(cron, freshness, jobs, next_run, earliest_due),
+        lambda: _print_history(
+            data["cron"], data["freshnessMinutes"], data["jobs"], data["nextRun"], data["earliestDue"]
+        ),
     )
 
 
@@ -955,6 +1045,577 @@ def _duration(job: Job) -> str:
         return "—"
     seconds = int((job.completed_at - job.started_at).total_seconds())
     return _span(max(0, seconds))
+
+
+# ── TUI ─────────────────────────────────────────────────────────────────────
+
+
+def _val(v: Any) -> str:
+    return "—" if v in (None, "") else str(v)
+
+
+def _price(item: Item) -> str:
+    kopecks = item.sale_price_kopecks if item.sale_price_kopecks is not None else item.price_kopecks
+    return _rubles(kopecks)
+
+
+class WbparserApp(App):
+    TITLE = "wbparser"
+    SUB_TITLE = "crawler console"
+    CSS = """
+    Screen { layout: vertical; }
+    #status-summary { height: auto; padding: 0 1; }
+    .pane { height: 1fr; }
+    .box { border: round $primary; padding: 0 1; margin: 0 0 1 0; height: auto; }
+    .title { text-style: bold; color: $accent; margin-bottom: 0; }
+    .row { height: auto; }
+    .row > * { margin-right: 1; }
+    DataTable { height: 1fr; }
+    #items-table, #runs-targets, #runs-jobs, #runs-errors, #sched-due, #sched-upcoming, #history-table { height: 1fr; min-height: 8; }
+    #items-controls Input { width: 24; }
+    #items-controls Select { width: 22; }
+    #items-controls .small { width: 8; }
+    #status-actions Button { margin-right: 1; }
+    #activity-log, #logs-view { height: 1fr; border: round $surface; }
+    #stats-view { padding: 1 2; }
+    .ok { color: $success; }
+    .bad { color: $error; }
+    .warn { color: $warning; }
+    #msg { height: auto; padding: 0 1; color: $text-muted; }
+    """
+
+    BINDINGS = [
+        Binding("q", "quit", "Quit"),
+        Binding("r", "refresh", "Refresh"),
+        Binding("1", "tab('tab-status')", "Status", show=False),
+        Binding("2", "tab('tab-items')", "Items", show=False),
+        Binding("3", "tab('tab-runs')", "Runs", show=False),
+        Binding("4", "tab('tab-schedule')", "Schedule", show=False),
+        Binding("5", "tab('tab-history')", "History", show=False),
+        Binding("6", "tab('tab-stats')", "Stats", show=False),
+        Binding("7", "tab('tab-logs')", "Logs", show=False),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with TabbedContent(initial="tab-status", id="tabs"):
+            with TabPane("Status", id="tab-status"), Vertical(classes="pane"):
+                with Horizontal(id="status-actions", classes="row"):
+                    yield Button("Refresh", id="btn-refresh-status", variant="primary")
+                    yield Button("Up", id="btn-up")
+                    yield Button("Down", id="btn-down", variant="warning")
+                    yield Button("Crawl once", id="btn-crawl")
+                yield Static("Loading…", id="status-summary", classes="box")
+                with Horizontal(classes="row"):
+                    with Vertical(classes="box", id="box-checks"):
+                        yield Static("Checks", classes="title")
+                        yield DataTable(id="status-checks")
+                    with Vertical(classes="box", id="box-creds"):
+                        yield Static("Credentials", classes="title")
+                        yield DataTable(id="status-creds")
+                with Vertical(classes="box"):
+                    yield Static("Crawl & egress", classes="title")
+                    yield Static("", id="status-crawl")
+                    yield DataTable(id="status-egress")
+                with Vertical(classes="box"):
+                    yield Static("Activity", classes="title")
+                    yield RichLog(id="activity-log", highlight=True, markup=True, wrap=True)
+
+            with TabPane("Items", id="tab-items"), Vertical(classes="pane"):
+                with Horizontal(id="items-controls", classes="row"):
+                    yield Input(placeholder="query (-q)", id="items-q")
+                    yield Input(placeholder="target UUID", id="items-target")
+                    yield Select([(s.value, s.value) for s in Sort], value=Sort.date_desc.value, id="items-sort")
+                    yield Input(placeholder="page", value="0", id="items-page", classes="small")
+                    yield Input(placeholder="size", value="20", id="items-size", classes="small")
+                    yield Button("Load", id="btn-items", variant="primary")
+                yield Static("", id="items-info")
+                yield DataTable(id="items-table")
+
+            with TabPane("Runs", id="tab-runs"), Vertical(classes="pane"):
+                with Horizontal(classes="row"):
+                    yield Button("Refresh", id="btn-runs", variant="primary")
+                yield Static("Target runs", classes="title")
+                yield DataTable(id="runs-targets")
+                yield Static("Jobs", classes="title")
+                yield DataTable(id="runs-jobs")
+                yield Static("Unresolved errors", classes="title")
+                yield DataTable(id="runs-errors")
+
+            with TabPane("Schedule", id="tab-schedule"), Vertical(classes="pane"):
+                with Horizontal(classes="row"):
+                    yield Button("Refresh", id="btn-schedule", variant="primary")
+                yield Static("", id="schedule-summary", classes="box")
+                yield Static("Due now", classes="title")
+                yield DataTable(id="sched-due")
+                yield Static("Upcoming", classes="title")
+                yield DataTable(id="sched-upcoming")
+
+            with TabPane("History", id="tab-history"), Vertical(classes="pane"):
+                with Horizontal(classes="row"):
+                    yield Button("Refresh", id="btn-history", variant="primary")
+                yield Static("", id="history-summary", classes="box")
+                yield DataTable(id="history-table")
+
+            with TabPane("Stats", id="tab-stats"), Vertical(classes="pane"):
+                with Horizontal(classes="row"):
+                    yield Button("Refresh", id="btn-stats", variant="primary")
+                yield DataTable(id="stats-table")
+
+            with TabPane("Logs", id="tab-logs"), Vertical(classes="pane"):
+                with Horizontal(classes="row"):
+                    yield Input(placeholder="lines", value="150", id="logs-lines", classes="small")
+                    yield Button("Load", id="btn-logs", variant="primary")
+                    yield Button("Follow", id="btn-logs-follow")
+                    yield Button("Stop", id="btn-logs-stop", variant="warning")
+                yield RichLog(id="logs-view", highlight=True, markup=False, wrap=True)
+        yield Static("", id="msg")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._follow_proc: subprocess.Popen[str] | None = None
+        self._init_tables()
+        self.action_refresh()
+
+    def _init_tables(self) -> None:
+        self.query_one("#status-checks", DataTable).add_columns("check", "value")
+        self.query_one("#status-creds", DataTable).add_columns("key", "status")
+        self.query_one("#status-egress", DataTable).add_columns("group", "address", "health", "isolated", "refusals")
+        self.query_one("#items-table", DataTable).add_columns("target", "title", "price", "cashback", "scraped")
+        self.query_one("#runs-targets", DataTable).add_columns(
+            "target", "group", "address", "outcome", "pages", "items", "wb total", "when"
+        )
+        self.query_one("#runs-jobs", DataTable).add_columns("status", "pages", "items", "started", "error")
+        self.query_one("#runs-errors", DataTable).add_columns("category", "message", "when")
+        self.query_one("#sched-due", DataTable).add_columns("target", "wb id", "last crawled", "fails")
+        self.query_one("#sched-upcoming", DataTable).add_columns("target", "when")
+        self.query_one("#history-table", DataTable).add_columns(
+            "started", "finished", "trigger", "status", "pages", "items", "error"
+        )
+        self.query_one("#stats-table", DataTable).add_columns("metric", "value")
+
+    def action_tab(self, tab_id: str) -> None:
+        self.query_one("#tabs", TabbedContent).active = tab_id
+
+    def action_refresh(self) -> None:
+        tab = self.query_one("#tabs", TabbedContent).active
+        self._refresh_tab(tab)
+
+    def _refresh_tab(self, tab: str) -> None:
+        self.query_one("#msg", Static).update("")
+        if tab == "tab-status":
+            self.load_status()
+        elif tab == "tab-items":
+            self.load_items()
+        elif tab == "tab-runs":
+            self.load_runs()
+        elif tab == "tab-schedule":
+            self.load_schedule()
+        elif tab == "tab-history":
+            self.load_history()
+        elif tab == "tab-stats":
+            self.load_stats()
+        elif tab == "tab-logs":
+            self.load_logs()
+
+    @on(TabbedContent.TabActivated)
+    def _on_tab(self, event: TabbedContent.TabActivated) -> None:
+        if event.tabbed_content.id == "tabs":
+            self._refresh_tab(event.pane.id or "")
+
+    @on(Button.Pressed)
+    def _on_button(self, event: Button.Pressed) -> None:
+        bid = event.button.id or ""
+        if bid == "btn-refresh-status":
+            self.load_status()
+        elif bid == "btn-up":
+            self.run_action("up")
+        elif bid == "btn-down":
+            self.run_action("down")
+        elif bid == "btn-crawl":
+            self.run_action("crawl")
+        elif bid == "btn-items":
+            self.load_items()
+        elif bid == "btn-runs":
+            self.load_runs()
+        elif bid == "btn-schedule":
+            self.load_schedule()
+        elif bid == "btn-history":
+            self.load_history()
+        elif bid == "btn-stats":
+            self.load_stats()
+        elif bid == "btn-logs":
+            self.load_logs()
+        elif bid == "btn-logs-follow":
+            self.follow_logs()
+        elif bid == "btn-logs-stop":
+            self.stop_follow()
+
+    def _note(self, text: str) -> None:
+        self.query_one("#msg", Static).update(text)
+
+    def _alog(self, text: str) -> None:
+        self.query_one("#activity-log", RichLog).write(text)
+
+    @work(thread=True, exclusive=True, group="status")
+    def load_status(self) -> None:
+        self.call_from_thread(self._note, "Loading status…")
+        try:
+            ready, keys = _fetch_status()
+            self.call_from_thread(self._render_status, ready, keys, None)
+        except Exception as exc:  # noqa: BLE001
+            self.call_from_thread(self._render_status, None, None, str(exc))
+
+    def _render_status(self, ready: dict[str, Any] | None, keys: dict[str, bool] | None, err: str | None) -> None:
+        self._note("")
+        if err:
+            self.query_one("#status-summary", Static).update(f"[bold red]Unavailable:[/bold red] {err}")
+            for tid in ("#status-checks", "#status-creds", "#status-egress"):
+                self.query_one(tid, DataTable).clear()
+            self.query_one("#status-crawl", Static).update("")
+            return
+        assert ready is not None and keys is not None
+        healthy = ready.get("status") == "UP"
+        mark = "[green]UP[/green]" if healthy else "[red]DOWN[/red]"
+        self.query_one("#status-summary", Static).update(f"Application at [bold]{_base_url()}[/bold]: {mark}")
+        t = self.query_one("#status-checks", DataTable)
+        t.clear()
+        for name, value in (ready.get("checks") or {}).items():
+            ok = str(value).startswith("UP")
+            t.add_row(_val(name), Text(str(value), style="green" if ok else "yellow"))
+        t = self.query_one("#status-creds", DataTable)
+        t.clear()
+        for name, works in keys.items():
+            t.add_row(name, Text("accepted", style="green") if works else Text("refused or missing", style="red"))
+        crawler = ready.get("crawler") or {}
+        if crawler.get("state") == "not_started":
+            crawl_text = "[yellow]not started — no counters yet[/yellow]"
+        else:
+            crawl_text = (
+                f"requests {crawler.get('requests', 0)}  refusals {crawler.get('antibot_responses', 0)}  "
+                f"share {_val(crawler.get('refusal_share', 'n/a'))}  |  "
+                f"pages {crawler.get('pages', 0)}  items {crawler.get('items', 0)}  "
+                f"stale tokens {crawler.get('presets_responses', 0)}"
+            )
+            if retries := crawler.get("retries"):
+                crawl_text += "\nretries: " + ", ".join(f"{r}={c}" for r, c in retries.items())
+        self.query_one("#status-crawl", Static).update(crawl_text)
+        t = self.query_one("#status-egress", DataTable)
+        t.clear()
+        for g in (ready.get("egress") or {}).get("groups") or []:
+            h = Text("healthy", style="green") if g.get("healthy") else Text("unhealthy", style="red")
+            t.add_row(
+                _val(g.get("group")),
+                _val(g.get("address") or "unknown"),
+                h,
+                _val(g.get("isolated")),
+                _val(g.get("refusal_rate")),
+            )
+
+    @work(thread=True, exclusive=True, group="items")
+    def load_items(self) -> None:
+        self.call_from_thread(self._note, "Loading items…")
+        try:
+            q = self.query_one("#items-q", Input).value or None
+            target = self.query_one("#items-target", Input).value or None
+            sort = self.query_one("#items-sort", Select).value
+            try:
+                page = int(self.query_one("#items-page", Input).value or "0")
+            except ValueError:
+                page = 0
+            try:
+                size = int(self.query_one("#items-size", Input).value or "20")
+            except ValueError:
+                size = 20
+            result = _fetch_items(target=target, query=q, page=page, page_size=size, sort=str(sort))
+            self.call_from_thread(self._render_items, result, None)
+        except Exception as exc:  # noqa: BLE001
+            self.call_from_thread(self._render_items, None, str(exc))
+
+    def _render_items(self, result: ItemsPage | None, err: str | None) -> None:
+        self._note("")
+        t = self.query_one("#items-table", DataTable)
+        t.clear()
+        if err:
+            self.query_one("#items-info", Static).update(f"[red]{err}[/red]")
+            return
+        assert result is not None
+        self.query_one("#items-info", Static).update(
+            f"page {result.page + 1}/{max(1, result.total_pages)} — {result.total_count} total"
+            + (f" (data {_age(result.data_as_of)})" if result.data_as_of else "")
+        )
+        for item in result.items:
+            cb = f"{item.cashback_percent}%" if item.cashback_percent is not None else "—"
+            t.add_row(_val(item.target_name), _val(item.title), _price(item), cb, _age(item.scraped_at))
+
+    @work(thread=True, exclusive=True, group="runs")
+    def load_runs(self) -> None:
+        self.call_from_thread(self._note, "Loading runs…")
+        try:
+            data = _fetch_runs()
+            self.call_from_thread(self._render_runs, data, None)
+        except Exception as exc:  # noqa: BLE001
+            self.call_from_thread(self._render_runs, None, str(exc))
+
+    def _render_runs(self, data: dict[str, Any] | None, err: str | None) -> None:
+        self._note("")
+        for tid in ("#runs-targets", "#runs-jobs", "#runs-errors"):
+            self.query_one(tid, DataTable).clear()
+        if err:
+            self._note(f"[red]{err}[/red]")
+            return
+        assert data is not None
+        t = self.query_one("#runs-targets", DataTable)
+        for run in data["targetRuns"]:
+            t.add_row(
+                _val(run.target_name or (run.target_id[:8] if run.target_id else None)),
+                _val(run.egress_group),
+                _val(run.egress_ip),
+                _val(run.outcome),
+                _val(run.pages),
+                _val(run.items),
+                _val(run.wb_total),
+                _age(run.started_at),
+            )
+        t = self.query_one("#runs-jobs", DataTable)
+        for job in data["jobs"]:
+            t.add_row(
+                _val(job.status),
+                _val(job.pages_crawled),
+                _val(job.items_saved),
+                _age(job.started_at),
+                _val(job.error_message),
+            )
+        t = self.query_one("#runs-errors", DataTable)
+        for e in data["errors"]:
+            t.add_row(_val(e.category), _val(e.message), _age(e.created_at))
+
+    @work(thread=True, exclusive=True, group="schedule")
+    def load_schedule(self) -> None:
+        self.call_from_thread(self._note, "Loading schedule…")
+        try:
+            data = _fetch_schedule()
+            self.call_from_thread(self._render_schedule, data, None)
+        except Exception as exc:  # noqa: BLE001
+            self.call_from_thread(self._render_schedule, None, str(exc))
+
+    def _render_schedule(self, data: dict[str, Any] | None, err: str | None) -> None:
+        self._note("")
+        self.query_one("#sched-due", DataTable).clear()
+        self.query_one("#sched-upcoming", DataTable).clear()
+        if err:
+            self.query_one("#schedule-summary", Static).update(f"[red]{err}[/red]")
+            return
+        assert data is not None
+        nr = data["nextRun"]
+        nr_text = (
+            f"{nr.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')} ({_age(nr)})" if nr else "[yellow]unknown[/yellow]"
+        )
+        summary = (
+            f"tick: {data['cron']}  |  freshness: {data['freshnessMinutes']} min  |  "
+            f"active: {data['activeTargets']}/{len(data['targets'])}  |  due now: {len(data['due'])}\n"
+            f"next run: {nr_text}"
+        )
+        if data.get("earliestDue"):
+            summary += f"  |  earliest due {_age(data['earliestDue'])}"
+        if data["due"]:
+            summary += "\n[yellow]a target held by an interrupted run's lease may appear due but be skipped[/yellow]"
+        self.query_one("#schedule-summary", Static).update(summary)
+        t = self.query_one("#sched-due", DataTable)
+        for tgt in data["due"]:
+            t.add_row(
+                _val(tgt.name), _val(tgt.wb_catalog_id), _age(tgt.last_crawled_at), _val(tgt.consecutive_failures)
+            )
+        t = self.query_one("#sched-upcoming", DataTable)
+        for when, tgt in data["upcoming"]:
+            t.add_row(_val(tgt.name), _age(when))
+
+    @work(thread=True, exclusive=True, group="history")
+    def load_history(self) -> None:
+        self.call_from_thread(self._note, "Loading history…")
+        try:
+            data = _fetch_history()
+            self.call_from_thread(self._render_history, data, None)
+        except Exception as exc:  # noqa: BLE001
+            self.call_from_thread(self._render_history, None, str(exc))
+
+    def _render_history(self, data: dict[str, Any] | None, err: str | None) -> None:
+        self._note("")
+        self.query_one("#history-table", DataTable).clear()
+        if err:
+            self.query_one("#history-summary", Static).update(f"[red]{err}[/red]")
+            return
+        assert data is not None
+        nr = data["nextRun"]
+        nr_text = (
+            f"{nr.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')} ({_age(nr)})" if nr else "[yellow]unknown[/yellow]"
+        )
+        summary = f"tick: {data['cron']}  |  freshness: {data['freshnessMinutes']} min  |  next run: {nr_text}"
+        if data.get("earliestDue"):
+            summary += f"  |  earliest due {_age(data['earliestDue'])}"
+        self.query_one("#history-summary", Static).update(summary)
+        t = self.query_one("#history-table", DataTable)
+        for job in data["jobs"]:
+            t.add_row(
+                _age(job.started_at),
+                _duration(job),
+                _val(job.triggered_by),
+                _val(job.status),
+                _val(job.pages_crawled),
+                _val(job.items_saved),
+                _val(job.error_message),
+            )
+
+    @work(thread=True, exclusive=True, group="stats")
+    def load_stats(self) -> None:
+        self.call_from_thread(self._note, "Loading stats…")
+        try:
+            payload = _fetch_stats()
+            self.call_from_thread(self._render_stats, payload, None)
+        except Exception as exc:  # noqa: BLE001
+            self.call_from_thread(self._render_stats, None, str(exc))
+
+    def _render_stats(self, payload: Stats | None, err: str | None) -> None:
+        self._note("")
+        t = self.query_one("#stats-table", DataTable)
+        t.clear()
+        if err:
+            self._note(f"[red]{err}[/red]")
+            return
+        assert payload is not None
+        rows = [
+            ("products", payload.total_products),
+            ("observations", f"{payload.total_items} (one row per target × product × price)"),
+            ("targets", payload.total_targets),
+            ("with cashback", f"{payload.products_with_cashback} products / {payload.with_cashback} observations"),
+            ("newest observation", _age(payload.newest_scraped_at)),
+            ("counters computed", f"{_age(payload.as_of)} (cached up to ten minutes)"),
+        ]
+        for k, v in rows:
+            t.add_row(_val(k), _val(v))
+
+    def load_logs(self) -> None:
+        try:
+            n = int(self.query_one("#logs-lines", Input).value or "150")
+        except ValueError:
+            n = 150
+        view = self.query_one("#logs-view", RichLog)
+        view.clear()
+        if not _running("app"):
+            view.write("app is not running — start it with Up")
+            return
+        proc = subprocess.run(
+            ["docker", "compose", "logs", "--tail", str(n), "app"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        view.write(proc.stdout or proc.stderr or "(no output)")
+
+    @work(thread=True, exclusive=True, group="follow")
+    def follow_logs(self) -> None:
+        self.stop_follow()
+        if not _running("app"):
+            self.call_from_thread(self.query_one("#logs-view", RichLog).write, "app is not running")
+            return
+        proc = subprocess.Popen(
+            ["docker", "compose", "logs", "--follow", "--tail", "50", "app"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        self._follow_proc = proc
+        assert proc.stdout is not None
+        try:
+            for line in proc.stdout:
+                self.call_from_thread(self.query_one("#logs-view", RichLog).write, line.rstrip("\n"))
+        finally:
+            proc.stdout.close()
+
+    def stop_follow(self) -> None:
+        proc = getattr(self, "_follow_proc", None)
+        if proc and proc.poll() is None:
+            proc.terminate()
+        self._follow_proc = None
+
+    @work(thread=True, exclusive=True, group="action")
+    def run_action(self, action: str) -> None:
+        log = self.query_one("#activity-log", RichLog)
+        self.call_from_thread(log.write, f"[bold]▶ {action}[/bold]")
+        try:
+            if action == "up":
+                self._action_up(log)
+            elif action == "down":
+                self._action_down(log)
+            elif action == "crawl":
+                self._action_crawl(log)
+            self.call_from_thread(log.write, f"[green]✔ {action} finished[/green]")
+        except Exception as exc:  # noqa: BLE001
+            self.call_from_thread(log.write, f"[red]✖ {action}: {exc}[/red]")
+        self.call_from_thread(self.load_status)
+
+    def _stream_cmd(self, argv: list[str], log: RichLog, env: dict[str, str] | None = None) -> int:
+        proc = subprocess.Popen(argv, cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            self.call_from_thread(log.write, line.rstrip("\n"))
+        return proc.wait()
+
+    def _action_up(self, log: RichLog) -> None:
+        if not JAR.is_file():
+            self.call_from_thread(log.write, "building jar…")
+            rc = self._stream_cmd([str(ROOT / "gradlew"), ":app:bootJar", "--no-daemon"], log)
+            if rc != 0:
+                raise Unusable(f"jar build failed (exit {rc})")
+        self.call_from_thread(log.write, "starting stack…")
+        rc = self._stream_cmd(["docker", "compose", "up", "-d"], log)
+        if rc != 0:
+            raise Unusable(f"docker compose up failed (exit {rc})")
+        deadline = time.monotonic() + 180
+        while time.monotonic() < deadline:
+            try:
+                if _get("/api/health/ready").get("status") == "UP":
+                    self.call_from_thread(log.write, f"ready at {_base_url()}")
+                    return
+            except Unusable:
+                pass
+            time.sleep(2)
+        raise Unusable("application did not become ready in time")
+
+    def _action_down(self, log: RichLog) -> None:
+        rc = self._stream_cmd(["docker", "compose", "down"], log)
+        if rc != 0:
+            raise Unusable(f"docker compose down failed (exit {rc})")
+
+    def _action_crawl(self, log: RichLog) -> None:
+        if not JAR.is_file():
+            raise Unusable(f"{JAR.relative_to(ROOT)} is missing — run Up first")
+        if not _running("postgres"):
+            raise Unusable("database is not running — start it with Up")
+        env = {
+            **os.environ,
+            **_env(),
+            "SPRING_PROFILES_ACTIVE": "once",
+            "CAMOUFOX_HOME": _env().get("CAMOUFOX_HOME") or str(Path.home() / ".cache" / "camoufox"),
+            "PROFILES_DIR": _env().get("PROFILES_DIR") or str(Path.home() / ".wbparser" / "profiles"),
+        }
+        env.setdefault("DB_HOST", "localhost")
+        env.setdefault("DB_PORT", "5433")
+        env.setdefault("DB_NAME", "wbparser")
+        env.setdefault("DB_USER", "postgres")
+        rc = self._stream_cmd(["java", "-jar", str(JAR), "--spring.profiles.active=once"], log, env=env)
+        codes = {0: "succeeded", 1: "failed", 2: "lock held elsewhere", 3: "cancelled"}
+        self.call_from_thread(log.write, f"crawl exit {rc}: {codes.get(rc, 'unexpected')}")
+        if rc != 0:
+            raise Unusable(f"crawl exit {rc}")
+
+
+@app.command()
+def tui() -> None:
+    """Launch the interactive Textual TUI."""
+    WbparserApp().run()
 
 
 @app.command(name="help")
