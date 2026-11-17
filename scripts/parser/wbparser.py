@@ -1128,10 +1128,10 @@ class Pane(Vertical):
 
     An error from `fetch()` replaces the status line and keeps the previous data and
     `updated_at`. An error from `show()` also keeps `updated_at`, but the base class
-    cannot roll back widgets that `show()` already changed: `show()` must prepare its
-    content before touching widgets, and must not leave a partially updated pane.
-    A reload while one is in flight does nothing. Call `reload()` after the pane is
-    mounted; Textual cancels the worker when the pane is unmounted.
+    cannot roll back widgets that `show()` already changed — a widget that fails
+    mid-update is not repaired here, so `show()` prepares its content before touching
+    widgets. A reload while one is in flight does nothing. Call `reload()` after the
+    pane is mounted; Textual cancels the worker when the pane is unmounted.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -1190,8 +1190,9 @@ class StatsPane(Pane):
         return _fetch_stats()
 
     def show(self, payload: Stats) -> None:
-        # Every cell is built before the table is touched: a failure here leaves the
-        # last good rows, and the pane is never drawn half-updated.
+        # Cells are built before the table is touched, so a failure while building them
+        # leaves the last good rows. clear() and add_row() are not atomic: a widget that
+        # fails mid-update is beyond what this class repairs.
         rows = [
             ("products", payload.total_products),
             ("observations", f"{payload.total_items} (one row per target × product × price)"),

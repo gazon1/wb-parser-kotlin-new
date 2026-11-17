@@ -342,6 +342,12 @@ async def _reload(pane) -> None:
     await pane.workers.wait_for_complete()
 
 
+async def _wait_started(started: threading.Event) -> None:
+    """A regression in worker startup must fail the test, not hang it."""
+    reached = await asyncio.wait_for(asyncio.to_thread(started.wait, 2), timeout=5)
+    assert reached, "the worker never reached fetch()"
+
+
 def _stats(mod):
     return mod.Stats.model_validate(
         {
@@ -485,8 +491,7 @@ def test_a_reload_while_one_is_in_flight_starts_no_second_fetch() -> None:
         pane = Probe()
         async with _host(mod, pane).run_test():
             pane.reload()
-            while not started.is_set():
-                await asyncio.sleep(0.01)
+            await _wait_started(started)
             pane.reload()
             release.set()
             await pane.workers.wait_for_complete()
@@ -619,8 +624,7 @@ def test_closing_the_app_while_a_load_is_in_flight_leaves_the_pane_silent() -> N
         pane = Probe()
         async with _host(mod, pane).run_test():
             pane.reload()
-            while not started.is_set():
-                await asyncio.sleep(0.01)
+            await _wait_started(started)
         release.set()
         await asyncio.sleep(0.1)
         assert pane.shown == [], "a worker cancelled on unmount must not touch the pane"
