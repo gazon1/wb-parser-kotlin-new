@@ -62,6 +62,16 @@ NOW = datetime(2026, 11, 17, 10, 0, tzinfo=UTC)
 CRON = "0 0 */2 * * *"
 
 
+def _substitute(*argv: str) -> list[str]:
+    """A substitute executable: it prints its own argv and succeeds."""
+    return [sys.executable, "-c", "import sys; print(' '.join(sys.argv[1:]), flush=True)", *argv]
+
+
+async def _not_running(service: str) -> bool:
+    """The stack is not running — and no compose command is started to find out."""
+    return False
+
+
 def test_the_answer_the_server_writes_parses() -> None:
     mod = _load_wbparser()
     due_target = _target(mod, "due", id="due", lastCrawledAt=datetime(2026, 11, 17, 8, 30, tzinfo=UTC))
@@ -588,7 +598,7 @@ def test_the_app_loads_stats_on_the_tab_and_on_refresh(monkeypatch) -> None:
 
     monkeypatch.setattr(mod, "_fetch_stats", fake_stats)
     monkeypatch.setattr(mod, "_fetch_status", fake_status)
-    monkeypatch.setattr(mod, "_running", lambda service: False)
+    monkeypatch.setattr(mod, "_running", _not_running)
 
     async def scenario() -> None:
         app = mod.WbparserApp()
@@ -917,7 +927,7 @@ def test_each_pane_refresh_button_reloads_only_that_pane(monkeypatch, tab, butto
     mod = _load_wbparser()
     calls: list[str] = []
     _fake_tabs(monkeypatch, mod, calls)
-    monkeypatch.setattr(mod, "_running", lambda service: False)
+    monkeypatch.setattr(mod, "_running", _not_running)
 
     async def scenario() -> None:
         app = mod.WbparserApp()
@@ -950,7 +960,7 @@ def test_opening_a_tab_loads_it_once(monkeypatch) -> None:
     mod = _load_wbparser()
     calls: list[str] = []
     _fake_tabs(monkeypatch, mod, calls)
-    monkeypatch.setattr(mod, "_running", lambda service: False)
+    monkeypatch.setattr(mod, "_running", _not_running)
 
     async def scenario() -> None:
         app = mod.WbparserApp()
@@ -977,7 +987,7 @@ def test_the_auto_refresh_follows_the_tab_the_operator_opened(monkeypatch) -> No
     mod = _load_wbparser()
     calls: list[str] = []
     _fake_tabs(monkeypatch, mod, calls)
-    monkeypatch.setattr(mod, "_running", lambda service: False)
+    monkeypatch.setattr(mod, "_running", _not_running)
 
     async def scenario() -> None:
         app = mod.WbparserApp()
@@ -1727,8 +1737,8 @@ class CliTest(_TransportCase):
         with (
             patch,
             self._keys(),
-            mock.patch.object(mod, "_run"),
-            mock.patch.object(mod, "_compose"),
+            mock.patch.object(mod, "_gradle_command", lambda: _substitute("bootJar")),
+            mock.patch.object(mod, "_compose_command", lambda *argv: _substitute(*argv)),
             contextlib.redirect_stdout(io.StringIO()),
         ):
             mod.up(timeout=5)
@@ -1741,8 +1751,8 @@ class CliTest(_TransportCase):
         with (
             patch,
             self._keys(),
-            mock.patch.object(mod, "_run"),
-            mock.patch.object(mod, "_compose"),
+            mock.patch.object(mod, "_gradle_command", lambda: _substitute("bootJar")),
+            mock.patch.object(mod, "_compose_command", lambda *argv: _substitute(*argv)),
             contextlib.redirect_stdout(io.StringIO()),
             self.assertRaises(mod.typer.Exit) as raised,
         ):
@@ -1832,8 +1842,8 @@ class CliRunnerTest(_TransportCase):
         with (
             patch,
             self._keys(),
-            mock.patch.object(mod, "_run"),
-            mock.patch.object(mod, "_compose"),
+            mock.patch.object(mod, "_gradle_command", lambda: _substitute("bootJar")),
+            mock.patch.object(mod, "_compose_command", lambda *argv: _substitute(*argv)),
             self._json_mode(),
         ):
             result = self.runner.invoke(mod.app, ["up", "--timeout", "0"])
@@ -1854,8 +1864,8 @@ class CliRunnerTest(_TransportCase):
         with (
             patch,
             self._keys(),
-            mock.patch.object(mod, "_run"),
-            mock.patch.object(mod, "_compose"),
+            mock.patch.object(mod, "_gradle_command", lambda: _substitute("bootJar")),
+            mock.patch.object(mod, "_compose_command", lambda *argv: _substitute(*argv)),
             self._json_mode(),
         ):
             started = time.monotonic()

@@ -595,6 +595,21 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** считать HTTP-ответ транспортной ошибкой: только `Error` означает, что ответа не было, и только он идёт в транспортную цепь. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
 - **Never** считать восстановление или обычное закрытие поводом снять retire: снимает его только `onReset()` под эксклюзивным permit'ом. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
 - **Never** угадывать scope reset'а: очистку задаёт вызывающий. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Always** escape a child's output before it reaches Rich. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Always** let the scope own the child. A cancelled scope terminates the child's process group, kills it if it does not go away, waits for it either way, and closes its pipes — no process and no pipe outlives the call that started it. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Always** name an executable through a seam (`_gradle_command`, `_compose_command`, `_java_command`), so a test can substitute it. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Always** prove an action with a substituted executable. The action's contract is the argv it starts, the environment it passes and the exit code it returns — not whether Gradle is installed on the machine that runs the test. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Always** run one `asyncio.run` per CLI command, at the sync boundary, and **Never** inside a coroutine, a worker or a polling loop. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Always** signal the whole group, even when the leader has already exited. The leader's exit says nothing about the descendants that are still working. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Always** start a child process through `proc`. There is no other way in this tool, and `subprocess` is not imported anywhere in it. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Never** let a cancellation cut the cleanup short, and **Never** lose the cancellation the caller asked for. The cleanup is shielded, and it survives a second cancellation. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Never** let the TUI's Down remove the volume. Removing the rows is the CLI's `--volumes`, and only the CLI's. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Never** measure the grace period by the leader's exit. The grace belongs to the group: the group is asked whether it still has members. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Never** pass a shell string: the argv is a list, and `shell=True` does not exist in this tool. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Never** print a secret or an environment value. The crawl's environment is built for the child, and only the host, the port and the database name are said out loud. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Never** promise a prompt cancellation where orphans are not reaped. A zombie descendant counts as a member of the group, so the grace is spent on a process that is already dead — 6.0 s instead of 0.05 s, measured. The fix, if the delay ever shows in practice, is to read the members' states from procfs — not to shorten the grace. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Never** stop the stack from the TUI without the operator's confirmation. The confirmation comes before the subprocess starts, and a refusal starts nothing. Escape is a refusal. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
+- **Never** wait for a pipe without a bound. A descendant that detached itself holds the write end, and a wait with no end is a hang. _(from `2026-11-17-the-actions-are-shared-and-the-children-are-async`)
 - **Always** decode catalog responses with `parse_float=Decimal` and encode `--json` with a decimal-aware writer; a `float` on either side rounds the value the contract calls a number. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 - **Always** keep the generator version pinned in that script. A different version rewrites the file for reasons that are not a change to the contract. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 - **Always** regenerate when the contract changes, with `scripts/parser/generate-models.sh` (`just parser::models`); the recipe and the pipeline both call that script, so the command exists once, and the file is committed and reviewed with the change that caused it. _(from `2026-11-17-the-python-catalog-models-are-generated`)
@@ -1295,6 +1310,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-16-the-deployment-runs-camoufox` — architecture  operations  browser  deployment
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — architecture  browser  antibot  boundaries  operations
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — browser  antibot  egress  architecture
+- `2026-11-17-the-actions-are-shared-and-the-children-are-async` — python  tui  architecture
 - `2026-11-17-the-python-catalog-models-are-generated` — contract  python
 - `2026-11-17-the-read-only-tabs-are-panes` — python  tui
 - `2026-11-17-the-test-gate-runs-the-suite-that-exists` — gates  python
@@ -1425,6 +1441,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-16-the-deployment-runs-camoufox` — Развёртывание запускает локальный Camoufox и не несёт AdsPower
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — Локальный браузер живёт в persistent-контексте профиля, а каталог занят на время его жизни
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — Состояние профиля выводится, а отказ, throttling и сбой сервера считаются врозь
+- `2026-11-17-the-actions-are-shared-and-the-children-are-async` — The actions are shared, and every child process is started by one async API
 - `2026-11-17-the-python-catalog-models-are-generated` — The operator CLI's catalog models are generated from the contract, the admin models are not
 - `2026-11-17-the-read-only-tabs-are-panes` — The read-only tabs are panes, and the app refreshes only the active one
 - `2026-11-17-the-test-gate-runs-the-suite-that-exists` — The scripts' test gate runs pytest, so the gate guards the suite that exists
