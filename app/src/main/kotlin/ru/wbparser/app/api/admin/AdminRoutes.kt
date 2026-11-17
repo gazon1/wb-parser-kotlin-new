@@ -293,7 +293,7 @@ fun DataSource.fetchSchedule(
         allTargets
             .filter { it.isActive && it.id !in dueIdSet }
             .mapNotNull { target ->
-                val claimAt = claimMoment(target.nextAttemptAt, target.lastCrawledAt, freshnessMinutes)
+                val claimAt = claimMoment(target.nextAttemptAt, target.lastCrawledAt, freshnessMinutes, target.leaseUntil)
                 if (claimAt != null && claimAt > now) {
                     claimAt to target
                 } else {
@@ -306,7 +306,7 @@ fun DataSource.fetchSchedule(
     val earliestDue: Instant? =
         allTargets
             .filter { it.isActive }
-            .mapNotNull { target -> claimMoment(target.nextAttemptAt, target.lastCrawledAt, freshnessMinutes) }
+            .mapNotNull { target -> claimMoment(target.nextAttemptAt, target.lastCrawledAt, freshnessMinutes, target.leaseUntil) }
             .minOrNull()
     return ScheduleSnapshot(due = due, upcoming = upcoming, earliestDue = earliestDue)
 }

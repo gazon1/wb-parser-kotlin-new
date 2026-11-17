@@ -350,9 +350,31 @@ class AdminRoutesTest :
                     nextAttemptAt = now.plus(Duration.ofMinutes(10)),
                 )
 
-            val moment = claimMoment(target.nextAttemptAt, target.lastCrawledAt, CrawlProperties().schedule.freshnessMinutes)
+            val moment =
+                claimMoment(target.nextAttemptAt, target.lastCrawledAt, CrawlProperties().schedule.freshnessMinutes, target.leaseUntil)
 
             moment shouldBe now.plus(Duration.ofMinutes(330))
+        }
+
+        test("the upcoming answer takes the later of the retry, the freshness, and the lease") {
+            val now = Instant.now()
+            val target =
+                Target(
+                    id = UUID.randomUUID(),
+                    name = "Карты памяти",
+                    url = "https://example.invalid/c",
+                    cronExpression = null,
+                    maxDepth = 1,
+                    isActive = true,
+                    lastCrawledAt = now.minus(Duration.ofMinutes(30)),
+                    nextAttemptAt = now.plus(Duration.ofMinutes(10)),
+                    leaseUntil = now.plus(Duration.ofMinutes(400)),
+                )
+
+            val moment =
+                claimMoment(target.nextAttemptAt, target.lastCrawledAt, CrawlProperties().schedule.freshnessMinutes, target.leaseUntil)
+
+            moment shouldBe now.plus(Duration.ofMinutes(400))
         }
     })
 
