@@ -98,6 +98,20 @@ def _shown(mod, host) -> str:
     return "".join(strip.text for strip in view.lines)
 
 
+async def _wait_for_text(mod, host, text: str) -> None:
+    """
+    Wait for the text to show up in the log view — and insist that it does.
+
+    Polling without an assertion is a test that passes when nothing happens, so
+    the wait ends in a failure, never in a shrug.
+    """
+    for _ in range(100):
+        if text in _shown(mod, host):
+            return
+        await asyncio.sleep(0.05)
+    raise AssertionError(f"the log view never showed {text!r}")
+
+
 # ── the log tab ──────────────────────────────────────────────────────────────
 
 
@@ -127,10 +141,7 @@ def test_the_load_writes_the_last_lines(mod, monkeypatch) -> None:
         async with host.run_test(size=(140, 40)) as pilot:
             await _open_the_log_tab(mod, pilot)
             await pilot.click("#btn-logs")
-            for _ in range(100):
-                if "second line" in _shown(mod, host):
-                    break
-                await asyncio.sleep(0.05)
+            await _wait_for_text(mod, host, "second line")
 
     asyncio.run(scenario())
 
@@ -143,27 +154,22 @@ def test_the_load_says_when_the_app_is_not_running(mod, monkeypatch) -> None:
         host = mod.WbparserApp()
         async with host.run_test(size=(140, 40)) as pilot:
             await _open_the_log_tab(mod, pilot)
-            for _ in range(100):
-                if "not running" in _shown(mod, host):
-                    break
-                await asyncio.sleep(0.05)
+            await _wait_for_text(mod, host, "not running")
 
     asyncio.run(scenario())
 
 
-def test_the_follow_streams_the_lines_as_they_arrive(mod, monkeypatch) -> None:
+def test_the_follow_streams_the_lines_as_they_arrive(mod, monkeypatch, tmp_path) -> None:
     """The follow writes what the child says, line by line."""
-    _compose(mod, monkeypatch)
+    pidfile = tmp_path / "pid"
+    _compose(mod, monkeypatch, pidfile=pidfile)
 
     async def scenario() -> None:
         host = mod.WbparserApp()
         async with host.run_test(size=(140, 40)) as pilot:
             await _open_the_log_tab(mod, pilot)
             await pilot.click("#btn-logs-follow")
-            for _ in range(100):
-                if "a line of log" in _shown(mod, host):
-                    break
-                await asyncio.sleep(0.05)
+            await _wait_for_text(mod, host, "a line of log")
 
     asyncio.run(scenario())
 
@@ -177,10 +183,7 @@ def test_a_follow_that_fails_says_so(mod, monkeypatch) -> None:
         async with host.run_test(size=(140, 40)) as pilot:
             await _open_the_log_tab(mod, pilot)
             await pilot.click("#btn-logs-follow")
-            for _ in range(100):
-                if "failed" in _shown(mod, host):
-                    break
-                await asyncio.sleep(0.05)
+            await _wait_for_text(mod, host, "failed with code")
 
     asyncio.run(scenario())
 
