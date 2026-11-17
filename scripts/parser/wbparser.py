@@ -54,6 +54,7 @@ import os
 import subprocess
 import sys
 import time
+import webbrowser
 from dataclasses import astuple, dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -81,7 +82,7 @@ try:
     from rich.markup import escape
     from rich.table import Table
     from rich.text import Text
-    from textual import on, work
+    from textual import events, on, work
     from textual.app import App, ComposeResult
     from textual.binding import Binding
     from textual.containers import Horizontal, Vertical
@@ -1329,6 +1330,8 @@ class WbparserApp(App):
 
     def on_mount(self) -> None:
         self._follow_proc: subprocess.Popen[str] | None = None
+        self._items_urls: list[str] = []
+        self._last_item_open: tuple[int, float] | None = None
         self._init_tables()
         self.action_refresh()
 
@@ -1482,13 +1485,55 @@ class WbparserApp(App):
         t = self.query_one("#items-table", DataTable)
         if err:
             self.query_one("#items-info", Static).update(f"[red]{escape(err)}[/red]")
+            self._items_urls = []
             return
         assert result is not None
         self.query_one("#items-info", Static).update(
             f"page {result.page + 1}/{max(1, result.total_pages)} — {result.total_count} total"
             + (f" (data {_age(result.data_as_of)})" if result.data_as_of else "")
+            + "  [dim](click a row to open)[/dim]"
         )
+        self._items_urls = [str(item.product_url) for item in result.items]
         fill(t, items_section(result))
+
+    def _open_item_by_row(self, idx: int) -> None:
+        """Open the product URL for a table row in the default browser."""
+        urls = getattr(self, "_items_urls", [])
+        if idx < 0 or idx >= len(urls):
+            return
+        now = time.monotonic()
+        last = getattr(self, "_last_item_open", None)
+        if last and last[0] == idx and now - last[1] < 0.5:
+            return
+        self._last_item_open = (idx, now)
+        url = urls[idx]
+        try:
+            opened = webbrowser.open(url)
+        except Exception as exc:  # noqa: BLE001
+            self._note(f"[red]Could not open browser: {escape(str(exc))}[/red]")
+            return
+        if opened:
+            self._note(f"Opening {url}")
+        else:
+            self._note(f"[yellow]Could not open browser for {escape(url)}[/yellow]")
+
+    @on(events.Click, "#items-table")
+    def _open_item_click(self, event: events.Click) -> None:
+        """Open the clicked product row in the default browser."""
+        meta = event.style.meta
+        row = meta.get("row")
+        if row is None or meta.get("out_of_bounds", False):
+            return
+        try:
+            idx = int(row)
+        except (TypeError, ValueError):
+            return
+        self._open_item_by_row(idx)
+
+    @on(DataTable.CellSelected, "#items-table")
+    def _open_item_selected(self, event: DataTable.CellSelected) -> None:
+        """Open the selected product in the default browser (e.g. Enter)."""
+        self._open_item_by_row(event.coordinate.row)
 
     @work(thread=True, exclusive=True, group="runs")
     def load_runs(self) -> None:
