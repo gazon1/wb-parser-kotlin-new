@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import sys
+import threading
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import cache
@@ -319,3 +321,315 @@ def test_runs_json_emits_nested_objects(monkeypatch, capsys) -> None:
     assert payload["targetRuns"][0]["outcome"] == "success"
     assert isinstance(payload["errors"][0], dict)
     assert payload["errors"][0]["message"] == "timeout"
+
+
+# ── the Pane contract ────────────────────────────────────────────────────────
+
+
+def _host(mod, pane):
+    """A one-pane app, so a pane can be exercised without the real TUI."""
+
+    class Host(mod.App):
+        def compose(self):
+            yield pane
+
+    return Host()
+
+
+async def _reload(pane) -> None:
+    """One reload, waited out — the pane's own public worker manager, not its internals."""
+    pane.reload()
+    await pane.workers.wait_for_complete()
+
+
+async def _wait_started(started: threading.Event) -> None:
+    """A regression in worker startup must fail the test, not hang it."""
+    reached = await asyncio.wait_for(asyncio.to_thread(started.wait, 2), timeout=5)
+    assert reached, "the worker never reached fetch()"
+
+
+def _stats(mod):
+    return mod.Stats.model_validate(
+        {
+            "totalItems": 1,
+            "totalProducts": 2,
+            "totalTargets": 3,
+            "withCashback": 4,
+            "productsWithCashback": 5,
+            "newestScrapedAt": "2026-11-17T09:00:00Z",
+            "asOf": "2026-11-17T09:00:00Z",
+            "instanceId": "i",
+            "dataAsOf": None,
+        }
+    )
+
+
+def test_a_pane_shows_what_it_fetched_and_marks_the_update() -> None:
+    mod = _load_wbparser()
+
+    class Probe(mod.Pane):
+        def __init__(self) -> None:
+            super().__init__()
+            self.shown: list = []
+
+        def compose(self):
+            yield mod.Static("", id="pane-status")
+
+        def fetch(self):
+            return {"answer": 42}
+
+        def show(self, data):
+            self.shown.append(data)
+
+    async def scenario() -> None:
+        pane = Probe()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            assert pane.shown == [{"answer": 42}]
+            assert pane.updated_at is not None
+            status = pane.query_one("#pane-status", mod.Static).content
+            assert "loading" not in status
+            assert "updated" in status
+
+    asyncio.run(scenario())
+
+
+def test_a_failed_fetch_is_shown_and_leaves_the_pane_loadable_again() -> None:
+    mod = _load_wbparser()
+    calls: list[int] = []
+
+    class Probe(mod.Pane):
+        def __init__(self) -> None:
+            super().__init__()
+            self.shown: list = []
+
+        def compose(self):
+            yield mod.Static("", id="pane-status")
+
+        def fetch(self):
+            calls.append(1)
+            if len(calls) == 1:
+                raise mod.Unusable("cannot reach http://localhost:8082")
+            return "recovered"
+
+        def show(self, data):
+            self.shown.append(data)
+
+    async def scenario() -> None:
+        pane = Probe()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            status = pane.query_one("#pane-status", mod.Static).content
+            assert "cannot reach" in status
+            assert "loading" not in status
+            assert pane.shown == []
+
+            await _reload(pane)
+            assert pane.shown == ["recovered"]
+
+    asyncio.run(scenario())
+
+
+def test_a_failed_show_is_reported_and_does_not_mark_the_update() -> None:
+    mod = _load_wbparser()
+    failing = {"draw": True}
+
+    class Probe(mod.Pane):
+        def __init__(self) -> None:
+            super().__init__()
+            self.shown: list = []
+
+        def compose(self):
+            yield mod.Static("", id="pane-status")
+
+        def fetch(self):
+            return {"answer": 42}
+
+        def show(self, data):
+            if failing["draw"]:
+                raise RuntimeError("cannot draw")
+            self.shown.append(data)
+
+    async def scenario() -> None:
+        pane = Probe()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            status = pane.query_one("#pane-status", mod.Static).content
+            assert "cannot draw" in status
+            assert "loading" not in status
+            assert pane.updated_at is None
+            assert pane.shown == []
+
+            failing["draw"] = False
+            await _reload(pane)
+            assert pane.shown == [{"answer": 42}]
+            assert pane.updated_at is not None
+
+    asyncio.run(scenario())
+
+
+def test_a_reload_while_one_is_in_flight_starts_no_second_fetch() -> None:
+    mod = _load_wbparser()
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[int] = []
+
+    class Probe(mod.Pane):
+        def compose(self):
+            yield mod.Static("", id="pane-status")
+
+        def fetch(self):
+            calls.append(1)
+            started.set()
+            release.wait(5)
+            return None
+
+        def show(self, data):
+            pass
+
+    async def scenario() -> None:
+        pane = Probe()
+        async with _host(mod, pane).run_test():
+            pane.reload()
+            await _wait_started(started)
+            pane.reload()
+            release.set()
+            await pane.workers.wait_for_complete()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()
+    assert calls == [1]
+
+
+def test_the_stats_pane_draws_what_it_fetched(monkeypatch) -> None:
+    mod = _load_wbparser()
+    monkeypatch.setattr(mod, "_fetch_stats", lambda: _stats(mod))
+
+    async def scenario() -> None:
+        pane = mod.StatsPane()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            assert pane.query_one("#stats-table", mod.DataTable).row_count == 6
+            assert pane.updated_at is not None
+            status = pane.query_one("#pane-status", mod.Static).content
+            assert "updated" in status
+
+    asyncio.run(scenario())
+
+
+def test_the_stats_pane_keeps_the_last_good_data_when_a_reload_fails(monkeypatch) -> None:
+    mod = _load_wbparser()
+    calls: list[int] = []
+
+    def fetch():
+        calls.append(1)
+        if len(calls) == 1:
+            return _stats(mod)
+        raise mod.Unusable("cannot reach http://localhost:8082")
+
+    monkeypatch.setattr(mod, "_fetch_stats", fetch)
+
+    async def scenario() -> None:
+        pane = mod.StatsPane()
+        async with _host(mod, pane).run_test():
+            await _reload(pane)
+            table = pane.query_one("#stats-table", mod.DataTable)
+            last_good = pane.updated_at
+            assert table.row_count == 6
+            assert last_good is not None
+
+            await _reload(pane)
+            assert table.row_count == 6
+            assert pane.updated_at == last_good
+            status = pane.query_one("#pane-status", mod.Static).content
+            assert "cannot reach" in status
+
+    asyncio.run(scenario())
+
+
+def test_the_app_loads_stats_on_the_tab_and_on_refresh(monkeypatch) -> None:
+    mod = _load_wbparser()
+    fetches: list[int] = []
+
+    def stats():
+        fetches.append(1)
+        return _stats(mod)
+
+    monkeypatch.setattr(mod, "_fetch_stats", stats)
+    monkeypatch.setattr(
+        mod,
+        "_fetch_status",
+        lambda: ({"status": "UP", "checks": {}, "crawler": {}, "egress": {}}, {"ADMIN_API_KEY": True}),
+    )
+    monkeypatch.setattr(mod, "_running", lambda service: False)
+
+    async def scenario() -> None:
+        app = mod.WbparserApp()
+        async with app.run_test() as pilot:
+            pane = app.query_one(mod.StatsPane)
+            await pilot.pause()
+            assert fetches == [], "a hidden pane must not load"
+
+            app.action_tab("tab-stats")
+            await pilot.pause()
+            await pane.workers.wait_for_complete()
+            assert len(fetches) == 1
+
+            app.action_tab("tab-logs")
+            await pilot.pause()
+            app.action_tab("tab-stats")
+            await pilot.pause()
+            await pane.workers.wait_for_complete()
+            assert len(fetches) == 2
+
+            await pilot.press("r")
+            await pilot.pause()
+            await pane.workers.wait_for_complete()
+            assert len(fetches) == 3
+
+            await pilot.click("#btn-stats")
+            await pilot.pause()
+            await pane.workers.wait_for_complete()
+            assert len(fetches) == 4
+
+            assert pane.query_one("#stats-table", mod.DataTable).row_count == 6
+
+    asyncio.run(scenario())
+
+
+def test_closing_the_app_while_a_load_is_in_flight_leaves_the_pane_silent() -> None:
+    mod = _load_wbparser()
+    started = threading.Event()
+    release = threading.Event()
+
+    class Probe(mod.Pane):
+        def __init__(self) -> None:
+            super().__init__()
+            self.shown: list = []
+
+        def compose(self):
+            yield mod.Static("", id="pane-status")
+
+        def fetch(self):
+            started.set()
+            release.wait(5)
+            return {"answer": 42}
+
+        def show(self, data):
+            self.shown.append(data)
+
+    async def scenario() -> None:
+        pane = Probe()
+        async with _host(mod, pane).run_test():
+            pane.reload()
+            await _wait_started(started)
+        release.set()
+        await asyncio.sleep(0.1)
+        assert pane.shown == [], "a worker cancelled on unmount must not touch the pane"
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()

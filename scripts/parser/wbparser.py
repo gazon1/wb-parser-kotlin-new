@@ -48,6 +48,7 @@ run at all (no stack, no environment, no answer).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import subprocess
@@ -1116,6 +1117,97 @@ def fill(table: DataTable, section: Section) -> None:
         table.add_row(*(_cell(cell) for cell in row))
 
 
+class Pane(Vertical):
+    """
+    A tab body that loads and draws its own data.
+
+    `fetch()` does the I/O off the UI thread and touches no widget; `show()` touches
+    widgets and does no I/O; `reload()` is the only entry point and owns the three
+    states — loading, error, and the time of the last success. The pane carries a
+    `Static#pane-status` for them.
+
+    An error from `fetch()` replaces the status line and keeps the previous data and
+    `updated_at`. An error from `show()` also keeps `updated_at`, but the base class
+    cannot roll back widgets that `show()` already changed — a widget that fails
+    mid-update is not repaired here, so `show()` prepares its content before touching
+    widgets. A reload while one is in flight does nothing. Call `reload()` after the
+    pane is mounted; Textual cancels the worker when the pane is unmounted.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self._loading = False
+        self.updated_at: datetime | None = None
+
+    def fetch(self) -> Any:
+        raise NotImplementedError
+
+    def show(self, data: Any) -> None:
+        raise NotImplementedError
+
+    def reload(self) -> None:
+        """Start one load; a reload while a load is in flight does nothing."""
+        if self._loading:
+            return
+        self._loading = True
+        self._status("[dim]loading…[/dim]")
+        self.run_worker(self._load())
+
+    async def _load(self) -> None:
+        try:
+            # Cancelling the worker stops this await, not the thread: a synchronous
+            # fetch runs to completion and its result is dropped.
+            data = await asyncio.to_thread(self.fetch)
+            # Both stages are guarded: a failure to draw is as much a failed reload as
+            # a failure to fetch. CancelledError is not an Exception, so a worker
+            # cancelled on unmount is never shown as an error.
+            self.show(data)
+        except Exception as exc:  # noqa: BLE001 - a pane boundary: an error is shown, never raised
+            self._status(f"[red]{escape(str(exc))}[/red]")
+        else:
+            self.updated_at = datetime.now(UTC)
+            self._status(f"[dim]updated {self.updated_at.astimezone():%H:%M:%S}[/dim]")
+        finally:
+            self._loading = False
+
+    def _status(self, text: str) -> None:
+        self.query_one("#pane-status", Static).update(text)
+
+
+class StatsPane(Pane):
+    """The catalog's counters, fetched and drawn by the pane itself — the pilot."""
+
+    def compose(self) -> ComposeResult:
+        with Horizontal(classes="row"):
+            yield Button("Refresh", id="btn-stats", variant="primary")
+        yield Static("", id="pane-status", classes="box")
+        yield DataTable(id="stats-table")
+
+    def on_mount(self) -> None:
+        self.query_one("#stats-table", DataTable).add_columns("metric", "value")
+
+    def fetch(self) -> Stats:
+        return _fetch_stats()
+
+    def show(self, payload: Stats) -> None:
+        # Cells are built before the table is touched, so a failure while building them
+        # leaves the last good rows. clear() and add_row() are not atomic: a widget that
+        # fails mid-update is beyond what this class repairs.
+        rows = [
+            ("products", payload.total_products),
+            ("observations", f"{payload.total_items} (one row per target × product × price)"),
+            ("targets", payload.total_targets),
+            ("with cashback", f"{payload.products_with_cashback} products / {payload.with_cashback} observations"),
+            ("newest observation", _age(payload.newest_scraped_at)),
+            ("counters computed", f"{_age(payload.as_of)} (cached up to ten minutes)"),
+        ]
+        cells = [(_cell(key), _cell(value)) for key, value in rows]
+        table = self.query_one("#stats-table", DataTable)
+        table.clear()
+        for row in cells:
+            table.add_row(*row)
+
+
 class WbparserApp(App):
     # Enable mouse text selection and clipboard copy (Ctrl+C / Cmd+C) in supported widgets.
     ALLOW_SELECT = True
@@ -1222,10 +1314,8 @@ class WbparserApp(App):
                 yield Static("", id="history-summary", classes="box")
                 yield DataTable(id="history-table")
 
-            with TabPane("Stats", id="tab-stats"), Vertical(classes="pane"):
-                with Horizontal(classes="row"):
-                    yield Button("Refresh", id="btn-stats", variant="primary")
-                yield DataTable(id="stats-table")
+            with TabPane("Stats", id="tab-stats"):
+                yield StatsPane(classes="pane")
 
             with TabPane("Logs", id="tab-logs"), Vertical(classes="pane"):
                 with Horizontal(classes="row"):
@@ -1246,7 +1336,6 @@ class WbparserApp(App):
         self.query_one("#status-checks", DataTable).add_columns("check", "value")
         self.query_one("#status-creds", DataTable).add_columns("key", "status")
         self.query_one("#status-egress", DataTable).add_columns("group", "address", "health", "isolated", "refusals")
-        self.query_one("#stats-table", DataTable).add_columns("metric", "value")
 
     def action_tab(self, tab_id: str) -> None:
         self.query_one("#tabs", TabbedContent).active = tab_id
@@ -1268,7 +1357,7 @@ class WbparserApp(App):
         elif tab == "tab-history":
             self.load_history()
         elif tab == "tab-stats":
-            self.load_stats()
+            self.query_one(StatsPane).reload()
         elif tab == "tab-logs":
             self.load_logs()
 
@@ -1297,7 +1386,7 @@ class WbparserApp(App):
         elif bid == "btn-history":
             self.load_history()
         elif bid == "btn-stats":
-            self.load_stats()
+            self.query_one(StatsPane).reload()
         elif bid == "btn-logs":
             self.load_logs()
         elif bid == "btn-logs-follow":
@@ -1480,34 +1569,6 @@ class WbparserApp(App):
             summary += f"  |  earliest due {_age(data['earliestDue'])}"
         self.query_one("#history-summary", Static).update(summary)
         fill(self.query_one("#history-table", DataTable), history_section(data["jobs"]))
-
-    @work(thread=True, exclusive=True, group="stats")
-    def load_stats(self) -> None:
-        self.call_from_thread(self._note, "Loading stats…")
-        try:
-            payload = _fetch_stats()
-            self.call_from_thread(self._render_stats, payload, None)
-        except Exception as exc:  # noqa: BLE001
-            self.call_from_thread(self._render_stats, None, str(exc))
-
-    def _render_stats(self, payload: Stats | None, err: str | None) -> None:
-        self._note("")
-        t = self.query_one("#stats-table", DataTable)
-        t.clear()
-        if err:
-            self._note(f"[red]{escape(err)}[/red]")
-            return
-        assert payload is not None
-        rows = [
-            ("products", payload.total_products),
-            ("observations", f"{payload.total_items} (one row per target × product × price)"),
-            ("targets", payload.total_targets),
-            ("with cashback", f"{payload.products_with_cashback} products / {payload.with_cashback} observations"),
-            ("newest observation", _age(payload.newest_scraped_at)),
-            ("counters computed", f"{_age(payload.as_of)} (cached up to ten minutes)"),
-        ]
-        for k, v in rows:
-            t.add_row(_cell(k), _cell(v))
 
     @work(thread=True, exclusive=True, group="logs")
     def load_logs(self) -> None:
