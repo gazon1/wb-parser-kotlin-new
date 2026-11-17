@@ -595,6 +595,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** считать HTTP-ответ транспортной ошибкой: только `Error` означает, что ответа не было, и только он идёт в транспортную цепь. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
 - **Never** считать восстановление или обычное закрытие поводом снять retire: снимает его только `onReset()` под эксклюзивным permit'ом. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
 - **Never** угадывать scope reset'а: очистку задаёт вызывающий. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Always** decode catalog responses with `parse_float=Decimal` and encode `--json` with a decimal-aware writer; a `float` on either side rounds the value the contract calls a number. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Always** keep the generator version pinned in the recipe. A different version rewrites the file for reasons that are not a change to the contract. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Always** regenerate with `just parser::models` when the contract changes; the file is committed and reviewed with the change that caused it. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Never** hand-edit `scripts/parser/catalog_models.py`; the next generation overwrites it. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Never** let the recorded `# source-sha256` marker drift from the recipe that writes it; it is the only offline evidence that the models match the contract. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Never** widen the generation to `paths` without deciding what to do with the operational bodies it brings in. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 
 ## Per-tag
 
@@ -1270,6 +1276,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-16-the-deployment-runs-camoufox` — architecture  operations  browser  deployment
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — architecture  browser  antibot  boundaries  operations
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — browser  antibot  egress  architecture
+- `2026-11-17-the-python-catalog-models-are-generated` — contract  python
 
 ## Active entries
 
@@ -1397,3 +1404,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-16-the-deployment-runs-camoufox` — Развёртывание запускает локальный Camoufox и не несёт AdsPower
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — Локальный браузер живёт в persistent-контексте профиля, а каталог занят на время его жизни
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — Состояние профиля выводится, а отказ, throttling и сбой сервера считаются врозь
+- `2026-11-17-the-python-catalog-models-are-generated` — The operator CLI's catalog models are generated from the contract, the admin models are not
