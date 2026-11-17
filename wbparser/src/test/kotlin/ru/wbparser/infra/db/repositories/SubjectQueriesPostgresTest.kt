@@ -2,6 +2,7 @@ package ru.wbparser.infra.db.repositories
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import ru.wbparser.testing.CRAWL_TARGETS_TEST_SCHEMA
 import ru.wbparser.testing.PostgresTestDatabase
 import ru.wbparser.testing.execute
 
@@ -23,15 +24,7 @@ class SubjectQueriesPostgresTest :
                     name text NOT NULL
                 )
                 """.trimIndent(),
-                """
-                CREATE TABLE IF NOT EXISTS crawl_targets (
-                    id uuid PRIMARY KEY,
-                    name varchar(255) NOT NULL,
-                    start_url text NOT NULL,
-                    wb_search_query text,
-                    is_active boolean NOT NULL DEFAULT true
-                )
-                """.trimIndent(),
+                CRAWL_TARGETS_TEST_SCHEMA,
             )
 
         test("the dictionary is counted, and replaced rather than merged") {

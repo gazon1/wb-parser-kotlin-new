@@ -44,6 +44,15 @@ data class Target(
      * catalog.
      */
     val anomalyGroup: String? = null,
+    /**
+     * Until when another run holds this target, or null when it is free.
+     *
+     * A leased target is not claimable: `claimDueTargets` skips it, so a target that
+     * looks due can still be skipped by the crawl. The admin API reports it because a
+     * caller answering "what will run next" has to subtract it — the lease from a run
+     * that died holds the target for its full two hours, and nothing else says so.
+     */
+    val leaseUntil: Instant? = null,
     /** Numeric WB catalog ID (e.g. "9463"). Used by BrowserDownloader to construct API URLs. */
     val wbCatalogId: String? = null,
     /**

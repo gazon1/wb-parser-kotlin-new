@@ -40,10 +40,13 @@ internal class CrawlJobStore(
      * Opens a job row for [targetId] and returns its id.
      *
      * The heartbeat starts with the job: a job that never gets one would be
-     * indistinguishable from a job whose process died.
+     * indistinguishable from a job whose process died. The owner the job carries is the
+     * same identity the run leases its targets under, so a job that went stale and a lease
+     * that was never released describe the same dead process.
      */
     fun openJob(
         targetId: UUID,
+        owner: String,
         trigger: CrawlTrigger = CrawlTrigger.Manual,
     ): UUID {
         val id = UUID.randomUUID()
@@ -58,6 +61,7 @@ internal class CrawlJobStore(
                 it[CrawlJobsTable.createdAt] = now
                 it[CrawlJobsTable.lastHeartbeatAt] = now
                 it[CrawlJobsTable.triggeredBy] = trigger.dbValue
+                it[CrawlJobsTable.leaseOwner] = owner
             }
         }
         return id
@@ -97,12 +101,17 @@ internal class CrawlJobStore(
     }
 
     /**
-     * Runs [block] while refreshing the job's heartbeat.
+     * Runs [block] while refreshing the job's heartbeat and renewing its target leases.
      *
      * The ticker stops as soon as [block] returns, so a finished job stops looking alive.
+     * Renewing the leases on every tick keeps a long batch from losing targets mid-run:
+     * the leases are claimed up front but processed gradually, and without renewal a lease
+     * could expire before its target is reached.
      */
     suspend fun <T> withHeartbeat(
         jobId: UUID,
+        leaseOwner: String,
+        leaseFor: java.time.Duration,
         block: suspend () -> T,
     ): T =
         coroutineScope {
@@ -110,7 +119,7 @@ internal class CrawlJobStore(
                 launch(Dispatchers.IO) {
                     while (isActive) {
                         delay(CrawlJobQueries.HEARTBEAT_INTERVAL_MS)
-                        runCatching { db.ds.touchJobHeartbeat(jobId) }
+                        runCatching { db.ds.touchJobHeartbeat(jobId, leaseOwner, leaseFor) }
                             .onFailure { log.warn("Could not refresh job heartbeat: {}", it.message) }
                     }
                 }

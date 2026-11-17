@@ -37,6 +37,15 @@ import java.time.ZoneOffset
 import java.util.UUID
 import javax.sql.DataSource
 
+/** Parameters of a target claim: who takes the targets, as of when, and for how long. */
+internal data class TargetClaimRequest(
+    val owner: String,
+    val now: Instant,
+    val freshness: FreshnessPolicy,
+    val limit: Int,
+    val leaseFor: Duration,
+)
+
 /**
  * Returns the targets with the given ids.
  *
@@ -70,14 +79,6 @@ fun DataSource.fetchTargetsByIds(ids: List<UUID>): List<Target> {
  * tried again, who holds it — and the lease is a statement about the database too. So
  * the rules live in the query, and the runner asks the database which targets are
  * due instead of fetching everything and deciding in memory.
- *
- * @param owner who holds the lease. A host identifies itself; the lease is released
- *   under the same name.
- * @param now the current time; the caller's clock, so a test can say what "now" is.
- * @param freshness how long a target stays fresh.
- * @param limit how many targets to claim at most.
- * @param leaseFor how long the lease holds. It must outlive the crawl of the target,
- *   and it must expire on its own: a host that dies must not hold its targets.
  */
 fun DataSource.claimDueTargets(
     owner: String,
@@ -85,46 +86,58 @@ fun DataSource.claimDueTargets(
     freshness: FreshnessPolicy,
     limit: Int,
     leaseFor: Duration,
+): List<UUID> = claimDueTargets(TargetClaimRequest(owner, now, freshness, limit, leaseFor))
+
+/** Claims due targets described by [request], leasing them to its owner. */
+internal fun DataSource.claimDueTargets(request: TargetClaimRequest): List<UUID> = connection.use { conn -> claimDueTargets(conn, request) }
+
+/**
+ * Claims due targets on [conn] without managing the connection or transaction.
+ *
+ * The caller owns the transaction, which lets a claim and a job registration share one
+ * atomic unit — so there is no state where a lease is held but no job row records it.
+ */
+internal fun claimDueTargets(
+    conn: java.sql.Connection,
+    request: TargetClaimRequest,
 ): List<UUID> {
-    val freshBefore = now.minus(Duration.ofMinutes(freshness.defaultFreshnessMinutes))
-    val leaseUntil = now.plus(leaseFor)
-    return connection.use { conn ->
-        conn
-            .prepareStatement(
-                """
-                WITH claimed AS (
-                    SELECT id
-                      FROM crawl_targets
-                     WHERE is_active
-                       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-                       AND (last_crawled_at IS NULL OR last_crawled_at <= ?)
-                       AND (lease_until IS NULL OR lease_until <= ?)
-                     ORDER BY last_crawled_at ASC NULLS FIRST, id
-                     FOR UPDATE SKIP LOCKED
-                     LIMIT ?
-                )
-                UPDATE crawl_targets t
-                   SET lease_owner = ?, lease_until = ?
-                  FROM claimed c
-                 WHERE t.id = c.id
-                RETURNING t.id
-                """.trimIndent(),
-            ).use { ps ->
-                ps.setObject(1, now.atOffset(ZoneOffset.UTC))
-                ps.setObject(2, freshBefore.atOffset(ZoneOffset.UTC))
-                ps.setObject(3, now.atOffset(ZoneOffset.UTC))
-                ps.setInt(4, limit)
-                ps.setString(5, owner)
-                ps.setObject(6, leaseUntil.atOffset(ZoneOffset.UTC))
-                ps.executeQuery().use { rs ->
-                    val ids = mutableListOf<UUID>()
-                    while (rs.next()) {
-                        ids += UUID.fromString(rs.getString("id"))
-                    }
-                    ids
+    val freshBefore = request.now.minus(Duration.ofMinutes(request.freshness.defaultFreshnessMinutes))
+    val leaseUntil = request.now.plus(request.leaseFor)
+    return conn
+        .prepareStatement(
+            """
+            WITH claimed AS (
+                SELECT id
+                  FROM crawl_targets
+                 WHERE is_active
+                   AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+                   AND (last_crawled_at IS NULL OR last_crawled_at <= ?)
+                   AND (lease_until IS NULL OR lease_until <= ?)
+                 ORDER BY last_crawled_at ASC NULLS FIRST, id
+                 FOR UPDATE SKIP LOCKED
+                 LIMIT ?
+            )
+            UPDATE crawl_targets t
+               SET lease_owner = ?, lease_until = ?
+              FROM claimed c
+             WHERE t.id = c.id
+            RETURNING t.id
+            """.trimIndent(),
+        ).use { ps ->
+            ps.setObject(1, request.now.atOffset(ZoneOffset.UTC))
+            ps.setObject(2, freshBefore.atOffset(ZoneOffset.UTC))
+            ps.setObject(3, request.now.atOffset(ZoneOffset.UTC))
+            ps.setInt(4, request.limit)
+            ps.setString(5, request.owner)
+            ps.setObject(6, leaseUntil.atOffset(ZoneOffset.UTC))
+            ps.executeQuery().use { rs ->
+                val ids = mutableListOf<UUID>()
+                while (rs.next()) {
+                    ids += UUID.fromString(rs.getString("id"))
                 }
+                ids
             }
-    }
+        }
 }
 
 /**
@@ -235,6 +248,7 @@ private fun ResultRow.toTarget(): Target =
         nextAttemptAt = this[CrawlTargetsTable.nextAttemptAt]?.toInstant(),
         egressFailureCount = this[CrawlTargetsTable.egressFailureCount],
         anomalyGroup = this[CrawlTargetsTable.anomalyGroup],
+        leaseUntil = this[CrawlTargetsTable.leaseUntil]?.toInstant(),
     )
 
 /**
