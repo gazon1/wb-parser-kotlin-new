@@ -16,6 +16,7 @@ import ru.wbparser.app.config.CrawlProperties
 import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.infra.db.repositories.TargetDraft
 import ru.wbparser.infra.db.repositories.TargetRun
+import ru.wbparser.infra.db.repositories.claimMoment
 import ru.wbparser.infra.db.repositories.deleteTarget
 import ru.wbparser.infra.db.repositories.fetchAllTargets
 import ru.wbparser.infra.db.repositories.fetchTargetRuns
@@ -292,11 +293,11 @@ fun DataSource.fetchSchedule(
         allTargets
             .filter { it.isActive && it.id !in dueIdSet }
             .mapNotNull { target ->
-                val claimAt = target.nextAttemptAt ?: target.lastCrawledAt?.plus(Duration.ofMinutes(freshnessMinutes))
-                if (claimAt == null) {
-                    null
-                } else {
+                val claimAt = claimMoment(target.nextAttemptAt, target.lastCrawledAt, freshnessMinutes)
+                if (claimAt != null && claimAt > now) {
                     claimAt to target
+                } else {
+                    null
                 }
             }.filter { it.first > now }
             .sortedBy { it.first }
@@ -305,7 +306,7 @@ fun DataSource.fetchSchedule(
     val earliestDue: Instant? =
         allTargets
             .filter { it.isActive }
-            .mapNotNull { target -> target.nextAttemptAt ?: target.lastCrawledAt?.plus(Duration.ofMinutes(freshnessMinutes)) }
+            .mapNotNull { target -> claimMoment(target.nextAttemptAt, target.lastCrawledAt, freshnessMinutes) }
             .minOrNull()
     return ScheduleSnapshot(due = due, upcoming = upcoming, earliestDue = earliestDue)
 }

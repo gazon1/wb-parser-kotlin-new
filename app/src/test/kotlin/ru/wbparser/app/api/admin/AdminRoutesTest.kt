@@ -7,13 +7,16 @@ import io.kotest.matchers.shouldNotBe
 import org.springframework.http.HttpStatus
 import org.sqlite.SQLiteDataSource
 import ru.wbparser.app.config.CrawlProperties
+import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.infra.db.repositories.TargetDraft
+import ru.wbparser.infra.db.repositories.claimMoment
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.sql.Statement
 import java.sql.Timestamp
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
@@ -331,6 +334,25 @@ class AdminRoutesTest :
             schedule.due shouldBe emptyList()
             schedule.upcoming shouldBe emptyList()
             schedule.earliestDue shouldBe null
+        }
+
+        test("the upcoming answer takes the later of the retry and the freshness") {
+            val now = Instant.now()
+            val target =
+                Target(
+                    id = UUID.randomUUID(),
+                    name = "Карты памяти",
+                    url = "https://example.invalid/c",
+                    cronExpression = null,
+                    maxDepth = 1,
+                    isActive = true,
+                    lastCrawledAt = now.minus(Duration.ofMinutes(30)),
+                    nextAttemptAt = now.plus(Duration.ofMinutes(10)),
+                )
+
+            val moment = claimMoment(target.nextAttemptAt, target.lastCrawledAt, CrawlProperties().schedule.freshnessMinutes)
+
+            moment shouldBe now.plus(Duration.ofMinutes(330))
         }
     })
 

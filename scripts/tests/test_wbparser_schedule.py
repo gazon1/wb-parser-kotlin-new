@@ -5,8 +5,6 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from pydantic_core import to_jsonable_python
-
 SCRIPT = Path(__file__).resolve().parents[1] / "parser" / "wbparser.py"
 
 
@@ -68,10 +66,10 @@ class ScheduleResponseTest(unittest.TestCase):
         self.assertEqual(schedule.next_run, datetime(2026, 11, 17, 12, 0, tzinfo=UTC))
         self.assertEqual(schedule.earliest_due, None)
 
-        data = to_jsonable_python({"schedule": schedule}, by_alias=True)
-        self.assertEqual(data["schedule"]["freshnessMinutes"], 360)
-        self.assertEqual(data["schedule"]["nextRun"], "2026-11-17T12:00:00Z")
-        self.assertEqual(data["schedule"]["due"][0]["lastCrawledAt"], "2026-11-17T08:30:00Z")
+        data = m.Schedule.model_validate(payload).model_dump(by_alias=True, mode="json")
+        self.assertEqual(data["freshnessMinutes"], 360)
+        self.assertEqual(data["nextRun"], "2026-11-17T12:00:00Z")
+        self.assertEqual(data["due"][0]["lastCrawledAt"], "2026-11-17T08:30:00Z")
 
 
 class EmitSerializationTest(unittest.TestCase):
@@ -85,14 +83,13 @@ class EmitSerializationTest(unittest.TestCase):
             newest_scraped_at=datetime(2026, 11, 17, 9, 0, tzinfo=UTC),
             as_of=None,
         )
-        payload = {
-            "mixed": [inner, {"plain": None}],
+        data = {
+            "mixed": [inner.model_dump(mode="json", by_alias=True), {"plain": None}],
             "freshnessMinutes": 360,
-            "nextRun": datetime(2026, 11, 17, 12, 0, tzinfo=UTC),
+            "nextRun": "2026-11-17T12:00:00Z",
             "when": None,
             "status": m.Sort.date_desc,
         }
-        data = to_jsonable_python(payload, by_alias=True)
         text = json.dumps(data)
         self.assertNotIn("[green]", text)
         self.assertEqual(data["freshnessMinutes"], 360)

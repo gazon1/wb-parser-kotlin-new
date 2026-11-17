@@ -189,6 +189,19 @@ fun DataSource.fetchAllTargets(limit: Int? = null): List<Target> {
  * Returns the first active target id by `ORDER BY created_at LIMIT 1`, used to
  * attribute a crawl job to a real target.
  */
+/**
+ * The moment a target becomes claimable: the later of the retry and the freshness.
+ *
+ * The claim takes the later of the two constraints - a retry that lands before the
+ * freshness window ends does not make the target due before the window ends - and the
+ * schedule answer has to say the same moment the claim would.
+ */
+fun claimMoment(
+    nextAttemptAt: Instant?,
+    lastCrawledAt: Instant?,
+    freshnessMinutes: Long,
+): Instant? = listOfNotNull(nextAttemptAt, lastCrawledAt?.plus(Duration.ofMinutes(freshnessMinutes))).maxOrNull()
+
 fun DataSource.firstActiveTargetId(): UUID? {
     exposedOnce()
     return transaction {

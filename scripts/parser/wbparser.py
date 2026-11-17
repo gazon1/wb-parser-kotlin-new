@@ -1202,7 +1202,7 @@ class WbparserApp(App):
     def _note(self, text: str) -> None:
         self.query_one("#msg", Static).update(text)
 
-    def _alog(self, text: str) -> None:
+    def _along(self, text: str) -> None:
         self.query_one("#activity-log", RichLog).write(text)
 
     @work(thread=True, exclusive=True, group="status")
