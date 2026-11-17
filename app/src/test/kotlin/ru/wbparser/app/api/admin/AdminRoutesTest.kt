@@ -3,15 +3,21 @@ package ru.wbparser.app.api.admin
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import org.springframework.http.HttpStatus
 import org.sqlite.SQLiteDataSource
+import ru.wbparser.app.config.CrawlProperties
+import ru.wbparser.domain.scheduling.Target
 import ru.wbparser.infra.db.repositories.TargetDraft
+import ru.wbparser.infra.db.repositories.claimMoment
+import ru.wbparser.infra.db.repositories.markTargetCrawled
 import java.nio.file.Files
 import java.sql.Connection
 import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.sql.Statement
 import java.sql.Timestamp
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import javax.sql.DataSource
@@ -143,7 +149,7 @@ class AdminRoutesTest :
         }
 
         test("the errors reach the operator with the message they carry") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val errors = routes.getErrors(limit = 100, unresolvedOnly = false)
 
@@ -156,7 +162,7 @@ class AdminRoutesTest :
         }
 
         test("the operator can ask about the errors nobody resolved yet") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val errors = routes.getErrors(limit = 100, unresolvedOnly = true)
 
@@ -165,7 +171,7 @@ class AdminRoutesTest :
         }
 
         test("the limit caps the errors the operator gets") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val errors = routes.getErrors(limit = 1, unresolvedOnly = false)
 
@@ -181,7 +187,7 @@ class AdminRoutesTest :
         }
 
         test("the jobs reach the operator with the counts they carry") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val jobs = routes.getJobs(limit = 20, targetId = null)
 
@@ -197,7 +203,7 @@ class AdminRoutesTest :
         }
 
         test("a job that never finished carries no completion time") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val job = routes.getJobs(limit = 20, targetId = null).single { it.status == "Failed" }
 
@@ -209,7 +215,7 @@ class AdminRoutesTest :
         }
 
         test("the operator can ask about one target's jobs only") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val jobs = routes.getJobs(limit = 20, targetId = targetId.toString())
 
@@ -226,7 +232,7 @@ class AdminRoutesTest :
         }
 
         test("a created target is served back to the operator") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val response =
                 routes.createTarget(
@@ -246,7 +252,7 @@ class AdminRoutesTest :
         }
 
         test("the targets reach the operator, the switched-off ones included") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
             routes.createTarget(TargetDraft(name = "Карты памяти", startUrl = "https://example.invalid/c"))
             routes.createTarget(
                 TargetDraft(name = "Смартфоны", startUrl = "https://example.invalid/s", isActive = false),
@@ -261,7 +267,7 @@ class AdminRoutesTest :
         }
 
         test("an updated target is served back to the operator") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
             val created = routes.createTarget(TargetDraft(name = "Карты памяти", startUrl = "https://example.invalid/c"))
 
             val response =
@@ -276,7 +282,7 @@ class AdminRoutesTest :
         }
 
         test("a target that does not exist is not found") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val response =
                 routes.updateTarget(
@@ -288,7 +294,7 @@ class AdminRoutesTest :
         }
 
         test("a deleted target is gone") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
             val created = routes.createTarget(TargetDraft(name = "Карты памяти", startUrl = "https://example.invalid/c"))
 
             val response = routes.deleteTarget(created.body!!.id.toString())
@@ -298,7 +304,7 @@ class AdminRoutesTest :
         }
 
         test("a target that does not exist cannot be deleted") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
 
             val response = routes.deleteTarget(UUID.randomUUID().toString())
 
@@ -306,7 +312,7 @@ class AdminRoutesTest :
         }
 
         test("a malformed id is refused before the target is looked up") {
-            val routes = AdminRoutes(adminDataSource())
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
             val draft = TargetDraft(name = "Карты памяти", startUrl = "https://example.invalid/c")
 
             // The id is parsed before the database is asked anything, so a malformed id
@@ -314,6 +320,104 @@ class AdminRoutesTest :
             // failure of the server.
             shouldThrow<IllegalArgumentException> { routes.updateTarget("not-a-uuid", draft) }
             shouldThrow<IllegalArgumentException> { routes.deleteTarget("not-a-uuid") }
+        }
+
+        test("the schedule answers with the tick and the freshness the server holds") {
+            val routes = AdminRoutes(adminDataSource(), CrawlProperties())
+
+            val schedule = routes.getSchedule(limit = 15)
+
+            schedule.cron shouldBe "0 0 */4 * * *"
+            schedule.freshnessMinutes shouldBe 360L
+            schedule.activeTargets shouldBe 0
+            schedule.limit shouldBe 15
+            schedule.nextRun shouldNotBe null
+            schedule.due shouldBe emptyList()
+            schedule.upcoming shouldBe emptyList()
+            schedule.earliestDue shouldBe null
+        }
+
+        test("the upcoming answer takes the later of the retry and the freshness") {
+            val now = Instant.parse("2026-01-01T00:00:00Z")
+            val target =
+                Target(
+                    id = UUID.randomUUID(),
+                    name = "Карты памяти",
+                    url = "https://example.invalid/c",
+                    cronExpression = null,
+                    maxDepth = 1,
+                    isActive = true,
+                    lastCrawledAt = now.minus(Duration.ofMinutes(30)),
+                    nextAttemptAt = now.plus(Duration.ofMinutes(10)),
+                )
+
+            val moment =
+                claimMoment(
+                    target.nextAttemptAt,
+                    target.lastCrawledAt,
+                    CrawlProperties().schedule.freshnessMinutes,
+                    target.leaseUntil,
+                    now,
+                )
+
+            moment shouldBe now.plus(Duration.ofMinutes(330))
+        }
+
+        test("the upcoming answer takes the later of the retry, the freshness, and the lease") {
+            val now = Instant.parse("2026-01-01T00:00:00Z")
+            val target =
+                Target(
+                    id = UUID.randomUUID(),
+                    name = "Карты памяти",
+                    url = "https://example.invalid/c",
+                    cronExpression = null,
+                    maxDepth = 1,
+                    isActive = true,
+                    lastCrawledAt = now.minus(Duration.ofMinutes(30)),
+                    nextAttemptAt = now.plus(Duration.ofMinutes(10)),
+                    leaseUntil = now.plus(Duration.ofMinutes(400)),
+                )
+
+            val moment =
+                claimMoment(
+                    target.nextAttemptAt,
+                    target.lastCrawledAt,
+                    CrawlProperties().schedule.freshnessMinutes,
+                    target.leaseUntil,
+                    now,
+                )
+
+            moment shouldBe now.plus(Duration.ofMinutes(400))
+        }
+
+        test("a brand-new target is due now, so the schedule points at the next tick") {
+            val now = Instant.parse("2026-01-01T02:00:00Z")
+            val properties = CrawlProperties()
+            val dataSource = adminDataSource()
+            val routes = AdminRoutes(dataSource, properties)
+
+            val newTarget =
+                routes.createTarget(
+                    TargetDraft(name = "Новая цель", startUrl = "https://example.invalid/new"),
+                )
+            val futureTarget =
+                routes.createTarget(
+                    TargetDraft(name = "Будущая цель", startUrl = "https://example.invalid/future"),
+                )
+
+            // The brand-new target has no crawl, no retry, and no lease, so it is due now.
+            // The future target was crawled an hour ago, so its freshness window ends in
+            // five hours — after the next cron tick in two hours — and must not pull the
+            // schedule's earliest moment past it.
+            dataSource.markTargetCrawled(futureTarget.body!!.id, now.minus(Duration.ofHours(1)))
+
+            val snapshot = dataSource.fetchSchedule(now, properties.schedule.freshnessMinutes, limit = 15)
+
+            snapshot.due.map { it.id }.contains(newTarget.body!!.id) shouldBe true
+            snapshot.due.map { it.id }.contains(futureTarget.body!!.id) shouldBe false
+            snapshot.earliestDue shouldBe now
+            nextTick(properties.schedule.cron, now, snapshot.earliestDue) shouldBe
+                Instant.parse("2026-01-01T04:00:00Z")
         }
     })
 

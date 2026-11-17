@@ -199,6 +199,30 @@ fun DataSource.fetchAllTargets(limit: Int? = null): List<Target> {
 }
 
 /**
+ * The moment a target becomes claimable: the later of the retry, the freshness, and the
+ * lease.
+ *
+ * The claim takes the later of the constraints - a retry that lands before the freshness
+ * window ends does not make the target due before the window ends, and a lease that holds
+ * the target past both does not make it claimable before the lease expires - and the
+ * schedule answer has to say the same moment the claim would.
+ *
+ * A target with no constraints has no reason to wait and is claimable at [now].
+ */
+fun claimMoment(
+    nextAttemptAt: Instant?,
+    lastCrawledAt: Instant?,
+    freshnessMinutes: Long,
+    leaseUntil: Instant?,
+    now: Instant,
+): Instant =
+    listOfNotNull(
+        nextAttemptAt,
+        lastCrawledAt?.plus(Duration.ofMinutes(freshnessMinutes)),
+        leaseUntil,
+    ).maxOrNull() ?: now
+
+/**
  * Returns the first active target id by `ORDER BY created_at LIMIT 1`, used to
  * attribute a crawl job to a real target.
  */

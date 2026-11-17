@@ -22,6 +22,7 @@ dependencies = [
     # that says what this project needs, and `uv sync` is the only setup step.
     "pydantic>=2.6.0",
     "python-dotenv>=1.0.0",
+    "textual>=8.2.8",
     "croniter>=7.0.0",
     "simplejson>=3.19.0",
 ]
