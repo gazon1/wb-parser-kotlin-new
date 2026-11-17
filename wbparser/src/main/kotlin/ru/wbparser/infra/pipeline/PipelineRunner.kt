@@ -33,29 +33,27 @@ class PipelineRunner(
      * Returns [Either.Right] with [ru.wbparser.domain.pipeline.Crawled] on success,
      * or [Either.Left] with [DomainError] if the pipeline aborted.
      *
-     * Side effects (logging, metrics, saves) are performed by the [interpreterRegistry].
-     *
-     * Note: using `map` here is intentional — we both perform a side effect (interpretAll)
-     * and transform the return type from `Pair<Crawled, List<Side>>` to `Crawled`.
-     * Arrow's `onRight` cannot do both; it only performs a side effect without type change.
+     * Side effects (logging, metrics, saves) are performed by the [interpreterRegistry],
+     * as the pipeline emits them — not once at the end. A counter that reaches the
+     * registry only when the target is read reports "the crawl has not started" for as
+     * long as the target takes.
      */
     suspend fun run(
         tasks: List<Crawling>,
         concurrency: Int = 1,
     ): Either<FailedCrawl, ru.wbparser.domain.pipeline.Crawled> =
         withContext(failureHandler) {
-            pipeline.run(tasks, concurrency = concurrency).fold(
-                ifLeft = { (failed, sides) ->
-                    // Interpret sides even on failure — this is where the diagnostics for
-                    // successful tasks in the failed batch live. Without this, every hard
-                    // failure silently erased the evidence of how far the batch got.
-                    interpreterRegistry.interpretAll(sides)
-                    Either.Left(failed)
-                },
-                ifRight = { (crawled, sides) ->
-                    interpreterRegistry.interpretAll(sides)
-                    Either.Right(crawled)
-                },
-            )
+            pipeline
+                .run(
+                    tasks,
+                    concurrency = concurrency,
+                    emit = { sides -> interpreterRegistry.interpretAll(sides) },
+                ).fold(
+                    // The sides of a failure are interpreted by the run itself, as they
+                    // are produced: a batch that failed still delivered what its other
+                    // tasks produced, and that evidence is already in the registry.
+                    ifLeft = { (failed, _) -> Either.Left(failed) },
+                    ifRight = { (crawled, _) -> Either.Right(crawled) },
+                )
         }
 }

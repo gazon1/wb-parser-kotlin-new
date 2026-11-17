@@ -538,6 +538,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** называть рантайм вне composition root приложения. Замена рантайма — это правка `:browser` и `app/config`, и больше ничего. _(from `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it`)
 - **Never** переносить в контракт политику рантайма. Ограничение SOCKS5 с паролем (Playwright его не умеет) остаётся в `DeclaredProxy`: это проверка формы данных на границе доверия, а не знание о рантайме — но при смене рантайма её надо перепроверить. _(from `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it`)
 - **Never** создавать браузер в `:browser-api`. Браузер приходит снаружи: production wiring — `CamoufoxAutomation`, тесты — `FakeBrowserAutomation`. _(from `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it`)
+- **Always** отдавать стороны на границе работы, которая их произвела: сетевые счётчики — после батча, до enrich/save; стороны страницы — после обработки страницы. Стороны задачи, попросившей повтор, — тоже на границе батча. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)
+- **Never** заводить второй счётчик того же факта в слое, который о факте не знает: знаменатель и числитель доли отказов обязаны приходить из одной эмиссии. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)
+- **Never** интерпретировать один и тот же список дважды: `emitted` в `Pipeline.run` — единственный счётчик уже отданного, и второй вызов `interpretAll` поверх возвращённого списка удваивает `crawl.requests` при успешном крауле. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)
+- **Never** отдавать стороны повторяемой задачи в цикле повторов: к концу батча попытка уже состоялась, и `requests` относится к батчу, а не к ожиданию бэкоффа. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)
+- **Never** проглатывать исключение интерпретатора: сломанный реестр обязан уронить цель, а не отчитаться о чистом прогоне. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)
 - **Always** пинить одну сборку Camoufox и проверять её `just browser::verify`. _(from `2026-11-16-the-deployment-runs-camoufox`)
 - **Always** резолвить `CamoufoxInstall` лениво, при первом запуске браузера. _(from `2026-11-16-the-deployment-runs-camoufox`)
 - **Always** сохранять `EgressProbe`/`EgressIsolationCheck` и startup gate. _(from `2026-11-16-the-deployment-runs-camoufox`)
@@ -932,14 +937,20 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `observability`
 
+- ADR `2026-10-09-pipelinefailure-carries-sides` остаётся в силе: стороны неудавшегося батча доезжают до интерпретатора, только теперь ещё до того, как ошибка превратится в `Either.Left`. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)_
 - The badge stays empty while the repository is not indexed by the API. When it is indexed, the strict comparison starts working on the next run, with no change to the workflow. _(from `2026-10-20-a-missing-score-is-not-a-failed-posture`)_
 - The nightly now costs two workflows a week instead of one: the run itself, and the watchdog that checks it. The watchdog is a few seconds of API calls. _(from `2026-10-20-a-schedule-that-does-not-run-is-a-failure`)_
+- `crawl.pages` и `crawl.items` по-прежнему пишет `CrawlMetrics` по завершении цели: это итог цели, а не событие. Значит, в первые минуты прогона `pages` равен нулю при `state: started` — читать `requests`, пока первая цель не закончена. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)_
+- Публикация сторон в реестр идёт из тела цикла и остаётся последовательной: `PipelinePageProcessor` считает страницы в одном корутине не случайно — два корутина теряют по единице на каждой гонке, и отчёт занижает прогон, который на самом деле удался. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)_
 
 ### `operations`
 
+- ADR `2026-10-09-pipelinefailure-carries-sides` остаётся в силе: стороны неудавшегося батча доезжают до интерпретатора, только теперь ещё до того, как ошибка превратится в `Either.Left`. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)_
 - The API answers a request that arrives right after a restart with a value computed from the database at that moment, and the next one with a value computed before the restart. Both are correct answers to "what did the database say". _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 - The `totalCount` of a page of `/items` is **not** cached, and the reason is separate and worth stating here: it is 27 ms of a 125 ms request, and caching it would make the number the storefront shows "N products" wrong by up to ten minutes. A stale aggregate nobody looks at is cheap; a stale count on a page is a lie the storefront tells. _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
 - When the topology grows to more than one instance, the aggregates move to a shared cache in the same change that adds the second instance. Doing them separately would leave a window in which the second instance answers from its own empty cache — the exact inconsistency this decision exists to prevent. _(from `2026-10-20-catalog-aggregate-cache-is-in-process`)_
+- `crawl.pages` и `crawl.items` по-прежнему пишет `CrawlMetrics` по завершении цели: это итог цели, а не событие. Значит, в первые минуты прогона `pages` равен нулю при `state: started` — читать `requests`, пока первая цель не закончена. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)_
+- Публикация сторон в реестр идёт из тела цикла и остаётся последовательной: `PipelinePageProcessor` считает страницы в одном корутине не случайно — два корутина теряют по единице на каждой гонке, и отчёт занижает прогон, который на самом деле удался. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)_
 
 ### `packaging`
 
@@ -960,6 +971,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - A DB blip no longer fails the entire crawl. The save still fails the item (returns 0), but the crawl continues. _(from `2026-09-09-save-stage-retry-pr11`)_
 - A dropped item is counted separately: `Crawled.itemsSaved` excludes it, and one `Side.Drop` reaches the interpreter per rejected item. _(from `2026-10-09-wire-business-rules-into-filter`)_
 - A job with no heartbeat and no start time falls back to its creation time — the third branch — so a row that was never touched still ages out. _(from `2026-10-20-job-timestamps-carry-an-offset`)_
+- ADR `2026-10-09-pipelinefailure-carries-sides` остаётся в силе: стороны неудавшегося батча доезжают до интерпретатора, только теперь ещё до того, как ошибка превратится в `Either.Left`. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)_
 - Adding a new stage (e.g. `dedup`) is now a mechanical extract step _(from `2026-09-09-pipeline-extraction-pr11-5`)_
 - Default remains sequential (`1`) — users must explicitly set `crawler.spider.concurrency` in YAML to get parallelism _(from `2026-09-09-concurrency-wiring-pr17`)_
 - Dispatcher threads are never blocked by retry back-off. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
@@ -993,9 +1005,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `TaskOutcome` and `CrawlingFingerprint` are now in `Coordinator.kt` instead of `Pipeline.kt` _(from `2026-10-17-coordinator-extraction`)_
 - `WbCatalogStage` now exposes `.stage` property instead of being a `Stage` _(from `2026-10-17-stage-data-class-dsl`)_
 - `arrow-either-anti-patterns` skill now has accurate guidance with the `map { side-effect; value }` distinction _(from `2026-09-09-arrow-either-pr20`)_
+- `crawl.pages` и `crawl.items` по-прежнему пишет `CrawlMetrics` по завершении цели: это итог цели, а не событие. Значит, в первые минуты прогона `pages` равен нулю при `state: started` — читать `requests`, пока первая цель не закончена. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)_
 - `retryDelayMs()` reduced from 19 lines to 11 lines _(from `2026-09-09-retry-backoff-collapse-pr9-5`)_
 - `stageWithRetry` (deleted) is replaced by an inline retry loop in each coordinator — slightly more code but explicit and correct. _(from `2026-10-17-pipeline-purity-delayfn-extraction`)_
 - Проверка `stopAt` на границе пагинации теперь вызывается с глубиной текущей задачи. _(from `2026-10-20-pagination-does-not-increase-depth`)_
+- Публикация сторон в реестр идёт из тела цикла и остаётся последовательной: `PipelinePageProcessor` считает страницы в одном корутине не случайно — два корутина теряют по единице на каждой гонке, и отчёт занижает прогон, который на самом деле удался. _(from `2026-11-16-the-counters-are-interpreted-as-they-are-produced`)_
 - Тест `PipelineDedupTest` на самоссылку ждёт одну страницу вместо трёх: очередь опустела, а не упёрлась в лимит. _(from `2026-10-20-pagination-does-not-increase-depth`)_
 
 ### `pr-13`
@@ -1252,6 +1266,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-15-a-browser-session-is-started-not-joined` — architecture  browser  boundaries  egress  antibot
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — architecture  egress  operations  antibot  browser
 - `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it` — architecture  browser  build  dependencies
+- `2026-11-16-the-counters-are-interpreted-as-they-are-produced` — pipeline  observability  operations
 - `2026-11-16-the-deployment-runs-camoufox` — architecture  operations  browser  deployment
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — architecture  browser  antibot  boundaries  operations
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — browser  antibot  egress  architecture
@@ -1378,6 +1393,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-15-a-browser-session-is-started-not-joined` — Сессию браузера запускают, а не присоединяются к ней; профиль — это каталог и endpoint
 - `2026-11-15-camoufox-runs-locally-the-address-is-a-proxy` — Camoufox работает локально, адрес приходит прокси, а отпечаток — данные профиля
 - `2026-11-16-the-browser-contract-is-a-module-and-the-runtime-implements-it` — Контракт браузера — отдельный модуль, рантайм — реализация этого контракта
+- `2026-11-16-the-counters-are-interpreted-as-they-are-produced` — Счётчики интерпретируются по мере появления, а не по завершении цели
 - `2026-11-16-the-deployment-runs-camoufox` — Развёртывание запускает локальный Camoufox и не несёт AdsPower
 - `2026-11-16-the-local-browser-lives-in-the-profile-directory` — Локальный браузер живёт в persistent-контексте профиля, а каталог занят на время его жизни
 - `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart` — Состояние профиля выводится, а отказ, throttling и сбой сервера считаются врозь

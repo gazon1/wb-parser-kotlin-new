@@ -331,12 +331,12 @@ HTTP-сервера, не проверяет. Именно его использ
 | Поле | Что значит | Плохое значение |
 |---|---|---|
 | `state` | `not_started` — краул ещё не работал (счётчиков нет); `started` — работал | `not_started` после ожидаемого прогона — краул не стартовал |
-| `requests` | сумма `crawl.requests` по всем тегам | 0 при `state=started` — обход не идёт |
+| `requests` | сумма `crawl.requests` по всем тегам; пишется на каждый запрос | 0 при `state=started` — обход не идёт |
 | `antibot_responses` | сумма `crawl.antibot.responses` | см. `refusal_share` |
 | `refusal_share` | доля отказов `antibot_responses / requests` строкой вида `12.3%`; `n/a`, когда запросов ещё не было | устойчиво выше ~10 % — §8(b) |
 | `presets_responses` | сумма `crawl.presets.responses` | больше нуля — протухший токен, §8(a). Ноль — токены ещё живы |
 | `retries` | разбивка `crawl.retries` по `reason` | растёт `antibot` — §8(b) |
-| `pages`, `items` | суммы `crawl.pages` и `crawl.items` | `pages` растёт, `items` нет — §8(c) |
+| `pages`, `items` | суммы `crawl.pages` и `crawl.items`; пишутся **по завершении цели**, а не по странице | `pages` растёт, `items` нет — §8(c) |
 | `wb_total_by_target` | что WB отвечает как `total` — сколько товаров в **выдаче поиска** по каждой цели (не сумма: товар попадает в несколько выдач) | число резко меняется между прогонами — WB пересобрал выдачу; это **не** длина каталога: длина измеряется на границе пагинации (`known_pages_limit`) |
 
 **Прочие эндпоинты:** `GET /actuator/health` (состояние приложения, детали — `when_authorized`),

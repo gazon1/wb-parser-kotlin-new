@@ -63,8 +63,8 @@ data class FailedCrawl(
  * The stage functions are injected, so purity is a property of the *composition* rather than
  * of this class: production wires a `save` stage that talks to the database and a `download`
  * stage that talks to the network, and this class awaits them. What it guarantees is that
- * every observable effect is *returned* as a [Side] value rather than performed here — the
- * runner interprets them afterwards.
+ * every observable effect is *recorded* as a [Side] value rather than performed here — the
+ * runner interprets them.
  *
  * ## What this class does, and what it delegates
  *
@@ -125,10 +125,18 @@ data class Pipeline(
      *
      * Pagination: if a [ParsedPage] carries a non-null [ParsedPage.nextPageUrl],
      * a new [Crawling] task is appended to the queue — unless [stopAt] says stop.
+     *
+     * Sides are handed to [emit] as they are produced — one batch at a time, in order,
+     * and always before the next batch runs. A run that hands them over only at the end
+     * reports its counters at the end: with a 60-page catalog and a 3-second pace, "the
+     * crawl has not started" is what an operator's readiness probe answers for minutes.
+     * They are still returned, for a caller that interprets them afterwards; a caller
+     * that passes [emit] interprets them there and reads the counters, not the list.
      */
     suspend fun run(
         tasks: List<Crawling>,
         concurrency: Int = 1,
+        emit: suspend (List<Side>) -> Unit = {},
     ): Either<Pair<FailedCrawl, List<Side>>, Pair<Crawled, List<Side>>> {
         val coordinator = Coordinator(retryPolicy) { d -> waiter.wait(d) }
         val batch = PipelineBatch(this, coordinator)
@@ -141,6 +149,15 @@ data class Pipeline(
         var lastPageWasEmpty = false
         var wbTotal: Int? = null
         val sides = mutableListOf<Side>()
+        var emitted = 0
+
+        suspend fun flush() {
+            if (sides.size > emitted) {
+                emit(sides.subList(emitted, sides.size).toList())
+                emitted = sides.size
+            }
+        }
+
         val pending = tasks.toMutableList()
         var stopped: Stop = Stop.ManualStop
 
@@ -151,6 +168,7 @@ data class Pipeline(
                 when (val claim = coordinator.tryClaim(rawTask)) {
                     is Coordinator.TryClaimResult.Skipped -> {
                         sides += claim.log
+                        flush()
                         continue
                     }
                     is Coordinator.TryClaimResult.Claimed -> claim.task
@@ -166,6 +184,19 @@ data class Pipeline(
             // answer must not throw away the pages next to it. The crawl of this target still
             // ends with the failure — but what was read stays read.
             sides.addAll(batchSides)
+            // A task that asked for a retry is finished with the batch too, and its sides
+            // travel with it rather than with `batchSides`: `requests` is recorded before
+            // the request is made, so the attempt has already happened and its counter
+            // belongs here. Waiting for the retry loop below — after enrich and save — is
+            // the same late publication this flush exists to remove, on the path an operator
+            // watches hardest: the one that is being refused.
+            retryableTasks.forEach { sides += it.sides }
+            // The download and parse stages are done: their requests, refusals and pages are
+            // facts now, and the readiness probe is asking. This goes out **before** the page
+            // is enriched and saved, because enrich and save can be slow and have nothing to
+            // do with a request that already happened.
+            flush()
+
             val pageResult = pageProcessor.process(donePages, pending, sides, pagesCrawled)
             pagesCrawled = pageResult.pagesCrawled
             // The items of the last processed page were saved before the stop was decided.
@@ -176,11 +207,12 @@ data class Pipeline(
             // The first answer that carried a total wins: WB reports the same total for
             // every page of a catalog, so the count does not change from page to page.
             wbTotal = wbTotal ?: pageResult.wbTotal
+            // What the page work itself produced — preset answers, drops, save retries.
+            flush()
 
             // Propagate first failure as Either.Left.
-            // The Left carries all sides accumulated so far — including successful tasks
-            // from the current batch that ran before the hard failure was detected.
-            // PipelineRunner.fold below guarantees these sides are interpreted even on failure.
+            // The sides of everything above are already interpreted: a batch that failed
+            // still delivered what its other tasks produced.
             failureError?.let {
                 return Either.Left(
                     FailedCrawl(
@@ -196,7 +228,8 @@ data class Pipeline(
             // Each retryable task waits its pre-computed back-off outside any async block,
             // then re-adds itself to the pending queue.
             for (retryable in retryableTasks) {
-                sides += retryable.sides
+                // The sides of this task went out with the batch's: publishing them again
+                // after the page work would count the same request twice.
                 if (!coordinator.scheduleRetry(retryable)) {
                     // Retry exhausted at the coordinator level — treat as hard failure.
                     // Do NOT add the task back to pending: it would create an infinite loop
