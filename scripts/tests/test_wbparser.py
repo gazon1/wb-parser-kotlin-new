@@ -1,14 +1,23 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import importlib.util
+import inspect
+import io
 import json
 import sys
 import threading
+import time
+import unittest
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import cache
 from pathlib import Path
+from unittest import mock
+
+import httpx
+from typer.testing import CliRunner
 
 
 @cache
@@ -209,17 +218,17 @@ def test_history_json_exercises_command(monkeypatch, capsys) -> None:
             "errorMessage": None,
         }
     )
-    monkeypatch.setattr(
-        mod,
-        "_fetch_history",
-        lambda limit=15: {
+
+    async def fake_history(api, limit=15):
+        return {
             "jobs": [job],
             "cron": "0 0 */4 * * *",
             "freshnessMinutes": 360,
             "nextRun": datetime(2026, 11, 17, 12, 0, tzinfo=UTC),
             "earliestDue": datetime(2026, 11, 17, 11, 0, tzinfo=UTC),
-        },
-    )
+        }
+
+    monkeypatch.setattr(mod, "_fetch_history", fake_history)
     monkeypatch.setattr(mod, "JSON", True)
 
     mod.history(limit=15)
@@ -253,7 +262,11 @@ def test_schedule_json_emits_nested_objects(monkeypatch, capsys) -> None:
             "limit": 15,
         }
     )
-    monkeypatch.setattr(mod, "_fetch_schedule", lambda limit=15: schedule)
+
+    async def fake_schedule(api, limit=15):
+        return schedule
+
+    monkeypatch.setattr(mod, "_fetch_schedule", fake_schedule)
     monkeypatch.setattr(mod, "JSON", True)
 
     mod.schedule(limit=15)
@@ -301,15 +314,15 @@ def test_runs_json_emits_nested_objects(monkeypatch, capsys) -> None:
             "createdAt": "2026-11-17T09:00:00Z",
         }
     )
-    monkeypatch.setattr(
-        mod,
-        "_fetch_runs",
-        lambda limit=20, target=None, errors=10: {
+
+    async def fake_runs(api, limit=20, target=None, errors=10):
+        return {
             "jobs": [job],
             "targetRuns": [target_run],
             "errors": [error],
-        },
-    )
+        }
+
+    monkeypatch.setattr(mod, "_fetch_runs", fake_runs)
     monkeypatch.setattr(mod, "JSON", True)
 
     mod.runs(limit=20)
@@ -375,7 +388,7 @@ def test_a_pane_shows_what_it_fetched_and_marks_the_update() -> None:
         def compose(self):
             yield mod.Static("", id="pane-status")
 
-        def fetch(self):
+        async def fetch(self):
             return {"answer": 42}
 
         def show(self, data):
@@ -406,7 +419,7 @@ def test_a_failed_fetch_is_shown_and_leaves_the_pane_loadable_again() -> None:
         def compose(self):
             yield mod.Static("", id="pane-status")
 
-        def fetch(self):
+        async def fetch(self):
             calls.append(1)
             if len(calls) == 1:
                 raise mod.Unusable("cannot reach http://localhost:8082")
@@ -442,7 +455,7 @@ def test_a_failed_show_is_reported_and_does_not_mark_the_update() -> None:
         def compose(self):
             yield mod.Static("", id="pane-status")
 
-        def fetch(self):
+        async def fetch(self):
             return {"answer": 42}
 
         def show(self, data):
@@ -478,10 +491,12 @@ def test_a_reload_while_one_is_in_flight_starts_no_second_fetch() -> None:
         def compose(self):
             yield mod.Static("", id="pane-status")
 
-        def fetch(self):
+        async def fetch(self):
             calls.append(1)
             started.set()
-            release.wait(5)
+            # The wait is off the event loop: a fetch that blocked it would freeze the
+            # app, and the second reload would never arrive.
+            await asyncio.to_thread(release.wait, 5)
             return None
 
         def show(self, data):
@@ -505,7 +520,11 @@ def test_a_reload_while_one_is_in_flight_starts_no_second_fetch() -> None:
 
 def test_the_stats_pane_draws_what_it_fetched(monkeypatch) -> None:
     mod = _load_wbparser()
-    monkeypatch.setattr(mod, "_fetch_stats", lambda: _stats(mod))
+
+    async def fake_stats(api):
+        return _stats(mod)
+
+    monkeypatch.setattr(mod, "_fetch_stats", fake_stats)
 
     async def scenario() -> None:
         pane = mod.StatsPane()
@@ -529,7 +548,10 @@ def test_the_stats_pane_keeps_the_last_good_data_when_a_reload_fails(monkeypatch
             return _stats(mod)
         raise mod.Unusable("cannot reach http://localhost:8082")
 
-    monkeypatch.setattr(mod, "_fetch_stats", fetch)
+    async def fake_stats(api):
+        return fetch()
+
+    monkeypatch.setattr(mod, "_fetch_stats", fake_stats)
 
     async def scenario() -> None:
         pane = mod.StatsPane()
@@ -557,12 +579,14 @@ def test_the_app_loads_stats_on_the_tab_and_on_refresh(monkeypatch) -> None:
         fetches.append(1)
         return _stats(mod)
 
-    monkeypatch.setattr(mod, "_fetch_stats", stats)
-    monkeypatch.setattr(
-        mod,
-        "_fetch_status",
-        lambda: ({"status": "UP", "checks": {}, "crawler": {}, "egress": {}}, {"ADMIN_API_KEY": True}),
-    )
+    async def fake_stats(api):
+        return stats()
+
+    async def fake_status(api):
+        return ({"status": "UP", "checks": {}, "crawler": {}, "egress": {}}, {"ADMIN_API_KEY": True})
+
+    monkeypatch.setattr(mod, "_fetch_stats", fake_stats)
+    monkeypatch.setattr(mod, "_fetch_status", fake_status)
     monkeypatch.setattr(mod, "_running", lambda service: False)
 
     async def scenario() -> None:
@@ -612,9 +636,9 @@ def test_closing_the_app_while_a_load_is_in_flight_leaves_the_pane_silent() -> N
         def compose(self):
             yield mod.Static("", id="pane-status")
 
-        def fetch(self):
+        async def fetch(self):
             started.set()
-            release.wait(5)
+            await asyncio.to_thread(release.wait, 5)
             return {"answer": 42}
 
         def show(self, data):
@@ -633,3 +657,604 @@ def test_closing_the_app_while_a_load_is_in_flight_leaves_the_pane_silent() -> N
         asyncio.run(scenario())
     finally:
         release.set()
+
+
+# ── the HTTP layer ───────────────────────────────────────────────────────────
+
+
+class _Recorder(httpx.AsyncBaseTransport):
+    """A transport that answers from a handler and keeps the requests it saw."""
+
+    def __init__(self, handler):
+        self.handler = handler
+        self.requests: list[httpx.Request] = []
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        answer = self.handler(request)
+        # The handler may be a plain function or a coroutine function; both are answers.
+        if inspect.isawaitable(answer):
+            return await answer
+        return answer
+
+
+class _TransportCase(unittest.TestCase):
+    """A case with a transport in place of the HTTP layer, and the keys it needs."""
+
+    KEYS = {"ADMIN_API_KEY": "admin-secret", "CATALOG_API_KEY": "catalog-secret"}
+
+    def setUp(self) -> None:
+        self.mod = _load_wbparser()
+        self.clients: list[httpx.AsyncClient] = []
+
+    def _transport(self, handler):
+        """A transport for `handler`, and the patch that puts it into the client."""
+        recorder = _Recorder(handler)
+        real = httpx.AsyncClient
+
+        def factory(**kwargs):
+            client = real(transport=recorder, **kwargs)
+            self.clients.append(client)
+            return client
+
+        return recorder, mock.patch.object(self.mod.httpx, "AsyncClient", factory)
+
+    def _keys(self):
+        return mock.patch.object(self.mod, "_env", lambda: dict(self.KEYS))
+
+
+class ApiHttpTest(_TransportCase):
+    """
+    The HTTP layer: what a role sends, what a failure says, and how long a client lives.
+
+    These are `unittest` cases on purpose: the CI gate runs `unittest discover`, so a
+    pytest-style function here would never be executed by the pipeline that is
+    supposed to prove the client works.
+    """
+
+    def _message(self, handler, *, path="/api/health/ready", role="public", model=None) -> str:
+        """The message of the `Unusable` one GET raises, or an empty string if it did not."""
+        _recorder, patch = self._transport(handler)
+        with patch, self._keys():
+
+            async def scenario() -> str:
+                async with self.mod.Api() as api:
+                    try:
+                        await api.get(path, model, role=role)
+                    except self.mod.Unusable as error:
+                        return str(error)
+                    return ""
+
+            return asyncio.run(scenario())
+
+    def test_each_role_carries_its_own_key(self) -> None:
+        mod = self.mod
+        recorder, patch = self._transport(lambda request: httpx.Response(200, json={}))
+        with patch, self._keys():
+
+            async def scenario() -> None:
+                async with mod.Api() as api:
+                    await api.get("/api/health/ready")
+                    await api.get("/api/admin/targets", role="admin")
+                    await api.get("/api/catalog/v1/stats", role="catalog")
+
+            asyncio.run(scenario())
+
+        self.assertEqual(
+            [request.headers.get("x-api-key") for request in recorder.requests],
+            [None, "admin-secret", "catalog-secret"],
+        )
+        # One client per role: the admin key travels only on the admin client.
+        self.assertEqual(len(self.clients), 3)
+
+    def test_only_the_catalog_decodes_decimals(self) -> None:
+        mod = self.mod
+        body = b'{"cashbackPercent": 0.1000000000000000000000000001}'
+        _recorder, patch = self._transport(lambda request: httpx.Response(200, content=body))
+        with patch, self._keys():
+
+            async def scenario() -> tuple:
+                async with mod.Api() as api:
+                    catalog = await api.get("/api/catalog/v1/stats", role="catalog")
+                    public = await api.get("/api/health/ready")
+                return catalog, public
+
+            catalog, public = asyncio.run(scenario())
+
+        self.assertIsInstance(catalog["cashbackPercent"], Decimal)
+        self.assertIsInstance(public["cashbackPercent"], float)
+
+    def test_a_refused_key_is_reported(self) -> None:
+        message = self._message(lambda request: httpx.Response(401))
+        self.assertIn("401", message)
+        self.assertIn("/api/health/ready", message)
+
+    def test_a_forbidden_key_is_reported(self) -> None:
+        message = self._message(lambda request: httpx.Response(403))
+        self.assertIn("403", message)
+
+    def test_a_client_error_is_reported(self) -> None:
+        message = self._message(lambda request: httpx.Response(404, text="no such thing"))
+        self.assertIn("HTTP 404 on /api/health/ready", message)
+        self.assertIn("no such thing", message)
+
+    def test_a_server_error_is_reported(self) -> None:
+        message = self._message(lambda request: httpx.Response(500))
+        self.assertIn("HTTP 500 on /api/health/ready", message)
+
+    def test_an_unreachable_stack_says_how_to_start_it(self) -> None:
+        def handler(request):
+            raise httpx.ConnectError("connection refused")
+
+        self.assertIn("cannot reach", self._message(handler))
+
+    def test_a_stack_that_hangs_up_says_it_is_still_starting(self) -> None:
+        def handler(request):
+            raise httpx.ReadTimeout("timed out")
+
+        self.assertIn("not answering yet", self._message(handler))
+
+    def test_a_broken_protocol_says_it_is_still_starting(self) -> None:
+        def handler(request):
+            raise httpx.RemoteProtocolError("server disconnected")
+
+        self.assertIn("not answering yet", self._message(handler))
+
+    def test_a_broken_read_says_it_is_still_starting(self) -> None:
+        def handler(request):
+            raise httpx.ReadError("the read failed")
+
+        self.assertIn("not answering yet", self._message(handler))
+
+    def test_a_response_that_is_not_json_is_reported(self) -> None:
+        message = self._message(lambda request: httpx.Response(200, content=b"<html>nope</html>"))
+        self.assertIn("not JSON", message)
+
+    def test_a_response_that_does_not_match_the_model_is_reported(self) -> None:
+        message = self._message(
+            lambda request: httpx.Response(200, json={"totalProducts": "many"}),
+            model=self.mod.Stats,
+        )
+        self.assertIn("does not match the model", message)
+
+    def test_every_client_is_closed_when_the_scope_ends(self) -> None:
+        mod = self.mod
+        _recorder, patch = self._transport(lambda request: httpx.Response(200, json={}))
+        with patch, self._keys():
+
+            async def scenario() -> None:
+                async with mod.Api() as api:
+                    await api.get("/api/health/ready")
+                    await api.get("/api/admin/targets", role="admin")
+                self.assertTrue(self.clients)
+                self.assertTrue(all(client.is_closed for client in self.clients))
+
+            asyncio.run(scenario())
+
+    def test_every_client_is_closed_when_the_scope_fails(self) -> None:
+        mod = self.mod
+        _recorder, patch = self._transport(lambda request: httpx.Response(200, json={}))
+        with patch, self._keys():
+
+            async def scenario() -> None:
+                with self.assertRaises(RuntimeError):
+                    async with mod.Api() as api:
+                        await api.get("/api/health/ready")
+                        raise RuntimeError("boom")
+                self.assertTrue(self.clients)
+                self.assertTrue(all(client.is_closed for client in self.clients))
+
+            asyncio.run(scenario())
+
+    def test_every_client_is_closed_when_the_scope_is_cancelled(self) -> None:
+        mod = self.mod
+        _recorder, patch = self._transport(lambda request: httpx.Response(200, json={}))
+        with patch, self._keys():
+
+            async def scenario() -> None:
+                async with mod.Api() as api:
+                    await api.get("/api/health/ready")
+                    raise asyncio.CancelledError
+
+            with contextlib.suppress(asyncio.CancelledError):
+                asyncio.run(scenario())
+            self.assertTrue(self.clients)
+            self.assertTrue(all(client.is_closed for client in self.clients))
+
+    def test_independent_requests_run_together(self) -> None:
+        mod = self.mod
+        arrived: list[str] = []
+        recorder, patch = self._transport(None)
+        with patch, self._keys():
+
+            async def scenario() -> dict:
+                release = asyncio.Event()
+
+                async def handler(request):
+                    arrived.append(request.url.path)
+                    if len(arrived) == 3:
+                        release.set()
+                    # The requests are only answered when all three have arrived, so a
+                    # sequential fetch would never get here.
+                    await asyncio.wait_for(release.wait(), timeout=2)
+                    return httpx.Response(200, json=[])
+
+                recorder.handler = handler
+                async with mod.Api() as api:
+                    return await mod._fetch_runs(api)
+
+            data = asyncio.run(scenario())
+
+        self.assertEqual(len(arrived), 3)
+        self.assertEqual(data["jobs"], [])
+
+    def test_a_failed_request_is_not_reported_as_a_success(self) -> None:
+        mod = self.mod
+
+        async def handler(request):
+            if request.url.path == "/api/admin/errors":
+                return httpx.Response(500, text="boom")
+            return httpx.Response(200, json=[])
+
+        _recorder, patch = self._transport(handler)
+        with patch, self._keys():
+
+            async def scenario() -> str:
+                async with mod.Api() as api:
+                    try:
+                        await mod._fetch_runs(api)
+                    except mod.Unusable as error:
+                        return str(error)
+                    return ""
+
+            message = asyncio.run(scenario())
+
+        self.assertIn("HTTP 500 on /api/admin/errors", message)
+
+    def test_a_missing_key_is_refused_before_the_request(self) -> None:
+        recorder, patch = self._transport(lambda request: httpx.Response(200, json={}))
+        with patch, mock.patch.object(self.mod, "_env", lambda: {"CATALOG_API_KEY": "catalog-secret"}):
+
+            async def scenario() -> str:
+                async with self.mod.Api() as api:
+                    try:
+                        await api.get("/api/admin/targets", role="admin")
+                    except self.mod.Unusable as error:
+                        return str(error)
+                    return ""
+
+            message = asyncio.run(scenario())
+
+        self.assertIn("ADMIN_API_KEY is not set", message)
+        self.assertEqual(recorder.requests, [])
+
+    def test_an_unknown_role_is_refused_before_the_request(self) -> None:
+        recorder, patch = self._transport(lambda request: httpx.Response(200, json={}))
+        with patch, self._keys():
+
+            async def scenario() -> str:
+                async with self.mod.Api() as api:
+                    try:
+                        await api.get("/api/catalog/v1/stats", role="catalogue")
+                    except self.mod.Unusable as error:
+                        return str(error)
+                    return ""
+
+            message = asyncio.run(scenario())
+
+        self.assertIn("unknown HTTP role", message)
+        # A typo must not turn into an anonymous request.
+        self.assertEqual(recorder.requests, [])
+
+    def test_one_client_that_fails_to_close_does_not_leave_the_others_open(self) -> None:
+        mod = self.mod
+
+        class Stubborn:
+            async def aclose(self) -> None:
+                raise RuntimeError("cannot close")
+
+        class Good:
+            def __init__(self) -> None:
+                self.closed = False
+
+            async def aclose(self) -> None:
+                self.closed = True
+
+        good = Good()
+        api = mod.Api()
+        api._clients = {"admin": Stubborn(), "catalog": good}
+
+        with self.assertRaises(ExceptionGroup) as raised:
+            asyncio.run(api.aclose())
+
+        self.assertTrue(good.closed)
+        self.assertEqual(api._clients, {})
+        self.assertIn("cannot close", str(raised.exception.exceptions[0]))
+
+    def test_a_failing_cleanup_does_not_replace_the_error_of_the_operation(self) -> None:
+        mod = self.mod
+
+        class Stubborn:
+            async def aclose(self) -> None:
+                raise RuntimeError("cannot close")
+
+        async def scenario() -> None:
+            async with mod.Api() as api:
+                api._clients = {"admin": Stubborn()}
+                raise ValueError("boom")
+
+        with self.assertRaises(ValueError) as raised:
+            asyncio.run(scenario())
+
+        self.assertEqual(str(raised.exception), "boom")
+        # The cleanup failure is not lost, it just does not hide the real error.
+        self.assertIn("cannot close", "\n".join(raised.exception.__notes__))
+
+    def test_a_scope_keeps_the_configuration_it_started_with(self) -> None:
+        mod = self.mod
+        first = {"ADMIN_API_KEY": "first-admin", "CATALOG_API_KEY": "first-catalog"}
+        second = {"ADMIN_API_KEY": "second-admin", "CATALOG_API_KEY": "second-catalog"}
+        recorder, patch = self._transport(lambda request: httpx.Response(200, json={}))
+        with patch:
+
+            async def scenario() -> None:
+                with mock.patch.object(mod, "_env", lambda: dict(first)):
+                    first_api = mod.Api()
+                with mock.patch.object(mod, "_env", lambda: dict(second)):
+                    second_api = mod.Api()
+                    async with second_api as other:
+                        await other.get("/api/admin/targets", role="admin")
+                # The first scope still answers with the configuration it started with.
+                async with first_api as api:
+                    await api.get("/api/admin/targets", role="admin")
+
+            asyncio.run(scenario())
+
+        self.assertEqual(
+            [request.headers.get("x-api-key") for request in recorder.requests],
+            ["second-admin", "first-admin"],
+        )
+
+
+# ── the commands ─────────────────────────────────────────────────────────────
+
+
+class CliTest(_TransportCase):
+    """
+    The commands, from the shell's point of view: what they print, what they ask for,
+    and what they exit with.
+
+    The HTTP layer is replaced by a transport, so the whole path — the Typer command,
+    the event loop, the scope, the response — runs without a server.
+    """
+
+    def _json(self):
+        return mock.patch.object(self.mod, "JSON", True)
+
+    def test_status_prints_the_health_and_the_keys(self) -> None:
+        mod = self.mod
+
+        def handler(request):
+            if request.url.path == "/api/health/ready":
+                return httpx.Response(200, json={"status": "UP", "checks": {"db": "UP"}})
+            return httpx.Response(200, json={})
+
+        recorder, patch = self._transport(handler)
+        out = io.StringIO()
+        with patch, self._keys(), self._json(), contextlib.redirect_stdout(out):
+            mod.status()
+
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["ready"]["status"], "UP")
+        self.assertEqual(payload["keys"], {"ADMIN_API_KEY": True, "CATALOG_API_KEY": True})
+        # Health, the admin key and the catalog key: three reads, one scope.
+        self.assertEqual(len(recorder.requests), 3)
+
+    def test_status_exits_with_one_when_the_stack_is_down(self) -> None:
+        mod = self.mod
+
+        def handler(request):
+            if request.url.path == "/api/health/ready":
+                return httpx.Response(200, json={"status": "DOWN"})
+            return httpx.Response(200, json={})
+
+        _recorder, patch = self._transport(handler)
+        with (
+            patch,
+            self._keys(),
+            self._json(),
+            contextlib.redirect_stdout(io.StringIO()),
+            self.assertRaises(mod.typer.Exit) as raised,
+        ):
+            mod.status()
+
+        self.assertEqual(raised.exception.exit_code, 1)
+
+    def test_items_asks_for_the_page_and_prints_the_items(self) -> None:
+        mod = self.mod
+        body = (FIXTURES / "catalog-items.json").read_bytes()
+        recorder, patch = self._transport(lambda request: httpx.Response(200, content=body))
+        out = io.StringIO()
+        with patch, self._keys(), self._json(), contextlib.redirect_stdout(out):
+            mod.items(
+                target="t-1",
+                query="phone",
+                page=2,
+                page_size=5,
+                sort=mod.Sort.price_asc,
+                in_stock=True,
+                min_price=100.0,
+            )
+
+        params = dict(recorder.requests[0].url.params)
+        self.assertEqual(params["targetId"], "t-1")
+        self.assertEqual(params["q"], "phone")
+        self.assertEqual(params["page"], "2")
+        self.assertEqual(params["pageSize"], "5")
+        self.assertEqual(params["sort"], "PriceAsc")
+        self.assertEqual(params["inStock"], "true")
+        self.assertEqual(params["minPrice"], "100.0")
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["totalCount"], 1)
+        self.assertEqual(payload["items"][0]["title"], "Товар")
+
+    def test_stats_prints_the_counters(self) -> None:
+        mod = self.mod
+        body = (FIXTURES / "catalog-stats.json").read_bytes()
+        _recorder, patch = self._transport(lambda request: httpx.Response(200, content=body))
+        out = io.StringIO()
+        with patch, self._keys(), self._json(), contextlib.redirect_stdout(out):
+            mod.stats()
+
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["totalProducts"], 2)
+        self.assertEqual(payload["totalItems"], 3)
+        self.assertEqual(payload["totalTargets"], 1)
+
+    def test_up_waits_until_the_application_answers(self) -> None:
+        mod = self.mod
+        recorder, patch = self._transport(lambda request: httpx.Response(200, json={"status": "UP"}))
+        with (
+            patch,
+            self._keys(),
+            mock.patch.object(mod, "_run"),
+            mock.patch.object(mod, "_compose"),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            mod.up(timeout=5)
+
+        self.assertEqual(len(recorder.requests), 1)
+
+    def test_up_exits_with_one_when_the_application_does_not_answer(self) -> None:
+        mod = self.mod
+        _recorder, patch = self._transport(lambda request: httpx.Response(200, json={"status": "DOWN"}))
+        with (
+            patch,
+            self._keys(),
+            mock.patch.object(mod, "_run"),
+            mock.patch.object(mod, "_compose"),
+            contextlib.redirect_stdout(io.StringIO()),
+            self.assertRaises(mod.typer.Exit) as raised,
+        ):
+            mod.up(timeout=0)
+
+        self.assertEqual(raised.exception.exit_code, 1)
+
+
+# ── the command line ──────────────────────────────────────────────────────────
+
+
+class CliRunnerTest(_TransportCase):
+    """
+    The CLI as the shell sees it: the arguments, the global option, the exit code.
+
+    The commands are also called directly in `CliTest`; these cases go through Typer,
+    so the parsing of the options and the dispatch are part of what is proven.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.runner = CliRunner()
+
+    def _json_mode(self):
+        """The global option, restored to the module default after the test."""
+        return mock.patch.object(self.mod, "JSON", False)
+
+    def test_the_json_option_goes_before_the_command(self) -> None:
+        mod = self.mod
+        with self._json_mode():
+            result = self.runner.invoke(mod.app, ["status", "--json"])
+
+        # `--json` is a global option: after the command it is not an option at all.
+        self.assertEqual(result.exit_code, 2)
+
+    def test_the_json_option_prints_one_document(self) -> None:
+        mod = self.mod
+
+        def handler(request):
+            if request.url.path == "/api/health/ready":
+                return httpx.Response(200, json={"status": "UP", "checks": {}})
+            return httpx.Response(200, json={})
+
+        _recorder, patch = self._transport(handler)
+        with patch, self._keys(), self._json_mode():
+            result = self.runner.invoke(mod.app, ["--json", "status"])
+
+        self.assertEqual(result.exit_code, 0)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["ready"]["status"], "UP")
+        self.assertEqual(payload["keys"], {"ADMIN_API_KEY": True, "CATALOG_API_KEY": True})
+
+    def test_the_exit_code_is_one_when_the_stack_is_down(self) -> None:
+        mod = self.mod
+
+        def handler(request):
+            if request.url.path == "/api/health/ready":
+                return httpx.Response(200, json={"status": "DOWN"})
+            return httpx.Response(200, json={})
+
+        _recorder, patch = self._transport(handler)
+        with patch, self._keys(), self._json_mode():
+            result = self.runner.invoke(mod.app, ["--json", "status"])
+
+        self.assertEqual(result.exit_code, 1)
+
+    def test_the_item_options_reach_the_server(self) -> None:
+        mod = self.mod
+        body = (FIXTURES / "catalog-items.json").read_bytes()
+        recorder, patch = self._transport(lambda request: httpx.Response(200, content=body))
+        with patch, self._keys(), self._json_mode():
+            result = self.runner.invoke(
+                mod.app, ["--json", "items", "--page", "2", "--page-size", "5", "--query", "phone"]
+            )
+
+        self.assertEqual(result.exit_code, 0)
+        params = dict(recorder.requests[0].url.params)
+        self.assertEqual(params["page"], "2")
+        self.assertEqual(params["pageSize"], "5")
+        self.assertEqual(params["q"], "phone")
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["totalCount"], 1)
+
+    def test_the_up_command_exits_with_one_when_the_stack_does_not_answer(self) -> None:
+        mod = self.mod
+        _recorder, patch = self._transport(lambda request: httpx.Response(200, json={"status": "DOWN"}))
+        with (
+            patch,
+            self._keys(),
+            mock.patch.object(mod, "_run"),
+            mock.patch.object(mod, "_compose"),
+            self._json_mode(),
+        ):
+            result = self.runner.invoke(mod.app, ["up", "--timeout", "0"])
+
+        self.assertEqual(result.exit_code, 1)
+
+    def test_the_readiness_is_polled_until_the_timeout(self) -> None:
+        mod = self.mod
+        calls = {"n": 0}
+
+        def handler(request):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return httpx.Response(200, json={"status": "DOWN"})
+            raise httpx.ConnectError("connection refused")
+
+        _recorder, patch = self._transport(handler)
+        with (
+            patch,
+            self._keys(),
+            mock.patch.object(mod, "_run"),
+            mock.patch.object(mod, "_compose"),
+            self._json_mode(),
+        ):
+            started = time.monotonic()
+            result = self.runner.invoke(mod.app, ["up", "--timeout", "3"])
+            elapsed = time.monotonic() - started
+
+        self.assertEqual(result.exit_code, 1)
+        # The command kept asking: the first answer was DOWN, the next ones could not
+        # be reached, and only the timeout ended the wait.
+        self.assertGreaterEqual(calls["n"], 2)
+        # The wait ends at the deadline, not two seconds after it.
+        self.assertLess(elapsed, 4)
