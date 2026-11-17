@@ -50,6 +50,12 @@ services:
       context: ..
       dockerfile: Dockerfile.debug
     container_name: wb-parser-debug
+    # Firefox/Camoufox needs shared memory and a permissive seccomp profile in
+    # Docker; without them the sandbox/user-namespace setup fails and the browser
+    # cannot start.
+    ipc: host
+    security_opt:
+      - seccomp=unconfined
     depends_on:
       postgres:
         condition: service_healthy

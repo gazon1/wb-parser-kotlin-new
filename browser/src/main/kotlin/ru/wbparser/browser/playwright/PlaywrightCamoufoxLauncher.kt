@@ -55,15 +55,18 @@ internal class PlaywrightCamoufoxLauncher(
         // The profile is checked before a driver exists: nothing that may be wrong is
         // allowed to start a process.
         val options = launchOptions(profile)
+        val profileDir =
+            checkNotNull(profile.profileDir) {
+                "The profile '${profile.profileId}' has no local directory to open."
+            }
+        clearStaleProfileLocks(profileDir)
         val playwright = createPlaywright()
         try {
             val context =
                 playwright
                     .firefox()
                     .launchPersistentContext(
-                        checkNotNull(profile.profileDir) {
-                            "The profile '${profile.profileId}' has no local directory to open."
-                        },
+                        profileDir,
                         options,
                     )
             // A persistent context opens a page of its own; one that did not is a
@@ -123,7 +126,10 @@ internal class PlaywrightCamoufoxLauncher(
         profile: BrowserProfileConfig,
         fingerprint: String,
     ): Map<String, String> {
-        val environment = LinkedHashMap(CamoufoxEnvironment.configChunks(fingerprint))
+        // Start from the process environment so the browser keeps PATH and other
+        // essentials; Camoufox-specific entries are layered on top.
+        val environment = LinkedHashMap(System.getenv())
+        environment.putAll(CamoufoxEnvironment.configChunks(fingerprint))
         CamoufoxFonts.fontConfigFile(install, fingerprint)?.let {
             environment["FONTCONFIG_FILE"] = it.toString()
         }
@@ -133,6 +139,30 @@ internal class PlaywrightCamoufoxLauncher(
             environment.size,
         )
         return environment
+    }
+
+    /**
+     * Remove stale Firefox/Camoufox lock files left by a crashed or killed run.
+     *
+     * Persistent profile directories are reused across runs (and may be mounted into
+     * containers). A leftover lock makes Firefox refuse to start with "already running,
+     * but is not responding" even though no live browser owns the profile. Our
+     * automation already holds an exclusive in-process claim on the directory before
+     * launch, so clearing leftover lock markers here only unblocks reuse of a dead
+     * session.
+     */
+    private fun clearStaleProfileLocks(profileDir: java.nio.file.Path) {
+        for (name in STALE_PROFILE_LOCKS) {
+            runCatching { java.nio.file.Files.deleteIfExists(profileDir.resolve(name)) }
+                .onFailure { error ->
+                    log.debug(
+                        "Could not remove stale profile lock '{}' in '{}': {}",
+                        name,
+                        profileDir,
+                        error.message,
+                    )
+                }
+        }
     }
 
     /**
@@ -159,6 +189,9 @@ internal class PlaywrightCamoufoxLauncher(
     companion object {
         /** How long the browser may take to start. */
         const val LAUNCH_TIMEOUT_MS: Double = 60_000.0
+
+        /** Lock markers Firefox/Camoufox leaves in a profile directory. */
+        private val STALE_PROFILE_LOCKS = listOf("lock", ".parentlock", "parent.lock")
     }
 }
 

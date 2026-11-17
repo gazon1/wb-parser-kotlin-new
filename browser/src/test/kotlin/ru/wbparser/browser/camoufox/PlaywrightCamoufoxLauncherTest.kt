@@ -307,4 +307,20 @@ class PlaywrightCamoufoxLauncherTest :
             cleanup.driverGone shouldBe true
             cleanup.browserGone shouldBe true
         }
+
+        test("stale profile lock files are removed before launch") {
+            val doubles = Doubles()
+            val profile = profile()
+            val profileDir = checkNotNull(profile.profileDir)
+            Files.createDirectories(profileDir)
+            Files.writeString(profileDir.resolve("lock"), "")
+            Files.writeString(profileDir.resolve(".parentlock"), "")
+            Files.writeString(profileDir.resolve("parent.lock"), "")
+
+            doubles.launcher(install()).launch(profile)
+
+            Files.exists(profileDir.resolve("lock")) shouldBe false
+            Files.exists(profileDir.resolve(".parentlock")) shouldBe false
+            Files.exists(profileDir.resolve("parent.lock")) shouldBe false
+        }
     })
