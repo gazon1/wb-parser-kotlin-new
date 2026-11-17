@@ -794,23 +794,24 @@ def _partition_by_due(
     targets: list[Target], now: datetime, freshness_minutes: int
 ) -> tuple[list[Target], list[tuple[datetime, Target]]]:
     """Split by the claim's rule, as far as the API exposes it — see [schedule]."""
-    fresh_before = now - timedelta(minutes=freshness_minutes)
     due: list[Target] = []
     upcoming: list[tuple[datetime, Target]] = []
     for target in targets:
         if not target.active:
             continue
-        # The lease comes first: `claimDueTargets` skips a leased target whatever its
-        # freshness says, so reporting it as due would promise work the crawl will not
-        # start. A lease from a run that died holds the target for its full duration.
-        if target.lease_until and target.lease_until > now:
-            upcoming.append((target.lease_until, target))
-        elif target.next_attempt_at and target.next_attempt_at > now:
-            upcoming.append((target.next_attempt_at, target))
-        elif target.last_crawled_at is None or target.last_crawled_at <= fresh_before:
-            due.append(target)
+        available_at = now
+        if target.lease_until and target.lease_until > available_at:
+            available_at = target.lease_until
+        if target.next_attempt_at and target.next_attempt_at > available_at:
+            available_at = target.next_attempt_at
+        if target.last_crawled_at is not None:
+            fresh_until = target.last_crawled_at + timedelta(minutes=freshness_minutes)
+            if fresh_until > available_at:
+                available_at = fresh_until
+        if available_at > now:
+            upcoming.append((available_at, target))
         else:
-            upcoming.append((target.last_crawled_at + timedelta(minutes=freshness_minutes), target))
+            due.append(target)
     return due, sorted(upcoming, key=lambda pair: pair[0])
 
 

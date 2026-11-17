@@ -84,14 +84,12 @@ services:
       # hardcoded 4-hour freshness window) and the hardcoded value could not be changed
       # without a rebuild.
       CRAWLER_SCHEDULE_FRESHNESS_MINUTES: "240"
-      # How long a target stays leased to a run. The production default is two hours,
-      # and that is what a debug run has to live with too: a debug crawl is a full-catalog
-      # crawl, the same shape of work as a production round, and a lease shorter than the
-      # crawl it covers would expire in the middle of it — after which another host could
-      # claim the target while this one is still reading it. The recovery of a killed debug
-      # run does not need a short lease: the job reconciler marks the orphaned job
-      # `Crashed` and releases its leases on the next start, whatever the lease duration.
-      # The override is therefore gone; the safe default applies.
+      # How long a target stays leased to a run. The heartbeat renews the leases of the
+      # running batch every 30 seconds, so a lease does not expire while the run is still
+      # working through targets it claimed up front. Recovery of a killed run is driven by
+      # the job heartbeat going stale: the reconciler marks the orphaned job `Crashed` and
+      # releases its leases on the next start, whatever the lease duration. The override is
+      # therefore gone; the safe default applies.
       # Nextcloud owns 8080 on this host; 8082 keeps both up.
       SERVER_PORT: "8082"
       # The application is debugged, the libraries are not. `ROOT=DEBUG` turns on the

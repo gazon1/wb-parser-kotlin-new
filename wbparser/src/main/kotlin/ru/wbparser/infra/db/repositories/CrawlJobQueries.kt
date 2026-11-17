@@ -1,11 +1,13 @@
 package ru.wbparser.infra.db.repositories
 
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import ru.wbparser.domain.scheduling.CrawlTrigger
 import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.infra.db.CrawlJobsTable
+import ru.wbparser.infra.db.CrawlTargetsTable
 import ru.wbparser.infra.db.exposedOnce
 import ru.wbparser.infra.scheduler.FreshnessPolicy
 import java.sql.Connection
@@ -55,18 +57,35 @@ object CrawlJobQueries {
 }
 
 /**
- * Records that [jobId] is still being worked on.
+ * Records that [jobId] is still being worked on, and renews the leases of [leaseOwner].
  *
- * A no-op when the job is not in `Running` any more — the crawl may have finished
- * between the heartbeat tick and the update.
+ * A no-op for the heartbeat when the job is not in `Running` any more — the crawl may
+ * have finished between the heartbeat tick and the update.
+ *
+ * When [leaseOwner] and [leaseFor] are given, every target leased by [leaseOwner] gets
+ * its lease extended: a claimed batch can take longer than a single lease window to
+ * process, and an expired lease would let another host take a target that is still part
+ * of this run. Renewing on the heartbeat keeps the lease alive for as long as the run is.
  */
-fun DataSource.touchJobHeartbeat(jobId: UUID) {
+fun DataSource.touchJobHeartbeat(
+    jobId: UUID,
+    leaseOwner: String? = null,
+    leaseFor: Duration? = null,
+) {
     val database = exposedOnce()
+    val now = OffsetDateTime.now(ZoneOffset.UTC)
     transaction(database) {
         CrawlJobsTable.update({
             (CrawlJobsTable.id eq jobId) and (CrawlJobsTable.status eq JobStatus.Running.name)
         }) {
-            it[CrawlJobsTable.lastHeartbeatAt] = OffsetDateTime.now(ZoneOffset.UTC)
+            it[CrawlJobsTable.lastHeartbeatAt] = now
+        }
+        if (leaseOwner != null && leaseFor != null) {
+            CrawlTargetsTable.update({
+                CrawlTargetsTable.leaseOwner eq leaseOwner
+            }) {
+                it[CrawlTargetsTable.leaseUntil] = now.plus(leaseFor)
+            }
         }
     }
 }

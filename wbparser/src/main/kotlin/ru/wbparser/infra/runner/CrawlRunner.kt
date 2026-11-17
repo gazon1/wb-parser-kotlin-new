@@ -145,7 +145,8 @@ class CrawlRunner(
             var totalItems = 0
             val failures = mutableListOf<String>()
 
-            val results = jobStore.withHeartbeat(jobId) { runTargets(due) }
+            val results =
+                jobStore.withHeartbeat(jobId, config.instanceId, config.leaseDuration) { runTargets(due) }
 
             // Aggregated after the fact, from the returned values. Accumulating into shared
             // counters inside the concurrent region would be a data race, and the shape of the
