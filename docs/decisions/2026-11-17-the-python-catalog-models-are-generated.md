@@ -45,6 +45,27 @@ The generation is narrow on purpose:
 The CLI imports the generated `PagedProductCard`, `ProductCard` and `SiteStats`
 under its existing names; the admin models in `wbparser.py` are unchanged.
 
+Two things follow from the models being stricter than the hand-written ones, and
+both are made explicit rather than left to a runtime surprise:
+
+- The catalog's JSON is decoded with `parse_float=Decimal`. The stdlib decoder
+  turns every fraction into a `float` first, and `Decimal(float)` is already
+  rounded — a `Decimal` field downstream cannot undo that. The admin and
+  operational responses keep the ordinary decoder, because their contract has no
+  decimals.
+- `--json` writes money as unquoted JSON numbers through `simplejson`, because
+  Pydantic's JSON mode and the stdlib encoder both have to stringify a `Decimal`.
+  The output keeps the shape the API itself sends, so a `jq` filter that reads
+  `cashbackRubles` as a number keeps working.
+
+## Consequences of the drift risk
+
+A committed generated file and a committed contract can disagree, and no test
+that loads the file can see it. So the recipe appends the contract's SHA-256 to
+the file as `# source-sha256: …`, and `scripts/ci/check-catalog-models.py` — a
+static gate — compares it with the contract on disk. That gate needs no
+generator and no network, which is what lets it run in the `static` job.
+
 ## Rationale
 
 The contract is already the one document both sides are held to, so the Python
@@ -68,5 +89,8 @@ enums live in operations, outside the generated models.
   overwrites it.
 - **Never** widen the generation to `paths` without deciding what to do with the
   operational bodies it brings in.
-- `wbparser --json` renders the Decimal cashback fields as JSON strings, which is
-  Pydantic's JSON mode. The value is exact; the API still sends a number.
+- **Always** decode catalog responses with `parse_float=Decimal` and encode
+  `--json` with a decimal-aware writer; a `float` on either side rounds the value
+  the contract calls a number.
+- **Never** let the recorded `# source-sha256` marker drift from the recipe that
+  writes it; it is the only offline evidence that the models match the contract.

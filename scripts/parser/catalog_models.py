@@ -148,3 +148,6 @@ class ProductDetail(ProductCard):
         alias="dataAsOf",
         description="The moment the data in this answer is about: the newest observation it carries — the row itself or the newest row of its history. It is not the moment the answer was read.\n",
     )
+
+
+# source-sha256: 9daf590c466f63b85328265c51ea4be15f7a33dd928ce41522592315e00a9e0a

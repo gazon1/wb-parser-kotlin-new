@@ -120,6 +120,9 @@ models:
         --disable-timestamp \
         --use-union-operator \
         --type-overrides '{"ProductCard.cashback_percent":"decimal.Decimal","ProductCard.cashback_rubles":"decimal.Decimal","PricePoint.cashback_percent":"decimal.Decimal","PricePoint.cashback_rubles":"decimal.Decimal"}'
+    # The gate reads this marker, so a contract edit without a regeneration is a
+    # finding rather than a file that merely looks old.
+    python3 -c 'import hashlib, pathlib; print("\n\n# source-sha256: " + hashlib.sha256(pathlib.Path("contract/catalog-v1.openapi.yaml").read_bytes()).hexdigest() + "\n", end="")' >> scripts/parser/catalog_models.py
     # The repository's ruff is the formatter the gate checks the file with, so the
     # generated file is brought to that shape here rather than left for a surprise.
     ruff format scripts/parser/catalog_models.py

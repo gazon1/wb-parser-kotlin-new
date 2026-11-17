@@ -595,9 +595,11 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** считать HTTP-ответ транспортной ошибкой: только `Error` означает, что ответа не было, и только он идёт в транспортную цепь. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
 - **Never** считать восстановление или обычное закрытие поводом снять retire: снимает его только `onReset()` под эксклюзивным permit'ом. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
 - **Never** угадывать scope reset'а: очистку задаёт вызывающий. _(from `2026-11-16-the-profile-state-is-derived-and-failures-are-counted-apart`)
+- **Always** decode catalog responses with `parse_float=Decimal` and encode `--json` with a decimal-aware writer; a `float` on either side rounds the value the contract calls a number. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 - **Always** keep the generator version pinned in the recipe. A different version rewrites the file for reasons that are not a change to the contract. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 - **Always** regenerate with `just parser::models` when the contract changes; the file is committed and reviewed with the change that caused it. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 - **Never** hand-edit `scripts/parser/catalog_models.py`; the next generation overwrites it. _(from `2026-11-17-the-python-catalog-models-are-generated`)
+- **Never** let the recorded `# source-sha256` marker drift from the recipe that writes it; it is the only offline evidence that the models match the contract. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 - **Never** widen the generation to `paths` without deciding what to do with the operational bodies it brings in. _(from `2026-11-17-the-python-catalog-models-are-generated`)
 
 ## Per-tag
@@ -789,7 +791,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `contract`
 
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role are removed only after the rollback window has closed and a rollback drill has been run — not before. _(from `2026-10-19-catalog-read-api-contract`)_
-- `wbparser --json` renders the Decimal cashback fields as JSON strings, which is Pydantic's JSON mode. The value is exact; the API still sends a number. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
 
 ### `conventions`
 
@@ -1027,10 +1028,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `Stage` is no longer a typealias — `Stage(...)` construction required in a few places _(from `2026-10-17-stage-data-class-dsl`)_
 - `TaskOutcome` and `CrawlingFingerprint` are now in `Coordinator.kt` instead of `Pipeline.kt` _(from `2026-10-17-coordinator-extraction`)_
 - `WbCatalogStage` now exposes `.stage` property instead of being a `Stage` _(from `2026-10-17-stage-data-class-dsl`)_
-
-### `python`
-
-- `wbparser --json` renders the Decimal cashback fields as JSON strings, which is Pydantic's JSON mode. The value is exact; the API still sends a number. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
 
 ### `refactoring`
 

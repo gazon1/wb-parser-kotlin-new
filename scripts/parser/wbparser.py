@@ -54,6 +54,7 @@ import subprocess
 import sys
 import time
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from enum import StrEnum
 from functools import cache
 from pathlib import Path
@@ -62,6 +63,7 @@ from typing import Annotated, Any, TypeVar
 try:
     import click
     import httpx
+    import simplejson
     import typer
 
     # The catalog half of the responses — generated, not hand-written, so a change to
@@ -77,6 +79,12 @@ try:
     from rich.markup import escape
     from rich.table import Table
 except ModuleNotFoundError as missing:  # pragma: no cover - a wrong interpreter, not a code path
+    if missing.name == "catalog_models":
+        raise SystemExit(
+            "error: catalog_models.py is missing next to this script.\n"
+            "It is generated from the contract, not installed — restore it with:\n"
+            "  just parser::models"
+        ) from missing
     # A bare `python3 script.py` does not read `pyproject.toml`, so the dependencies are
     # simply absent. Saying that beats a traceback that ends in "No module named
     # 'typer'" — that message names the symptom and not the fix.
@@ -284,7 +292,9 @@ def _get(
         detail = response.text.strip()[:200]
         raise Unusable(f"HTTP {response.status_code} on {path}" + (f": {detail}" if detail else ""))
 
-    payload = response.json()
+    # The catalog is the one place the contract promises decimals, and a JSON fraction
+    # parsed as a float has already lost its value before a `Decimal` field sees it.
+    payload = _decode_json(response.content, decimal_numbers=catalog)
     if model is None:
         # A shape this file does not own: `/api/health/ready` reports whatever the
         # crawler has counters for, and a model would freeze that into a contract the
@@ -296,11 +306,39 @@ def _get(
         raise Unusable(f"{path}: the response does not match the model — has the API changed?\n{error}") from error
 
 
+def _decode_json(body: bytes, *, decimal_numbers: bool = False) -> Any:
+    """
+    Decode a response body. `decimal_numbers` keeps catalog fractions exact.
+
+    The stdlib decoder turns every JSON fraction into a float first, and a float cannot
+    hold `0.1000000000000000000000000001`. The catalog is the only API whose contract
+    promises decimals, so only that path asks for `Decimal`.
+    """
+    return json.loads(body, parse_float=Decimal) if decimal_numbers else json.loads(body)
+
+
+def _encode_json(payload: Any) -> str:
+    """
+    One JSON document, with money as JSON numbers rather than strings.
+
+    `Decimal` has no stdlib `json` support, and Pydantic's JSON mode writes it as a
+    quoted string. `simplejson` writes the exact decimal literal unquoted, so `--json`
+    keeps the shape the API itself sends.
+    """
+
+    def default(value: Any) -> str:
+        # Pydantic's python-mode dump leaves the rest typed: UUID, AnyUrl, datetime.
+        if isinstance(value, datetime):
+            return value.isoformat().replace("+00:00", "Z")
+        return str(value)
+
+    return simplejson.dumps(payload, ensure_ascii=False, indent=2, use_decimal=True, default=default)
+
+
 def _emit(payload: Any, render: Any) -> None:
     """One code path for `--json` and for the human table: the caller says what to draw."""
     if JSON:
-        json.dump(payload, sys.stdout, ensure_ascii=False, indent=2, default=str)
-        sys.stdout.write("\n")
+        sys.stdout.write(_encode_json(payload) + "\n")
     else:
         render()
 
@@ -614,7 +652,7 @@ def items(
         maxPrice=max_price,
         minCashback=min_cashback,
     )
-    _emit(result.model_dump(mode="json", by_alias=True), lambda: _print_items(result))
+    _emit(result.model_dump(by_alias=True), lambda: _print_items(result))
     if not result.total_count:
         raise typer.Exit(EXIT_WRONG)
 
@@ -648,7 +686,7 @@ def _print_items(result: ItemsPage) -> None:
 def stats() -> None:
     """Aggregate counters of the catalog: how big it is and how fresh."""
     payload = _get("/api/catalog/v1/stats", Stats, catalog=True)
-    _emit(payload.model_dump(mode="json", by_alias=True), lambda: _print_stats(payload))
+    _emit(payload.model_dump(by_alias=True), lambda: _print_stats(payload))
 
 
 def _print_stats(payload: Stats) -> None:
