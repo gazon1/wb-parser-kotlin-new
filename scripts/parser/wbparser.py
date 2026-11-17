@@ -54,7 +54,7 @@ import subprocess
 import sys
 import time
 from dataclasses import astuple, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from functools import cache
 from pathlib import Path
@@ -163,6 +163,9 @@ class Target(Camel):
     last_crawled_at: datetime | None = None
     next_attempt_at: datetime | None = None
     consecutive_failures: int = 0
+    # Until when another run holds the target. A leased target is not claimable, so a
+    # target that looks due can still be skipped by the crawl.
+    lease_until: datetime | None = None
 
 
 class Job(Camel):
@@ -918,6 +921,51 @@ def _print_schedule_header(cron: str, freshness: int) -> None:
     console.print("  [dim]the tick is not the cadence: a tick that finds nothing due starts nothing[/dim]")
 
 
+def _partition_by_due(
+    targets: list[Target], now: datetime, freshness_minutes: int
+) -> tuple[list[Target], list[tuple[datetime, Target]]]:
+    """Split by the claim's rule, as far as the API exposes it — see [schedule]."""
+    due: list[Target] = []
+    upcoming: list[tuple[datetime, Target]] = []
+    for target in targets:
+        if not target.active:
+            continue
+        available_at = now
+        if target.lease_until and target.lease_until > available_at:
+            available_at = target.lease_until
+        if target.next_attempt_at and target.next_attempt_at > available_at:
+            available_at = target.next_attempt_at
+        if target.last_crawled_at is not None:
+            fresh_until = target.last_crawled_at + timedelta(minutes=freshness_minutes)
+            if fresh_until > available_at:
+                available_at = fresh_until
+        if available_at > now:
+            upcoming.append((available_at, target))
+        else:
+            due.append(target)
+    return due, sorted(upcoming, key=lambda pair: pair[0])
+
+
+def _print_schedule(
+    cron: str,
+    freshness: int,
+    leaseMinutes: int,
+    targets: list[Target],
+    due: list[Target],
+    upcoming: list[tuple[datetime, Target]],
+    limit: int,
+) -> None:
+    _headline("schedule")
+    console.print(f"  tick       {escape(cron)}  [dim](how often the scheduler looks for work)[/dim]")
+    console.print(f"  freshness  {freshness} min  [dim](how long a target rests after a crawl)[/dim]")
+    console.print("  [dim]the tick is not the cadence: a tick that finds nothing due starts nothing[/dim]")
+    console.print(f"\n  active targets  {sum(1 for target in targets if target.active)} of {len(targets)}")
+    console.print(f"  due now         {len(due)}")
+    if due:
+        console.print("  [dim]a target held by an interrupted run's lease is listed here and[/dim]")
+        console.print(f"  [dim]skipped by the crawl until that lease expires ({leaseMinutes} min)[/dim]")
+
+
 def _print_next_run(next_run: datetime | None, earliest_due: datetime | None) -> None:
     if next_run:
         console.print(f"  next run   {next_run.astimezone().strftime('%Y-%m-%d %H:%M:%S %Z')}  ({_age(next_run)})")
@@ -973,13 +1021,13 @@ def history(
             "runs": data["jobs"],
             "schedule": {
                 "cron": data["cron"],
-                "freshnessMinutes": data["freshnessMinutes"],
-                "nextRun": data["nextRun"],
-                "earliestDue": data["earliestDue"],
+                "freshnessMinutes": data["freshness_minutes"],
+                "nextRun": data["next_run"],
+                "earliestDue": data["earliest_due"],
             },
         },
         lambda: _print_history(
-            data["cron"], data["freshnessMinutes"], data["jobs"], data["nextRun"], data["earliestDue"]
+            data["cron"], data["freshnessMinutes"], data["jobs"], data["nextRun"], data["earliest_due"]
         ),
     )
 
@@ -993,7 +1041,6 @@ def _print_history(
 ) -> None:
     _print_schedule_header(cron, freshness)
     _print_next_run(next_run, earliest_due)
-
     _headline(f"runs — last {len(jobs)}")
     if not jobs:
         console.print("  [yellow]![/yellow] no runs recorded yet")

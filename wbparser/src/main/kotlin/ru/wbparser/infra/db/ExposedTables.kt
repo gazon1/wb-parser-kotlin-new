@@ -317,5 +317,14 @@ object CrawlJobsTable : Table("crawl_jobs") {
     val itemsSaved: Column<Int> = integer("items_saved")
     val triggeredBy: Column<String?> = varchar("triggered_by", 100).nullable()
     val errorMessage: Column<String?> = text("error_message").nullable()
+
+    /**
+     * The owner of the run that leased the targets it worked on.
+     *
+     * Written by the same run that claims the targets, so a job and the leases it took are
+     * one story: the crash reconciliation marks a job `Crashed` and releases the leases of
+     * exactly those owners, and a live job keeps the leases it holds.
+     */
+    val leaseOwner: Column<String?> = varchar("lease_owner", 128).nullable()
     val createdAt: Column<OffsetDateTime> = timestampWithTimeZone("created_at")
 }

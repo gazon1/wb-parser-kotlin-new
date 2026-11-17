@@ -1,13 +1,13 @@
 package ru.wbparser.infra.db.repositories
 
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.and
-import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
+import ru.wbparser.domain.scheduling.CrawlTrigger
 import ru.wbparser.domain.value.JobStatus
 import ru.wbparser.infra.db.CrawlJobsTable
+import ru.wbparser.infra.db.CrawlTargetsTable
 import ru.wbparser.infra.db.exposedOnce
 import java.time.Duration
 import java.time.OffsetDateTime
@@ -54,18 +54,36 @@ object CrawlJobQueries {
 }
 
 /**
- * Records that [jobId] is still being worked on.
+ * Records that [jobId] is still being worked on, and renews the leases of [leaseOwner].
  *
- * A no-op when the job is not in `Running` any more — the crawl may have finished
- * between the heartbeat tick and the update.
+ * A no-op for the heartbeat when the job is not in `Running` any more — the crawl may
+ * have finished between the heartbeat tick and the update.
+ *
+ * When [leaseOwner] and [leaseFor] are given, every target leased by [leaseOwner] gets
+ * its lease extended: a claimed batch can take longer than a single lease window to
+ * process, and an expired lease would let another host take a target that is still part
+ * of this run. Renewing on the heartbeat keeps the lease alive for as long as the run is.
  */
-fun DataSource.touchJobHeartbeat(jobId: UUID) {
+fun DataSource.touchJobHeartbeat(
+    jobId: UUID,
+    leaseOwner: String? = null,
+    leaseFor: Duration? = null,
+) {
     val database = exposedOnce()
+    val now = OffsetDateTime.now(ZoneOffset.UTC)
     transaction(database) {
-        CrawlJobsTable.update({
-            (CrawlJobsTable.id eq jobId) and (CrawlJobsTable.status eq JobStatus.Running.name)
-        }) {
-            it[CrawlJobsTable.lastHeartbeatAt] = OffsetDateTime.now(ZoneOffset.UTC)
+        val touched =
+            CrawlJobsTable.update({
+                (CrawlJobsTable.id eq jobId) and (CrawlJobsTable.status eq JobStatus.Running.name)
+            }) {
+                it[CrawlJobsTable.lastHeartbeatAt] = now
+            }
+        if (touched == 1 && leaseOwner != null && leaseFor != null) {
+            CrawlTargetsTable.update({
+                CrawlTargetsTable.leaseOwner eq leaseOwner
+            }) {
+                it[CrawlTargetsTable.leaseUntil] = now.plus(leaseFor)
+            }
         }
     }
 }
@@ -79,37 +97,149 @@ fun DataSource.touchJobHeartbeat(jobId: UUID) {
  * The second case is the important one: the heartbeat column existed from V1 but
  * was never written, so every job in the table has a null heartbeat.
  *
- * The effective timestamp is `COALESCE(last_heartbeat_at, started_at, created_at)`,
- * spelled out as three branches because the Exposed DSL has no `COALESCE` helper
- * that keeps the null semantics of a `TIMESTAMPTZ` column.
+ * ## The leases of the crashed runs are released here too
+ *
+ * A run leases every target it claims, and releases them in `finally` — which never
+ * runs when the process is killed. The lease then holds the targets for its full
+ * duration, so a restart did not help: the service came back, found every target
+ * leased by a dead owner, and reported "nothing due" on every tick. Changing the
+ * job row to `Crashed` without releasing its leases marked the symptom and left the
+ * cause in place.
+ *
+ * Owners are taken from jobs that were *actually* marked `Crashed` by this reconcile
+ * (`UPDATE ... RETURNING lease_owner`), not from a separate pre-read — so a heartbeat
+ * that lands in between cannot turn a live crawl into "orphaned" while its leases are
+ * released. A lease is still released only when the owner has no live job now.
  */
 fun DataSource.reconcileOrphanedJobs(staleAfter: Duration = CrawlJobQueries.DEFAULT_STALE_AFTER): Int {
     val now = OffsetDateTime.now(ZoneOffset.UTC)
     val cutoff = now.minus(staleAfter)
-    val database = exposedOnce()
-    return transaction(database) {
-        CrawlJobsTable.update({
-            (CrawlJobsTable.status eq JobStatus.Running.name) and
-                (
-                    (
-                        CrawlJobsTable.lastHeartbeatAt.isNotNull() and
-                            (CrawlJobsTable.lastHeartbeatAt less cutoff)
-                    ) or (
-                        CrawlJobsTable.lastHeartbeatAt.isNull() and
-                            CrawlJobsTable.startedAt.isNotNull() and
-                            (CrawlJobsTable.startedAt less cutoff)
-                    ) or (
-                        CrawlJobsTable.lastHeartbeatAt.isNull() and
-                            CrawlJobsTable.startedAt.isNull() and
-                            (CrawlJobsTable.createdAt less cutoff)
-                    )
-                )
-        }) {
-            it[CrawlJobsTable.status] = JobStatus.Crashed.name
-            it[CrawlJobsTable.completedAt] = now
-            it[CrawlJobsTable.errorMessage] =
-                "Job was left in Running by a process that is no longer alive " +
-                "(no heartbeat for more than ${staleAfter.toMinutes()} minutes)."
+    val message =
+        "Job was left in Running by a process that is no longer alive " +
+            "(no heartbeat for more than ${staleAfter.toMinutes()} minutes)."
+
+    return connection.use { conn ->
+        conn.autoCommit = false
+        try {
+            val crashedOwners = linkedSetOf<String>()
+            var changed = 0
+            conn
+                .prepareStatement(
+                    """
+                    UPDATE crawl_jobs
+                       SET status = ?, completed_at = ?, error_message = ?
+                     WHERE status = 'Running'
+                       AND (
+                         (last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?)
+                         OR (last_heartbeat_at IS NULL AND started_at IS NOT NULL AND started_at < ?)
+                         OR (last_heartbeat_at IS NULL AND started_at IS NULL AND created_at < ?)
+                       )
+                     RETURNING lease_owner
+                    """.trimIndent(),
+                ).use { ps ->
+                    ps.setString(1, JobStatus.Crashed.name)
+                    ps.setObject(2, now)
+                    ps.setString(3, message)
+                    ps.setObject(4, cutoff)
+                    ps.setObject(5, cutoff)
+                    ps.setObject(6, cutoff)
+                    ps.executeQuery().use { rs ->
+                        while (rs.next()) {
+                            changed++
+                            rs.getString("lease_owner")?.let { crashedOwners += it }
+                        }
+                    }
+                }
+
+            if (crashedOwners.isNotEmpty()) {
+                conn
+                    .prepareStatement(
+                        """
+                        UPDATE crawl_targets
+                           SET lease_owner = NULL, lease_until = NULL
+                         WHERE lease_owner = ?
+                           AND NOT EXISTS (
+                             SELECT 1
+                               FROM crawl_jobs j
+                              WHERE j.lease_owner = ?
+                                AND j.status = 'Running'
+                                AND (
+                                  (j.last_heartbeat_at IS NOT NULL AND j.last_heartbeat_at >= ?)
+                                  OR (j.last_heartbeat_at IS NULL AND j.started_at IS NOT NULL AND j.started_at >= ?)
+                                  OR (j.last_heartbeat_at IS NULL AND j.started_at IS NULL AND j.created_at >= ?)
+                                )
+                           )
+                        """.trimIndent(),
+                    ).use { ps ->
+                        for (owner in crashedOwners) {
+                            ps.setString(1, owner)
+                            ps.setString(2, owner)
+                            ps.setObject(3, cutoff)
+                            ps.setObject(4, cutoff)
+                            ps.setObject(5, cutoff)
+                            ps.executeUpdate()
+                        }
+                    }
+            }
+
+            conn.commit()
+            changed
+        } catch (t: Throwable) {
+            conn.rollback()
+            throw t
+        }
+    }
+}
+
+/**
+ * Claims due targets and opens the job row for the run in one transaction.
+ *
+ * Claiming leases and registering the job must not be separate observable steps: if the
+ * process dies between them, targets stay leased with no job row, and reconciliation has
+ * nothing to tie the dead owner to. Doing both here means a lease is never held without
+ * a `crawl_jobs` row that names its owner.
+ *
+ * @return the new job id and the ids of the claimed targets, or `null` when nothing was due.
+ */
+internal fun DataSource.claimDueTargetsAndOpenJob(
+    request: TargetClaimRequest,
+    trigger: CrawlTrigger,
+    jobId: UUID = UUID.randomUUID(),
+): Pair<UUID, List<UUID>>? {
+    val nowOffset = OffsetDateTime.ofInstant(request.now, ZoneOffset.UTC)
+    return connection.use { conn ->
+        conn.autoCommit = false
+        try {
+            val claimed = claimDueTargets(conn, request)
+            if (claimed.isEmpty()) {
+                conn.rollback()
+                return null
+            }
+
+            conn
+                .prepareStatement(
+                    """
+                    INSERT INTO crawl_jobs
+                        (id, target_id, status, started_at, created_at, last_heartbeat_at, triggered_by, lease_owner)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """.trimIndent(),
+                ).use { ps ->
+                    ps.setObject(1, jobId)
+                    ps.setObject(2, claimed.first())
+                    ps.setString(3, JobStatus.Running.name)
+                    ps.setObject(4, nowOffset)
+                    ps.setObject(5, nowOffset)
+                    ps.setObject(6, nowOffset)
+                    ps.setString(7, trigger.dbValue)
+                    ps.setString(8, request.owner)
+                    ps.executeUpdate()
+                }
+
+            conn.commit()
+            jobId to claimed
+        } catch (t: Throwable) {
+            conn.rollback()
+            throw t
         }
     }
 }

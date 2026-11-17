@@ -363,7 +363,7 @@ class CrawlRunnerPostgresTest :
             insertTarget(dataSource)
 
             val store = CrawlJobStore(connect(dataSource), LoggerFactory.getLogger("RunErrorMessageRowTest"))
-            val jobId = store.openJob(targetId)
+            val jobId = store.openJob(targetId, owner = "test-owner")
             // A run that failed on every target writes one line per target into one
             // cell. The row has to stay readable — and the cut has to be visible.
             store.closeJob(jobId, JobStatus.Failed, errorMessage = "Target 9467: failed. ".repeat(400))
