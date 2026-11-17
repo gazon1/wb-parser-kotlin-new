@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import sys
+import threading
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from functools import cache
@@ -319,3 +321,187 @@ def test_runs_json_emits_nested_objects(monkeypatch, capsys) -> None:
     assert payload["targetRuns"][0]["outcome"] == "success"
     assert isinstance(payload["errors"][0], dict)
     assert payload["errors"][0]["message"] == "timeout"
+
+
+# ── the Pane contract ────────────────────────────────────────────────────────
+
+
+def _host(mod, pane):
+    """A one-pane app, so a pane can be exercised without the real TUI."""
+
+    class Host(mod.App):
+        def compose(self):
+            yield pane
+
+    return Host()
+
+
+def _stats(mod):
+    return mod.Stats.model_validate(
+        {
+            "totalItems": 1,
+            "totalProducts": 2,
+            "totalTargets": 3,
+            "withCashback": 4,
+            "productsWithCashback": 5,
+            "newestScrapedAt": "2026-11-17T09:00:00Z",
+            "asOf": "2026-11-17T09:00:00Z",
+            "instanceId": "i",
+            "dataAsOf": None,
+        }
+    )
+
+
+def test_a_pane_shows_what_it_fetched_and_marks_the_update() -> None:
+    mod = _load_wbparser()
+
+    class Probe(mod.Pane):
+        def __init__(self) -> None:
+            super().__init__()
+            self.shown: list = []
+
+        def compose(self):
+            yield mod.Static("", id="pane-status")
+
+        def fetch(self):
+            return {"answer": 42}
+
+        def show(self, data):
+            self.shown.append(data)
+
+    async def scenario() -> None:
+        pane = Probe()
+        async with _host(mod, pane).run_test():
+            worker = pane.reload()
+            assert worker is not None
+            await worker.wait()
+            status = pane.query_one("#pane-status", mod.Static).content
+            assert "loading" not in status
+            assert "updated" in status
+
+    asyncio.run(scenario())
+
+
+def test_a_failed_fetch_is_shown_and_leaves_the_pane_loadable_again() -> None:
+    mod = _load_wbparser()
+    calls: list[int] = []
+
+    class Probe(mod.Pane):
+        def __init__(self) -> None:
+            super().__init__()
+            self.shown: list = []
+
+        def compose(self):
+            yield mod.Static("", id="pane-status")
+
+        def fetch(self):
+            calls.append(1)
+            if len(calls) == 1:
+                raise mod.Unusable("cannot reach http://localhost:8082")
+            return "recovered"
+
+        def show(self, data):
+            self.shown.append(data)
+
+    async def scenario() -> None:
+        pane = Probe()
+        async with _host(mod, pane).run_test():
+            worker = pane.reload()
+            assert worker is not None
+            await worker.wait()
+            status = pane.query_one("#pane-status", mod.Static).content
+            assert "cannot reach" in status
+            assert "loading" not in status
+            assert pane.shown == []
+
+            worker = pane.reload()
+            assert worker is not None, "a pane that finished loading must accept the next reload"
+            await worker.wait()
+            assert pane.shown == ["recovered"]
+
+    asyncio.run(scenario())
+
+
+def test_a_reload_while_one_is_in_flight_starts_no_second_fetch() -> None:
+    mod = _load_wbparser()
+    started = threading.Event()
+    release = threading.Event()
+    calls: list[int] = []
+
+    class Probe(mod.Pane):
+        def compose(self):
+            yield mod.Static("", id="pane-status")
+
+        def fetch(self):
+            calls.append(1)
+            started.set()
+            release.wait(5)
+            return None
+
+        def show(self, data):
+            pass
+
+    async def scenario() -> None:
+        pane = Probe()
+        async with _host(mod, pane).run_test():
+            worker = pane.reload()
+            assert worker is not None
+            while not started.is_set():
+                await asyncio.sleep(0.01)
+            assert pane.reload() is None
+            release.set()
+            await worker.wait()
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()
+    assert calls == [1]
+
+
+def test_the_stats_pane_draws_what_it_fetched(monkeypatch) -> None:
+    mod = _load_wbparser()
+    monkeypatch.setattr(mod, "_fetch_stats", lambda: _stats(mod))
+
+    async def scenario() -> None:
+        pane = mod.StatsPane()
+        async with _host(mod, pane).run_test():
+            worker = pane.reload()
+            assert worker is not None
+            await worker.wait()
+            assert pane.query_one("#stats-table", mod.DataTable).row_count == 6
+            status = pane.query_one("#pane-status", mod.Static).content
+            assert "updated" in status
+
+    asyncio.run(scenario())
+
+
+def test_the_stats_pane_reports_a_failure_and_recovers(monkeypatch) -> None:
+    mod = _load_wbparser()
+    calls: list[int] = []
+
+    def fetch():
+        calls.append(1)
+        if len(calls) == 1:
+            raise mod.Unusable("cannot reach http://localhost:8082")
+        return _stats(mod)
+
+    monkeypatch.setattr(mod, "_fetch_stats", fetch)
+
+    async def scenario() -> None:
+        pane = mod.StatsPane()
+        async with _host(mod, pane).run_test():
+            worker = pane.reload()
+            assert worker is not None
+            await worker.wait()
+            status = pane.query_one("#pane-status", mod.Static).content
+            assert "cannot reach" in status
+            assert "loading" not in status
+            assert pane.query_one("#stats-table", mod.DataTable).row_count == 0
+
+            worker = pane.reload()
+            assert worker is not None
+            await worker.wait()
+            assert pane.query_one("#stats-table", mod.DataTable).row_count == 6
+
+    asyncio.run(scenario())
