@@ -91,7 +91,8 @@ class CrawlJobQueriesPostgresTest :
 
                 dataSource.heartbeatOf(id)!!.isAfter(OffsetDateTime.now(ZoneOffset.UTC).minusMinutes(1)) shouldBe false
                 dataSource.leaseOwnerOf(targetId) shouldBe "test-owner"
-                dataSource.leaseUntilOf(targetId)!!
+                dataSource
+                    .leaseUntilOf(targetId)!!
                     .toInstant()
                     .truncatedTo(ChronoUnit.SECONDS) shouldBe leasedUntil.toInstant().truncatedTo(ChronoUnit.SECONDS)
             }

@@ -10,7 +10,6 @@ import ru.wbparser.infra.db.CrawlJobsTable
 import ru.wbparser.infra.db.CrawlTargetsTable
 import ru.wbparser.infra.db.exposedOnce
 import ru.wbparser.infra.scheduler.FreshnessPolicy
-import java.sql.Connection
 import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
