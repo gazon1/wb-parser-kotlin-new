@@ -55,11 +55,11 @@ import subprocess
 import sys
 import time
 import webbrowser
+from collections.abc import Awaitable, Callable
 from dataclasses import astuple, dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
-from functools import cache
 from pathlib import Path
 from typing import Annotated, Any, TypeVar
 
@@ -208,12 +208,6 @@ class Schedule(Camel):
 # ── environment ──────────────────────────────────────────────────────────────
 
 
-@cache
-def _file_env() -> dict[str, str]:
-    """The `.env` file, parsed (not sourced: a value that looks like a command is data)."""
-    return {name: value for name, value in dotenv_values(ROOT / ".env").items() if value is not None}
-
-
 # The names a shell may supply when the file does not, and no others: everything else
 # the file owns.
 _OVERRIDABLE = {
@@ -228,7 +222,6 @@ _OVERRIDABLE = {
 }
 
 
-@cache
 def _env() -> dict[str, str]:
     """
     The credentials this tool acts with: the shell, then the `.env` file.
@@ -238,43 +231,21 @@ def _env() -> dict[str, str]:
     and letting it win silently pointed a crawl at a database that did not have that
     user. A wrong value in the file is visible and editable; a stale exported one is
     neither.
+
+    Nothing is memoised here: the file is read when it is needed, so a stack that was
+    just started is described by the file as it is now.
     """
+    file_env = {name: value for name, value in dotenv_values(ROOT / ".env").items() if value is not None}
     shell = {name: value for name, value in os.environ.items() if name in _OVERRIDABLE}
-    return {**shell, **_file_env()}
+    return {**shell, **file_env}
 
 
-@cache
-def _base_url() -> str:
+def _base_url(env: dict[str, str] | None = None) -> str:
     """Explicit WBPARSER_URL wins; otherwise the port follows the same precedence as credentials."""
-    port = _env().get("SERVER_PORT") or str(DEFAULT_PORT)
+    if env is None:
+        env = _env()
+    port = env.get("SERVER_PORT") or str(DEFAULT_PORT)
     return os.environ.get("WBPARSER_URL") or f"http://localhost:{port}"
-
-
-@cache
-def _client(*, admin: bool = False, catalog: bool = False) -> httpx.Client:
-    """
-    One client per role, carrying that role's key and no other.
-
-    Two roles, two clients: the admin key must not travel to the catalog API even by
-    accident, and the admin API refuses a request whose key is the catalog's.
-    """
-    headers: dict[str, str] = {}
-    env = _env()
-    if admin or catalog:
-        name = "ADMIN_API_KEY" if admin else "CATALOG_API_KEY"
-        key = env.get(name, "")
-        if not key:
-            raise Unusable(f"{name} is not set — see docs/operations/credentials-runbook.md")
-        headers["X-Api-Key"] = key
-    return httpx.Client(base_url=_base_url(), headers=headers, timeout=15.0)
-
-
-def _reset_caches() -> None:
-    """Drop the memoised answers: the stack may have just been started or stopped."""
-    _file_env.cache_clear()
-    _env.cache_clear()
-    _base_url.cache_clear()
-    _client.cache_clear()
 
 
 T = TypeVar("T")
@@ -282,30 +253,117 @@ T = TypeVar("T")
 # ── HTTP ─────────────────────────────────────────────────────────────────────
 
 
-def _get(
+def _headers(role: str, env: dict[str, str]) -> dict[str, str]:
+    """
+    The headers of one role: its own key, and no other.
+
+    The admin key must not travel to the catalog API even by accident, and the admin
+    API refuses a request whose key is the catalog's. The public role carries no key
+    at all, and a role nobody knows is an error rather than an anonymous request: a
+    typo must not quietly drop the key.
+    """
+    if role == "public":
+        return {}
+    name = {"admin": "ADMIN_API_KEY", "catalog": "CATALOG_API_KEY"}.get(role)
+    if name is None:
+        raise Unusable(f"unknown HTTP role {role!r}")
+    key = env.get(name, "")
+    if not key:
+        raise Unusable(f"{name} is not set — see docs/operations/credentials-runbook.md")
+    return {"X-Api-Key": key}
+
+
+class Api:
+    """
+    One scope of HTTP access: one client per role, closed with the scope.
+
+    The clients live exactly as long as the `async with` block. So a key is read
+    once per scope, no client is shared between two event loops, and no client is
+    left open after the command that opened it.
+    """
+
+    def __init__(self) -> None:
+        # The configuration is read once per scope: the URL and the keys of one scope
+        # come from the same state of `.env`, even if the file changes meanwhile.
+        self._env = _env()
+        self._base_url = _base_url(self._env)
+        self._clients: dict[str, httpx.AsyncClient] = {}
+
+    def _client(self, role: str) -> httpx.AsyncClient:
+        client = self._clients.get(role)
+        if client is None:
+            client = httpx.AsyncClient(base_url=self._base_url, headers=_headers(role, self._env), timeout=15.0)
+            self._clients[role] = client
+        return client
+
+    async def aclose(self) -> None:
+        """
+        Close every client, even when one of them fails to close.
+
+        The scope's contract is that no client outlives it, so one stubborn client
+        cannot leave the others open. The failures are collected and raised together,
+        so none of them is lost.
+        """
+        clients = list(self._clients.values())
+        self._clients.clear()
+        errors: list[Exception] = []
+        for client in clients:
+            try:
+                await client.aclose()
+            except Exception as error:
+                errors.append(error)
+        if errors:
+            raise ExceptionGroup("closing the HTTP clients failed", errors)
+
+    async def __aenter__(self) -> Api:
+        return self
+
+    async def __aexit__(self, exc_type: object, exc: BaseException | None, tb: object) -> None:
+        try:
+            await self.aclose()
+        except ExceptionGroup as group:
+            if exc is None:
+                raise
+            # The operation already failed: its error is the answer, and the cleanup
+            # failure is a note on it rather than a replacement for it.
+            for error in group.exceptions:
+                exc.add_note(f"closing the HTTP clients failed: {error}")
+
+    async def get(self, path: str, model: type[T] | None = None, *, role: str = "public", **params: Any) -> Any:
+        """One GET, parsed into `model`, with the failure modes already translated."""
+        query = {name: value for name, value in params.items() if value not in (None, "")}
+        response = await self._send(path, query, role)
+        # The catalog is the one place the contract promises decimals, and a JSON
+        # fraction parsed as a float has already lost its value before a `Decimal`
+        # field sees it.
+        return _interpret(response, path, model, decimal_numbers=role == "catalog")
+
+    async def _send(self, path: str, query: dict[str, Any], role: str) -> httpx.Response:
+        """The request itself, with the transport failures translated around the await."""
+        client = self._client(role)
+        try:
+            return await client.get(path, params=query)
+        except httpx.ConnectError as error:
+            raise Unusable(f"cannot reach {self._base_url} — start it with `wbparser up`") from error
+        except (httpx.TimeoutException, httpx.RemoteProtocolError, httpx.ReadError) as error:
+            # A server that accepts the connection and then hangs up is a server that is
+            # starting or restarting. "Cannot reach" would be wrong the moment it boots.
+            raise Unusable(f"{self._base_url} is not answering yet — is it still starting?") from error
+
+
+def _interpret(
+    response: httpx.Response,
     path: str,
     model: type[T] | None = None,
     *,
-    admin: bool = False,
-    catalog: bool = False,
-    **params: Any,
+    decimal_numbers: bool = False,
 ) -> Any:
     """
-    One GET, parsed into `model`, with the failure modes already translated.
+    The response, checked and parsed: the status, the JSON, and the model.
 
-    A caller never sees an `httpx` exception: an unreachable stack says how to start it,
-    a refused key says which key, and a response that does not match the model says so.
+    A caller never sees an `httpx` exception: a refused key says which key, and a
+    response that does not match the model says so.
     """
-    query = {name: value for name, value in params.items() if value not in (None, "")}
-    try:
-        response = _client(admin=admin, catalog=catalog).get(path, params=query)
-    except httpx.ConnectError as error:
-        raise Unusable(f"cannot reach {_base_url()} — start it with `wbparser up`") from error
-    except (httpx.TimeoutException, httpx.RemoteProtocolError, httpx.ReadError) as error:
-        # A server that accepts the connection and then hangs up is a server that is
-        # starting or restarting. "Cannot reach" would be wrong the moment it boots.
-        raise Unusable(f"{_base_url()} is not answering yet — is it still starting?") from error
-
     if response.status_code == 401:
         raise Unusable(f"the key was refused for {path} (401) — check the key in .env")
     if response.status_code == 403:
@@ -314,9 +372,10 @@ def _get(
         detail = response.text.strip()[:200]
         raise Unusable(f"HTTP {response.status_code} on {path}" + (f": {detail}" if detail else ""))
 
-    # The catalog is the one place the contract promises decimals, and a JSON fraction
-    # parsed as a float has already lost its value before a `Decimal` field sees it.
-    payload = _decode_json(response.content, decimal_numbers=catalog)
+    try:
+        payload = _decode_json(response.content, decimal_numbers=decimal_numbers)
+    except ValueError as error:
+        raise Unusable(f"{path}: the response is not JSON — {error}") from error
     if model is None:
         # A shape this file does not own: `/api/health/ready` reports whatever the
         # crawler has counters for, and a model would freeze that into a contract the
@@ -326,6 +385,36 @@ def _get(
         return TypeAdapter(model).validate_python(payload)
     except ValidationError as error:
         raise Unusable(f"{path}: the response does not match the model — has the API changed?\n{error}") from error
+
+
+async def _with_api(job: Callable[[Api], Awaitable[T]]) -> T:
+    """One job, one scope: the clients live exactly as long as the job does."""
+    async with Api() as api:
+        return await job(api)
+
+
+def _bridge_fetch(job: Callable[[Api], Awaitable[T]]) -> T:
+    """
+    shortcut: the tabs that are not panes yet fetch from a thread worker, so the
+    async fetch runs in an event loop of its own; #298 moves those tabs onto panes
+    and this bridge goes with them.
+    """
+    return asyncio.run(_with_api(job))
+
+
+async def _gather(*jobs: Awaitable[Any]) -> list[Any]:
+    """
+    Independent requests, run together, and the first failure is the answer.
+
+    Every request is awaited even when one of them has failed, so no request is left
+    running after the scope closes; the first failure is then raised, so a failed
+    request is never reported as a successful one.
+    """
+    results = await asyncio.gather(*jobs, return_exceptions=True)
+    for result in results:
+        if isinstance(result, BaseException):
+            raise result
+    return list(results)
 
 
 def _decode_json(body: bytes, *, decimal_numbers: bool = False) -> Any:
@@ -626,13 +715,28 @@ def _global_options(
         WbparserApp().run()
 
 
+async def _wait_ready(api: Api, timeout: int) -> bool:
+    """Wait until the application answers as ready. `False` when it did not in time."""
+    deadline = time.monotonic() + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        try:
+            if (await api.get("/api/health/ready")).get("status") == "UP":
+                return True
+        except Unusable:
+            pass
+        # The wait ends at the deadline, not two seconds after it.
+        await asyncio.sleep(min(2, remaining))
+
+
 @app.command()
 def up(
     build: Annotated[bool, typer.Option("--build", help="rebuild the jar even if one exists")] = False,
     timeout: Annotated[int, typer.Option(help="seconds to wait for readiness")] = 180,
 ) -> None:
     """Start the stack (Postgres + the application) and wait until it can serve."""
-    _reset_caches()
     rebuilt = build or not JAR.is_file()
     if rebuilt:
         console.print("building the jar…")
@@ -649,15 +753,9 @@ def up(
         up_args.extend(["--force-recreate", "app"])
     _compose(*up_args)
 
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            if _get("/api/health/ready").get("status") == "UP":
-                break
-        except Unusable:
-            pass
-        time.sleep(2)
-    else:
+    # The polling lives inside one coroutine: the loop is the command's, and the
+    # clients it uses are closed when the command ends.
+    if not asyncio.run(_with_api(lambda api: _wait_ready(api, timeout))):
         console.print(f"{_mark(False)} the application did not become ready in {timeout}s")
         console.print("[dim]see what it said: wbparser logs -n 50[/dim]")
         raise typer.Exit(EXIT_WRONG)
@@ -677,31 +775,34 @@ def down(
     volumes: Annotated[bool, typer.Option("--volumes", help="also delete the database volume")] = False,
 ) -> None:
     """Stop the stack. The database volume is kept unless --volumes is given."""
-    _reset_caches()
     if volumes:
         console.print("[yellow]![/yellow] removing the database volume — every scraped row is lost")
     _compose("down", *(["-v"] if volumes else []))
     console.print(f"{_mark(True)} stopped" + (" (volume removed)" if volumes else " (volume kept)"))
 
 
-def _fetch_status() -> tuple[dict[str, Any], dict[str, bool]]:
-    ready = _get("/api/health/ready")
-    keys = {"ADMIN_API_KEY": _key_works(admin=True), "CATALOG_API_KEY": _key_works(admin=False)}
-    return ready, keys
+async def _fetch_status(api: Api) -> tuple[dict[str, Any], dict[str, bool]]:
+    ready, admin_works, catalog_works = await _gather(
+        api.get("/api/health/ready"),
+        _key_works(api, admin=True),
+        _key_works(api, admin=False),
+    )
+    return ready, {"ADMIN_API_KEY": admin_works, "CATALOG_API_KEY": catalog_works}
 
 
 @app.command()
 def status() -> None:
     """Health, readiness, credentials, crawl counters, and the egress groups."""
-    ready, keys = _fetch_status()
+    ready, keys = asyncio.run(_with_api(_fetch_status))
     _emit({"ready": ready, "keys": keys}, lambda: _print_status(ready, keys))
     if ready.get("status") != "UP" or not all(keys.values()):
         raise typer.Exit(EXIT_WRONG)
 
 
-def _key_works(*, admin: bool) -> bool:
+async def _key_works(api: Api, *, admin: bool) -> bool:
+    """Whether the server accepts this role's key. A refused key is an answer, not a failure."""
     try:
-        _get("/api/admin/targets" if admin else "/api/catalog/v1/health", admin=admin, catalog=not admin)
+        await api.get("/api/admin/targets" if admin else "/api/catalog/v1/health", role="admin" if admin else "catalog")
     except Unusable:
         return False
     return True
@@ -807,7 +908,8 @@ class Sort(StrEnum):
     title_desc = "TitleDesc"
 
 
-def _fetch_items(
+async def _fetch_items(
+    api: Api,
     *,
     target: str | None = None,
     query: str | None = None,
@@ -819,10 +921,10 @@ def _fetch_items(
     max_price: float | None = None,
     min_cashback: float | None = None,
 ) -> ItemsPage:
-    return _get(
+    return await api.get(
         "/api/catalog/v1/items",
         ItemsPage,
-        catalog=True,
+        role="catalog",
         targetId=target,
         q=query,
         sort=sort,
@@ -848,16 +950,21 @@ def items(
     min_cashback: Annotated[float | None, typer.Option(help="minimum cashback, percent")] = None,
 ) -> None:
     """What was scraped, through the catalog API — the same data the storefront reads."""
-    result = _fetch_items(
-        target=target,
-        query=query,
-        page=page,
-        page_size=page_size,
-        sort=sort.value,
-        in_stock=in_stock,
-        min_price=min_price,
-        max_price=max_price,
-        min_cashback=min_cashback,
+    result = asyncio.run(
+        _with_api(
+            lambda api: _fetch_items(
+                api,
+                target=target,
+                query=query,
+                page=page,
+                page_size=page_size,
+                sort=sort.value,
+                in_stock=in_stock,
+                min_price=min_price,
+                max_price=max_price,
+                min_cashback=min_cashback,
+            )
+        )
     )
     _emit(result, lambda: _print_items(result))
     if not result.total_count:
@@ -875,14 +982,14 @@ def _print_items(result: ItemsPage) -> None:
         console.print(f"[dim]the data on this page is {_age(result.data_as_of)}[/dim]")
 
 
-def _fetch_stats() -> Stats:
-    return _get("/api/catalog/v1/stats", Stats, catalog=True)
+async def _fetch_stats(api: Api) -> Stats:
+    return await api.get("/api/catalog/v1/stats", Stats, role="catalog")
 
 
 @app.command()
 def stats() -> None:
     """Aggregate counters of the catalog: how big it is and how fresh."""
-    payload = _get("/api/catalog/v1/stats", Stats, catalog=True)
+    payload = asyncio.run(_with_api(_fetch_stats))
     _emit(payload, lambda: _print_stats(payload))
 
 
@@ -898,10 +1005,13 @@ def _print_stats(payload: Stats) -> None:
     console.print(f"  [dim]counters computed {_age(payload.as_of)} (cached up to ten minutes)[/dim]")
 
 
-def _fetch_runs(limit: int = 20, target: str | None = None, errors: int = 10) -> dict[str, Any]:
-    jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit, targetId=target)
-    target_runs = _get("/api/admin/target-runs", list[TargetRun], admin=True, limit=limit, targetId=target)
-    failures = _get("/api/admin/errors", list[RecordedError], admin=True, limit=errors, unresolvedOnly="true")
+async def _fetch_runs(api: Api, limit: int = 20, target: str | None = None, errors: int = 10) -> dict[str, Any]:
+    """The journal of runs: three independent reads, asked at once."""
+    jobs, target_runs, failures = await _gather(
+        api.get("/api/admin/jobs", list[Job], role="admin", limit=limit, targetId=target),
+        api.get("/api/admin/target-runs", list[TargetRun], role="admin", limit=limit, targetId=target),
+        api.get("/api/admin/errors", list[RecordedError], role="admin", limit=errors, unresolvedOnly="true"),
+    )
     return {"jobs": jobs, "targetRuns": target_runs, "errors": failures}
 
 
@@ -912,7 +1022,7 @@ def runs(
     errors: Annotated[int, typer.Option(help="how many unresolved errors to show")] = 10,
 ) -> None:
     """The journal of runs: what ran, on which address, and what came of it."""
-    data = _fetch_runs(limit=limit, target=target, errors=errors)
+    data = asyncio.run(_with_api(lambda api: _fetch_runs(api, limit=limit, target=target, errors=errors)))
     _emit(data, lambda: _print_runs(data))
 
 
@@ -934,10 +1044,10 @@ def _print_runs(data: dict[str, Any]) -> None:
             )
 
 
-def _fetch_schedule(limit: int = 15) -> Schedule:
+async def _fetch_schedule(api: Api, limit: int = 15) -> Schedule:
     """The schedule as the server answers it: the tick's rule, owned by the server."""
     try:
-        return _get("/api/admin/schedule", Schedule, admin=True, limit=limit)
+        return await api.get("/api/admin/schedule", Schedule, role="admin", limit=limit)
     except Unusable as error:
         if "HTTP 404 on /api/admin/schedule" in str(error):
             raise Unusable(
@@ -957,7 +1067,7 @@ def schedule(
     The answer comes from the server: the `/api/admin/schedule` endpoint reads the same
     claim the scheduler takes, so what is due here is what the tick will act on.
     """
-    data = _fetch_schedule(limit=limit)
+    data = asyncio.run(_with_api(lambda api: _fetch_schedule(api, limit=limit)))
     _emit(
         {
             "cron": data.cron,
@@ -1045,9 +1155,12 @@ def _print_schedule(data: Schedule) -> None:
         _table("", section.columns, section.rows)
 
 
-def _fetch_history(limit: int = 15) -> dict[str, Any]:
-    jobs = _get("/api/admin/jobs", list[Job], admin=True, limit=limit)
-    schedule = _fetch_schedule()
+async def _fetch_history(api: Api, limit: int = 15) -> dict[str, Any]:
+    """The last runs and the schedule: two independent reads, asked at once."""
+    jobs, schedule = await _gather(
+        api.get("/api/admin/jobs", list[Job], role="admin", limit=limit),
+        _fetch_schedule(api),
+    )
     return {
         "jobs": jobs,
         "cron": schedule.cron,
@@ -1073,7 +1186,7 @@ def history(
     earliest target's freshness expires — a next tick on its own would promise a run
     that does not happen.
     """
-    data = _fetch_history(limit=limit)
+    data = asyncio.run(_with_api(lambda api: _fetch_history(api, limit=limit)))
     _emit(
         {
             "runs": data["jobs"],
@@ -1122,10 +1235,10 @@ class Pane(Vertical):
     """
     A tab body that loads and draws its own data.
 
-    `fetch()` does the I/O off the UI thread and touches no widget; `show()` touches
-    widgets and does no I/O; `reload()` is the only entry point and owns the three
-    states — loading, error, and the time of the last success. The pane carries a
-    `Static#pane-status` for them.
+    `fetch()` is awaited on the app's event loop and touches no widget; `show()`
+    touches widgets and does no I/O; `reload()` is the only entry point and owns
+    the three states — loading, error, and the time of the last success. The pane
+    carries a `Static#pane-status` for them.
 
     An error from `fetch()` replaces the status line and keeps the previous data and
     `updated_at`. An error from `show()` also keeps `updated_at`, but the base class
@@ -1140,7 +1253,7 @@ class Pane(Vertical):
         self._loading = False
         self.updated_at: datetime | None = None
 
-    def fetch(self) -> Any:
+    async def fetch(self) -> Any:
         raise NotImplementedError
 
     def show(self, data: Any) -> None:
@@ -1156,9 +1269,7 @@ class Pane(Vertical):
 
     async def _load(self) -> None:
         try:
-            # Cancelling the worker stops this await, not the thread: a synchronous
-            # fetch runs to completion and its result is dropped.
-            data = await asyncio.to_thread(self.fetch)
+            data = await self.fetch()
             # Both stages are guarded: a failure to draw is as much a failed reload as
             # a failure to fetch. CancelledError is not an Exception, so a worker
             # cancelled on unmount is never shown as an error.
@@ -1187,8 +1298,9 @@ class StatsPane(Pane):
     def on_mount(self) -> None:
         self.query_one("#stats-table", DataTable).add_columns("metric", "value")
 
-    def fetch(self) -> Stats:
-        return _fetch_stats()
+    async def fetch(self) -> Stats:
+        async with Api() as api:
+            return await _fetch_stats(api)
 
     def show(self, payload: Stats) -> None:
         # Cells are built before the table is touched, so a failure while building them
@@ -1407,7 +1519,7 @@ class WbparserApp(App):
     def load_status(self) -> None:
         self.call_from_thread(self._note, "Loading status…")
         try:
-            ready, keys = _fetch_status()
+            ready, keys = _bridge_fetch(_fetch_status)
             self.call_from_thread(self._render_status, ready, keys, None)
         except Exception as exc:  # noqa: BLE001
             self.call_from_thread(self._render_status, None, None, str(exc))
@@ -1475,7 +1587,9 @@ class WbparserApp(App):
                 size = int(self.query_one("#items-size", Input).value or "20")
             except ValueError:
                 size = 20
-            result = _fetch_items(target=target, query=q, page=page, page_size=size, sort=str(sort))
+            result = _bridge_fetch(
+                lambda api: _fetch_items(api, target=target, query=q, page=page, page_size=size, sort=str(sort))
+            )
             self.call_from_thread(self._render_items, result, None)
         except Exception as exc:  # noqa: BLE001
             self.call_from_thread(self._render_items, None, str(exc))
@@ -1539,7 +1653,7 @@ class WbparserApp(App):
     def load_runs(self) -> None:
         self.call_from_thread(self._note, "Loading runs…")
         try:
-            data = _fetch_runs()
+            data = _bridge_fetch(_fetch_runs)
             self.call_from_thread(self._render_runs, data, None)
         except Exception as exc:  # noqa: BLE001
             self.call_from_thread(self._render_runs, None, str(exc))
@@ -1561,7 +1675,7 @@ class WbparserApp(App):
     def load_schedule(self) -> None:
         self.call_from_thread(self._note, "Loading schedule…")
         try:
-            data = _fetch_schedule()
+            data = _bridge_fetch(_fetch_schedule)
             self.call_from_thread(self._render_schedule, data, None)
         except Exception as exc:  # noqa: BLE001
             self.call_from_thread(self._render_schedule, None, str(exc))
@@ -1594,7 +1708,7 @@ class WbparserApp(App):
     def load_history(self) -> None:
         self.call_from_thread(self._note, "Loading history…")
         try:
-            data = _fetch_history()
+            data = _bridge_fetch(_fetch_history)
             self.call_from_thread(self._render_history, data, None)
         except Exception as exc:  # noqa: BLE001
             self.call_from_thread(self._render_history, None, str(exc))
@@ -1686,7 +1800,6 @@ class WbparserApp(App):
         return proc.wait()
 
     def _action_up(self, log: RichLog) -> None:
-        _reset_caches()
         if not JAR.is_file():
             self.call_from_thread(log.write, "building jar…")
             rc = self._stream_cmd([str(ROOT / "gradlew"), ":app:bootJar", "--no-daemon"], log)
@@ -1696,19 +1809,11 @@ class WbparserApp(App):
         rc = self._stream_cmd(["docker", "compose", "up", "-d"], log)
         if rc != 0:
             raise Unusable(f"docker compose up failed (exit {rc})")
-        deadline = time.monotonic() + 180
-        while time.monotonic() < deadline:
-            try:
-                if _get("/api/health/ready").get("status") == "UP":
-                    self.call_from_thread(log.write, f"ready at {_base_url()}")
-                    return
-            except Unusable:
-                pass
-            time.sleep(2)
-        raise Unusable("application did not become ready in time")
+        if not _bridge_fetch(lambda api: _wait_ready(api, 180)):
+            raise Unusable("application did not become ready in time")
+        self.call_from_thread(log.write, f"ready at {_base_url()}")
 
     def _action_down(self, log: RichLog) -> None:
-        _reset_caches()
         rc = self._stream_cmd(["docker", "compose", "down"], log)
         if rc != 0:
             raise Unusable(f"docker compose down failed (exit {rc})")
