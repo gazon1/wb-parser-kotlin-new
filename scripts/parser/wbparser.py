@@ -31,11 +31,11 @@ data: `docker compose logs` is the only place a log line ever lived.
 
 ## Why the responses are validated
 
-The shapes below are hand-written rather than generated: `contract/catalog-v1.openapi.yaml`
-describes the catalog and nothing else, so generation would type half the client and
-leave the admin half untyped. When the server publishes a whole spec (springdoc, or a
-committed `docs/openapi.json`), replace this section with generated models — the rest of
-the file does not change.
+The catalog's shapes are generated from `contract/catalog-v1.openapi.yaml` into
+`catalog_models.py` (`just parser::models`); the admin shapes stay hand-written below,
+because the contract describes the catalog and nothing else. Validating the catalog
+against the generated model is what makes a contract drift a message naming the field
+instead of a table cell rendered as "—".
 
 Validation earns its lines: a renamed field fails with a message naming the field instead
 of rendering "—", and `--json` becomes `model_dump` rather than a second serialiser.
@@ -63,6 +63,12 @@ try:
     import click
     import httpx
     import typer
+
+    # The catalog half of the responses — generated, not hand-written, so a change to
+    # the contract reaches this client as a file that no longer matches the payloads.
+    # `just parser::models` regenerates it from `contract/catalog-v1.openapi.yaml`.
+    from catalog_models import PagedProductCard as ItemsPage
+    from catalog_models import SiteStats as Stats
     from croniter import croniter
     from dotenv import dotenv_values
     from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
@@ -107,34 +113,6 @@ class Camel(BaseModel):
     """A response whose JSON is camelCase, as Spring writes it, with snake_case fields here."""
 
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True, extra="ignore")
-
-
-class Item(Camel):
-    id: str
-    target_name: str
-    title: str
-    price_kopecks: int | None = None
-    sale_price_kopecks: int | None = None
-    cashback_percent: float | None = None
-    scraped_at: datetime | None = None
-
-
-class ItemsPage(Camel):
-    items: list[Item]
-    total_count: int
-    page: int
-    total_pages: int
-    data_as_of: datetime | None = None
-
-
-class Stats(Camel):
-    total_items: int
-    total_products: int
-    total_targets: int
-    with_cashback: int
-    products_with_cashback: int
-    newest_scraped_at: datetime | None = None
-    as_of: datetime | None = None
 
 
 class Target(Camel):

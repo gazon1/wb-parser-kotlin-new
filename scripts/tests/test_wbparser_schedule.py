@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import importlib.util
+import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
 def _load_wbparser():
     path = Path(__file__).resolve().parents[1] / "parser" / "wbparser.py"
+    # The script imports its generated sibling by name; running it directly puts the
+    # script's directory on `sys.path`, and loading it from here must do the same.
+    sys.path.insert(0, str(path.parent))
     spec = importlib.util.spec_from_file_location("wbparser_cli", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
+    # Pydantic resolves the script's postponed annotations through sys.modules.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
