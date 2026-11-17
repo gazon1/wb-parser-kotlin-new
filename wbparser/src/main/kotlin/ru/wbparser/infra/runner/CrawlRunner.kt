@@ -21,7 +21,7 @@ import ru.wbparser.infra.advisory.PostgresAdvisoryLock
 import ru.wbparser.infra.advisory.withLock
 import ru.wbparser.infra.db.DatabaseHandle
 import ru.wbparser.infra.db.repositories.TargetRun
-import ru.wbparser.infra.db.repositories.claimDueTargets
+import ru.wbparser.infra.db.repositories.claimDueTargetsAndOpenJob
 import ru.wbparser.infra.db.repositories.fetchTargetsByIds
 import ru.wbparser.infra.db.repositories.markGroupHealthy
 import ru.wbparser.infra.db.repositories.markTargetCrawled
@@ -117,27 +117,22 @@ class CrawlRunner(
             return RunResult.NoEgressAvailable
         }
 
-        // The targets are claimed, not read: the claim leases them, so another host
-        // working on the same database takes other targets and never the same one.
-        val claimed =
-            db.ds.claimDueTargets(
+        // The targets are claimed and the job row is opened in the same transaction: a
+        // lease must never exist without a job that records its owner, otherwise a crash
+        // between claim and job creation leaves targets leased until TTL with nothing for
+        // reconciliation to tie to the dead process.
+        val (jobId, claimed) =
+            db.ds.claimDueTargetsAndOpenJob(
                 owner = config.instanceId,
                 now = startedAt,
                 freshness = config.freshness,
                 limit = config.claimLimit,
                 leaseFor = config.leaseDuration,
-            )
+                trigger = trigger,
+            ) ?: return RunResult.NothingDue
 
-        // Nothing to crawl — no job row is opened, which also keeps crawl_jobs.target_id
-        // (NOT NULL, foreign key) satisfiable. Nothing was claimed either, so nothing
-        // is leased.
-        if (claimed.isEmpty()) return RunResult.NothingDue
-
-        val due = db.ds.fetchTargetsByIds(claimed)
-
-        var jobId: UUID? = null
         return try {
-            jobId = jobStore.openJob(due.first().id, config.instanceId, trigger)
+            val due = db.ds.fetchTargetsByIds(claimed)
             val ctx = CrawlContext(jobId, startedAt, due.map { it.id })
 
             try {
@@ -201,15 +196,11 @@ class CrawlRunner(
         } catch (e: CancellationException) {
             // A cancelled crawl must not be reported as a failed one — the job row records
             // the distinction that "gave up" is not the same as "broke".
-            jobId?.let { id ->
-                runCatching { jobStore.closeJob(id, JobStatus.Cancelled) }
-            }
+            runCatching { jobStore.closeJob(jobId, JobStatus.Cancelled) }
             log.info("Crawl cancelled: {}", e.message)
             throw e
         } catch (t: Throwable) {
-            jobId?.let { id ->
-                runCatching { jobStore.closeJob(id, JobStatus.Failed, errorMessage = t.message) }
-            }
+            runCatching { jobStore.closeJob(jobId, JobStatus.Failed, errorMessage = t.message) }
             RunResult.Failure(t.message ?: "Unknown error")
         } finally {
             // The leases are given back as soon as the run is over, so the next host can

@@ -85,46 +85,59 @@ fun DataSource.claimDueTargets(
     freshness: FreshnessPolicy,
     limit: Int,
     leaseFor: Duration,
+): List<UUID> = connection.use { conn -> claimDueTargets(conn, owner, now, freshness, limit, leaseFor) }
+
+/**
+ * Claims due targets on [conn] without managing the connection or transaction.
+ *
+ * The caller owns the transaction, which lets a claim and a job registration share one
+ * atomic unit — so there is no state where a lease is held but no job row records it.
+ */
+internal fun claimDueTargets(
+    conn: java.sql.Connection,
+    owner: String,
+    now: Instant,
+    freshness: FreshnessPolicy,
+    limit: Int,
+    leaseFor: Duration,
 ): List<UUID> {
     val freshBefore = now.minus(Duration.ofMinutes(freshness.defaultFreshnessMinutes))
     val leaseUntil = now.plus(leaseFor)
-    return connection.use { conn ->
-        conn
-            .prepareStatement(
-                """
-                WITH claimed AS (
-                    SELECT id
-                      FROM crawl_targets
-                     WHERE is_active
-                       AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
-                       AND (last_crawled_at IS NULL OR last_crawled_at <= ?)
-                       AND (lease_until IS NULL OR lease_until <= ?)
-                     ORDER BY last_crawled_at ASC NULLS FIRST, id
-                     FOR UPDATE SKIP LOCKED
-                     LIMIT ?
-                )
-                UPDATE crawl_targets t
-                   SET lease_owner = ?, lease_until = ?
-                  FROM claimed c
-                 WHERE t.id = c.id
-                RETURNING t.id
-                """.trimIndent(),
-            ).use { ps ->
-                ps.setObject(1, now.atOffset(ZoneOffset.UTC))
-                ps.setObject(2, freshBefore.atOffset(ZoneOffset.UTC))
-                ps.setObject(3, now.atOffset(ZoneOffset.UTC))
-                ps.setInt(4, limit)
-                ps.setString(5, owner)
-                ps.setObject(6, leaseUntil.atOffset(ZoneOffset.UTC))
-                ps.executeQuery().use { rs ->
-                    val ids = mutableListOf<UUID>()
-                    while (rs.next()) {
-                        ids += UUID.fromString(rs.getString("id"))
-                    }
-                    ids
+    return conn
+        .prepareStatement(
+            """
+            WITH claimed AS (
+                SELECT id
+                  FROM crawl_targets
+                 WHERE is_active
+                   AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+                   AND (last_crawled_at IS NULL OR last_crawled_at <= ?)
+                   AND (lease_until IS NULL OR lease_until <= ?)
+                 ORDER BY last_crawled_at ASC NULLS FIRST, id
+                 FOR UPDATE SKIP LOCKED
+                 LIMIT ?
+            )
+            UPDATE crawl_targets t
+               SET lease_owner = ?, lease_until = ?
+              FROM claimed c
+             WHERE t.id = c.id
+            RETURNING t.id
+            """.trimIndent(),
+        ).use { ps ->
+            ps.setObject(1, now.atOffset(ZoneOffset.UTC))
+            ps.setObject(2, freshBefore.atOffset(ZoneOffset.UTC))
+            ps.setObject(3, now.atOffset(ZoneOffset.UTC))
+            ps.setInt(4, limit)
+            ps.setString(5, owner)
+            ps.setObject(6, leaseUntil.atOffset(ZoneOffset.UTC))
+            ps.executeQuery().use { rs ->
+                val ids = mutableListOf<UUID>()
+                while (rs.next()) {
+                    ids += UUID.fromString(rs.getString("id"))
                 }
+                ids
             }
-    }
+        }
 }
 
 /**
