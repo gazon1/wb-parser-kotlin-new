@@ -137,7 +137,7 @@ class CrawlRunner(
 
         var jobId: UUID? = null
         return try {
-            jobId = jobStore.openJob(due.first().id, trigger)
+            jobId = jobStore.openJob(due.first().id, config.instanceId, trigger)
             val ctx = CrawlContext(jobId, startedAt, due.map { it.id })
 
             try {

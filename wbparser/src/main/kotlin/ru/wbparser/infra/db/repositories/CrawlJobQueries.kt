@@ -1,5 +1,6 @@
 package ru.wbparser.infra.db.repositories
 
+import org.jetbrains.exposed.sql.SqlExpressionBuilder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.and
@@ -103,64 +104,65 @@ fun DataSource.reconcileOrphanedJobs(staleAfter: Duration = CrawlJobQueries.DEFA
     val cutoff = now.minus(staleAfter)
     val database = exposedOnce()
     return transaction(database) {
-        CrawlJobsTable.update({
-            (CrawlJobsTable.status eq JobStatus.Running.name) and
-                (
-                    (
-                        CrawlJobsTable.lastHeartbeatAt.isNotNull() and
-                            (CrawlJobsTable.lastHeartbeatAt less cutoff)
-                    ) or (
-                        CrawlJobsTable.lastHeartbeatAt.isNull() and
-                            CrawlJobsTable.startedAt.isNotNull() and
-                            (CrawlJobsTable.startedAt less cutoff)
-                    ) or (
-                        CrawlJobsTable.lastHeartbeatAt.isNull() and
-                            CrawlJobsTable.startedAt.isNull() and
-                            (CrawlJobsTable.createdAt less cutoff)
-                    )
-                )
-        }) {
-            it[CrawlJobsTable.status] = JobStatus.Crashed.name
-            it[CrawlJobsTable.completedAt] = now
-            it[CrawlJobsTable.errorMessage] =
-                "Job was left in Running by a process that is no longer alive " +
-                "(no heartbeat for more than ${staleAfter.toMinutes()} minutes)."
+        // The owners whose job went stale: the processes that are no longer alive. The
+        // leases they still hold are the orphaned ones, and only those.
+        val orphanedOwners =
+            CrawlJobsTable
+                .selectAll()
+                .where { staleJobCondition(cutoff) }
+                .map { it[CrawlJobsTable.leaseOwner] }
+                .filterNotNull()
+                .distinct()
+
+        val changed =
+            CrawlJobsTable.update({
+                staleJobCondition(cutoff)
+            }) {
+                it[CrawlJobsTable.status] = JobStatus.Crashed.name
+                it[CrawlJobsTable.completedAt] = now
+                it[CrawlJobsTable.errorMessage] =
+                    "Job was left in Running by a process that is no longer alive " +
+                    "(no heartbeat for more than ${staleAfter.toMinutes()} minutes)."
+            }
+
+        // The leases of exactly the owners that went stale are released here, and only
+        // those. An owner with a live job keeps what it holds, so a second host that is
+        // crawling while this host reconciles does not lose its work to the release.
+        orphanedOwners.forEach { owner ->
+            CrawlTargetsTable.update({
+                CrawlTargetsTable.leaseOwner eq owner
+            }) {
+                it[CrawlTargetsTable.leaseOwner] = null
+                it[CrawlTargetsTable.leaseUntil] = null
+            }
         }
-    }.also {
-        // Unconditional, and that is the point: the lease release must repair a state
-        // this call did not necessarily create. A process that wrote `Crashed` and then
-        // died before releasing would otherwise leave the leases held for ever — every
-        // later start would see zero jobs to crash and skip the release again.
-        releaseOrphanedLeases(exposedOnce())
+        changed
     }
 }
 
 /**
- * Frees the targets leased by a run that no longer exists.
+ * The condition of a job that is `Running` and whose heartbeat has gone stale.
  *
- * The condition is "no job is `Running`", not "this owner's job crashed". The lease
- * carries the owner's instance id and `crawl_jobs` does not, so the two cannot be
- * matched row for row; what they can be matched on is the whole table's state. A
- * crawl that is really working holds a `Running` job — the row is opened before the
- * targets are claimed and closed after they are released — so if none is running,
- * every lease belongs to a process that is gone, and clearing them takes nothing
- * from a live crawl.
- *
- * @return how many leases were released.
+ * The effective timestamp is `COALESCE(last_heartbeat_at, started_at, created_at)`,
+ * spelled out as three branches because the Exposed DSL has no `COALESCE` helper that
+ * keeps the null semantics of a `TIMESTAMPTZ` column.
  */
-private fun releaseOrphanedLeases(database: org.jetbrains.exposed.sql.Database): Int {
-    val running =
-        transaction(database) {
-            CrawlJobsTable
-                .selectAll()
-                .where { CrawlJobsTable.status eq JobStatus.Running.name }
-                .count()
-        }
-    if (running > 0) return 0
-    return transaction(database) {
-        CrawlTargetsTable.update({ CrawlTargetsTable.leaseUntil.isNotNull() }) { statement ->
-            statement[CrawlTargetsTable.leaseOwner] = null
-            statement[CrawlTargetsTable.leaseUntil] = null
-        }
-    }
-}
+private fun SqlExpressionBuilder.staleJobCondition(cutoff: OffsetDateTime) =
+    (
+        CrawlJobsTable.status eq JobStatus.Running.name
+    ) and (
+        (
+            (
+                CrawlJobsTable.lastHeartbeatAt.isNotNull() and
+                    (CrawlJobsTable.lastHeartbeatAt less cutoff)
+            ) or (
+                CrawlJobsTable.lastHeartbeatAt.isNull() and
+                    CrawlJobsTable.startedAt.isNotNull() and
+                    (CrawlJobsTable.startedAt less cutoff)
+            ) or (
+                CrawlJobsTable.lastHeartbeatAt.isNull() and
+                    CrawlJobsTable.startedAt.isNull() and
+                    (CrawlJobsTable.createdAt less cutoff)
+            )
+        )
+    )

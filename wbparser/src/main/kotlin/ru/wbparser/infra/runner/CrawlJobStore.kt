@@ -40,10 +40,13 @@ internal class CrawlJobStore(
      * Opens a job row for [targetId] and returns its id.
      *
      * The heartbeat starts with the job: a job that never gets one would be
-     * indistinguishable from a job whose process died.
+     * indistinguishable from a job whose process died. The owner the job carries is the
+     * same identity the run leases its targets under, so a job that went stale and a lease
+     * that was never released describe the same dead process.
      */
     fun openJob(
         targetId: UUID,
+        owner: String,
         trigger: CrawlTrigger = CrawlTrigger.Manual,
     ): UUID {
         val id = UUID.randomUUID()
@@ -58,6 +61,7 @@ internal class CrawlJobStore(
                 it[CrawlJobsTable.createdAt] = now
                 it[CrawlJobsTable.lastHeartbeatAt] = now
                 it[CrawlJobsTable.triggeredBy] = trigger.dbValue
+                it[CrawlJobsTable.leaseOwner] = owner
             }
         }
         return id

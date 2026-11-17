@@ -770,6 +770,7 @@ def schedule(
     targets = _get("/api/admin/targets", list[Target], admin=True)
     cron = _env().get("CRAWLER_SCHEDULE_CRON") or "0 0 */2 * * *"
     freshness = int(_env().get("CRAWLER_SCHEDULE_FRESHNESS_MINUTES") or 360)
+    leaseMinutes = int(_effective("CRAWLER_LOCK_LEASE_MINUTES", "120"))
 
     now = datetime.now(UTC)
     due, upcoming = _partition_by_due(targets, now, freshness)
@@ -777,6 +778,7 @@ def schedule(
         {
             "cron": cron,
             "freshnessMinutes": freshness,
+            "leaseMinutes": leaseMinutes,
             "activeTargets": sum(1 for target in targets if target.active),
             "due": [target.model_dump(mode="json", by_alias=True) for target in due],
             "upcoming": [
@@ -784,7 +786,7 @@ def schedule(
                 for when, target in upcoming[:limit]
             ],
         },
-        lambda: _print_schedule(cron, freshness, targets, due, upcoming, limit),
+        lambda: _print_schedule(cron, freshness, leaseMinutes, targets, due, upcoming, limit),
     )
 
 
@@ -815,6 +817,7 @@ def _partition_by_due(
 def _print_schedule(
     cron: str,
     freshness: int,
+    leaseMinutes: int,
     targets: list[Target],
     due: list[Target],
     upcoming: list[tuple[datetime, Target]],
@@ -828,7 +831,7 @@ def _print_schedule(
     console.print(f"  due now         {len(due)}")
     if due:
         console.print("  [dim]a target held by an interrupted run's lease is listed here and[/dim]")
-        console.print("  [dim]skipped by the crawl until that lease expires (2h by default)[/dim]")
+        console.print(f"  [dim]skipped by the crawl until that lease expires ({leaseMinutes} min)[/dim]")
 
     if due:
         _headline(f"due now — first {min(limit, len(due))}")

@@ -79,8 +79,16 @@ fun DataSource.execute(sql: String) {
  *
  * The columns are a union and nullable on purpose: each suite fills in what it needs
  * and ignores the rest, and neither can narrow what the other sees.
+ *
+ * ## Why it is a test schema and not the production one
+ *
+ * The definition is a union of what the suites need, not a copy of the Flyway
+ * migrations: it deliberately does not carry the production constraints (not null
+ * columns, foreign keys) and the extra columns migrations add later. Naming it a test
+ * schema keeps that boundary honest — a suite reading this file must not believe it
+ * reproduces the production table.
  */
-val CRAWL_TARGETS_SCHEMA: String =
+val CRAWL_TARGETS_TEST_SCHEMA: String =
     """
     CREATE TABLE IF NOT EXISTS crawl_targets (
         id uuid PRIMARY KEY,

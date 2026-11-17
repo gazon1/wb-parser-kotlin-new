@@ -2,7 +2,7 @@ package ru.wbparser.infra.db.repositories
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
-import ru.wbparser.testing.CRAWL_TARGETS_SCHEMA
+import ru.wbparser.testing.CRAWL_TARGETS_TEST_SCHEMA
 import ru.wbparser.testing.PostgresTestDatabase
 import ru.wbparser.testing.execute
 
@@ -24,7 +24,7 @@ class SubjectQueriesPostgresTest :
                     name text NOT NULL
                 )
                 """.trimIndent(),
-                CRAWL_TARGETS_SCHEMA,
+                CRAWL_TARGETS_TEST_SCHEMA,
             )
 
         test("the dictionary is counted, and replaced rather than merged") {

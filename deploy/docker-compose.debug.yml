@@ -85,12 +85,13 @@ services:
       # without a rebuild.
       CRAWLER_SCHEDULE_FRESHNESS_MINUTES: "240"
       # How long a target stays leased to a run. The production default is two hours,
-      # which is right for a host that dies once in a while and wrong for this stack: a
-      # killed debug run holds all 132 targets for the full lease, and with a 30-second
-      # tick every one of those ticks reports "nothing to crawl" — which reads like the
-      # scheduler is broken. Ten minutes keeps the same shape of failure (a lease really
-      # does outlive a dead run) without stalling debugging for two hours.
-      CRAWLER_LOCK_LEASE_MINUTES: "10"
+      # and that is what a debug run has to live with too: a debug crawl is a full-catalog
+      # crawl, the same shape of work as a production round, and a lease shorter than the
+      # crawl it covers would expire in the middle of it — after which another host could
+      # claim the target while this one is still reading it. The recovery of a killed debug
+      # run does not need a short lease: the job reconciler marks the orphaned job
+      # `Crashed` and releases its leases on the next start, whatever the lease duration.
+      # The override is therefore gone; the safe default applies.
       # Nextcloud owns 8080 on this host; 8082 keeps both up.
       SERVER_PORT: "8082"
       # The application is debugged, the libraries are not. `ROOT=DEBUG` turns on the
