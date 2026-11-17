@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -43,6 +44,73 @@ def _target(mod, name: str, **kwargs):
     }
     base.update(kwargs)
     return mod.Target.model_validate(base)
+
+
+NOW = datetime(2026, 11, 17, 10, 0, tzinfo=UTC)
+CRON = "0 0 */2 * * *"
+
+
+def test_the_answer_the_server_writes_parses() -> None:
+    mod = _load_wbparser()
+    due_target = _target(mod, "due", id="due", lastCrawledAt=datetime(2026, 11, 17, 8, 30, tzinfo=UTC))
+    upcoming_target = _target(mod, "up", id="up", lastCrawledAt=datetime(2026, 11, 17, 9, 0, tzinfo=UTC))
+    payload = {
+        "cron": CRON,
+        "freshnessMinutes": 360,
+        "activeTargets": 1,
+        "targets": [_target(mod, "target")],
+        "due": [due_target],
+        "upcoming": [{"at": "2026-11-17T11:30:00Z", "target": upcoming_target}],
+        "nextRun": "2026-11-17T12:00:00Z",
+        "earliestDue": None,
+        "limit": 15,
+    }
+    schedule = mod.Schedule.model_validate(payload)
+
+    assert schedule.cron == CRON
+    assert schedule.freshness_minutes == 360
+    assert schedule.active_targets == 1
+    assert schedule.limit == 15
+    assert [t.id for t in schedule.due] == ["due"]
+    assert schedule.upcoming[0].target.id == "up"
+    assert schedule.next_run == datetime(2026, 11, 17, 12, 0, tzinfo=UTC)
+    assert schedule.earliest_due is None
+
+    data = schedule.model_dump(by_alias=True, mode="json")
+    assert data["freshnessMinutes"] == 360
+    assert data["nextRun"] == "2026-11-17T12:00:00Z"
+    assert data["due"][0]["lastCrawledAt"] == "2026-11-17T08:30:00Z"
+
+
+def test_mixed_payload_contract() -> None:
+    mod = _load_wbparser()
+    inner = mod.Stats(
+        total_items=1,
+        total_products=2,
+        total_targets=3,
+        with_cashback=4,
+        products_with_cashback=5,
+        newest_scraped_at=datetime(2026, 11, 17, 9, 0, tzinfo=UTC),
+        as_of=None,
+    )
+    data = {
+        "mixed": [inner.model_dump(mode="json", by_alias=True), {"plain": None}],
+        "freshnessMinutes": 360,
+        "nextRun": "2026-11-17T12:00:00Z",
+        "when": None,
+        "status": mod.Sort.date_desc,
+    }
+    text = json.dumps(data)
+    assert "[green]" not in text
+    assert data["freshnessMinutes"] == 360
+    assert data["when"] is None
+    assert data["status"] == "DateDesc"
+    assert data["nextRun"] == "2026-11-17T12:00:00Z"
+    assert data["mixed"][0]["totalItems"] == 1
+    assert data["mixed"][0]["asOf"] is None
+    assert data["mixed"][0]["newestScrapedAt"] == "2026-11-17T09:00:00Z"
+    assert data["mixed"][1] == {"plain": None}
+    assert json.loads(text) == data
 
 
 def test_partition_by_due_uses_latest_of_lease_and_backoff() -> None:
