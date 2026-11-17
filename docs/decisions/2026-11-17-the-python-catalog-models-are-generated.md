@@ -61,10 +61,25 @@ both are made explicit rather than left to a runtime surprise:
 ## Consequences of the drift risk
 
 A committed generated file and a committed contract can disagree, and no test
-that loads the file can see it. So the recipe appends the contract's SHA-256 to
-the file as `# source-sha256: …`, and `scripts/ci/check-catalog-models.py` — a
-static gate — compares it with the contract on disk. That gate needs no
-generator and no network, which is what lets it run in the `static` job.
+that loads the file can see it. Two gates cover it, because they fail for
+different reasons:
+
+- The pipeline re-runs `scripts/parser/generate-models.sh` and fails on
+  `git diff --exit-code`. That is the literal check: whatever the flags, the
+  generator version or a hand-edit did to the file, regenerating it must produce
+  no diff. It needs PyPI, so — like the action-pin check — it runs in the
+  pipeline, and `scripts/ci/check-ci-workflows.py` fails unless one step of the
+  `static` job runs the generator **and** diffs the generated file: the diff is
+  the check, so keeping the generator and dropping the diff is the same defect
+  as deleting the step, and both are findings.
+- The recipe also appends the contract's SHA-256 as `# source-sha256: …`, and
+  `scripts/ci/check-catalog-models.py` compares it in the static registry. That
+  one needs no generator and no network, so it answers the same question the
+  moment a contract edit lands, without waiting for a pipeline that can reach
+  PyPI.
+
+The generator command lives in the script, not in the recipe, so `just
+parser::models` and the CI step cannot drift apart.
 
 ## Rationale
 
@@ -81,16 +96,18 @@ enums live in operations, outside the generated models.
 
 ## Consequences
 
-- **Always** regenerate with `just parser::models` when the contract changes; the
-  file is committed and reviewed with the change that caused it.
-- **Always** keep the generator version pinned in the recipe. A different version
+- **Always** regenerate when the contract changes, with
+  `scripts/parser/generate-models.sh` (`just parser::models`); the recipe and the
+  pipeline both call that script, so the command exists once, and the file is
+  committed and reviewed with the change that caused it.
+- **Always** keep the generator version pinned in that script. A different version
   rewrites the file for reasons that are not a change to the contract.
 - **Never** hand-edit `scripts/parser/catalog_models.py`; the next generation
-  overwrites it.
+  overwrites it, and the CI diff check would fail on an edit that kept the marker.
 - **Never** widen the generation to `paths` without deciding what to do with the
   operational bodies it brings in.
 - **Always** decode catalog responses with `parse_float=Decimal` and encode
   `--json` with a decimal-aware writer; a `float` on either side rounds the value
   the contract calls a number.
-- **Never** let the recorded `# source-sha256` marker drift from the recipe that
+- **Never** let the recorded `# source-sha256` marker drift from the command that
   writes it; it is the only offline evidence that the models match the contract.

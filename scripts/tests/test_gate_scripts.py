@@ -493,6 +493,14 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
     break on purpose.
     """
 
+    #: The `static` step that regenerates the models and fails on a diff. Both halves
+    #: matter, so the fixtures and the cases below remove them separately.
+    STEP = (
+        "      - run: |\n"
+        "          bash scripts/parser/generate-models.sh\n"
+        "          git diff --exit-code -- scripts/parser/catalog_models.py\n"
+    )
+
     GOOD = {
         "codeql.yml": (
             'on:\n  schedule:\n    - cron: "17 3 * * 1"\n'
@@ -526,6 +534,9 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
             "jobs:\n"
             "  static:\n    steps:\n      - run: echo static\n"
             "      - run: python3 scripts/ci/check-action-pins.py\n"
+            "      - run: |\n"
+            "          bash scripts/parser/generate-models.sh\n"
+            "          git diff --exit-code -- scripts/parser/catalog_models.py\n"
             "  build:\n    steps:\n      - run: echo build\n"
             "  nightly-alert:\n    needs: [static, build]\n"
             "    steps:\n      - run: gh issue create --title x\n"
@@ -552,6 +563,7 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         workflows: dict[str, str] | None = None,
         with_script: bool = True,
         with_checker: bool = True,
+        with_generator: bool = True,
     ) -> Path:
         tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, tmp, True)
@@ -566,6 +578,10 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
         checker = tmp / "scripts" / "ci" / "check-action-pins.py"
         if with_checker:
             checker.write_text("#!/usr/bin/env python3\nexit 0\n", encoding="utf-8")
+        generator = tmp / "scripts" / "parser" / "generate-models.sh"
+        generator.parent.mkdir(parents=True, exist_ok=True)
+        if with_generator:
+            generator.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
         return tmp
 
     def _check(self, root: Path) -> list[str]:
@@ -594,6 +610,101 @@ class TestCiWorkflowsGateCanFail(unittest.TestCase):
     def test_a_missing_corrector_is_a_finding(self):
         findings = self._check(self._fixture(with_script=False))
         self.assertTrue(any("lint-autofix.sh does not exist" in f for f in findings), findings)
+
+    def test_nobody_regenerating_the_catalog_models_is_a_finding(self):
+        """A committed generated file that CI never regenerates can drift silently.
+
+        The offline hash gate catches an edited contract; it cannot catch a changed
+        generator flag or a hand-edit that kept the marker. That is why the pipeline
+        must re-run the generator, and this is what keeps the step from being
+        deleted.
+        """
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace(self.STEP, "")
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("does not regenerate" in f for f in findings), findings)
+
+    def test_regenerating_without_diffing_is_a_finding(self):
+        """The generator alone proves nothing: the diff is the check.
+
+        A gate that searched the workflow text for the script name would be satisfied
+        here — the name is still there — while nothing compares the regenerated file
+        with the committed one.
+        """
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace(
+            "          git diff --exit-code -- scripts/parser/catalog_models.py\n", ""
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("without failing on a diff" in f for f in findings), findings)
+
+    def test_a_diff_of_another_file_is_a_finding(self):
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace(
+            "git diff --exit-code -- scripts/parser/catalog_models.py",
+            "git diff --exit-code -- README.md",
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("without failing on a diff" in f for f in findings), findings)
+
+    def test_regeneration_outside_the_static_job_is_a_finding(self):
+        """A step in a job that does not run the check is a step nobody relies on."""
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = (
+            workflows["ci.yml"]
+            .replace(self.STEP, "")
+            .replace(
+                "  build:\n    steps:\n      - run: echo build\n",
+                "  build:\n    steps:\n" + self.STEP + "      - run: echo build\n",
+            )
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("does not regenerate" in f for f in findings), findings)
+
+    def test_a_diff_without_a_regeneration_is_a_finding(self):
+        """A diff against a file nobody regenerated compares it with its last commit."""
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace(
+            self.STEP, "      - run: git diff --exit-code -- scripts/parser/catalog_models.py\n"
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("but never runs" in f for f in findings), findings)
+
+    def test_a_diff_before_the_regeneration_is_a_finding(self):
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace(
+            self.STEP,
+            "      - run: git diff --exit-code -- scripts/parser/catalog_models.py\n"
+            "      - run: bash scripts/parser/generate-models.sh\n",
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("before it runs" in f for f in findings), findings)
+
+    def test_two_steps_regenerating_then_diffing_are_allowed(self):
+        """The job fails on the first failing step, so the split is the same guarantee.
+
+        A check that demanded both commands in one step would be stricter than the
+        rule it states, and the next person would answer it by prose rather than by
+        the workflow.
+        """
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace(
+            self.STEP,
+            "      - run: bash scripts/parser/generate-models.sh\n"
+            "      - run: git diff --exit-code -- scripts/parser/catalog_models.py\n",
+        )
+        findings = self._check(self._fixture(workflows))
+        self.assertEqual([f for f in findings if "catalog_models" in f], [])
+
+    def test_a_missing_static_job_is_a_finding(self):
+        workflows = dict(self.GOOD)
+        workflows["ci.yml"] = workflows["ci.yml"].replace("  static:\n", "  checks:\n")
+        findings = self._check(self._fixture(workflows))
+        self.assertTrue(any("has no `static` job" in f for f in findings), findings)
+
+    def test_a_missing_model_generator_is_a_finding(self):
+        findings = self._check(self._fixture(with_generator=False))
+        self.assertTrue(any("generate-models.sh does not exist" in f for f in findings), findings)
 
     def test_a_nightly_run_without_a_schedule_is_a_finding(self):
         """No workflow has a schedule — the tests are supposed to run on their own.

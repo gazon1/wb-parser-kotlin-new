@@ -1,4 +1,8 @@
 [tools]
+# `uv` runs the pinned `datamodel-code-generator` that produces
+# `scripts/parser/catalog_models.py`. The CI `static` job regenerates the file and
+# fails on a diff, so the tool that does it is pinned here like every other tool.
+uv = "0.13.8"
 hadolint = "2.15.1"
 typos = "1.52.0"
 hk = "2.11.1"
