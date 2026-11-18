@@ -49,6 +49,7 @@ run at all (no stack, no environment, no answer).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import sys
@@ -104,7 +105,7 @@ try:
         TabbedContent,
         TabPane,
     )
-    from textual.worker import Worker
+    from textual.worker import WorkerCancelled
 except ModuleNotFoundError as missing:  # pragma: no cover - a wrong interpreter, not a code path
     if missing.name == "catalog_models":
         raise SystemExit(
@@ -1806,6 +1807,9 @@ class WbparserApp(App):
     #items-controls Input { width: 24; }
     #items-controls Select { width: 22; }
     #items-controls .small { width: 8; }
+    /* An Input is 100% wide by default: in the log row that pushed the buttons
+       off the screen, and a Stop button that cannot be pressed stops nothing. */
+    #logs-lines { width: 8; }
     #status-actions Button { margin-right: 1; }
     #activity-log, #logs-view { height: 1fr; border: round $surface; }
     #stats-view { padding: 1 2; }
@@ -1874,7 +1878,6 @@ class WbparserApp(App):
         yield Footer()
 
     def on_mount(self) -> None:
-        self._follow_worker: Worker | None = None
         self._last_item_open: tuple[int, float] | None = None
         # The tab that is active when the app opens loads itself: the first
         # TabActivated is what loads the first tab. The timer keeps the active pane
@@ -1883,6 +1886,19 @@ class WbparserApp(App):
 
     def action_tab(self, tab_id: str) -> None:
         self.query_one("#tabs", TabbedContent).active = tab_id
+
+    async def on_unmount(self) -> None:
+        """
+        The follow stops with the TUI — and the app waits for it.
+
+        Textual cancels the workers when the app goes, but it does not wait for
+        them: the `docker compose logs` would be signalled and left to die on its
+        own. Here the worker is cancelled and awaited, so the child is gone before
+        the app is.
+        """
+        for worker in self.workers.cancel_group(self, "follow"):
+            with contextlib.suppress(WorkerCancelled):
+                await worker.wait()
 
     def action_refresh(self) -> None:
         """Refresh the active tab: its pane, or the log view."""
@@ -1929,9 +1945,11 @@ class WbparserApp(App):
         if bid == "btn-logs":
             self.load_logs()
         elif bid == "btn-logs-follow":
-            self._follow_worker = self.follow_logs()
+            self.follow_logs()
         elif bid == "btn-logs-stop":
-            self.stop_follow()
+            # The follow is a worker of its own group: cancelling the group cancels
+            # it, and the child process dies with it.
+            self.workers.cancel_group(self, "follow")
 
     @on(Actions.Finished)
     def _on_action(self, event: Actions.Finished) -> None:
@@ -2001,25 +2019,28 @@ class WbparserApp(App):
 
     @work(exclusive=True, group="follow")
     async def follow_logs(self) -> None:
-        """Follow the log until the worker is cancelled — and the child process goes with it."""
+        """
+        Follow the log until the worker is cancelled — and the child process goes with it.
+
+        The worker is exclusive in its own group: a second Follow cancels the first,
+        and Stop cancels the group. The child is `docker compose logs --follow`, and
+        the subprocess layer owns its life: a cancelled worker leaves no process and
+        no open pipe behind.
+        """
         view = self.query_one("#logs-view", RichLog)
         try:
             if not await _running("app"):
-                view.write("app is not running")
+                view.write("app is not running — start it with Up")
                 return
-            await proc.stream(
+            code = await proc.stream(
                 lambda line: view.write(Text.from_ansi(line)),
                 *_compose_command("logs", "--follow", "--tail", "50", "app"),
             )
         except (Unusable, proc.ProcError) as error:
             view.write(str(error))
-
-    def stop_follow(self) -> None:
-        """Stop following: the worker is cancelled, and the child process dies with it."""
-        worker = getattr(self, "_follow_worker", None)
-        if worker is not None:
-            worker.cancel()
-            self._follow_worker = None
+            return
+        if code != EXIT_OK:
+            view.write(f"`docker compose logs` failed with code {code}")
 
 
 @app.command()

@@ -628,6 +628,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** let a gate be recognised by a phrase in its command. A gate is recognised by what it runs. _(from `2026-11-17-the-test-gate-runs-the-suite-that-exists`)
 - **Never** rely on `unittest discover` to find the suite: it does not collect plain test functions, and it exits 0 when it finds nothing. _(from `2026-11-17-the-test-gate-runs-the-suite-that-exists`)
 - **Never** treat a green gate as proof that a suite ran. Ask what the runner collected; if the answer is "the classes and not the functions", the gate is guarding a subset. _(from `2026-11-17-the-test-gate-runs-the-suite-that-exists`)
+- **Always** await a cancelled worker before the app goes. A cancelled worker that nobody waits for is a process that is still running when the app is gone. _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
+- **Always** end the follow by cancelling the "follow" group, and **Never** by holding a handle on the worker: the group is the state. _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
+- **Always** prove the log tab with a substituted executable, and ask the process itself whether it is still there — a mock cannot answer "is it still running?". _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
+- **Always** say what happened when a follow ends badly: a non-zero exit code is a message, not silence. _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
+- **Never** leave a widget's default width in a row of buttons: a Textual `Input` is 100% wide, and it pushes what follows it off the screen. _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
+- **Never** read a child's output in a thread. The subprocess layer reads it asynchronously, and a thread cannot be cancelled. _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
 
 ## Per-tag
 
@@ -1314,6 +1320,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-17-the-python-catalog-models-are-generated` — contract  python
 - `2026-11-17-the-read-only-tabs-are-panes` — python  tui
 - `2026-11-17-the-test-gate-runs-the-suite-that-exists` — gates  python
+- `2026-11-18-the-log-tab-is-a-cancellable-worker` — python  tui  architecture
 
 ## Active entries
 
@@ -1445,3 +1452,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-17-the-python-catalog-models-are-generated` — The operator CLI's catalog models are generated from the contract, the admin models are not
 - `2026-11-17-the-read-only-tabs-are-panes` — The read-only tabs are panes, and the app refreshes only the active one
 - `2026-11-17-the-test-gate-runs-the-suite-that-exists` — The scripts' test gate runs pytest, so the gate guards the suite that exists
+- `2026-11-18-the-log-tab-is-a-cancellable-worker` — The log tab's follow is a cancellable worker, and the app waits for it
