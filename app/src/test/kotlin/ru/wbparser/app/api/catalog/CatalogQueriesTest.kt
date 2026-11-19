@@ -45,7 +45,7 @@ class CatalogQueriesTest :
 
             methods.getValue("listItems").parameterTypes.toList() shouldBe listOf(CatalogQueryParams::class.java)
             methods.getValue("listTargets").parameterTypes.toList() shouldBe emptyList()
-            methods.getValue("getItem").parameterTypes.toList() shouldBe listOf(UUID::class.java)
+            methods.getValue("getItem").parameterTypes.toList() shouldBe listOf(UUID::class.java, CurrentScope::class.java)
             methods.getValue("listTopDeals").parameterTypes.toList() shouldBe listOf(TopDealsQueryParams::class.java)
             methods.getValue("siteStats").parameterTypes.toList() shouldBe emptyList()
             methods.getValue("missingColumns").parameterTypes.toList() shouldBe emptyList()

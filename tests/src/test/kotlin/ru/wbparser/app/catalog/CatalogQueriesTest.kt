@@ -7,6 +7,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import ru.wbparser.app.api.catalog.CatalogQueryParams
 import ru.wbparser.app.api.catalog.CatalogSort
+import ru.wbparser.app.api.catalog.CurrentScope
 import ru.wbparser.app.api.catalog.QueryParameters
 import ru.wbparser.app.api.catalog.TopDealsQueryParams
 import java.time.Instant
@@ -436,14 +437,14 @@ class CatalogQueriesTest :
                     scrapedAt = Instant.parse("2026-01-05T00:00:00Z"),
                 )
 
-            val detail = fixture.queries.getItem(current)
+            val detail = fixture.queries.getItem(current, CurrentScope.TARGET)
 
             detail.shouldNotBeNull()
             detail.history shouldHaveSize 4
         }
 
         test("a product that is not there is not found") {
-            fixture.queries.getItem(java.util.UUID.randomUUID()).shouldBeNull()
+            fixture.queries.getItem(java.util.UUID.randomUUID(), CurrentScope.TARGET).shouldBeNull()
         }
 
         test("the statistics count the rows") {
@@ -552,7 +553,7 @@ class CatalogQueriesTest :
                 scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
             )
 
-            fixture.queries.getItem(older).shouldBeNull()
+            fixture.queries.getItem(older, CurrentScope.TARGET).shouldBeNull()
         }
 
         test("the current observation of a product is the current one of its target") {
@@ -578,7 +579,7 @@ class CatalogQueriesTest :
                 scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
             )
 
-            val detail = fixture.queries.getItem(inFirst)
+            val detail = fixture.queries.getItem(inFirst, CurrentScope.TARGET)
 
             detail.shouldNotBeNull()
             detail.id shouldBe inFirst
@@ -606,7 +607,7 @@ class CatalogQueriesTest :
                 scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
             )
 
-            fixture.queries.getItem(inFirst).shouldNotBeNull()
+            fixture.queries.getItem(inFirst, CurrentScope.TARGET).shouldNotBeNull()
         }
 
         test("a row without a product id is the current one of its target") {
@@ -630,7 +631,7 @@ class CatalogQueriesTest :
                 scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
             )
 
-            fixture.queries.getItem(inFirst).shouldNotBeNull()
+            fixture.queries.getItem(inFirst, CurrentScope.TARGET).shouldNotBeNull()
         }
 
         test("the list of a target and the detail of its rows agree") {
@@ -659,7 +660,7 @@ class CatalogQueriesTest :
                 )
 
             page.items shouldHaveSize 1
-            fixture.queries.getItem(page.items.first().id).shouldNotBeNull()
+            fixture.queries.getItem(page.items.first().id, CurrentScope.TARGET).shouldNotBeNull()
         }
 
         test("a row with no price has no price, and not a zero") {
@@ -672,5 +673,222 @@ class CatalogQueriesTest :
                 .first()
                 .priceKopecks
                 .shouldBeNull()
+        }
+
+        test("a search finds the product by the title it has now") {
+            // The finding of the review: the search ran over the observations the model
+            // was built from, so it answered with a row that was not the current one —
+            // and the detail of that row answered 404.
+            val target = fixture.seedTarget("Категория")
+            fixture.seedItem(
+                target,
+                title = "Samsung SSD",
+                productId = 20L,
+                priceKopecks = 49900,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            fixture.seedItem(
+                target,
+                title = "Samsung HDD",
+                productId = 20L,
+                priceKopecks = 59900,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+
+            val byOldTitle = fixture.queries.listItems(CatalogQueryParams.parse(params("q" to "Samsung SSD")))
+            val byCurrentTitle = fixture.queries.listItems(CatalogQueryParams.parse(params("q" to "Samsung HDD")))
+
+            // The product is in the catalog under the title it has now, and not under the
+            // title it had: the old observation is not a product of the catalog.
+            byOldTitle.items shouldHaveSize 0
+            byCurrentTitle.items shouldHaveSize 1
+        }
+
+        test("the id of a card is found by the detail read") {
+            // The list and the detail are two grains of the same read, and the row the
+            // list shows is the row the detail has to answer about.
+            val target = fixture.seedTarget("Категория")
+            fixture.seedItem(
+                target,
+                title = "Samsung SSD",
+                productId = 21L,
+                priceKopecks = 49900,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            val current =
+                fixture.seedItem(
+                    target,
+                    title = "Samsung HDD",
+                    productId = 21L,
+                    priceKopecks = 59900,
+                    scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+                )
+
+            val page = fixture.queries.listItems(CatalogQueryParams.parse(params()))
+
+            page.items shouldHaveSize 1
+            page.items.first().id shouldBe current
+            fixture.queries.getItem(page.items.first().id, CurrentScope.TARGET).shouldNotBeNull()
+        }
+
+        test("the list without a target shows the newest observation of the product") {
+            // The grain of the catalog as a whole: one card per product, and the card
+            // carries the observation that was made last.
+            val first = fixture.seedTarget("Первая")
+            val second = fixture.seedTarget("Вторая")
+            fixture.seedItem(
+                first,
+                title = "Товар",
+                productId = 22L,
+                priceKopecks = 49900,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            val inSecond =
+                fixture.seedItem(
+                    second,
+                    title = "Товар",
+                    productId = 22L,
+                    priceKopecks = 59900,
+                    scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+                )
+
+            val page = fixture.queries.listItems(CatalogQueryParams.parse(params()))
+
+            page.items shouldHaveSize 1
+            page.items.first().id shouldBe inSecond
+        }
+
+        test("the list of a target shows the newest observation inside that target") {
+            // The grain of a target's page: one card per product of that target, and the
+            // card carries the observation that target made last.
+            val first = fixture.seedTarget("Первая")
+            val second = fixture.seedTarget("Вторая")
+            val inFirst =
+                fixture.seedItem(
+                    first,
+                    title = "Товар",
+                    productId = 23L,
+                    priceKopecks = 49900,
+                    scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                )
+            fixture.seedItem(
+                second,
+                title = "Товар",
+                productId = 23L,
+                priceKopecks = 59900,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+
+            val page =
+                fixture.queries.listItems(
+                    CatalogQueryParams.parse(params("targetId" to first.toString())),
+                )
+
+            page.items shouldHaveSize 1
+            page.items.first().id shouldBe inFirst
+        }
+
+        test("a row of a target is current at the target's grain, and not at the product's") {
+            // The two grains are two readings of "current", and they are not the same
+            // row: this one is the newest of its target, and not the newest of the
+            // product.
+            val first = fixture.seedTarget("Первая")
+            val second = fixture.seedTarget("Вторая")
+            val inFirst =
+                fixture.seedItem(
+                    first,
+                    title = "Товар",
+                    productId = 24L,
+                    priceKopecks = 49900,
+                    scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                )
+            fixture.seedItem(
+                second,
+                title = "Товар",
+                productId = 24L,
+                priceKopecks = 59900,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+
+            fixture.queries.getItem(inFirst, CurrentScope.TARGET).shouldNotBeNull()
+            fixture.queries.getItem(inFirst, CurrentScope.PRODUCT).shouldBeNull()
+        }
+
+        test("the newest observation of a product is current at either grain") {
+            val first = fixture.seedTarget("Первая")
+            val second = fixture.seedTarget("Вторая")
+            fixture.seedItem(
+                first,
+                title = "Товар",
+                productId = 25L,
+                priceKopecks = 49900,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            val inSecond =
+                fixture.seedItem(
+                    second,
+                    title = "Товар",
+                    productId = 25L,
+                    priceKopecks = 59900,
+                    scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+                )
+
+            fixture.queries.getItem(inSecond, CurrentScope.TARGET).shouldNotBeNull()
+            fixture.queries.getItem(inSecond, CurrentScope.PRODUCT).shouldNotBeNull()
+        }
+
+        test("the rows without a product id are one product at the product's grain") {
+            val first = fixture.seedTarget("Первая")
+            val second = fixture.seedTarget("Вторая")
+            val inFirst =
+                fixture.seedItem(
+                    first,
+                    title = "Товар",
+                    productId = null,
+                    priceKopecks = 49900,
+                    scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                )
+            fixture.seedItem(
+                second,
+                title = "Товар",
+                productId = null,
+                priceKopecks = 59900,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+
+            fixture.queries.getItem(inFirst, CurrentScope.TARGET).shouldNotBeNull()
+            fixture.queries.getItem(inFirst, CurrentScope.PRODUCT).shouldBeNull()
+        }
+
+        test("two observations of one moment are ordered by the id at either grain") {
+            val first = fixture.seedTarget("Первая")
+            val second = fixture.seedTarget("Вторая")
+            val inFirst =
+                fixture.seedItem(
+                    first,
+                    title = "Товар",
+                    productId = 26L,
+                    priceKopecks = 49900,
+                    scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                )
+            val inSecond =
+                fixture.seedItem(
+                    second,
+                    title = "Товар",
+                    productId = 26L,
+                    priceKopecks = 59900,
+                    scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                )
+
+            // Each of them is the current observation of its own target…
+            fixture.queries.getItem(inFirst, CurrentScope.TARGET).shouldNotBeNull()
+            fixture.queries.getItem(inSecond, CurrentScope.TARGET).shouldNotBeNull()
+            // …and only one of them is the current observation of the product: the id
+            // breaks the tie, so the answer is the same one every time.
+            val currentAtProductGrain =
+                listOf(inFirst, inSecond).filter {
+                    fixture.queries.getItem(it, CurrentScope.PRODUCT) != null
+                }
+            currentAtProductGrain shouldHaveSize 1
         }
     })

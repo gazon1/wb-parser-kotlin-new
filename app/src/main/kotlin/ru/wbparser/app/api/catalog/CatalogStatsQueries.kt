@@ -35,7 +35,7 @@ class CatalogStatsQueries(
                 .prepareStatement(
                     """
                     WITH i AS (
-                    ${CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY)}
+                    ${CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY, CurrentScope.PRODUCT)}
                     )
                     SELECT (SELECT COUNT(*) FROM scraped_items)                    AS total_items,
                            (SELECT COUNT(*) FROM crawl_targets)                   AS total_targets,

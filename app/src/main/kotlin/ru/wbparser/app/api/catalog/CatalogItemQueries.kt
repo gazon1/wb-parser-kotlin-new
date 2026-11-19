@@ -30,9 +30,16 @@ class CatalogItemQueries(
 ) {
     /**
      * One filtered, sorted, paginated page of product cards.
+     *
+     * The grain of the list follows the request: a request that names a target asks for
+     * the products *of that target*, so the list is built at the target's grain — the
+     * newest observation of every product inside it. A request that names no target asks
+     * for the catalog as a whole, so the list is built at the product's grain — the newest
+     * observation of every product, wherever it was made.
      */
     fun listItems(params: CatalogQueryParams): Paged<ProductCard> {
         val filters = CatalogFilters.from(params)
+        val scope = if (params.targetId == null) CurrentScope.PRODUCT else CurrentScope.TARGET
         var totalCount = 0
         val rows =
             dataSource.read { connection ->
@@ -40,7 +47,7 @@ class CatalogItemQueries(
                     .prepareStatement(
                         """
                         WITH model AS (
-                        ${CatalogReadModel.currentProducts(filters.identity)}
+                        ${CatalogReadModel.currentProducts(filters.identity, scope)}
                         ),
                         counted AS (
                               SELECT ${CatalogCardProjection.columns("model")},
@@ -97,11 +104,19 @@ class CatalogItemQueries(
      * And it has to be the *current* observation of its product: the membership is
      * decided on the newest observation, so an older observation that paid points is
      * not a product of the catalog either — the product left it when the newer
-     * observation arrived. The comparison stays inside the target of the row: a
-     * product is observed per catalog, and a newer observation of it in another
-     * target is another product of another catalog.
+     * observation arrived.
+     *
+     * The [scope] says at which grain "current" is decided, and it is the caller's to
+     * name. The route asks for the target's grain: the id names an observation of a
+     * catalog, and the detail answers about that catalog — so every row a list shows is a
+     * row this read accepts, whether the list was built at the product's grain or at the
+     * target's. A caller that means "the newest observation of this product, in any
+     * target" asks for [CurrentScope.PRODUCT] and says so.
      */
-    fun getItem(id: UUID): ProductDetail? =
+    fun getItem(
+        id: UUID,
+        scope: CurrentScope,
+    ): ProductDetail? =
         dataSource.read { connection ->
             val card =
                 connection
@@ -113,7 +128,7 @@ class CatalogItemQueries(
                                 JOIN crawl_targets t ON t.id = s.target_id
                                WHERE s.id = ?
                                  AND s.${CatalogReadModel.REVIEW_POINTS_OBSERVATION}
-                                 AND ${CatalogReadModel.CURRENT_OBSERVATION}
+                                 AND ${CatalogReadModel.currentObservation(scope)}
                         )
                         SELECT ${CatalogCardProjection.columns("i")}
                           FROM i

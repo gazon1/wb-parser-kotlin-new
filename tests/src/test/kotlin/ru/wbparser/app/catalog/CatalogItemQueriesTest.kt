@@ -7,6 +7,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import ru.wbparser.app.api.catalog.CatalogItemQueries
 import ru.wbparser.app.api.catalog.CatalogQueryParams
+import ru.wbparser.app.api.catalog.CurrentScope
 import ru.wbparser.app.api.catalog.QueryParameters
 import java.time.Instant
 import java.util.UUID
@@ -124,7 +125,7 @@ class CatalogItemQueriesTest :
                     scrapedAt = Instant.parse("2026-01-04T00:00:00Z"),
                 )
 
-            val detail = queries().getItem(current)
+            val detail = queries().getItem(current, CurrentScope.TARGET)
 
             detail.shouldNotBeNull()
             // Three observations in its own target, and not the one of the other target.
@@ -132,6 +133,6 @@ class CatalogItemQueriesTest :
         }
 
         test("a product that is not there is not found") {
-            queries().getItem(UUID.randomUUID()).shouldBeNull()
+            queries().getItem(UUID.randomUUID(), CurrentScope.TARGET).shouldBeNull()
         }
     })

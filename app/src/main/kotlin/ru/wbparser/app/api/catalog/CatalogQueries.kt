@@ -89,9 +89,16 @@ class CatalogQueries(
     /**
      * One product, with the price history of that product.
      *
+     * @param scope the grain at which "the current observation" is decided. The caller
+     * names it: the route answers about the catalog the id belongs to, and a caller that
+     * means the product as a whole asks for [CurrentScope.PRODUCT].
+     *
      * @see CatalogItemQueries.getItem
      */
-    fun getItem(id: UUID): ProductDetail? = items.getItem(id)
+    fun getItem(
+        id: UUID,
+        scope: CurrentScope,
+    ): ProductDetail? = items.getItem(id, scope)
 
     /**
      * The highest cashback across all targets, one row per matched product.

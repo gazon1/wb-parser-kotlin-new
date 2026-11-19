@@ -11,10 +11,10 @@ package ru.wbparser.app.api.catalog
  * with the price it had yesterday — and the size of a catalog becomes the number of price
  * changes rather than the number of products.
  *
- * `DISTINCT ON (product_id)` with `ORDER BY product_id, scraped_at DESC, id` keeps the
- * newest observation of each product. The `id` is the tiebreaker: two observations of one
- * product can share a timestamp, and without it the winner would be arbitrary — which
- * would make a page boundary inexact and a product appear on two pages.
+ * The model therefore keeps one row per product, and it says which one: the newest
+ * observation, with the id as the tiebreaker. Two observations of one product can share a
+ * timestamp, and without the id the winner would be arbitrary — which would make a page
+ * boundary inexact and a product appear on two pages.
  *
  * ## Why the filters are split
  *
@@ -36,12 +36,21 @@ package ru.wbparser.app.api.catalog
  * pick the newest observation that pays points, and the product would stay in the catalog
  * with a price it does not have.
  *
+ * ## Why the filters are applied to the current observation
+ *
+ * The filters that name a product are applied to the row the model keeps — the current one
+ * — and not to the rows the model is built from. A search that ran over the older
+ * observations would answer with a row that is not in the catalog any more: the list
+ * showed an id, and the detail of that id answered 404, because the detail looks for the
+ * current observation and the list had handed out an old one.
+ *
  * ## The two grains
  *
  * The model is built at two grains, and both of them are here: one row per product
- * ([currentProducts]) and one row per product *per target* ([currentProductTargets]). The
- * second one keeps the targets apart, because the cashback of a product depends on the
- * target it was found in.
+ * ([currentProducts] at [CurrentScope.PRODUCT]) and one row per product *per target*
+ * ([currentProductTargets], and [currentProducts] at [CurrentScope.TARGET]). The second one
+ * keeps the targets apart, because the cashback of a product depends on the target it was
+ * found in.
  */
 internal object CatalogReadModel {
     /**
@@ -54,36 +63,49 @@ internal object CatalogReadModel {
      * history is made of them — but neither is part of the catalog the storefront shows.
      *
      * The condition is written without a table name, because it is read under two names:
-     * the model reads it as `current.feedback_points`, a single observation as
+     * the model reads it as `latest.feedback_points`, a single observation as
      * `s.feedback_points`.
      */
     const val REVIEW_POINTS_OBSERVATION: String = "feedback_points IS NOT NULL"
 
     /**
-     * The condition that says an observation is the current one of its product.
+     * The condition that says an observation is the current one of its product, at the
+     * grain of the read.
      *
-     * The read model picks the newest observation of a product with `DISTINCT ON` and an
-     * order by `scraped_at DESC, id DESC`; this is the same rule written for a read that
-     * already knows the id of the row it looks for: a newer observation of the same
-     * product makes that row an old one. The rows without a product id are one product
-     * for the read model as well, so they are matched with the same rule.
+     * The rule is the same one the read model uses, written for a read that already knows
+     * the id of the row it looks for: a newer observation of the same product makes that
+     * row an old one. The rows without a product id are one product for the read model as
+     * well, so they are matched with the same rule.
      *
-     * The comparison stays inside the target: a product is observed per catalog, and
-     * the list that names a target decides what is current inside that target. A newer
-     * observation of the same product in *another* target is another product of another
-     * catalog — the detail read must not answer 404 for a row that the list of its own
-     * target shows.
+     * The grain decides where the newer observation has to be: at [CurrentScope.TARGET] it
+     * has to be in the same target, at [CurrentScope.PRODUCT] it may be in any of them.
+     *
+     * The comparison is on `(scraped_at, id)`, so two observations of the same moment are
+     * ordered by the id — the same tiebreaker the model itself uses, and the reason the
+     * rule has one answer and not two.
      */
-    const val CURRENT_OBSERVATION: String =
-        """
-        NOT EXISTS (
-            SELECT 1
-              FROM scraped_items newer
-             WHERE newer.target_id = s.target_id
-               AND (newer.product_id = s.product_id
-                    OR (newer.product_id IS NULL AND s.product_id IS NULL))
-               AND (newer.scraped_at, newer.id) > (s.scraped_at, s.id))
-        """
+    fun currentObservation(scope: CurrentScope): String =
+        when (scope) {
+            CurrentScope.PRODUCT ->
+                """
+                NOT EXISTS (
+                    SELECT 1
+                      FROM scraped_items newer
+                     WHERE (newer.product_id = s.product_id
+                            OR (newer.product_id IS NULL AND s.product_id IS NULL))
+                       AND (newer.scraped_at, newer.id) > (s.scraped_at, s.id))
+                """
+            CurrentScope.TARGET ->
+                """
+                NOT EXISTS (
+                    SELECT 1
+                      FROM scraped_items newer
+                     WHERE newer.target_id = s.target_id
+                       AND (newer.product_id = s.product_id
+                            OR (newer.product_id IS NULL AND s.product_id IS NULL))
+                       AND (newer.scraped_at, newer.id) > (s.scraped_at, s.id))
+                """
+        }
 
     /**
      * The columns of the read model.
@@ -102,25 +124,17 @@ internal object CatalogReadModel {
         """
 
     /**
-     * The read model at the grain of the product.
+     * The read model at the grain the read names.
      *
      * The [identity] filter is applied inside the model, because it names the product
-     * rather than its price. The membership is decided outside it, because it is a
-     * question about the newest observation.
+     * rather than its price — and it is applied to the row the model keeps, so that the
+     * answer is about the product as it is now. The membership is decided outside the
+     * model, because it is a question about the newest observation.
      */
-    fun currentProducts(identity: CatalogFilters.Where): String =
-        """
-        SELECT latest.*
-          FROM (
-                SELECT DISTINCT ON (s.product_id)
-                       $MODEL_COLUMNS
-                  FROM scraped_items s
-                  JOIN crawl_targets t ON t.id = s.target_id
-                 ${identity.sql}
-                 ORDER BY s.product_id, s.scraped_at DESC, s.id DESC
-                ) latest
-         WHERE latest.$REVIEW_POINTS_OBSERVATION
-        """.trimIndent()
+    fun currentProducts(
+        identity: CatalogFilters.Where,
+        scope: CurrentScope,
+    ): String = model(identity.clauses + currentObservation(scope))
 
     /**
      * The read model at the grain of the product and the target.
@@ -143,18 +157,22 @@ internal object CatalogReadModel {
         if (onlyMatched) {
             conditions += "s.match_id IS NOT NULL"
         }
-        val sql = if (conditions.isEmpty()) "" else "WHERE " + conditions.joinToString(" AND ")
-        return """
-            SELECT latest.*
-              FROM (
-                    SELECT DISTINCT ON (s.product_id, s.target_id)
-                           $MODEL_COLUMNS
-                      FROM scraped_items s
-                      JOIN crawl_targets t ON t.id = s.target_id
-                     $sql
-                     ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC
-                    ) latest
-             WHERE latest.$REVIEW_POINTS_OBSERVATION
-            """.trimIndent()
+        return model(conditions + currentObservation(CurrentScope.TARGET))
     }
+
+    /**
+     * The model itself: the current observation of every product, with the membership
+     * applied to it.
+     */
+    private fun model(conditions: List<String>): String =
+        """
+        SELECT latest.*
+          FROM (
+                SELECT $MODEL_COLUMNS
+                  FROM scraped_items s
+                  JOIN crawl_targets t ON t.id = s.target_id
+                 WHERE ${conditions.joinToString(" AND ")}
+                ) latest
+         WHERE latest.$REVIEW_POINTS_OBSERVATION
+        """.trimIndent()
 }
