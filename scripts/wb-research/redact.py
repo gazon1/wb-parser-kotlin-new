@@ -110,19 +110,28 @@ SENSITIVE_QUERY_PARAMS = {
 # the front of it.
 CREDENTIAL_NAME_SUFFIX = ("_token", "_secret", "_password", "_key", "_passwd")
 
-# The word in the middle of a credential name. The name is what carries the
-# rule; the value beside it can be short, so the value itself cannot be
-# recognized — only the name can.
-CREDENTIAL_WORD = (
-    r"(?:access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|session[_-]?token"
-    r"|client[_-]?secret|app[_-]?secret|api[_-]?secret|private[_-]?key|secret[_-]?key"
-    r"|api[_-]?key|access[_-]?key|session[_-]?id|sessionid|authorization|credential"
-    r"|cookie|token|secret|password|passwd|auth|session)"
+# The parts of a credential name. The name is what carries the rule; the value
+# beside it can be short, so the value itself cannot be recognized — only the
+# name can. A name is a prefix and a core word (`access` + `token`), or a core
+# word alone (`token`), or an id of a session or of a user (`session_id`). The
+# name has to be the whole name: `author` is not `auth` with a suffix, so the
+# core word cannot be followed by more letters.
+CREDENTIAL_PREFIX = r"(?:access|refresh|id|auth|api|app|client|private|user|secret|session)"
+CREDENTIAL_CORE = r"(?:token|secret|key|password|passwd|cookie|credential|authorization|session)"
+CREDENTIAL_NAME = (
+    r"(?:(?:" + CREDENTIAL_PREFIX + r")[._-]?)?" + CREDENTIAL_CORE + r"|(?:session|user)[._-]?id|sessionid|userid"
 )
+
+# The same name, grouped, so that it can be used inside another pattern.
+CREDENTIAL_NAME_PATTERN = "(?:" + CREDENTIAL_NAME + ")"
+
+# A name may carry a prefix of its own: `capture-access_token` is a file name
+# whose last part is a credential name.
+CREDENTIAL_NAME_PREFIX = r"(?:[A-Za-z0-9]+[._-])*"
 
 # A credential written as an assignment: `access_token=abc123`, `password: abc123`.
 CREDENTIAL_ASSIGNMENT = re.compile(
-    r"(?i)(?<![\w.-])((?:[A-Za-z0-9]+[._-])*" + CREDENTIAL_WORD + r"[A-Za-z0-9_.-]*)"
+    r"(?i)(?<![\w.-])(" + CREDENTIAL_NAME_PREFIX + CREDENTIAL_NAME_PATTERN + r")(?![\w])"
     r"(\s*[=:]\s*)"
     r"(\"[^\"]*\"|'[^']*'|[^\s,;\"']+)"
 )
@@ -131,14 +140,25 @@ CREDENTIAL_ASSIGNMENT = re.compile(
 # This is the shape a slug takes, and a slug is what an operator-chosen file name
 # becomes.
 CREDENTIAL_DASHED = re.compile(
-    r"(?i)(?<![\w.-])((?:[A-Za-z0-9]+[._-])*" + CREDENTIAL_WORD + r")([_-])([A-Za-z0-9]{4,})(?![A-Za-z0-9])"
+    r"(?i)(?<![\w.-])(" + CREDENTIAL_NAME_PREFIX + CREDENTIAL_NAME_PATTERN + r")(?![\w])"
+    r"([_-])([A-Za-z0-9]{4,})(?![A-Za-z0-9])"
+)
+
+# A credential written as a name and a value separated by a space: `token abc123`.
+# The value is judged separately (see `looks_like_credential`), because a name
+# and an ordinary word after it is not a credential.
+CREDENTIAL_SPACED = re.compile(
+    r"(?i)(?<![\w.-])(" + CREDENTIAL_NAME_PREFIX + CREDENTIAL_NAME_PATTERN + r")(?![\w])"
+    r"(\s+)([^\s]{4,})"
 )
 
 # An authorization scheme with its credential: `Bearer abc123`.
 BEARER_VALUE = re.compile(r"(?i)\b(bearer|basic)(\s+)([A-Za-z0-9._+/=-]{4,})")
 
 # A path segment that names what the next segment is: the segment after it is a
-# credential, whatever it looks like.
+# credential, whatever it looks like. A segment that is itself a credential name
+# (`access_token`) says the same thing, and `names_a_credential` asks both
+# questions.
 CREDENTIAL_PATH_COMPONENTS = {
     "activation",
     "activate",
@@ -158,6 +178,9 @@ CREDENTIAL_PATH_COMPONENTS = {
     "token",
     "verify",
 }
+
+# A segment that is a whole credential name.
+CREDENTIAL_SEGMENT = re.compile(r"(?i)" + CREDENTIAL_NAME)
 
 # A value that looks like an opaque credential: long, no spaces, no URL
 # punctuation. This is what catches a profile identifier or a token that the
@@ -226,20 +249,49 @@ def placeholder(kind: str) -> str:
     return f"<redacted:{kind}>"
 
 
+def looks_like_credential(value: str) -> bool:
+    """A value that looks like a credential rather than like an ordinary word.
+
+    A name and a value separated by a space is a weak shape: `token started` is
+    a sentence, `token abc123` is a credential. The value is a credential when
+    it carries a digit or an upper-case letter, or when it is long enough to be
+    one anyway.
+    """
+    if len(value) < 4:
+        return False
+    return any(c.isdigit() for c in value) or any(c.isupper() for c in value) or len(value) >= 8
+
+
 def redact_credentials(text: str, label: str = "credential") -> str:
     """The credentials in a text, whatever the shape of the text is.
 
     The credential is recognized by the *name* beside it: `access_token=abc123`,
-    `password: abc123`, `access_token-abc123`, `Bearer abc123`. The value can be
-    short, so no length-based rule can find it — only the name can. Every shape
-    of value goes through here: a header value, a note, a path segment, a query
-    value, a file name.
+    `password: abc123`, `access_token abc123`, `access_token-abc123`,
+    `Bearer abc123`. The value can be short, so no length-based rule can find
+    it — only the name can. Every shape of value goes through here: a header
+    value, a note, a path segment, a query value, a file name.
     """
     marker = "redacted" if label == "redacted" else placeholder(label)
+    text = BEARER_VALUE.sub(lambda m: f"{m.group(1)}{m.group(2)}{marker}", text)
+    text = CREDENTIAL_SPACED.sub(
+        lambda m: f"{m.group(1)}{m.group(2)}{marker}" if looks_like_credential(m.group(3)) else m.group(0),
+        text,
+    )
     text = CREDENTIAL_ASSIGNMENT.sub(lambda m: f"{m.group(1)}{m.group(2)}{marker}", text)
     text = CREDENTIAL_DASHED.sub(lambda m: f"{m.group(1)}{m.group(2)}{marker}", text)
-    text = BEARER_VALUE.sub(lambda m: f"{m.group(1)}{m.group(2)}{marker}", text)
     return text
+
+
+def names_a_credential(segment: str) -> bool:
+    """Whether a path segment says that the next segment is a credential.
+
+    A segment that is a credential name (`access_token`, `token`, `session_id`)
+    says it, and so does a segment that names what follows it (`reset`, `otp`).
+    """
+    lowered = segment.lower()
+    if lowered in CREDENTIAL_PATH_COMPONENTS:
+        return True
+    return CREDENTIAL_SEGMENT.fullmatch(segment) is not None
 
 
 def safe_identifier(value: Any, fallback: str) -> str:
@@ -430,10 +482,8 @@ def redact_path(path: str) -> str:
         text = PHONE_NUMBER.sub("phone", text)
         text = OPAQUE_TOKEN.sub("opaque", text)
         text = redact_credentials(text, label="credential")
-        if previous.lower() in CREDENTIAL_PATH_COMPONENTS and not text.startswith(
-            ("opaque", "email", "phone", "<redacted")
-        ):
-            # The segment after a component that names a credential is one, even
+        if names_a_credential(previous) and not text.startswith(("opaque", "email", "phone", "<redacted")):
+            # The segment after a segment that names a credential is one, even
             # when it is short enough to pass every length-based rule.
             text = "credential"
         kept.append(text)

@@ -221,6 +221,15 @@ The rules the redactor applies:
 - a query parameter whose name looks like a credential loses its value — the
   account id (`x-userid`) included: a digit string is short enough to pass every
   length-based rule;
+- a credential is recognized by its **name**, in every shape a value can take:
+  `access_token=abc123`, `access_token: abc123`, `access_token abc123`,
+  `access_token-abc123` (the shape a slug takes), `Bearer abc123`. The value
+  can be short, so the name is what carries the rule. The name has to be the
+  whole name: `author=Alice` is an author, not a credential. A value separated
+  from the name by a space is a credential only when it does not look like an
+  ordinary word (it carries a digit or an upper-case letter, or it is long);
+- a path segment that names a credential (`reset`, `otp`, `token`,
+  `access_token`) says that the next segment is one, whatever it looks like;
 - a value that looks like an opaque credential — long, no spaces, dots allowed
   so a JWT does not slip through as three short words — loses its value,
   wherever it appears;

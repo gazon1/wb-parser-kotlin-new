@@ -523,3 +523,56 @@ def test_a_note_keeps_the_words_of_the_investigation():
     note = redact.redact_note("the same catalog query with and without each filter")
 
     assert note == "the same catalog query with and without each filter"
+
+
+def test_a_credential_written_with_a_space_is_replaced():
+    # The finding of the review: a name and a value need no `=` to be a
+    # credential.
+    note = redact.redact_note("failed request: token abc123")
+
+    assert "abc123" not in note
+    assert "credential" in note
+
+
+def test_a_credential_written_with_a_space_keeps_an_ordinary_word():
+    # A name and an ordinary word after it is a sentence, not a credential.
+    note = redact.redact_note("the session started at the third request")
+
+    assert "started" in note
+
+
+def test_a_compound_credential_name_in_a_path_is_replaced():
+    # The finding of the review: the path component list held `token`, not
+    # `access_token`.
+    url = redact.redact_url("https://example.com/access_token/abc123")
+
+    assert "abc123" not in url
+
+
+def test_a_name_that_only_starts_like_a_credential_keeps_its_value():
+    # The finding of the review: `author` is not `auth` with a suffix.
+    note = redact.redact_note("author=Alice")
+
+    assert note == "author=Alice"
+
+
+def test_a_credential_in_a_qualified_name_is_replaced():
+    # The finding of the review: a name may carry a prefix of its own.
+    note = redact.redact_note("oauth.access_token=abc123")
+
+    assert "abc123" not in note
+
+
+def test_a_credential_in_a_qualified_name_is_replaced_in_a_name():
+    # The finding of the review: the name of a capture file reaches the
+    # committed file as it is.
+    name = redact.safe_identifier("capture-oauth.access_token-abc123", "capture")
+
+    assert "abc123" not in name
+
+
+def test_an_ordinary_word_that_starts_like_a_credential_keeps_its_value():
+    # The finding of the review: `author` is not `auth` with a suffix.
+    note = redact.redact_note("author: Wildberries request")
+
+    assert note == "author: Wildberries request"

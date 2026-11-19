@@ -39,6 +39,7 @@
         ],
         "productCount": null
       },
+      "measurements": {},
       "body": {
         "included": false,
         "reason": "a response body may carry personal data"
@@ -79,6 +80,7 @@
         ],
         "productCount": null
       },
+      "measurements": {},
       "body": {
         "included": false,
         "reason": "a response body may carry personal data"
