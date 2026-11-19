@@ -717,3 +717,71 @@ def test_a_token_inside_a_dotted_name_is_replaced():
 
     assert "abcdefghij" not in name
     assert name == "capture.opaque"
+
+
+def test_a_profile_id_without_hyphens_is_replaced():
+    # The finding of the review: the UUID rule knew one spelling of the
+    # identifier, and the other spelling reached the committed file.
+    url = redact.redact_url("https://example.com/api?profile=550e8400e29b41d4a71644665544a000")
+
+    assert "550e8400" not in url
+
+
+def test_a_profile_id_inside_a_larger_value_is_replaced():
+    # The finding of the review: the identifier was recognized only when it was
+    # the whole value, so a value that carried it among other words kept it.
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "Mozilla/5.0 profile=550e8400e29b41d4a71644665544a000"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert "550e8400" not in headers["user-agent"]
+
+
+def test_a_credential_name_in_camel_case_is_replaced():
+    # The finding of the review: the name of a credential is the same name in
+    # every spelling, and the rule that knew the underscore spelling did not
+    # know this one.
+    url = redact.redact_url("https://example.com/api?accessToken=abc123")
+
+    assert "abc123" not in url
+
+
+def test_a_credential_name_with_a_hyphen_is_replaced():
+    url = redact.redact_url("https://example.com/api?x-auth-token=abc123")
+
+    assert "abc123" not in url
+
+
+def test_a_credential_name_in_camel_case_keeps_the_value_out_of_a_note():
+    note = redact.redact_note("failed request: clientSecret=xyz789")
+
+    assert "xyz789" not in note
+
+
+def test_a_dotted_name_in_an_ordinary_query_parameter_survives():
+    # The finding of the review: the rule that keeps a dotted name was applied
+    # to the names the operator chose, and not to the values.
+    url = redact.redact_url("https://example.com/api?name=catalog.investigation.2026.11.19")
+
+    assert "catalog.investigation.2026.11.19" in url
+
+
+def test_a_dotted_name_in_an_allowed_header_survives():
+    headers = redact.redact_headers(
+        [{"name": "x-spa-version", "value": "catalog.investigation.2026.11.19"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert headers["x-spa-version"] == "catalog.investigation.2026.11.19"
+
+
+def test_a_token_inside_a_dotted_value_is_replaced():
+    # The counterpart of the finding: a name is kept, a token inside it is not.
+    headers = redact.redact_headers(
+        [{"name": "x-spa-version", "value": "capture.eyJhbGciOiJIUzI1NiJ9abcdefghij"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert "abcdefghij" not in headers["x-spa-version"]
+    assert headers["x-spa-version"] == "capture.<redacted:opaque>"

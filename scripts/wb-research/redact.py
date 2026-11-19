@@ -243,8 +243,18 @@ OPAQUE_MIXED_LENGTH = 20
 # A UUID inside a name: the identifier of a browser profile, written in groups.
 # The groups are short, so the opaque-value rule does not see it, and the hyphen
 # is what keeps it out of the opaque-identifier rule — so it is recognized by its
-# own shape.
-UUID_VALUE = re.compile(r"(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+# own shape. The edges are guarded, so that a longer run of hex characters is
+# not read as a UUID inside it.
+UUID_VALUE = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![0-9a-f])")
+
+# The same identifier written without the hyphens. It has the same length as a
+# hash, so the version and the variant are checked: a UUID names a version and
+# a variant, and an ordinary hash names neither. The compact spelling is rare,
+# but it is the same identifier — a value that only one spelling does not reach
+# the committed file is a value that reaches it in the other spelling.
+UUID_COMPACT = re.compile(
+    r"(?i)(?<![0-9a-f])[0-9a-f]{8}[0-9a-f]{4}[1-5][0-9a-f]{3}[89ab][0-9a-f]{3}[0-9a-f]{12}(?![0-9a-f])"
+)
 
 MAX_IDENTIFIER_LENGTH = 64
 
@@ -352,6 +362,23 @@ def redact_opaque_run(text: str) -> str:
         return ".".join("opaque" if is_opaque_part(part) else part for part in run.split("."))
 
     return OPAQUE_RUN.sub(replace, text)
+
+
+def opaque_parts(run: str) -> str:
+    """A run of opaque characters, with the names inside it kept.
+
+    A dotted run is judged part by part — a name made of dotted words is
+    evidence, and a token inside such a name is not. A run whose parts are all
+    blobs (`header.payload.signature` of a token) is one token, so it becomes
+    one marker.
+    """
+    parts = run.split(".") if "." in run else [run]
+    if all(is_opaque_part(part) for part in parts):
+        return placeholder("opaque")
+    if not any(part.isalpha() and not part.isdigit() for part in parts):
+        # No part of the run is a word: the run is a set of blobs, not a name.
+        return placeholder("opaque")
+    return ".".join(placeholder("opaque") if is_opaque_part(part) else part for part in parts)
 
 
 def safe_identifier(value: Any, fallback: str) -> str:
@@ -463,15 +490,19 @@ def redact_generic_value(value: str) -> str:
     The name of a header or of a query parameter is not a promise: a profile
     identifier in an ordinary parameter and a token in a user agent are both
     values that only their shape gives away. So the value goes through the rules
-    that need no name: a UUID is the identifier of a profile, a long opaque
-    value is a token, and the personal values are replaced as they are
-    everywhere else.
+    that need no name: a UUID is the identifier of a profile — in either
+    spelling, and wherever it sits in the value — a long opaque run is a token,
+    and the personal values are replaced as they are everywhere else.
+
+    A dotted name is a name: its parts are judged one by one, so a name of
+    dotted words survives and a token inside it does not.
     """
-    if UUID_VALUE.search(value):
-        return placeholder("opaque")
-    if OPAQUE_VALUE.match(value):
-        return placeholder("opaque")
-    text = redact_credentials(value)
+    text = UUID_VALUE.sub(placeholder("opaque"), value)
+    text = UUID_COMPACT.sub(placeholder("opaque"), text)
+    # The whole value may be one run of opaque characters — hyphens and all —
+    # or a run may sit inside a value that carries other words.
+    text = opaque_parts(text) if OPAQUE_VALUE.match(text) else OPAQUE_RUN.sub(opaque_parts, text)
+    text = redact_credentials(text)
     text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
     return text[:MAX_VALUE_LENGTH]
@@ -499,10 +530,17 @@ def redact_query_value(name: str, value: str) -> str:
     The name of the parameter is not the only thing that can carry a secret: a
     search for a phone number puts the number in an ordinary parameter, so the
     personal values are replaced here as well.
+
+    A name that names a credential is redacted whatever the spelling of the
+    name is: `access_token`, `accessToken` and `x-auth-token` are the same
+    name. The name is recognized by the same rule the rest of the redactor
+    uses, so that a new spelling of a name does not open a new hole.
     """
     if name.lower() in SENSITIVE_QUERY_PARAMS:
         return placeholder("query-param")
     if name.lower().endswith(CREDENTIAL_NAME_SUFFIX):
+        return placeholder("query-param")
+    if CREDENTIAL_SEGMENT.fullmatch(name) is not None:
         return placeholder("query-param")
     if URL_VALUE.match(value):
         return redact_url(value)

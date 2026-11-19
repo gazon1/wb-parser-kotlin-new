@@ -208,7 +208,9 @@ The rules the redactor applies:
   it identifies the account the request was made from, and a digit string is
   short enough to pass every length-based rule. An allowlisted name is not a
   promise about the value it carries: the value of an allowed header goes
-  through the shape rules too, so a UUID or an opaque token in it is replaced;
+  through the shape rules too, so a UUID or an opaque token in it is replaced.
+  A dotted name in it is a name, as everywhere else: its parts are judged one
+  by one;
 - a response header keeps its value only if it is on its own allowlist
   (`content-encoding`, `content-length`, `content-type`, `server`,
   `statuscode`, `x-cache-status`); every other response header is dropped
@@ -222,7 +224,9 @@ The rules the redactor applies:
   neither is evidence;
 - a query parameter whose name looks like a credential loses its value — the
   account id (`x-userid`) included: a digit string is short enough to pass every
-  length-based rule;
+  length-based rule. The name is recognized in every spelling of it:
+  `access_token`, `accessToken` and `x-auth-token` are the same name, and a new
+  spelling of a name must not open a new hole;
 - a credential is recognized by its **name**, in every shape a value can take:
   `access_token=abc123`, `access_token: abc123`, `access_token abc123`,
   `access_token-abc123` (the shape a slug takes), `Bearer abc123`. The value
@@ -261,7 +265,9 @@ The rules the redactor applies:
   number is recognised by its groups (`555-123-4567`, `+7 495 123 45 67`), so
   WB's own long digit runs (`dest=1259570991`) stay as they are — they are ids,
   not phone numbers. A UUID in a parameter is the identifier of a profile and
-  is replaced, in braces as well as without them;
+  is replaced — in braces as well as without them, with the hyphens as well as
+  without them, and wherever in the value it stands: `profile=550e8400…` is the
+  identifier as much as the identifier alone is;
 - an error keeps only the **kind** of the failure (the exception class), never
   its text: an error message can quote the response, the URL or the request;
 - a response body is never included;
