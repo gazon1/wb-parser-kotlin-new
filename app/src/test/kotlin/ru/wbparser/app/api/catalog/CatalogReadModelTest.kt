@@ -36,10 +36,27 @@ class CatalogReadModelTest :
             sql shouldContain "WHERE s.target_id = ?"
         }
 
-        test("the model without a filter has no WHERE at all") {
+        test("the model without a filter has no filter of its own") {
             val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY)
 
-            sql shouldNotContain "WHERE"
+            // The only condition the model carries is the one that says what the catalog
+            // is made of — the observations that carry the review points.
+            sql shouldContain "WHERE s.feedback_points IS NOT NULL"
+            sql shouldNotContain "s.target_id = ?"
+        }
+
+        test("the catalog is made of the observations that carry the review points") {
+            // A product that pays no review points is not one of the products the crawler
+            // collects, and an observation of one is not part of the catalog.
+            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY)
+
+            sql shouldContain "s.feedback_points IS NOT NULL"
+        }
+
+        test("the target grain is made of the same observations") {
+            val sql = CatalogReadModel.currentProductTargets(CatalogFilters.Where.EMPTY)
+
+            sql shouldContain "s.feedback_points IS NOT NULL"
         }
 
         test("the target grain keeps the targets apart") {

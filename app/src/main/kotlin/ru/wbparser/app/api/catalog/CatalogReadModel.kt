@@ -36,6 +36,17 @@ package ru.wbparser.app.api.catalog
  */
 internal object CatalogReadModel {
     /**
+     * The observation the catalog is made of: one that carries the points WB pays for a
+     * review.
+     *
+     * The crawler collects the products that pay review points, so an observation without
+     * points is not one of them: it is either an observation of a product WB does not pay
+     * for, or one from a crawl made under a different filter. Both stay in the table — the
+     * history is made of them — but neither is part of the catalog the storefront shows.
+     */
+    const val REVIEW_POINTS_OBSERVATION: String = "s.feedback_points IS NOT NULL"
+
+    /**
      * The columns of the read model.
      *
      * One list, so that the item list, the top-deals list and the single product read the
@@ -57,15 +68,18 @@ internal object CatalogReadModel {
      * The [identity] filter is applied inside the model, because it names the product
      * rather than its price.
      */
-    fun currentProducts(identity: CatalogFilters.Where): String =
-        """
-        SELECT DISTINCT ON (s.product_id)
-               $MODEL_COLUMNS
-          FROM scraped_items s
-          JOIN crawl_targets t ON t.id = s.target_id
-         ${identity.sql}
-         ORDER BY s.product_id, s.scraped_at DESC, s.id DESC
-        """.trimIndent()
+    fun currentProducts(identity: CatalogFilters.Where): String {
+        val conditions = identity.clauses + REVIEW_POINTS_OBSERVATION
+        val sql = "WHERE " + conditions.joinToString(" AND ")
+        return """
+            SELECT DISTINCT ON (s.product_id)
+                   $MODEL_COLUMNS
+              FROM scraped_items s
+              JOIN crawl_targets t ON t.id = s.target_id
+             $sql
+             ORDER BY s.product_id, s.scraped_at DESC, s.id DESC
+            """.trimIndent()
+    }
 
     /**
      * The read model at the grain of the product and the target.
@@ -88,7 +102,8 @@ internal object CatalogReadModel {
         if (onlyMatched) {
             conditions += "s.match_id IS NOT NULL"
         }
-        val sql = if (conditions.isEmpty()) "" else "WHERE " + conditions.joinToString(" AND ")
+        conditions += REVIEW_POINTS_OBSERVATION
+        val sql = "WHERE " + conditions.joinToString(" AND ")
         return """
             SELECT DISTINCT ON (s.product_id, s.target_id)
                    $MODEL_COLUMNS

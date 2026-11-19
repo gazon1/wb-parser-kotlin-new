@@ -227,6 +227,9 @@ class CatalogFixture {
 
     /**
      * A scraped item.
+     *
+     * The item pays review points by default: the catalog is made of the products that
+     * pay them, so an item without points has to be seeded explicitly.
      */
     fun seedItem(
         targetId: UUID,
@@ -237,7 +240,7 @@ class CatalogFixture {
         seller: String? = "Продавец",
         cashbackPercent: Double? = 5.0,
         cashback: Double? = 24.95,
-        feedbackPoints: Int? = null,
+        feedbackPoints: Int? = 300,
         inStock: Boolean? = true,
         imageUrl: String? = "https://images.example.invalid/p.jpg",
         matchId: Long? = 42,

@@ -456,6 +456,18 @@ class CatalogQueriesTest :
             result.items.first().feedbackPoints shouldBe 300
         }
 
+        test("a product that pays no review points is not part of the catalog") {
+            // The finding of the review: the crawler collects the products that pay
+            // review points, and the products collected under the previous filter stayed
+            // in the catalog as if they were collected now.
+            val target = fixture.seedTarget("Категория")
+            fixture.seedItem(target, title = "Товар без баллов", feedbackPoints = null)
+
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params()))
+
+            result.items shouldHaveSize 0
+        }
+
         test("a row with no price has no price, and not a zero") {
             val target = fixture.seedTarget("Категория")
             fixture.seedItem(target, priceKopecks = null)
