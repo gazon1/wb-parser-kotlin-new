@@ -103,6 +103,11 @@ reported, dressed up as a fix.
   answer to "which of these products pay for a review".
 - Products crawled before this change keep their stored `feedback_points = NULL`; they are
   re-crawled, not migrated.
+- **Always** let the read model's index carry every column the model reads. The model reads
+  `feedback_points`, and an included column that the index does not carry makes the model
+  visit the heap for every observation — the cost the covering index was built to avoid.
+  The index's included columns cannot be changed in place, so `V18` builds the index again
+  under a second name and renames it (see `docs/operations/catalog-index-rollout.md`).
 - The catalog's cashback-based sort, its `minCashback` filter and its "best cashback" list
   have nothing to sort by any more: no crawled product carries a wallet cashback, because the
   request does not ask for one. They keep working — they just report empty and order by

@@ -48,19 +48,27 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_scraped_items_scraped_at_id
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_scraped_items_target_scraped_at_id
     ON scraped_items (target_id, scraped_at DESC, id);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_scraped_items_product_latest_covering
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_scraped_items_product_latest_covering_v2
     ON scraped_items (product_id, scraped_at DESC, id DESC)
     INCLUDE (
         target_id, title, price_kopecks, sale_price_kopecks, brand, seller,
-        cashback_percent, cashback, in_stock, image_url, product_url, match_id
+        cashback_percent, cashback, feedback_points, in_stock, image_url,
+        product_url, match_id
     );
 ```
 
-The last one is the read model's index (V7): the catalog's list is built from the current
+The last one is the read model's index: the catalog's list is built from the current
 observation of each product, and a covering index makes that build an index-only scan
 instead of a visit to the heap once per product. It is the widest of the indexes — it
 carries the card's columns for every observation — so it is the one whose build takes the
 longest and the one most worth doing concurrently.
+
+It is built under the name `..._v2`, because the read model now reads
+`feedback_points` and the included columns of an index cannot be changed in place: the
+migration `V18__catalog_read_model_index_carries_the_review_points.sql` drops the old
+index and renames this one to `ix_scraped_items_product_latest_covering`. Build it
+before the migration is applied, as the rest of the indexes are — the migration finds it
+already there and only renames it.
 
 The extension has to exist first, and it is created by the migration — so create it by
 hand as well, before the indexes:

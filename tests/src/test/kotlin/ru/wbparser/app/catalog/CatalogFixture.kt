@@ -124,6 +124,35 @@ class CatalogFixture {
         }
 
     /**
+     * The columns the read model's index carries.
+     *
+     * The model reads `feedback_points`, and an index that does not carry a column the
+     * model reads is not covering: the model visits the heap for every observation.
+     */
+    fun readModelIndexColumns(): List<String> =
+        writer.connection.use { connection ->
+            connection
+                .prepareStatement(
+                    """
+                    SELECT a.attname
+                      FROM pg_index i
+                      JOIN pg_class c ON c.oid = i.indexrelid
+                      JOIN pg_attribute a ON a.attrelid = c.oid
+                     WHERE c.relname = 'ix_scraped_items_product_latest_covering'
+                       AND a.attnum > 0
+                    """.trimIndent(),
+                ).use { statement ->
+                    statement.executeQuery().use { resultSet ->
+                        buildList {
+                            while (resultSet.next()) {
+                                add(resultSet.getString("attname"))
+                            }
+                        }
+                    }
+                }
+        }
+
+    /**
      * A connection with the catalog role's own credentials and nothing else.
      *
      * Deliberately without the session settings the pool applies: the point of this

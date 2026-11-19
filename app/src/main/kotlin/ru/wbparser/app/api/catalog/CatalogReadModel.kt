@@ -92,7 +92,11 @@ internal object CatalogReadModel {
      * have to mean the same thing, because the storefront reads both.
      *
      * At the target's grain the rows stay: a target holds what it holds, and the detail
-     * read of such a row answers at that grain too.
+     * read of such a row answers at that grain too. Each of them stands on its own: two
+     * rows without a product id are two observations that only share the absence of an id,
+     * and neither of them is a newer observation of the other — so the comparison of the
+     * target's grain is on the products only, and every unidentified observation of the
+     * target is in the list.
      */
     fun currentObservation(scope: CurrentScope): String =
         when (scope) {
@@ -111,8 +115,7 @@ internal object CatalogReadModel {
                     SELECT 1
                       FROM scraped_items newer
                      WHERE newer.target_id = s.target_id
-                       AND (newer.product_id = s.product_id
-                            OR (newer.product_id IS NULL AND s.product_id IS NULL))
+                       AND newer.product_id = s.product_id
                        AND (newer.scraped_at, newer.id) > (s.scraped_at, s.id))
                 """
         }

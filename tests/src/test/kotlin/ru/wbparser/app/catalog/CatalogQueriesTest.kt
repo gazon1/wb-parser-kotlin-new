@@ -1,6 +1,7 @@
 package ru.wbparser.app.catalog
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -185,6 +186,43 @@ class CatalogQueriesTest :
 
             fromModel.items.map { it.id }.toSet() shouldBe fromView.toSet()
             fromModel.items.none { it.title == "Без идентификатора" } shouldBe true
+        }
+
+        test("the target keeps every observation without a product id") {
+            val target = fixture.seedTarget("Категория")
+            val older =
+                fixture.seedItem(
+                    target,
+                    title = "Без идентификатора, старше",
+                    productId = null,
+                    priceKopecks = 5000L,
+                    scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                )
+            val newer =
+                fixture.seedItem(
+                    target,
+                    title = "Без идентификатора, новее",
+                    productId = null,
+                    priceKopecks = 6000L,
+                    scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+                )
+
+            // The finding of the review: the target's grain compared the rows without a
+            // product id with each other, so the newest of them won and the older one
+            // left the list — and its detail answered 404. Two rows that only share the
+            // absence of an id are not two observations of one product.
+            val listed = fixture.queries.listItems(CatalogQueryParams.parse(params("targetId" to target.toString())))
+
+            listed.items.map { it.id }.toSet() shouldBe setOf(older, newer)
+            fixture.queries.getItem(older, CurrentScope.TARGET).shouldNotBeNull()
+            fixture.queries.getItem(newer, CurrentScope.TARGET).shouldNotBeNull()
+        }
+
+        test("the read model's index carries the column the model reads") {
+            // The finding of the review: the model reads `feedback_points`, and the index
+            // the model is built from did not carry it — so the model was not an
+            // index-only scan any more, and it visited the heap for every observation.
+            fixture.readModelIndexColumns() shouldContain "feedback_points"
         }
 
         test("a page does not repeat a row and does not drop one") {

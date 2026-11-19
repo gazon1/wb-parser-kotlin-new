@@ -75,7 +75,9 @@ A row **without a product id** is not a product: it is an observation of a produ
 not be identified, and at the product's grain such rows are left out — the same rule the view
 `latest_product_observations` states, so the API and the view name the same catalog. At the
 target's grain they stay: a target holds what it holds, and the detail read of such a row
-answers at that grain too.
+answers at that grain too. Each of them stands on its own there: two rows that only share the
+absence of an id are not two observations of one product, so the target's grain compares the
+products only, and every unidentified observation of the target is in the list.
 
 ## Rationale
 
@@ -107,7 +109,10 @@ price the product does not have.
   the detail from the target-scoped pages, and the product's grain would refuse their rows.
 - **Always** decide the rows without a product id explicitly: at the product's grain they
   are not a product and are left out (the view leaves them out too), at the target's grain
-  they stay, because a target holds what it holds.
+  they stay, because a target holds what it holds — and each of them stands on its own, so
+  the target's grain compares the products only. Two rows that only share the absence of an
+  id are not two observations of one product, and the older one is not a stale copy of the
+  newer one.
 - The model and the view `latest_product_observations` still agree: the view is the
   product's grain, and the list without a target is the product's grain. The suite pins it.
 - The index the model was built from (`product_id, scraped_at DESC, id DESC`, and the

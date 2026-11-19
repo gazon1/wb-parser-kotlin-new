@@ -99,7 +99,17 @@ class CatalogReadModelTest :
             // out, and the storefront reads both.
             product shouldContain "s.product_id IS NOT NULL"
             product shouldNotContain "newer.product_id IS NULL AND s.product_id IS NULL"
-            target shouldContain "newer.product_id IS NULL AND s.product_id IS NULL"
+        }
+
+        test("the target grain keeps every observation without a product id") {
+            val target = CatalogReadModel.currentObservation(CurrentScope.TARGET)
+
+            // The finding of the review: the target's grain compared the rows without a
+            // product id with each other, so the newest of them won and the older ones
+            // left the list — and their detail answered 404. Two rows that only share
+            // the absence of an id are not two observations of one product.
+            target shouldNotContain "newer.product_id IS NULL AND s.product_id IS NULL"
+            target shouldContain "newer.product_id = s.product_id"
         }
 
         test("the target grain is made of the same observations") {
