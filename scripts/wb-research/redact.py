@@ -227,7 +227,18 @@ PHONE_NUMBER = re.compile(r"(?<!\d)(?:\+7[ .-]?|8[ .-])?\(?\d{3}\)?[ .-]\d{3}[ .
 
 # An opaque value inside a name: a token or a JWT. The hyphen is not part of it —
 # a name made of hyphenated words is a name, not a token.
-OPAQUE_IDENTIFIER = re.compile(r"[A-Za-z0-9._]{24,}")
+#
+# The run is only a candidate: a dotted run is judged part by part. A dotted name
+# is a name — `investigation.capture.wb-research-notes` is evidence, and turning
+# it into `opaque` throws the evidence away — so a part is replaced only when it
+# has the shape of a token.
+OPAQUE_RUN = re.compile(r"[A-Za-z0-9._]{24,}")
+
+# A part of a dotted run that is a token: a blob of at least this many
+# characters, or a part that is at least this long and mixes letters with digits
+# (the header of a JWT is twenty characters of base64).
+OPAQUE_BLOB_LENGTH = 24
+OPAQUE_MIXED_LENGTH = 20
 
 # A UUID inside a name: the identifier of a browser profile, written in groups.
 # The groups are short, so the opaque-value rule does not see it, and the hyphen
@@ -312,6 +323,37 @@ def names_a_credential(segment: str) -> bool:
     return CREDENTIAL_SEGMENT.fullmatch(segment) is not None
 
 
+def is_opaque_part(part: str) -> bool:
+    """Whether a part of a dotted run is a token rather than a word.
+
+    A blob of characters is a token; a word is not. The blob is long enough on
+    its own, and a part that mixes letters with digits is a token even when it
+    is shorter — that is what the header of a JWT looks like.
+    """
+    if len(part) >= OPAQUE_BLOB_LENGTH:
+        return True
+    if len(part) < OPAQUE_MIXED_LENGTH:
+        return False
+    return any(c.isdigit() for c in part) and any(c.isalpha() for c in part)
+
+
+def redact_opaque_run(text: str) -> str:
+    """The tokens inside a name, with the names around them kept.
+
+    A name that is made of dotted words is evidence: it says which capture it
+    is. So a dotted run is judged part by part, and only the parts that have
+    the shape of a token are replaced.
+    """
+
+    def replace(match: re.Match[str]) -> str:
+        run = match.group(0)
+        if "." not in run:
+            return "opaque"
+        return ".".join("opaque" if is_opaque_part(part) else part for part in run.split("."))
+
+    return OPAQUE_RUN.sub(replace, text)
+
+
 def safe_identifier(value: Any, fallback: str) -> str:
     """An operator-chosen name, reduced to a slug that cannot carry a secret.
 
@@ -329,7 +371,7 @@ def safe_identifier(value: Any, fallback: str) -> str:
     text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
     text = UUID_VALUE.sub("opaque", text)
-    text = OPAQUE_IDENTIFIER.sub("opaque", text)
+    text = redact_opaque_run(text)
     text = UNSAFE_IDENTIFIER.sub("-", text).strip("-")
     if not text or LONG_DIGIT_RUN.search(text):
         return fallback
@@ -415,17 +457,39 @@ def redact_note(note: str) -> str:
     return text[:MAX_VALUE_LENGTH]
 
 
+def redact_generic_value(value: str) -> str:
+    """A value whose name says nothing about what it is — its shape decides.
+
+    The name of a header or of a query parameter is not a promise: a profile
+    identifier in an ordinary parameter and a token in a user agent are both
+    values that only their shape gives away. So the value goes through the rules
+    that need no name: a UUID is the identifier of a profile, a long opaque
+    value is a token, and the personal values are replaced as they are
+    everywhere else.
+    """
+    if UUID_VALUE.search(value):
+        return placeholder("opaque")
+    if OPAQUE_VALUE.match(value):
+        return placeholder("opaque")
+    text = redact_credentials(value)
+    text = EMAIL_ADDRESS.sub("email", text)
+    text = PHONE_NUMBER.sub("phone", text)
+    return text[:MAX_VALUE_LENGTH]
+
+
 def redact_header_value(name: str, value: str, safe: set[str]) -> str:
     """Reduce one header value to what may be committed.
 
     A header on the safe list may still carry a credential: `Bearer abc123` in
     a user agent is a credential whoever sent it. The name of the header says
-    what may be shown; the value still goes through the rules.
+    what may be shown; the value still goes through the rules — including the
+    ones that need no name, because an allowlisted name is not a promise about
+    the value it carries.
     """
     if name.lower() in safe:
         if URL_VALUE.match(value):
             return redact_url(value)
-        return redact_credentials(value)[:MAX_VALUE_LENGTH]
+        return redact_generic_value(value)
     return placeholder(name.lower())
 
 
@@ -442,12 +506,7 @@ def redact_query_value(name: str, value: str) -> str:
         return placeholder("query-param")
     if URL_VALUE.match(value):
         return redact_url(value)
-    if OPAQUE_VALUE.match(value):
-        return placeholder("opaque")
-    text = redact_credentials(value)
-    text = EMAIL_ADDRESS.sub("email", text)
-    text = PHONE_NUMBER.sub("phone", text)
-    return text[:MAX_VALUE_LENGTH]
+    return redact_generic_value(value)
 
 
 def redact_error(value: Any) -> str | None:

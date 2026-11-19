@@ -206,7 +206,9 @@ The rules the redactor applies:
   `sec-ch-ua*`, `user-agent`, `x-requested-with`, `x-spa-version`); every other
   header keeps its name and loses its value. `x-userid` is **not** on the list:
   it identifies the account the request was made from, and a digit string is
-  short enough to pass every length-based rule;
+  short enough to pass every length-based rule. An allowlisted name is not a
+  promise about the value it carries: the value of an allowed header goes
+  through the shape rules too, so a UUID or an opaque token in it is replaced;
 - a response header keeps its value only if it is on its own allowlist
   (`content-encoding`, `content-length`, `content-type`, `server`,
   `statuscode`, `x-cache-status`); every other response header is dropped
@@ -243,8 +245,11 @@ The rules the redactor applies:
   it is replaced (the identifier of a profile, written in groups too short for
   the other rules to see), and a name
   that carries a long run of digits is dropped: that is the shape of an account
-  id. The name of the file is the source of the id of the capture as well, so it
-  is reduced **once**, before either reaches the committed file;
+  id. A dotted name is a name: its parts are judged one by one, so an
+  investigation called `catalog.investigation.2026.11.19` keeps its parts and
+  only a part that has the shape of a token is replaced. The name of the file
+  is the source of the id of the capture as well, so it is reduced **once**,
+  before either reaches the committed file;
 - a note (`--note`) goes through the same rules: it loses its email addresses
   and its phone numbers, a long digit run in it (that is the shape of an account
   id) is dropped, its URLs become redacted URLs — wherever in the note they
@@ -255,7 +260,8 @@ The rules the redactor applies:
   for a phone number or an address puts it in an ordinary parameter. A phone
   number is recognised by its groups (`555-123-4567`, `+7 495 123 45 67`), so
   WB's own long digit runs (`dest=1259570991`) stay as they are — they are ids,
-  not phone numbers;
+  not phone numbers. A UUID in a parameter is the identifier of a profile and
+  is replaced, in braces as well as without them;
 - an error keeps only the **kind** of the failure (the exception class), never
   its text: an error message can quote the response, the URL or the request;
 - a response body is never included;

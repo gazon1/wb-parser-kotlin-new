@@ -659,3 +659,61 @@ def test_a_profile_id_in_a_variant_does_not_reach_the_capture():
 
     assert "550e8400" not in capture["id"]
     assert "550e8400" not in capture["sourceFile"]
+
+
+def test_a_profile_id_in_an_ordinary_query_parameter_is_replaced():
+    # The finding of the review: the UUID rule was applied to the names the
+    # operator chose, but not to the values of the query — and braces keep the
+    # opaque-value rule from seeing the identifier either.
+    url = redact.redact_url("https://example.com/api?profile={550e8400-e29b-41d4-a716-44665544a000}")
+
+    assert "550e8400" not in url
+
+
+def test_a_profile_id_in_an_allowed_header_is_replaced():
+    # The finding of the review: the name of a header says what may be shown,
+    # not what the value carries.
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "550e8400-e29b-41d4-a716-44665544a000"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert "550e8400" not in headers["user-agent"]
+
+
+def test_an_opaque_credential_in_an_allowed_header_is_replaced():
+    # The finding of the review: a long opaque value in an allowed header was
+    # kept, because nothing named it a credential.
+    headers = redact.redact_headers(
+        [{"name": "x-spa-version", "value": "9f8e7d6c5b4a39281706f5e4d3c2b1a0"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert "9f8e7d6c" not in headers["x-spa-version"]
+
+
+def test_an_ordinary_user_agent_survives_an_allowed_header():
+    # The counterpart of the finding: the rules must not throw the evidence away.
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0.0.0"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert headers["user-agent"] == "Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0.0.0"
+
+
+def test_a_dotted_investigation_name_keeps_its_parts():
+    # The finding of the review: a dotted name is a name, and replacing it with
+    # `opaque` throws the evidence away.
+    name = redact.safe_identifier("catalog.investigation.2026.11.19", "capture")
+
+    assert name == "catalog.investigation.2026.11.19"
+
+
+def test_a_token_inside_a_dotted_name_is_replaced():
+    # The counterpart of the finding: the parts of the name that are a token do
+    # not survive it.
+    name = redact.safe_identifier("capture.eyJhbGciOiJIUzI1NiJ9abcdefghij", "capture")
+
+    assert "abcdefghij" not in name
+    assert name == "capture.opaque"
