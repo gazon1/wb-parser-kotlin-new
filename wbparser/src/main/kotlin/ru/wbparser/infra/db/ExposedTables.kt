@@ -39,6 +39,7 @@ private val json = Json { ignoreUnknownKeys = true }
  * - Unique index on `(target_id, content_hash)` from V2__catalog_columns.sql
  * - `data JSONB` from V1__init.sql
  * - `scraped_items.target_id` is a **foreign key** into `crawl_targets(id)`
+ * - `scraped_items.feedback_points INTEGER` from V16__scraped_items_feedback_points.sql
  */
 object ScrapedItemsTable : Table("scraped_items") {
     val id: Column<UUID> = uuid("id")
@@ -53,6 +54,15 @@ object ScrapedItemsTable : Table("scraped_items") {
     val productId: Column<Long?> = long("product_id").nullable()
     val cashback: Column<BigDecimal?> = decimal("cashback", 10, 2).nullable()
     val cashbackPercent: Column<BigDecimal?> = decimal("cashback_percent", 5, 2).nullable()
+
+    /**
+     * The WB points the product pays for a review — «Баллы ВБ за отзыв».
+     *
+     * A different thing from [cashbackPercent]: the wallet cashback is a percentage of the
+     * price, the points are a count WB pays for a review. Nullable, because WB sends the
+     * field only for the products that carry points.
+     */
+    val feedbackPoints: Column<Int?> = integer("feedback_points").nullable()
 
     // Nullable, because V1 declares the column as `data JSONB` — without NOT NULL.
     val data: Column<SavedItem?> = jsonb("data", json, SavedItem.serializer()).nullable()

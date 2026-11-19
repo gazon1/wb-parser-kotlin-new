@@ -68,6 +68,7 @@ internal val REQUIRED_COLUMNS: List<String> =
         "scraped_items.seller",
         "scraped_items.cashback_percent",
         "scraped_items.cashback",
+        "scraped_items.feedback_points",
         "scraped_items.in_stock",
         "scraped_items.image_url",
         "scraped_items.product_url",

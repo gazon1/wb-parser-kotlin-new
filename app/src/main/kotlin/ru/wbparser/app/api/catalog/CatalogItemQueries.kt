@@ -152,6 +152,7 @@ class CatalogItemQueries(
                 seller = card.seller,
                 cashbackPercent = card.cashbackPercent,
                 cashbackRubles = card.cashbackRubles,
+                feedbackPoints = card.feedbackPoints,
                 inStock = card.inStock,
                 imageUrl = card.imageUrl,
                 productUrl = card.productUrl,

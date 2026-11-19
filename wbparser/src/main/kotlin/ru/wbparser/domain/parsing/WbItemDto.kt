@@ -35,9 +35,10 @@ import kotlinx.serialization.Serializable
  * field cannot decode a JSON number, and the whole page failed to parse when WB switched the
  * shape.
  *
- * [cashback] is a money amount in kopecks as well — WB reports the cashback in money, not as
- * a percentage, so the percentage is derived from the price. The percentage is recorded here
- * because it is the unit the storefront sorts by.
+ * [cashback] is **not** a money amount: WB sends the cashback as a percentage of the
+ * price (1 %..75 %, whole numbers). The monetary amount is derived from the price and
+ * that percentage. The percentage is recorded here because it is the unit the storefront
+ * sorts by.
  */
 @Serializable
 data class WbItemDto(
@@ -84,6 +85,15 @@ data class WbItemDto(
     val totalQuantity: Int? = null,
     /** Sizes array — the price is nested inside `sizes[0].price`. */
     val sizes: List<WbSizeDto>? = null,
+    /**
+     * The WB points a product pays for a review — «Баллы ВБ за отзыв».
+     *
+     * WB sends the number in the product object (observed values 80..450) and renders it as
+     * "N Б ЗА ОТЗЫВ" on the storefront. It is **not** the wallet cashback: a product with
+     * 300 points usually has `sizes[0].price.cashback = 0`. The field is present only for
+     * the products that carry points, so absent means "no points", not "unknown".
+     */
+    val feedbackPoints: Int? = null,
 )
 
 @Serializable
@@ -97,7 +107,15 @@ data class WbSizeDto(
  * @param basic the price before the discount.
  * @param product the price after the discount — what WB shows as the current price.
  * @param logistics the delivery cost.
- * @param cashback the cashback amount in kopecks.
+ * @param cashback the cashback **percentage** of the price (whole percent, 1..75).
+ *
+ * The unit of [cashback] was the mistake that kept this crawler from finding cashback
+ * products: read as kopecks, a `3` looked like 3 ₽ and every percentage came out as a
+ * hundredth of the real one. Three independent readings of the live endpoint agree that
+ * it is a percent — WB's own bundle clamps it with `Math.min(75, …)` and applies it to
+ * the price in rubles, the bit field `saleConditions >> 13 & 31` carries the same
+ * number, and the observed values (1..4) are percentages of four-digit prices, not
+ * plausible amounts of money.
  */
 @Serializable
 data class WbPriceDto(

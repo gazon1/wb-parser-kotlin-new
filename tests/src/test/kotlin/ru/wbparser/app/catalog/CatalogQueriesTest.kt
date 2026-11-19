@@ -447,6 +447,15 @@ class CatalogQueriesTest :
             result.items.first().cashbackPercent shouldBe java.math.BigDecimal("5.00")
         }
 
+        test("the points paid for a review are passed through") {
+            val target = fixture.seedTarget("Категория")
+            fixture.seedItem(target, feedbackPoints = 300)
+
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params()))
+
+            result.items.first().feedbackPoints shouldBe 300
+        }
+
         test("a row with no price has no price, and not a zero") {
             val target = fixture.seedTarget("Категория")
             fixture.seedItem(target, priceKopecks = null)

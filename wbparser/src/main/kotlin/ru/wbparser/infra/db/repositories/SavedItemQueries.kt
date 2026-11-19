@@ -191,6 +191,7 @@ private fun upsertOneItem(
     statement[ScrapedItemsTable.productId] = item.productId
     statement[ScrapedItemsTable.cashback] = item.cashbackKopecks?.let { kopecksToRubles(it) }
     statement[ScrapedItemsTable.cashbackPercent] = item.cashbackPercent?.let { BigDecimal.valueOf(it) }
+    statement[ScrapedItemsTable.feedbackPoints] = item.feedbackPoints
     statement[ScrapedItemsTable.data] = item
     statement[ScrapedItemsTable.contentHash] = item.contentHash
     statement[ScrapedItemsTable.scrapedAt] = now.atOffset(ZoneOffset.UTC)

@@ -47,7 +47,8 @@ internal object CatalogReadModel {
         """
         s.id, s.target_id, t.name AS target_name, s.title, s.price_kopecks,
         s.sale_price_kopecks, s.brand, s.seller, s.cashback_percent, s.cashback,
-        s.in_stock, s.image_url, s.product_url, s.scraped_at, s.product_id, s.match_id
+        s.feedback_points, s.in_stock, s.image_url, s.product_url, s.scraped_at,
+        s.product_id, s.match_id
         """
 
     /**

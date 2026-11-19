@@ -237,6 +237,7 @@ class CatalogFixture {
         seller: String? = "Продавец",
         cashbackPercent: Double? = 5.0,
         cashback: Double? = 24.95,
+        feedbackPoints: Int? = null,
         inStock: Boolean? = true,
         imageUrl: String? = "https://images.example.invalid/p.jpg",
         matchId: Long? = 42,
@@ -252,8 +253,8 @@ class CatalogFixture {
                         id, target_id, catalog_url, product_url, brand, seller,
                         price_kopecks, title, product_id, cashback, cashback_percent,
                         data, content_hash, scraped_at, match_id, catalog_name,
-                        sale_price_kopecks, in_stock, image_url
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)
+                        sale_price_kopecks, in_stock, image_url, feedback_points
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?)
                     """.trimIndent(),
                 ).use { statement ->
                     statement.setObject(1, id)
@@ -275,6 +276,7 @@ class CatalogFixture {
                     statement.setObject(17, salePriceKopecks)
                     statement.setObject(18, inStock)
                     statement.setString(19, imageUrl)
+                    statement.setObject(20, feedbackPoints)
                     statement.executeUpdate()
                 }
         }

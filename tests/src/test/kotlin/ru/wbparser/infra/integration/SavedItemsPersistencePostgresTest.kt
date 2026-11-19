@@ -80,6 +80,7 @@ class SavedItemsPersistencePostgresTest :
                         imageUrl = "https://images.wbstatic.net/x.jpg",
                         cashbackPercent = 10.0,
                         cashbackKopecks = 12990L,
+                        feedbackPoints = 300,
                         matchId = 777L,
                         seller = "Продавец",
                     ),
@@ -99,6 +100,8 @@ class SavedItemsPersistencePostgresTest :
             // cashback holds RUBLES, cashback_percent holds PERCENT — different units that
             // were previously written into a single column.
             row["cashback"] shouldBe BigDecimal("129.90")
+            // The points paid for a review — a count, not a percentage and not money.
+            row["feedback_points"] shouldBe 300
             row["match_id"] shouldBe 777L
             row["image_url"] shouldBe "https://images.wbstatic.net/x.jpg"
             row["product_url"].shouldNotBeNull()

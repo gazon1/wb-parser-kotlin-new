@@ -64,7 +64,12 @@ class CatalogReadModelTest :
         test("the model reads the same columns as the card's projection") {
             val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY)
 
-            sql shouldContain "s.id, s.target_id, t.name AS target_name, s.title, s.price_kopecks,"
-            sql shouldContain "s.scraped_at, s.product_id, s.match_id"
+            // Every column the card is made of is read by the model — the list is the
+            // card's, so a column added to one and forgotten in the other fails here
+            // instead of answering with one field less.
+            CatalogCardProjection.CARD_FIELDS.forEach { field ->
+                val column = if (field == "target_name") "t.name AS target_name" else "s.$field"
+                sql shouldContain column
+            }
         }
     })

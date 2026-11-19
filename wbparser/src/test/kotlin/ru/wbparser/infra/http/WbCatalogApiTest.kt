@@ -40,6 +40,24 @@ class WbCatalogApiTest :
             url shouldContain "query=&"
         }
 
+        test("buildWbApiUrl asks WB for the points-for-a-review filter — without it the points are almost absent") {
+            // Measured on the live endpoint: a plain catalog query for
+            // `menu_v3_9467 карты памяти` answered with 100 products, and only 2 of them
+            // carried `feedbackPoints`. With `ffeedbackpoints=1` the same catalog answered
+            // with 19 products, and all 19 carried points.
+            val url = WbCatalogApi.buildWbApiUrl(page = 1, searchQuery = "menu_v3_9467 карты памяти")
+
+            url shouldContain "ffeedbackpoints=1"
+        }
+
+        test("buildWbApiUrl does not ask for the wallet cashback filter — it is a different set of goods") {
+            // `fcashback=1` answers with the products that have a wallet cashback: 15 of
+            // them for the same catalog, all with a cashback of 1 %..4 % and zero points.
+            val url = WbCatalogApi.buildWbApiUrl(page = 1, searchQuery = "menu_v3_9467 карты памяти")
+
+            url shouldNotContain "fcashback"
+        }
+
         test("buildWbApiUrl carries the requested page through") {
             WbCatalogApi.buildWbApiUrl(page = 12, searchQuery = "menu_v3_9463 смартфон") shouldContain "page=12"
         }

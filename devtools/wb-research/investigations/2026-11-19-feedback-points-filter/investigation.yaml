@@ -1,0 +1,188 @@
+id: 2026-11-19-feedback-points-filter
+title: The points for a review live in feedbackPoints, and WB filters them with ffeedbackpoints
+scenario: wb-feedback-points
+site: www.wildberries.ru
+status: concluded
+created: 2026-11-19T18:00:00+03:00
+updated: 2026-11-19T20:30:00+03:00
+raw_captures: ~/.cache/wb-research/2026-11-19-feedback-points-filter/
+tools:
+  - name: chrome-use
+    version: 1.5.294
+
+steps:
+  - action: fetch the catalog endpoint for `menu_v3_9467 карты памяти` without any filter
+    expected: the catalog, and the products that carry points among them
+    observed: >-
+      200, total 50241, 100 products — and only 2 of them carried a `feedbackPoints` field
+      (both 250). Every product carried a wallet cashback of 0
+    evidence: [probe-points-filter-no-filter]
+  - action: fetch the same catalog with `ffeedbackpoints=1`
+    expected: the products that pay WB points for a review
+    observed: >-
+      200, total 19, 19 products — and all 19 carried points, 80..450. Every product still
+      carried a wallet cashback of 0
+    evidence: [probe-points-filter-ffeedbackpoints-1]
+  - action: fetch the same catalog with `fcashback=1` instead
+    expected: the products with a wallet cashback
+    observed: >-
+      200, total 15, 15 products — all 15 with a wallet cashback of 1 %..3 %, and none of
+      them with points
+    evidence: [probe-cashback-filter-fcashback-1]
+  - action: measure the cashback of the same `fcashback=1` products next to their prices
+    expected: the unit of `price.cashback` — an amount in kopecks or a percentage
+    observed: >-
+      cashback 1..3 against prices of 850..10000 ₽ (85000..1000000 kopecks). An amount in
+      kopecks would be 0.01..0.03 ₽ on those prices, which no storefront shows; a
+      percentage is 1 %..3 % of the price paid, which is what the storefront shows
+    evidence: [probe-cashback-pairs-fcashback-1]
+
+api_candidates:
+  - id: catalog-without-filter
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      appType: '1'
+      curr: rub
+      dest: '1259570991'
+      hide_vflags: '4294967296'
+      lang: ru
+      locale: ru
+      page: '1'
+      query: menu_v3_9467 карты памяти
+      resultset: catalog
+      sort: popular
+      spp: '30'
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+      x-userid: <redacted:x-userid>
+    observed_status: 200
+    response_content_type: text/plain; charset=UTF-8
+    response_body_bytes: null
+    response_schema:
+      top_level_keys: [metadata, products, total]
+      products: 100
+      products_with_feedback_points: 2
+  - id: catalog-with-feedback-points-filter
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      appType: '1'
+      curr: rub
+      dest: '1259570991'
+      ffeedbackpoints: '1'
+      hide_vflags: '4294967296'
+      lang: ru
+      locale: ru
+      page: '1'
+      query: menu_v3_9467 карты памяти
+      resultset: catalog
+      sort: popular
+      spp: '30'
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+      x-userid: <redacted:x-userid>
+    observed_status: 200
+    response_content_type: text/plain; charset=UTF-8
+    response_body_bytes: null
+    response_schema:
+      top_level_keys: [metadata, products, total]
+      products: 19
+      products_with_feedback_points: 19
+      feedback_points_observed: [80, 120, 200, 250, 300, 400, 450]
+  - id: catalog-with-cashback-filter
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      appType: '1'
+      curr: rub
+      dest: '1259570991'
+      fcashback: '1'
+      hide_vflags: '4294967296'
+      lang: ru
+      locale: ru
+      page: '1'
+      query: menu_v3_9467 карты памяти
+      resultset: catalog
+      sort: popular
+      spp: '30'
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+      x-userid: <redacted:x-userid>
+    observed_status: 200
+    response_content_type: text/plain; charset=UTF-8
+    response_body_bytes: null
+    response_schema:
+      top_level_keys: [metadata, products, total]
+      products: 15
+      products_with_feedback_points: 0
+      cashback_percent_observed: [1, 2, 3]
+
+evidence:
+  - id: feedback-points-filter
+    fixture: evidence/feedback-points-filter.json
+    kind: probe
+    note: >-
+      the same catalog query in three variants — no filter, `ffeedbackpoints=1` and
+      `fcashback=1` — with the counts each of them measured
+    captures:
+      - probe-points-filter-no-filter
+      - probe-points-filter-ffeedbackpoints-1
+      - probe-cashback-filter-fcashback-1
+      - probe-cashback-pairs-fcashback-1
+
+validation:
+  - claim: WB sends the points it pays for a review in the product object, as `feedbackPoints`
+    state: reproduced
+    rationale: >-
+      two independent runs of the same catalog query found the field — 2 products of 100
+      without a filter, and all 19 products with `ffeedbackpoints=1`. The storefront's own
+      bundle reads the same name and renders it as "N Б ЗА ОТЗЫВ"
+    evidence: [probe-points-filter-no-filter, probe-points-filter-ffeedbackpoints-1]
+  - claim: `ffeedbackpoints=1` narrows the answer to the products that carry points
+    state: reproduced
+    rationale: >-
+      the same catalog answered 50241 products without the filter and 19 with it, and all
+      19 carried points (80..450). A second run on the same day answered 50246 and 19 —
+      the catalog moves, the ratio does not
+    evidence: [probe-points-filter-no-filter, probe-points-filter-ffeedbackpoints-1]
+  - claim: the wallet cashback filter selects a different set of goods than the points filter
+    state: reproduced
+    rationale: >-
+      `fcashback=1` answered 15 products, all with a wallet cashback of 1 %..3 % and none
+      with points; `ffeedbackpoints=1` answered 19 products, all with points and all with a
+      wallet cashback of 0. The two sets do not overlap in this catalog
+    evidence: [probe-points-filter-ffeedbackpoints-1, probe-cashback-filter-fcashback-1]
+  - claim: `price.cashback` is a percentage, not an amount in kopecks
+    state: reproduced
+    rationale: >-
+      the same `fcashback=1` products measured with their prices: cashback 1..3 against
+      prices of 85000..1000000 kopecks. Read as an amount it would be 0.01..0.03 ₽, which
+      the storefront never shows; read as a percentage it is 1 %..3 % of the price paid
+    evidence: [probe-cashback-pairs-fcashback-1]
+  - claim: `ffeedbackpoints` is WB's own filter for «Баллы ВБ за отзыв»
+    state: observed
+    rationale: >-
+      the `resultset=filters` answer of a text search lists it under that name with a
+      single item «Да». The filters answer of a menu-token catalog does not list it, and
+      the parameter works there all the same
+    evidence: [probe-points-filter-ffeedbackpoints-1]
+
+open_questions:
+  - whether the filter behaves the same in every catalog — only `menu_v3_9467` was measured
+  - >-
+    whether the points a product pays change over time, and whether a crawl should keep
+    the history of them the way it keeps the history of prices
+
+follow_up:
+  kotlin_adapter: done
+  issue: 309
+  pr: 316
+  note: >-
+    the crawler asks for `ffeedbackpoints=1` instead of `fcashback=1`, reads
+    `feedbackPoints` from the product object and stores it in its own column, so the
+    catalog API and the CLI can show the points without conflating them with the wallet
+    cashback

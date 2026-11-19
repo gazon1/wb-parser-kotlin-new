@@ -43,14 +43,15 @@ data class ParsedPage(
  *
  * ## Cashback units
  *
- * The Wildberries catalog API returns a single `cashback` string field whose unit is
- * not documented by WB. This codebase treats it as a **percentage** and derives the
- * monetary amount from the price. That assumption is recorded here because it is the
- * single place a wrong reading of the API would corrupt every downstream consumer.
+ * The Wildberries catalog API returns a single `cashback` field in `sizes[0].price`. Its
+ * unit is **percent** (1..75, whole numbers) — WB's own bundle clamps it with
+ * `Math.min(75, …)` and applies it to the price in rubles, and the bit field
+ * `saleConditions >> 13 & 31` carries the same number. [cashbackPercent] therefore holds
+ * the field as it came, and [cashbackKopecks] holds the money derived from the price paid.
  *
- * If a live API response proves the field is a monetary amount instead, change
- * [cashbackPercent] to a monetary field and derive the percentage — the rest of the
- * pipeline only consumes these two values.
+ * The unit is recorded here because it is the single place a wrong reading of the API
+ * would corrupt every downstream consumer: read as kopecks, a `3` looked like 3 ₽ and
+ * every percentage came out a hundredth of the real one.
  */
 data class ParsedItem(
     val productId: ProductId,
@@ -74,4 +75,12 @@ data class ParsedItem(
     val matchId: Long? = null,
     val seller: String? = null,
     val inStock: Boolean,
+    /**
+     * The WB points the product pays for a review — «Баллы ВБ за отзыв».
+     *
+     * A different thing from the wallet cashback: WB sends the points in the product
+     * object (`feedbackPoints`), and a product with 300 points usually has a wallet
+     * cashback of zero. Null means the product carries no points.
+     */
+    val feedbackPoints: Int? = null,
 )

@@ -39,4 +39,13 @@ class CatalogRequiredColumnsTest :
         test("every required column is named once") {
             REQUIRED_COLUMNS.distinct().size shouldBe REQUIRED_COLUMNS.size
         }
+
+        test("every column the card reads is on the list") {
+            val cardColumns =
+                CatalogCardProjection.CARD_FIELDS.map { field ->
+                    if (field == "target_name") "crawl_targets.name" else "scraped_items.$field"
+                }
+
+            REQUIRED_COLUMNS.shouldContainAll(cardColumns)
+        }
     })
