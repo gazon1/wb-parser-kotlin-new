@@ -179,8 +179,10 @@ CREDENTIAL_PATH_COMPONENTS = {
     "verify",
 }
 
-# A segment that is a whole credential name.
-CREDENTIAL_SEGMENT = re.compile(r"(?i)" + CREDENTIAL_NAME)
+# A segment that is a whole credential name. The name may carry a prefix of its
+# own, as it may in an assignment: `oauth.access_token` says the same as
+# `access_token`.
+CREDENTIAL_SEGMENT = re.compile(r"(?i)" + CREDENTIAL_NAME_PREFIX + CREDENTIAL_NAME)
 
 # A value that looks like an opaque credential: long, no spaces, no URL
 # punctuation. This is what catches a profile identifier or a token that the
@@ -255,11 +257,12 @@ def looks_like_credential(value: str) -> bool:
     A name and a value separated by a space is a weak shape: `token started` is
     a sentence, `token abc123` is a credential. The value is a credential when
     it carries a digit or an upper-case letter, or when it is long enough to be
-    one anyway.
+    one anyway — a long run of lower-case letters is a word (`generated`), not
+    a credential.
     """
     if len(value) < 4:
         return False
-    return any(c.isdigit() for c in value) or any(c.isupper() for c in value) or len(value) >= 8
+    return any(c.isdigit() for c in value) or any(c.isupper() for c in value) or len(value) >= 16
 
 
 def redact_credentials(text: str, label: str = "credential") -> str:
