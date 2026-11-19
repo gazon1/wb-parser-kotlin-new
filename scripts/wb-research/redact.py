@@ -110,6 +110,55 @@ SENSITIVE_QUERY_PARAMS = {
 # the front of it.
 CREDENTIAL_NAME_SUFFIX = ("_token", "_secret", "_password", "_key", "_passwd")
 
+# The word in the middle of a credential name. The name is what carries the
+# rule; the value beside it can be short, so the value itself cannot be
+# recognized — only the name can.
+CREDENTIAL_WORD = (
+    r"(?:access[_-]?token|refresh[_-]?token|id[_-]?token|auth[_-]?token|session[_-]?token"
+    r"|client[_-]?secret|app[_-]?secret|api[_-]?secret|private[_-]?key|secret[_-]?key"
+    r"|api[_-]?key|access[_-]?key|session[_-]?id|sessionid|authorization|credential"
+    r"|cookie|token|secret|password|passwd|auth|session)"
+)
+
+# A credential written as an assignment: `access_token=abc123`, `password: abc123`.
+CREDENTIAL_ASSIGNMENT = re.compile(
+    r"(?i)(?<![\w.-])((?:[A-Za-z0-9]+[._-])*" + CREDENTIAL_WORD + r"[A-Za-z0-9_.-]*)"
+    r"(\s*[=:]\s*)"
+    r"(\"[^\"]*\"|'[^']*'|[^\s,;\"']+)"
+)
+
+# A credential written as a name and a value joined by a dash: `access_token-abc123`.
+# This is the shape a slug takes, and a slug is what an operator-chosen file name
+# becomes.
+CREDENTIAL_DASHED = re.compile(
+    r"(?i)(?<![\w.-])((?:[A-Za-z0-9]+[._-])*" + CREDENTIAL_WORD + r")([_-])([A-Za-z0-9]{4,})(?![A-Za-z0-9])"
+)
+
+# An authorization scheme with its credential: `Bearer abc123`.
+BEARER_VALUE = re.compile(r"(?i)\b(bearer|basic)(\s+)([A-Za-z0-9._+/=-]{4,})")
+
+# A path segment that names what the next segment is: the segment after it is a
+# credential, whatever it looks like.
+CREDENTIAL_PATH_COMPONENTS = {
+    "activation",
+    "activate",
+    "apikey",
+    "auth",
+    "code",
+    "invitation",
+    "invite",
+    "key",
+    "otp",
+    "passwd",
+    "password",
+    "reset",
+    "reset-password",
+    "secret",
+    "session",
+    "token",
+    "verify",
+}
+
 # A value that looks like an opaque credential: long, no spaces, no URL
 # punctuation. This is what catches a profile identifier or a token that the
 # name-based rules did not. The dot is inside the character class because a JWT
@@ -177,6 +226,22 @@ def placeholder(kind: str) -> str:
     return f"<redacted:{kind}>"
 
 
+def redact_credentials(text: str, label: str = "credential") -> str:
+    """The credentials in a text, whatever the shape of the text is.
+
+    The credential is recognized by the *name* beside it: `access_token=abc123`,
+    `password: abc123`, `access_token-abc123`, `Bearer abc123`. The value can be
+    short, so no length-based rule can find it — only the name can. Every shape
+    of value goes through here: a header value, a note, a path segment, a query
+    value, a file name.
+    """
+    marker = "redacted" if label == "redacted" else placeholder(label)
+    text = CREDENTIAL_ASSIGNMENT.sub(lambda m: f"{m.group(1)}{m.group(2)}{marker}", text)
+    text = CREDENTIAL_DASHED.sub(lambda m: f"{m.group(1)}{m.group(2)}{marker}", text)
+    text = BEARER_VALUE.sub(lambda m: f"{m.group(1)}{m.group(2)}{marker}", text)
+    return text
+
+
 def safe_identifier(value: Any, fallback: str) -> str:
     """An operator-chosen name, reduced to a slug that cannot carry a secret.
 
@@ -188,7 +253,8 @@ def safe_identifier(value: Any, fallback: str) -> str:
     slug of them would still be them, spelled out.
     """
     raw = str(value or "")
-    text = EMAIL_ADDRESS.sub("email", raw)
+    text = redact_credentials(raw, label="redacted")
+    text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
     text = OPAQUE_IDENTIFIER.sub("opaque", text)
     text = UNSAFE_IDENTIFIER.sub("-", text).strip("-")
@@ -270,17 +336,23 @@ def redact_note(note: str) -> str:
     text = EMAIL_ADDRESS.sub("email", str(note))
     text = PHONE_NUMBER.sub("phone", text)
     text = URL_IN_TEXT.sub(lambda match: redact_url(match.group(0)), text)
+    text = redact_credentials(text)
     text = OPAQUE_TOKEN.sub(placeholder("opaque"), text)
     text = LONG_DIGIT_RUN.sub(placeholder("account-id"), text)
     return text[:MAX_VALUE_LENGTH]
 
 
 def redact_header_value(name: str, value: str, safe: set[str]) -> str:
-    """Reduce one header value to what may be committed."""
+    """Reduce one header value to what may be committed.
+
+    A header on the safe list may still carry a credential: `Bearer abc123` in
+    a user agent is a credential whoever sent it. The name of the header says
+    what may be shown; the value still goes through the rules.
+    """
     if name.lower() in safe:
         if URL_VALUE.match(value):
             return redact_url(value)
-        return value[:MAX_VALUE_LENGTH]
+        return redact_credentials(value)[:MAX_VALUE_LENGTH]
     return placeholder(name.lower())
 
 
@@ -299,7 +371,8 @@ def redact_query_value(name: str, value: str) -> str:
         return redact_url(value)
     if OPAQUE_VALUE.match(value):
         return placeholder("opaque")
-    text = EMAIL_ADDRESS.sub("email", value)
+    text = redact_credentials(value)
+    text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
     return text[:MAX_VALUE_LENGTH]
 
@@ -349,9 +422,23 @@ def redact_path(path: str) -> str:
     if not path:
         return path
     decoded = decode_path(path)
-    text = EMAIL_ADDRESS.sub("email", decoded)
-    text = PHONE_NUMBER.sub("phone", text)
-    text = OPAQUE_TOKEN.sub("opaque", text)
+    segments = decoded.split("/")
+    kept = []
+    previous = ""
+    for segment in segments:
+        text = EMAIL_ADDRESS.sub("email", segment)
+        text = PHONE_NUMBER.sub("phone", text)
+        text = OPAQUE_TOKEN.sub("opaque", text)
+        text = redact_credentials(text, label="credential")
+        if previous.lower() in CREDENTIAL_PATH_COMPONENTS and not text.startswith(
+            ("opaque", "email", "phone", "<redacted")
+        ):
+            # The segment after a component that names a credential is one, even
+            # when it is short enough to pass every length-based rule.
+            text = "credential"
+        kept.append(text)
+        previous = segment
+    text = "/".join(kept)
     if text == decoded:
         return path
     return quote(text, safe=PATH_SAFE)

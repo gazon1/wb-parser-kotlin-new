@@ -370,6 +370,46 @@ def test_an_ordinary_query_parameter_keeps_its_value():
     assert "spp=30" in url
 
 
+def test_a_credential_in_an_allowed_header_value_is_replaced():
+    # The finding of the review: a header on the safe list may still carry a
+    # credential, and the value is what carries it.
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "Bearer abc123"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert "abc123" not in headers["user-agent"]
+
+
+def test_a_short_credential_in_a_note_is_replaced():
+    # The finding of the review: the opaque-value rule needs 24 characters, so a
+    # short credential in a note passed it.
+    note = redact.redact_note("failed request: access_token=abc123")
+
+    assert "abc123" not in note
+
+
+def test_a_short_credential_after_a_path_component_is_replaced():
+    # The finding of the review: a reset link carries a short token as well.
+    url = redact.redact_url("https://example.com/reset/abc123")
+
+    assert "abc123" not in url
+
+
+def test_an_encoded_short_credential_after_a_path_component_is_replaced():
+    url = redact.redact_url("https://example.com/reset/%61bc123")
+
+    assert "abc123" not in url
+
+
+def test_a_short_credential_in_a_name_is_replaced():
+    # The finding of the review: the name of a capture file reaches the
+    # committed file as it is.
+    name = redact.safe_identifier("capture-access_token-abc123", "capture")
+
+    assert "abc123" not in name
+
+
 def test_an_operator_chosen_name_is_reduced_to_a_slug():
     assert redact.safe_identifier("probe/customer alice@example.com", "capture") == "probe-customer-email"
 
