@@ -238,7 +238,10 @@ The rules the redactor applies:
   of lower-case letters is a word, `token-generated` is a slug). The names the
   sanitizer treats as sensitive parameters — `auth`, `otp`, `sid`, `pwd`,
   `_wbauid` — are credential names everywhere: a note and an allowlisted header
-  are not places where `auth=abc123` is safe;
+  are not places where `auth=abc123` is safe. Such a name may carry a qualifier
+  and stay one: `auth_code`, `authCode`, `authorization_code` are credential
+  names. The qualifier alone is not one — `code` is a word of the site
+  (`promo_code`), and `key_code` is a business term;
 - a path segment that names a credential (`reset`, `otp`, `token`,
   `access_token`, `oauth.access_token`) says that the next segment is one,
   whatever it looks like;

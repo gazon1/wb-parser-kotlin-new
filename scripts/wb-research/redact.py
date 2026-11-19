@@ -124,9 +124,19 @@ CREDENTIAL_CORE = r"(?:token|secret|key|password|passwd|cookie|credential|author
 # note and an allowlisted header are not places where `auth=abc123` is safe.
 STANDALONE_CREDENTIAL_NAMES = ("auth", "otp", "sid", "pwd", "_wbauid")
 
+# A credential name that carries a qualifier: `auth_code`, `otpCode`. The
+# qualifier alone is not a credential — `code` is a word of the site (`promo_code`
+# is a product's code) — so only a name that is already a credential takes one.
+# `key_code` is a business term, and `token_type` is a name of a scheme: the
+# base is a short name of a credential, or `authorization`, whose code is a secret
+# by the name itself.
+CREDENTIAL_QUALIFIER = r"(?:code)"
+CREDENTIAL_QUALIFIED_BASE = r"(?:" + "|".join(STANDALONE_CREDENTIAL_NAMES) + r"|authorization)"
+
 CREDENTIAL_NAME = (
     r"(?:(?:" + CREDENTIAL_PREFIX + r")[._-]?)?" + CREDENTIAL_CORE + r"|(?:session|user)[._-]?id|sessionid|userid"
     r"|(?:" + "|".join(STANDALONE_CREDENTIAL_NAMES) + r")"
+    r"|" + CREDENTIAL_QUALIFIED_BASE + r"[._-]?" + CREDENTIAL_QUALIFIER
 )
 
 # The same name, grouped, so that it can be used inside another pattern.

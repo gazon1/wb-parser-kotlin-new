@@ -819,3 +819,34 @@ def test_a_word_that_starts_like_a_credential_name_is_not_one():
     note = redact.redact_note("author=Alice")
 
     assert "Alice" in note
+
+
+def test_a_qualified_credential_name_is_a_credential():
+    # The finding of the review: `auth_code` is a credential name with a
+    # qualifier, and the grammar knew only the names without one.
+    assert redact.redact_query_value("auth_code", "abc123") == "<redacted:query-param>"
+    assert redact.redact_query_value("authCode", "abc123") == "<redacted:query-param>"
+    assert redact.redact_query_value("otp_code", "123456") == "<redacted:query-param>"
+    assert redact.redact_query_value("authorization_code", "xyz") == "<redacted:query-param>"
+
+
+def test_a_qualified_credential_name_is_replaced_everywhere():
+    note = redact.redact_note("callback failed: auth_code=abc123")
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "auth_code=abc123"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+    url = redact.redact_url("https://example.com/callback/auth_code/abc123")
+
+    assert "abc123" not in note
+    assert "abc123" not in headers["user-agent"]
+    assert "abc123" not in url
+
+
+def test_a_qualifier_alone_is_not_a_credential():
+    # The counterpart: only a name that is already a credential takes one.
+    # `code` is a word of the site, and `key_code` is a business term.
+    assert redact.redact_query_value("code", "ABC123") == "ABC123"
+    assert redact.redact_query_value("promo_code", "WB-42") == "WB-42"
+    assert redact.redact_query_value("key_code", "ABC") == "ABC"
+    assert redact.redact_query_value("token_type", "Bearer") == "Bearer"
