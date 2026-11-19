@@ -32,6 +32,10 @@ async function (args) {
     'upgrade', 'via', 'user-agent'
   ];
   const FORBIDDEN_PREFIXES = ['proxy-', 'sec-'];
+  // These three are forbidden only when their value is a forbidden method
+  // (CONNECT, TRACE, TRACK): with any other value Chrome sends them through.
+  const FORBIDDEN_BY_VALUE = ['x-http-method', 'x-http-method-override', 'x-method-override'];
+  const FORBIDDEN_METHODS = ['connect', 'trace', 'track'];
   const API_PATH = '__internal/u-search/exactmatch/ru/common/v18/search';
   const DEST = '1259570991';
 
@@ -75,8 +79,12 @@ async function (args) {
   const names = Object.keys(headers);
   const dropped = names.filter((h) => {
     const low = h.toLowerCase();
-    return FORBIDDEN.indexOf(low) >= 0 ||
-      FORBIDDEN_PREFIXES.some((prefix) => low.indexOf(prefix) === 0);
+    if (FORBIDDEN.indexOf(low) >= 0) return true;
+    if (FORBIDDEN_PREFIXES.some((prefix) => low.indexOf(prefix) === 0)) return true;
+    if (FORBIDDEN_BY_VALUE.indexOf(low) < 0) return false;
+    // The value is a list of methods; the header is forbidden when one of them is.
+    return String(headers[h]).split(',')
+      .some((method) => FORBIDDEN_METHODS.indexOf(method.trim().toLowerCase()) >= 0);
   });
 
   let resp;

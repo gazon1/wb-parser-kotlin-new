@@ -75,9 +75,11 @@ class WbCatalogAdapterTest :
             // error. The adapter exists to show that, so a name missing from the list
             // is a header it reports as sent while the browser never sent it.
             //
-            // The `X-HTTP-Method*` names are left out on purpose: the standard
+            // The `X-HTTP-Method*` names are not here on purpose: the standard
             // forbids them only when their value is a forbidden method
-            // (`CONNECT`, `TRACE`, `TRACK`), and a real Chrome sent them through.
+            // (`CONNECT`, `TRACE`, `TRACK`), so they cannot be listed by name
+            // alone. The adapter decides them by value, and that rule is
+            // executed by `scripts/tests/test_chrome_use_adapter.py`.
             forbiddenNames() shouldContainAll
                 listOf(
                     "accept-charset",
