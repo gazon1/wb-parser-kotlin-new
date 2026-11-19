@@ -36,6 +36,10 @@ async function (args) {
   // (CONNECT, TRACE, TRACK): with any other value Chrome sends them through.
   const FORBIDDEN_BY_VALUE = ['x-http-method', 'x-http-method-override', 'x-method-override'];
   const FORBIDDEN_METHODS = ['connect', 'trace', 'track'];
+  // Byte-case-insensitive, like the Fetch Standard: only ASCII letters fold.
+  // `toLowerCase()` would also fold a Kelvin sign (U+212A) into `k`, and
+  // `TRACK` with that sign is not a byte-case-insensitive match for `TRACK`.
+  const asciiLower = (value) => value.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
   const API_PATH = '__internal/u-search/exactmatch/ru/common/v18/search';
   const DEST = '1259570991';
 
@@ -88,7 +92,7 @@ async function (args) {
     // is not HTTP whitespace, and `TRACE\u00A0` is not a forbidden method.
     return String(headers[h]).split(',')
       .map((method) => method.replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, ''))
-      .some((method) => FORBIDDEN_METHODS.indexOf(method.toLowerCase()) >= 0);
+      .some((method) => FORBIDDEN_METHODS.indexOf(asciiLower(method)) >= 0);
   });
 
   let resp;

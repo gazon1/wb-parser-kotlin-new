@@ -186,6 +186,17 @@ class ChromeUseAdapterTest(unittest.TestCase):
         self.assertEqual(dropped, {"x-http-method"})
         self.assertIn("x-method-override", sent)
 
+    def test_only_ascii_letters_fold_when_the_method_is_compared(self) -> None:
+        # Запрещённый метод ищется byte-case-insensitive: сворачиваются только
+        # ASCII-буквы. Знак Кельвина (U+212A) — не ASCII, и `TR\u212aCK` не
+        # совпадает с `TRACK`, поэтому браузер такой заголовок отправляет.
+        result = run_adapter({"x-http-method": "TR\u212aCK"})["result"]
+
+        dropped = {name.lower() for name in result["request"]["droppedByBrowser"]}
+        sent = {name.lower() for name in result["request"]["sentByBrowser"]}
+        self.assertEqual(dropped, set())
+        self.assertIn("x-http-method", sent)
+
     def test_the_request_reaches_the_fetch_with_the_crawler_headers(self) -> None:
         # Тот же набор заголовков, что и у краулера: адаптер проверяет production-
         # запрос, и без `deviceid` WB отвечает 403.

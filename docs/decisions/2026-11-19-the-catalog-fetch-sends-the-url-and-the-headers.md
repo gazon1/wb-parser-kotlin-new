@@ -60,9 +60,11 @@ forbidden method. `user-agent` is not on that list, but Chrome ignores a page-su
 value for it, so the adapter reports it as dropped as well.
 
 The conditional names are compared the way the standard compares them: the value is split
-on commas and each part is stripped of HTTP whitespace only (LF, CR, tab, space). A
-non-breaking space is not HTTP whitespace, so `TRACE` followed by one is not a
-forbidden method and the browser sends that header through.
+on commas and each part is stripped of HTTP whitespace only (LF, CR, tab, space) and matched
+byte-case-insensitively, so only ASCII letters fold. A non-breaking space is not HTTP
+whitespace and a Kelvin sign is not an ASCII `K`, so `TRACE` followed by the first and
+`TRACK` spelled with the second are not forbidden methods, and the browser sends those
+headers through.
 
 ## Consequences
 
@@ -81,5 +83,8 @@ forbidden method and the browser sends that header through.
 - **Always** strip only HTTP whitespace when a header value is compared with the
   standard's rules: `trim()` also removes Unicode whitespace the browser keeps, and the
   adapter then reports a sent header as dropped.
+- **Always** compare a method byte-case-insensitively: only ASCII letters fold, while
+  `toLowerCase()` also folds a Kelvin sign into `k` and makes a sent header look
+  forbidden.
 - The session cookies travel with `credentials: 'include'`; the browser context's cookie
   jar is no longer read by the downloader.
