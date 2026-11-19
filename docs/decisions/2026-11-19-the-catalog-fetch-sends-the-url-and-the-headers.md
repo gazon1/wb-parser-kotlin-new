@@ -60,5 +60,8 @@ that is not under `headers` cannot become a header.
   browser owns them and drops ours without an error.
 - **Always** verify a browser-fetch assumption against a real browser session, not against
   the configured constants.
+- **Always** keep the development adapter's default headers equal to
+  `WbCatalogApi.buildWbHeaders()`: an adapter that sends a different request than the
+  crawler verifies nothing (and gets 403 without `deviceid`).
 - The session cookies travel with `credentials: 'include'`; the browser context's cookie
   jar is no longer read by the downloader.

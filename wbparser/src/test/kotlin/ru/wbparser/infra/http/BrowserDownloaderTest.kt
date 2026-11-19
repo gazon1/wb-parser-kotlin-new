@@ -148,6 +148,10 @@ class BrowserDownloaderTest :
 
             val headers = request["headers"] as Map<*, *>
             headers["deviceid"] shouldBe "site_a39361daf4ec45f2a68c5c6ca73c8adf"
+            // Exactly the four headers the catalog request needs — no more, so an
+            // added one cannot reach WB unnoticed.
+            headers.keys.map { (it as String).lowercase() }.toSet() shouldBe
+                setOf("deviceid", "x-requested-with", "x-spa-version", "x-userid")
             // Internal metadata is not a header, and a header the browser forbids is
             // not sent at all — neither belongs in the request.
             headers.keys.none { (it as String).startsWith("__") } shouldBe true

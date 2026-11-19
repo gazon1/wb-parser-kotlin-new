@@ -50,6 +50,10 @@ chrome-use site wildberries/catalog-request \
   --json
 ```
 
+The adapter sends the same four headers the crawler sends — `deviceid`, `x-requested-with`,
+`x-spa-version`, `x-userid` — so it reproduces the production request rather than a
+different one.
+
 `--extraHeaders` sends additional request headers as a JSON object. It is how the forbidden
 headers are demonstrated: pass `cookie`, `user-agent`, `referer` or a `sec-ch-ua*` hint and
 watch them land in `droppedByBrowser`.

@@ -62,8 +62,26 @@ class WbCatalogApiTest :
             // The Fetch standard forbids page JavaScript from setting these: the browser
             // sets its own values and drops ours without an error. A stale `Chrome/143`
             // in this list looked like an impersonation the browser never performed.
-            headers.keys.none { it == "cookie" || it == "user-agent" || it == "referer" } shouldBe true
-            headers.keys.none { it.startsWith("sec-") } shouldBe true
+            // Header names are case-insensitive: `Cookie` is the same forbidden header
+            // as `cookie`, and a case-sensitive check would let it through.
+            val names = headers.keys.map { it.lowercase() }
+            names.none { it == "cookie" || it == "user-agent" || it == "referer" } shouldBe true
+            names.none { it.startsWith("sec-") } shouldBe true
+        }
+
+        test("buildWbHeaders sends exactly the four headers WB insists on") {
+            // The set is the contract, not a subset of it: a header added here goes to
+            // WB, and one removed from here is one WB may answer 403 to. The names are
+            // compared case-insensitively — HTTP header names are case-insensitive, so
+            // `Cookie` would be the very same header as `cookie`.
+            val names =
+                WbCatalogApi
+                    .buildWbHeaders()
+                    .keys
+                    .map { it.lowercase() }
+                    .toSet()
+
+            names shouldBe setOf("deviceid", "x-requested-with", "x-spa-version", "x-userid")
         }
 
         test("buildWbHeaders keeps the headers WB's own catalog request carries") {
@@ -88,6 +106,14 @@ class WbCatalogApiTest :
             // script source produces invalid JS. They must arrive as a parsed argument.
             WbCatalogFetchScript.FETCH_SCRIPT shouldContain "JSON.parse(requestArg)"
             WbCatalogFetchScript.FETCH_SCRIPT shouldNotContain "site_a39361"
+        }
+
+        test("the fetch script hands the parsed headers to fetch instead of dropping them") {
+            // The script is a string, so this is a source-level check rather than an
+            // execution: it pins that the headers travel from the argument into the
+            // fetch call. A `headers: {}` in there would silently drop all four.
+            WbCatalogFetchScript.FETCH_SCRIPT shouldContain "fetch(request.url"
+            WbCatalogFetchScript.FETCH_SCRIPT shouldContain "headers: request.headers"
         }
 
         test("the fetch script sends credentials instead of a cookie header") {

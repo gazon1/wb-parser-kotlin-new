@@ -635,6 +635,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** leave a widget's default width in a row of buttons: a Textual `Input` is 100% wide, and it pushes what follows it off the screen. _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
 - **Never** read a child's output in a thread. The subprocess layer reads it asynchronously, and a thread cannot be cancelled. _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
 - **Always** keep internal metadata out of the request header map — a URL is a field of the fetch argument, not a header. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
+- **Always** keep the development adapter's default headers equal to `WbCatalogApi.buildWbHeaders()`: an adapter that sends a different request than the crawler verifies nothing (and gets 403 without `deviceid`). _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
 - **Always** verify a browser-fetch assumption against a real browser session, not against the configured constants. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
 - **Never** set `cookie`, `user-agent`, `referer` or `sec-*` from page JavaScript: the browser owns them and drops ours without an error. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
 

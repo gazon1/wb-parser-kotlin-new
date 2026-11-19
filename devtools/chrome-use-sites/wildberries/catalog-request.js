@@ -50,7 +50,15 @@ async function (args) {
   const qs = Object.keys(params).map((k) => k + '=' + encodeURIComponent(params[k])).join('&');
   const apiUrl = 'https://www.wildberries.ru/' + API_PATH + '?' + qs;
 
-  let headers = {'x-requested-with': 'XMLHttpRequest', 'x-userid': '0'};
+  // The same four headers the crawler sends (WbCatalogApi.buildWbHeaders), so the
+  // adapter reproduces the production request instead of a different one: WB answers
+  // 403 without `deviceid`.
+  let headers = {
+    'deviceid': 'site_a39361daf4ec45f2a68c5c6ca73c8adf',
+    'x-requested-with': 'XMLHttpRequest',
+    'x-spa-version': '14.28.3',
+    'x-userid': '0'
+  };
   if (args.extraHeaders) {
     try {
       headers = Object.assign(headers, JSON.parse(args.extraHeaders));
