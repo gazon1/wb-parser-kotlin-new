@@ -97,7 +97,9 @@ class CatalogItemQueries(
      * And it has to be the *current* observation of its product: the membership is
      * decided on the newest observation, so an older observation that paid points is
      * not a product of the catalog either — the product left it when the newer
-     * observation arrived.
+     * observation arrived. The comparison stays inside the target of the row: a
+     * product is observed per catalog, and a newer observation of it in another
+     * target is another product of another catalog.
      */
     fun getItem(id: UUID): ProductDetail? =
         dataSource.read { connection ->

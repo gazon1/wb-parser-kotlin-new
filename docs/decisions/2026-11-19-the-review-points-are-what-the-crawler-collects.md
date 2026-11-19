@@ -94,6 +94,10 @@ reported, dressed up as a fix.
 - **Always** let the detail read answer about the current observation of the product. An
   old observation is a price the product does not have, and the id of it is not an id the
   storefront can show.
+- **Always** decide what is current inside the target the row belongs to. A product is
+  observed per catalog, so a newer observation of it in another target is another product
+  of another catalog — and a detail read that answered 404 for a row the list of its own
+  target shows would be two answers about one catalog.
 - A crawl of a category now yields the review-point-carrying products of that category only
   (tens, not hundreds per category) — the catalog shrank because the catalog *is* the
   answer to "which of these products pay for a review".

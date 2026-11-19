@@ -67,13 +67,20 @@ internal object CatalogReadModel {
      * already knows the id of the row it looks for: a newer observation of the same
      * product makes that row an old one. The rows without a product id are one product
      * for the read model as well, so they are matched with the same rule.
+     *
+     * The comparison stays inside the target: a product is observed per catalog, and
+     * the list that names a target decides what is current inside that target. A newer
+     * observation of the same product in *another* target is another product of another
+     * catalog — the detail read must not answer 404 for a row that the list of its own
+     * target shows.
      */
     const val CURRENT_OBSERVATION: String =
         """
         NOT EXISTS (
             SELECT 1
               FROM scraped_items newer
-             WHERE (newer.product_id = s.product_id
+             WHERE newer.target_id = s.target_id
+               AND (newer.product_id = s.product_id
                     OR (newer.product_id IS NULL AND s.product_id IS NULL))
                AND (newer.scraped_at, newer.id) > (s.scraped_at, s.id))
         """
