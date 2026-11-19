@@ -599,3 +599,38 @@ def test_an_ordinary_word_that_starts_like_a_credential_keeps_its_value():
     note = redact.redact_note("author: Wildberries request")
 
     assert note == "author: Wildberries request"
+
+
+def test_a_credential_value_that_begins_with_a_marker_is_replaced():
+    # The finding of the review: the marker exemption was a prefix check, so a
+    # value that began with `opaque` passed it. A value is a value.
+    for value in ("opaque123", "email123", "phone123"):
+        url = redact.redact_url(f"https://example.com/reset/{value}")
+
+        assert value not in url
+
+
+def test_a_credential_value_after_a_qualified_name_is_replaced():
+    url = redact.redact_url("https://example.com/oauth.access_token/opaque123")
+
+    assert "opaque123" not in url
+
+
+def test_an_ordinary_word_after_a_dashed_credential_name_keeps_its_value():
+    # The finding of the review: a slug is a name and a word, not a credential.
+    note = redact.redact_note("token-generated")
+
+    assert "generated" in note
+
+
+def test_a_dashed_credential_with_a_digit_in_it_is_replaced():
+    note = redact.redact_note("token-abc123")
+
+    assert "abc123" not in note
+
+
+def test_a_proper_noun_after_a_credential_name_keeps_its_value():
+    # The finding of the review: a capital at the start alone is a word.
+    note = redact.redact_note("the token Wildberries uses for this request")
+
+    assert "Wildberries" in note

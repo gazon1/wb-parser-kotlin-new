@@ -138,7 +138,8 @@ CREDENTIAL_ASSIGNMENT = re.compile(
 
 # A credential written as a name and a value joined by a dash: `access_token-abc123`.
 # This is the shape a slug takes, and a slug is what an operator-chosen file name
-# becomes.
+# becomes. The value is judged separately (see `looks_like_credential`), as the
+# value after a space is: a name and an ordinary word after it is a slug.
 CREDENTIAL_DASHED = re.compile(
     r"(?i)(?<![\w.-])(" + CREDENTIAL_NAME_PREFIX + CREDENTIAL_NAME_PATTERN + r")(?![\w])"
     r"([_-])([A-Za-z0-9]{4,})(?![A-Za-z0-9])"
@@ -256,13 +257,17 @@ def looks_like_credential(value: str) -> bool:
 
     A name and a value separated by a space is a weak shape: `token started` is
     a sentence, `token abc123` is a credential. The value is a credential when
-    it carries a digit or an upper-case letter, or when it is long enough to be
-    one anyway — a long run of lower-case letters is a word (`generated`), not
-    a credential.
+    it carries a digit or a capital that is not only the first letter of an
+    ordinary word, or when it is long enough to be one anyway — a long run of
+    lower-case letters is a word (`generated`), not a credential.
     """
     if len(value) < 4:
         return False
-    return any(c.isdigit() for c in value) or any(c.isupper() for c in value) or len(value) >= 16
+    if any(c.isdigit() for c in value) or len(value) >= 16:
+        return True
+    # A capital in the middle, or a value written in capitals, is a credential;
+    # a capital at the start alone is an ordinary word (`Wildberries`).
+    return any(c.isupper() for c in value[1:]) or value.isupper()
 
 
 def redact_credentials(text: str, label: str = "credential") -> str:
@@ -281,7 +286,10 @@ def redact_credentials(text: str, label: str = "credential") -> str:
         text,
     )
     text = CREDENTIAL_ASSIGNMENT.sub(lambda m: f"{m.group(1)}{m.group(2)}{marker}", text)
-    text = CREDENTIAL_DASHED.sub(lambda m: f"{m.group(1)}{m.group(2)}{marker}", text)
+    text = CREDENTIAL_DASHED.sub(
+        lambda m: f"{m.group(1)}{m.group(2)}{marker}" if looks_like_credential(m.group(3)) else m.group(0),
+        text,
+    )
     return text
 
 
@@ -485,9 +493,13 @@ def redact_path(path: str) -> str:
         text = PHONE_NUMBER.sub("phone", text)
         text = OPAQUE_TOKEN.sub("opaque", text)
         text = redact_credentials(text, label="credential")
-        if names_a_credential(previous) and not text.startswith(("opaque", "email", "phone", "<redacted")):
+        if names_a_credential(previous) and text == segment and not text.startswith("<redacted:"):
             # The segment after a segment that names a credential is one, even
-            # when it is short enough to pass every length-based rule.
+            # when it is short enough to pass every length-based rule. The value
+            # is judged by whether it is still there: a segment that was already
+            # replaced carries a marker, not a value. A value that begins with
+            # the name of a marker (`opaque123`) is a value, and it is replaced
+            # like any other.
             text = "credential"
         kept.append(text)
         previous = segment

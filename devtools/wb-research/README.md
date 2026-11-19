@@ -226,9 +226,10 @@ The rules the redactor applies:
   `access_token-abc123` (the shape a slug takes), `Bearer abc123`. The value
   can be short, so the name is what carries the rule. The name has to be the
   whole name: `author=Alice` is an author, not a credential. A value separated
-  from the name by a space is a credential only when it does not look like an
-  ordinary word (it carries a digit or an upper-case letter, or it is at least
-  sixteen characters long — a run of lower-case letters is a word);
+  from the name by a space or by a dash is a credential only when it does not
+  look like an ordinary word (it carries a digit, or a capital that is not only
+  the first letter of a word, or it is at least sixteen characters long — a run
+  of lower-case letters is a word, `token-generated` is a slug);
 - a path segment that names a credential (`reset`, `otp`, `token`,
   `access_token`, `oauth.access_token`) says that the next segment is one,
   whatever it looks like;
