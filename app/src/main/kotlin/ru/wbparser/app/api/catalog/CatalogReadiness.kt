@@ -112,8 +112,7 @@ class CatalogReadiness(
      * Run a statement on the catalog pool, and report why it failed.
      *
      * The statement runs inside a transaction with its own, shorter timeout: the session's
-     * timeout is eight seconds, which is right for a catalog query and far too long for a
-     * probe that a deploy gate is waiting on.
+     * bound is right for a catalog query and far too long for a deploy gate waiting on it.
      */
     companion object {
         /**

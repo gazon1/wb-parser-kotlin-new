@@ -113,8 +113,11 @@ class CatalogDataSource(
          * limit turns valid reads into statement timeouts on real-sized databases. The
          * timeout still bounds a runaway query and frees the connection, but leaves room
          * for the heaviest list queries to complete.
+         *
+         * The bound has to sit above the read model's own cost — a full list query over a
+         * real-sized scraped set measures in seconds — and still trips on a runaway.
          */
-        const val STATEMENT_TIMEOUT_MS: Long = 30_000
+        const val STATEMENT_TIMEOUT_MS: Long = 60_000
 
         /** How long a readiness probe waits for a statement, in milliseconds. */
         const val READINESS_STATEMENT_TIMEOUT_MS: Long = 2_000
