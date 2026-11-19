@@ -89,11 +89,16 @@ class CatalogReadModelTest :
             sql shouldContain "newer.product_id = s.product_id"
         }
 
-        test("the rows without a product id are one product at either grain") {
+        test("the rows without a product id are not a product at the product grain") {
             val product = CatalogReadModel.currentObservation(CurrentScope.PRODUCT)
             val target = CatalogReadModel.currentObservation(CurrentScope.TARGET)
 
-            product shouldContain "newer.product_id IS NULL AND s.product_id IS NULL"
+            // The finding of the review: the read model and the view
+            // `latest_product_observations` disagreed about the rows without a product
+            // id — the model kept the newest of them as a product, the view left them
+            // out, and the storefront reads both.
+            product shouldContain "s.product_id IS NOT NULL"
+            product shouldNotContain "newer.product_id IS NULL AND s.product_id IS NULL"
             target shouldContain "newer.product_id IS NULL AND s.product_id IS NULL"
         }
 

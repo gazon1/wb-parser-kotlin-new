@@ -74,8 +74,7 @@ internal object CatalogReadModel {
      *
      * The rule is the same one the read model uses, written for a read that already knows
      * the id of the row it looks for: a newer observation of the same product makes that
-     * row an old one. The rows without a product id are one product for the read model as
-     * well, so they are matched with the same rule.
+     * row an old one.
      *
      * The grain decides where the newer observation has to be: at [CurrentScope.TARGET] it
      * has to be in the same target, at [CurrentScope.PRODUCT] it may be in any of them.
@@ -83,16 +82,27 @@ internal object CatalogReadModel {
      * The comparison is on `(scraped_at, id)`, so two observations of the same moment are
      * ordered by the id — the same tiebreaker the model itself uses, and the reason the
      * rule has one answer and not two.
+     *
+     * ## Why a row without a product id is not a product
+     *
+     * A row without a product id is an observation of a product that could not be
+     * identified, and at the product's grain it is not a product at all: it is a bag of
+     * rows that only share the absence of an id. The view `latest_product_observations`
+     * says the same — it leaves those rows out — and the two statements of the same idea
+     * have to mean the same thing, because the storefront reads both.
+     *
+     * At the target's grain the rows stay: a target holds what it holds, and the detail
+     * read of such a row answers at that grain too.
      */
     fun currentObservation(scope: CurrentScope): String =
         when (scope) {
             CurrentScope.PRODUCT ->
                 """
-                NOT EXISTS (
+                s.product_id IS NOT NULL
+                AND NOT EXISTS (
                     SELECT 1
                       FROM scraped_items newer
-                     WHERE (newer.product_id = s.product_id
-                            OR (newer.product_id IS NULL AND s.product_id IS NULL))
+                     WHERE newer.product_id = s.product_id
                        AND (newer.scraped_at, newer.id) > (s.scraped_at, s.id))
                 """
             CurrentScope.TARGET ->

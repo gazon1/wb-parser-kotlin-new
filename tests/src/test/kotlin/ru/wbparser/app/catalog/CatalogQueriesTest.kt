@@ -161,6 +161,32 @@ class CatalogQueriesTest :
             fromModel.items.map { it.id } shouldBe fromView
         }
 
+        test("the read model and the view agree about the rows without a product id") {
+            val target = fixture.seedTarget("Категория")
+            val product = 906L
+            fixture.seedItem(
+                target,
+                title = "Карта памяти",
+                productId = product,
+                priceKopecks = 10000L,
+            )
+            fixture.seedItem(
+                target,
+                title = "Без идентификатора",
+                productId = null,
+                priceKopecks = 5000L,
+            )
+
+            // The finding of the review: the read model kept the rows without a product
+            // id as a product of the catalog, and the view left them out — so the
+            // storefront, which reads both, saw two different catalogs.
+            val fromModel = fixture.queries.listItems(CatalogQueryParams.parse(params()))
+            val fromView = fixture.readModelIds()
+
+            fromModel.items.map { it.id }.toSet() shouldBe fromView.toSet()
+            fromModel.items.none { it.title == "Без идентификатора" } shouldBe true
+        }
+
         test("a page does not repeat a row and does not drop one") {
             val target = fixture.seedTarget("Категория")
             repeat(25) { index -> fixture.seedItem(target, title = "Товар $index", productId = index.toLong()) }
@@ -611,8 +637,9 @@ class CatalogQueriesTest :
         }
 
         test("a row without a product id is the current one of its target") {
-            // The rows without a product id are one product for the read model, and
-            // they are matched with the same rule — inside the target.
+            // A row without a product id is not a product, so it is not one at the
+            // product's grain — but a target holds what it holds, and at the target's
+            // grain the rows are matched with the same rule.
             val first = fixture.seedTarget("Первая")
             val second = fixture.seedTarget("Вторая")
             val inFirst =
@@ -837,7 +864,7 @@ class CatalogQueriesTest :
             fixture.queries.getItem(inSecond, CurrentScope.PRODUCT).shouldNotBeNull()
         }
 
-        test("the rows without a product id are one product at the product's grain") {
+        test("the rows without a product id are not a product at the product's grain") {
             val first = fixture.seedTarget("Первая")
             val second = fixture.seedTarget("Вторая")
             val inFirst =
@@ -856,6 +883,9 @@ class CatalogQueriesTest :
                 scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
             )
 
+            // A row without a product id is an observation of a product that could not
+            // be identified: at the target's grain the target holds it, at the
+            // product's grain there is no product to hold.
             fixture.queries.getItem(inFirst, CurrentScope.TARGET).shouldNotBeNull()
             fixture.queries.getItem(inFirst, CurrentScope.PRODUCT).shouldBeNull()
         }

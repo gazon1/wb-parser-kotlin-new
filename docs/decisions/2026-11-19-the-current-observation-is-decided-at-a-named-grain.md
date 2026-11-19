@@ -71,6 +71,12 @@ available to a caller that asks for it. The default stays the target's grain bec
 storefront links to the detail from the category and top-deals pages, whose rows are
 target-scoped: a detail at the product's grain would answer 404 for them.
 
+A row **without a product id** is not a product: it is an observation of a product that could
+not be identified, and at the product's grain such rows are left out — the same rule the view
+`latest_product_observations` states, so the API and the view name the same catalog. At the
+target's grain they stay: a target holds what it holds, and the detail read of such a row
+answers at that grain too.
+
 ## Rationale
 
 The two grains are compatible, and the reason is an invariant: **the newest observation of
@@ -99,6 +105,9 @@ price the product does not have.
   hands out is an id the detail answers 404 for.
 - **Always** keep the detail read's default at the target's grain. The storefront links to
   the detail from the target-scoped pages, and the product's grain would refuse their rows.
+- **Always** decide the rows without a product id explicitly: at the product's grain they
+  are not a product and are left out (the view leaves them out too), at the target's grain
+  they stay, because a target holds what it holds.
 - The model and the view `latest_product_observations` still agree: the view is the
   product's grain, and the list without a target is the product's grain. The suite pins it.
 - The index the model was built from (`product_id, scraped_at DESC, id DESC`, and the

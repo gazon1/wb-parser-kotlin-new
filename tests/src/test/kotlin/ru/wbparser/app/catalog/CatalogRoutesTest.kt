@@ -147,8 +147,8 @@ class CatalogRoutesTest {
                     .prepareStatement(
                         """
                         INSERT INTO scraped_items (id, target_id, product_url, content_hash, title,
-                                                   price_kopecks, cashback_percent, feedback_points, scraped_at)
-                        VALUES (?, ?, 'https://example.invalid/p/1', 'hash-1', 'Товар', 19900, 5.00, 300, now())
+                                                   price_kopecks, cashback_percent, feedback_points, scraped_at, product_id)
+                        VALUES (?, ?, 'https://example.invalid/p/1', 'hash-1', 'Товар', 19900, 5.00, 300, now(), 42)
                         """.trimIndent(),
                     ).use {
                         val id = UUID.randomUUID()
