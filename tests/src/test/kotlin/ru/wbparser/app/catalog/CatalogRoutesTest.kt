@@ -240,6 +240,33 @@ class CatalogRoutesTest {
     }
 
     @Test
+    fun aProductThatPaysNoReviewPointsIsNotFound() {
+        // The finding of the review: the detail endpoint read the observation table
+        // directly, so it served a product that the list leaves out.
+        val withoutPoints =
+            dataSource.connection.use { connection ->
+                connection
+                    .prepareStatement(
+                        """
+                        INSERT INTO scraped_items (id, target_id, product_url, content_hash, title,
+                                                   price_kopecks, cashback_percent, feedback_points, scraped_at)
+                        VALUES (?, ?, 'https://example.invalid/p/2', 'hash-2', 'Товар без баллов', 19900, 5.00, NULL, now())
+                        """.trimIndent(),
+                    ).use {
+                        val id = UUID.randomUUID()
+                        it.setObject(1, id)
+                        it.setObject(2, target)
+                        it.executeUpdate()
+                        id
+                    }
+            }
+
+        mockMvc
+            .perform(get("/api/catalog/v1/items/$withoutPoints").header("X-Api-Key", "test-catalog-key"))
+            .andExpect(status().isNotFound())
+    }
+
+    @Test
     fun aProductIdThatIsNotAUuidIsABadRequest() {
         mockMvc
             .perform(get("/api/catalog/v1/items/not-a-uuid").header("X-Api-Key", "test-catalog-key"))

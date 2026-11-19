@@ -55,6 +55,12 @@ review points are stored as their own value, end to end, and never as a cashback
 - The wallet cashback stays in the model as a percentage (see the superseded ADR) and is
   read when WB sends it. It is no longer requested — the request that asks for it returns a
   set of products with no review points.
+- The catalog is made of the observations that carry points, and the membership is decided
+  on the **newest** observation of a product: a product whose newest observation pays no
+  points is out of the catalog, even when an older observation of it did. The condition is
+  applied to the read model and not inside it — inside, it would pick the newest observation
+  that pays points and keep the product with a price it does not have. The detail read
+  applies it too: an observation outside the catalog is not found.
 
 ## Rationale
 
@@ -79,6 +85,10 @@ reported, dressed up as a fix.
   review points.
 - **MUST** keep review points and cashback percentage in separate fields, columns and
   outputs. They are different units.
+- **Always** decide whether a product is in the catalog on its newest observation, and
+  apply the same condition to every read of the catalog — the list, the targets, the top
+  deals and the detail read. A read that answers about a product the list leaves out is
+  two answers about two catalogs.
 - A crawl of a category now yields the review-point-carrying products of that category only
   (tens, not hundreds per category) — the catalog shrank because the catalog *is* the
   answer to "which of these products pay for a review".

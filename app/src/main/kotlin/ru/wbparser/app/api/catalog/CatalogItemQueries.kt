@@ -88,6 +88,11 @@ class CatalogItemQueries(
      *
      * A product whose `product_id` is null has no history. It is rendered with the price
      * it has, rather than with a series that does not exist.
+     *
+     * The observation has to be part of the catalog — the same condition the list
+     * applies. An observation that pays no review points is not a product of the
+     * catalog, and a detail read that found it would answer about a product the
+     * storefront cannot show.
      */
     fun getItem(id: UUID): ProductDetail? =
         dataSource.read { connection ->
@@ -100,6 +105,7 @@ class CatalogItemQueries(
                                 FROM scraped_items s
                                 JOIN crawl_targets t ON t.id = s.target_id
                                WHERE s.id = ?
+                                 AND s.${CatalogReadModel.REVIEW_POINTS_OBSERVATION}
                         )
                         SELECT ${CatalogCardProjection.columns("i")}
                           FROM i

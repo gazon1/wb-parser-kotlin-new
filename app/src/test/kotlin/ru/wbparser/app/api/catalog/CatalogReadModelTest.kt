@@ -39,9 +39,8 @@ class CatalogReadModelTest :
         test("the model without a filter has no filter of its own") {
             val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY)
 
-            // The only condition the model carries is the one that says what the catalog
-            // is made of — the observations that carry the review points.
-            sql shouldContain "WHERE s.feedback_points IS NOT NULL"
+            // The model itself filters nothing: the condition that says what the
+            // catalog is made of is applied to the model, not inside it.
             sql shouldNotContain "s.target_id = ?"
         }
 
@@ -50,13 +49,22 @@ class CatalogReadModelTest :
             // collects, and an observation of one is not part of the catalog.
             val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY)
 
-            sql shouldContain "s.feedback_points IS NOT NULL"
+            sql shouldContain "WHERE latest.feedback_points IS NOT NULL"
+        }
+
+        test("the membership is decided on the newest observation") {
+            // The finding of the review: the condition was inside the model, so the
+            // model picked the newest observation that pays points — and a product whose
+            // newest observation pays none stayed in the catalog with a stale price.
+            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY)
+
+            sql shouldNotContain "s.feedback_points IS NOT NULL"
         }
 
         test("the target grain is made of the same observations") {
             val sql = CatalogReadModel.currentProductTargets(CatalogFilters.Where.EMPTY)
 
-            sql shouldContain "s.feedback_points IS NOT NULL"
+            sql shouldContain "WHERE latest.feedback_points IS NOT NULL"
         }
 
         test("the target grain keeps the targets apart") {

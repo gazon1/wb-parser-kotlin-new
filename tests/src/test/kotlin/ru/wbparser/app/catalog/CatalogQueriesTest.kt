@@ -468,6 +468,33 @@ class CatalogQueriesTest :
             result.items shouldHaveSize 0
         }
 
+        test("a product whose newest observation pays no review points is not part of the catalog") {
+            // The finding of the review: the condition was applied inside the read
+            // model, so it picked the newest observation that pays points — and the
+            // product stayed in the catalog with a price it does not have.
+            val target = fixture.seedTarget("Категория")
+            fixture.seedItem(
+                target,
+                title = "Товар",
+                feedbackPoints = 300,
+                productId = 1L,
+                priceKopecks = 49900,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            fixture.seedItem(
+                target,
+                title = "Товар",
+                feedbackPoints = null,
+                productId = 1L,
+                priceKopecks = 39900,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+
+            val result = fixture.queries.listItems(CatalogQueryParams.parse(params()))
+
+            result.items shouldHaveSize 0
+        }
+
         test("a row with no price has no price, and not a zero") {
             val target = fixture.seedTarget("Категория")
             fixture.seedItem(target, priceKopecks = null)

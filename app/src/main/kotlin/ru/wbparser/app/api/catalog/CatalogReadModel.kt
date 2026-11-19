@@ -27,6 +27,15 @@ package ru.wbparser.app.api.catalog
  * applied to the model, because they are about the price the product has *now*. A product
  * that was cheap last week and expensive today must not be found by "up to 1000".
  *
+ * ## Why the membership is decided outside the model
+ *
+ * The catalog is made of the observations that carry the review points, and that is a
+ * question about the *newest* observation of a product: a product whose newest
+ * observation pays no points is not in the catalog, even when an older observation of it
+ * did. So the condition is applied to the model and not inside it — inside, it would
+ * pick the newest observation that pays points, and the product would stay in the catalog
+ * with a price it does not have.
+ *
  * ## The two grains
  *
  * The model is built at two grains, and both of them are here: one row per product
@@ -43,8 +52,12 @@ internal object CatalogReadModel {
      * points is not one of them: it is either an observation of a product WB does not pay
      * for, or one from a crawl made under a different filter. Both stay in the table — the
      * history is made of them — but neither is part of the catalog the storefront shows.
+     *
+     * The condition is written without a table name, because it is read under two names:
+     * the model reads it as `current.feedback_points`, a single observation as
+     * `s.feedback_points`.
      */
-    const val REVIEW_POINTS_OBSERVATION: String = "s.feedback_points IS NOT NULL"
+    const val REVIEW_POINTS_OBSERVATION: String = "feedback_points IS NOT NULL"
 
     /**
      * The columns of the read model.
@@ -66,20 +79,22 @@ internal object CatalogReadModel {
      * The read model at the grain of the product.
      *
      * The [identity] filter is applied inside the model, because it names the product
-     * rather than its price.
+     * rather than its price. The membership is decided outside it, because it is a
+     * question about the newest observation.
      */
-    fun currentProducts(identity: CatalogFilters.Where): String {
-        val conditions = identity.clauses + REVIEW_POINTS_OBSERVATION
-        val sql = "WHERE " + conditions.joinToString(" AND ")
-        return """
-            SELECT DISTINCT ON (s.product_id)
-                   $MODEL_COLUMNS
-              FROM scraped_items s
-              JOIN crawl_targets t ON t.id = s.target_id
-             $sql
-             ORDER BY s.product_id, s.scraped_at DESC, s.id DESC
-            """.trimIndent()
-    }
+    fun currentProducts(identity: CatalogFilters.Where): String =
+        """
+        SELECT latest.*
+          FROM (
+                SELECT DISTINCT ON (s.product_id)
+                       $MODEL_COLUMNS
+                  FROM scraped_items s
+                  JOIN crawl_targets t ON t.id = s.target_id
+                 ${identity.sql}
+                 ORDER BY s.product_id, s.scraped_at DESC, s.id DESC
+                ) latest
+         WHERE latest.$REVIEW_POINTS_OBSERVATION
+        """.trimIndent()
 
     /**
      * The read model at the grain of the product and the target.
@@ -102,15 +117,18 @@ internal object CatalogReadModel {
         if (onlyMatched) {
             conditions += "s.match_id IS NOT NULL"
         }
-        conditions += REVIEW_POINTS_OBSERVATION
-        val sql = "WHERE " + conditions.joinToString(" AND ")
+        val sql = if (conditions.isEmpty()) "" else "WHERE " + conditions.joinToString(" AND ")
         return """
-            SELECT DISTINCT ON (s.product_id, s.target_id)
-                   $MODEL_COLUMNS
-              FROM scraped_items s
-              JOIN crawl_targets t ON t.id = s.target_id
-             $sql
-             ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC
+            SELECT latest.*
+              FROM (
+                    SELECT DISTINCT ON (s.product_id, s.target_id)
+                           $MODEL_COLUMNS
+                      FROM scraped_items s
+                      JOIN crawl_targets t ON t.id = s.target_id
+                     $sql
+                     ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC
+                    ) latest
+             WHERE latest.$REVIEW_POINTS_OBSERVATION
             """.trimIndent()
     }
 }
