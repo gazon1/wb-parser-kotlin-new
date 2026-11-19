@@ -1,0 +1,88 @@
+{
+  "schema": "wb-research/evidence/v1",
+  "notes": [
+    "Page-JavaScript fetches of the catalog endpoint with the browser's own deviceid, recorded as a probe: no body, only the shape of the answer."
+  ],
+  "captures": [
+    {
+      "id": "probe-page-fetch-storefront",
+      "source": "probe",
+      "sourceFile": "probe-page-fetch",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false",
+        "credentials": "include",
+        "headersSent": [
+          "deviceid",
+          "x-requested-with",
+          "x-userid"
+        ],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/json",
+        "bodyBytes": 233,
+        "isJson": true,
+        "error": null
+      },
+      "schema": {
+        "topLevelKeys": [
+          "name",
+          "query",
+          "normQuery",
+          "shardKey",
+          "filters",
+          "rs",
+          "rmi",
+          "search_result"
+        ],
+        "productCount": null
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "probe-page-fetch-withPage",
+      "source": "probe",
+      "sourceFile": "probe-page-fetch",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&page=1&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30",
+        "credentials": "include",
+        "headersSent": [
+          "deviceid",
+          "x-requested-with",
+          "x-userid"
+        ],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/json",
+        "bodyBytes": 233,
+        "isJson": true,
+        "error": null
+      },
+      "schema": {
+        "topLevelKeys": [
+          "name",
+          "query",
+          "normQuery",
+          "shardKey",
+          "filters",
+          "rs",
+          "rmi",
+          "search_result"
+        ],
+        "productCount": null
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    }
+  ]
+}

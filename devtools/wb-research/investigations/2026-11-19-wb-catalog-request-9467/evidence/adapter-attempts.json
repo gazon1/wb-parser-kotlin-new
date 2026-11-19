@@ -1,0 +1,226 @@
+{
+  "schema": "wb-research/evidence/v1",
+  "notes": [
+    "Page-JavaScript fetch() attempts against the catalog endpoint, each with a different header set."
+  ],
+  "captures": [
+    {
+      "id": "attempt-00-baseline",
+      "source": "adapter",
+      "sourceFile": "attempt-00-baseline",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&page=1&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30",
+        "credentials": "include",
+        "headersSent": [
+          "x-requested-with",
+          "x-userid"
+        ],
+        "headersDroppedByBrowser": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 403,
+        "contentType": "text/plain",
+        "bodyBytes": 0,
+        "isJson": false
+      },
+      "schema": {
+        "topLevelKeys": null,
+        "productCount": null
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "attempt-01-deviceid",
+      "source": "adapter",
+      "sourceFile": "attempt-01-deviceid",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&page=1&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30",
+        "credentials": "include",
+        "headersSent": [
+          "deviceid",
+          "x-requested-with",
+          "x-userid"
+        ],
+        "headersDroppedByBrowser": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain; charset=UTF-8",
+        "bodyBytes": 133632,
+        "isJson": false
+      },
+      "schema": {
+        "topLevelKeys": null,
+        "productCount": null
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "attempt-02-spa-version",
+      "source": "adapter",
+      "sourceFile": "attempt-02-spa-version",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&page=1&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30",
+        "credentials": "include",
+        "headersSent": [
+          "x-requested-with",
+          "x-spa-version",
+          "x-userid"
+        ],
+        "headersDroppedByBrowser": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 403,
+        "contentType": "text/plain",
+        "bodyBytes": 0,
+        "isJson": false
+      },
+      "schema": {
+        "topLevelKeys": null,
+        "productCount": null
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "attempt-03-deviceid-and-spa",
+      "source": "adapter",
+      "sourceFile": "attempt-03-deviceid-and-spa",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&page=1&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30",
+        "credentials": "include",
+        "headersSent": [
+          "deviceid",
+          "x-requested-with",
+          "x-spa-version",
+          "x-userid"
+        ],
+        "headersDroppedByBrowser": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain; charset=UTF-8",
+        "bodyBytes": 133632,
+        "isJson": false
+      },
+      "schema": {
+        "topLevelKeys": null,
+        "productCount": null
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "attempt-04-deviceid-repeat-1",
+      "source": "adapter",
+      "sourceFile": "attempt-04-deviceid-repeat-1",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&page=1&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30",
+        "credentials": "include",
+        "headersSent": [
+          "deviceid",
+          "x-requested-with",
+          "x-userid"
+        ],
+        "headersDroppedByBrowser": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain; charset=UTF-8",
+        "bodyBytes": 133632,
+        "isJson": false
+      },
+      "schema": {
+        "topLevelKeys": null,
+        "productCount": null
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "attempt-05-deviceid-repeat-2",
+      "source": "adapter",
+      "sourceFile": "attempt-05-deviceid-repeat-2",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&page=1&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30",
+        "credentials": "include",
+        "headersSent": [
+          "deviceid",
+          "x-requested-with",
+          "x-userid"
+        ],
+        "headersDroppedByBrowser": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain; charset=UTF-8",
+        "bodyBytes": 133632,
+        "isJson": false
+      },
+      "schema": {
+        "topLevelKeys": null,
+        "productCount": null
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "attempt-06-crawler-header-values",
+      "source": "adapter",
+      "sourceFile": "attempt-06-crawler-header-values",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&page=1&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30",
+        "credentials": "include",
+        "headersSent": [
+          "deviceid",
+          "x-requested-with",
+          "x-spa-version",
+          "x-userid"
+        ],
+        "headersDroppedByBrowser": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain; charset=UTF-8",
+        "bodyBytes": 133632,
+        "isJson": false
+      },
+      "schema": {
+        "topLevelKeys": null,
+        "productCount": null
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    }
+  ]
+}
