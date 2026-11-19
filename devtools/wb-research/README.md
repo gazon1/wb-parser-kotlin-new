@@ -235,7 +235,10 @@ The rules the redactor applies:
   from the name by a space or by a dash is a credential only when it does not
   look like an ordinary word (it carries a digit, or a capital that is not only
   the first letter of a word, or it is at least sixteen characters long — a run
-  of lower-case letters is a word, `token-generated` is a slug);
+  of lower-case letters is a word, `token-generated` is a slug). The names the
+  sanitizer treats as sensitive parameters — `auth`, `otp`, `sid`, `pwd`,
+  `_wbauid` — are credential names everywhere: a note and an allowlisted header
+  are not places where `auth=abc123` is safe;
 - a path segment that names a credential (`reset`, `otp`, `token`,
   `access_token`, `oauth.access_token`) says that the next segment is one,
   whatever it looks like;

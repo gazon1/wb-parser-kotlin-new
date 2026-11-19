@@ -785,3 +785,37 @@ def test_a_token_inside_a_dotted_value_is_replaced():
 
     assert "abcdefghij" not in headers["x-spa-version"]
     assert headers["x-spa-version"] == "capture.<redacted:opaque>"
+
+
+def test_a_credential_named_auth_in_a_note_is_replaced():
+    # The finding of the review: `auth` is a sensitive parameter, but the shared
+    # grammar of the credential names did not know it — so `auth=abc123` in a note
+    # reached the committed file.
+    note = redact.redact_note("request failed: auth=abc123")
+
+    assert "abc123" not in note
+
+
+def test_a_credential_named_auth_in_an_allowed_header_is_replaced():
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "auth=abc123"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert "abc123" not in headers["user-agent"]
+
+
+def test_the_short_credential_names_are_credentials():
+    # The names the sanitizer treats as sensitive parameters are credential names
+    # everywhere: a note is not a place where `otp=999111` is safe.
+    for name in ("auth", "otp", "sid", "pwd", "_wbauid"):
+        note = redact.redact_note(f"request failed: {name}=abc123")
+
+        assert "abc123" not in note
+
+
+def test_a_word_that_starts_like_a_credential_name_is_not_one():
+    # The counterpart: the name has to be the whole name.
+    note = redact.redact_note("author=Alice")
+
+    assert "Alice" in note

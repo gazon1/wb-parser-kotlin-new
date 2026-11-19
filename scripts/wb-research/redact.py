@@ -113,13 +113,20 @@ CREDENTIAL_NAME_SUFFIX = ("_token", "_secret", "_password", "_key", "_passwd")
 # The parts of a credential name. The name is what carries the rule; the value
 # beside it can be short, so the value itself cannot be recognized — only the
 # name can. A name is a prefix and a core word (`access` + `token`), or a core
-# word alone (`token`), or an id of a session or of a user (`session_id`). The
-# name has to be the whole name: `author` is not `auth` with a suffix, so the
-# core word cannot be followed by more letters.
+# word alone (`token`), or an id of a session or of a user (`session_id`), or one
+# of the short names below. The name has to be the whole name: `author` is not
+# `auth` with a suffix, so the core word cannot be followed by more letters.
 CREDENTIAL_PREFIX = r"(?:access|refresh|id|auth|api|app|client|private|user|secret|session)"
 CREDENTIAL_CORE = r"(?:token|secret|key|password|passwd|cookie|credential|authorization|session)"
+
+# The names that are credentials on their own. The sanitizer already treats them
+# as sensitive parameters, and a name that is a credential is one everywhere: a
+# note and an allowlisted header are not places where `auth=abc123` is safe.
+STANDALONE_CREDENTIAL_NAMES = ("auth", "otp", "sid", "pwd", "_wbauid")
+
 CREDENTIAL_NAME = (
     r"(?:(?:" + CREDENTIAL_PREFIX + r")[._-]?)?" + CREDENTIAL_CORE + r"|(?:session|user)[._-]?id|sessionid|userid"
+    r"|(?:" + "|".join(STANDALONE_CREDENTIAL_NAMES) + r")"
 )
 
 # The same name, grouped, so that it can be used inside another pattern.
