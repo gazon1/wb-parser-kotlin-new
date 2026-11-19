@@ -169,6 +169,23 @@ class ChromeUseAdapterTest(unittest.TestCase):
         self.assertIn("x-http-method-override", sent)
         self.assertEqual(result["request"]["droppedByBrowser"], [])
 
+    def test_only_http_whitespace_is_stripped_around_a_method(self) -> None:
+        # Fetch Standard: из значения вырезаются только HTTP-пробелы (LF, CR,
+        # tab, space). Неразрывный пробел — не HTTP-пробел, поэтому `TRACE` с ним
+        # не является запрещённым методом, и адаптер не должен врать, что заголовок
+        # отброшен.
+        result = run_adapter(
+            {
+                "x-http-method": "TRACE\t",
+                "x-method-override": "TRACE\u00a0",
+            }
+        )["result"]
+
+        dropped = {name.lower() for name in result["request"]["droppedByBrowser"]}
+        sent = {name.lower() for name in result["request"]["sentByBrowser"]}
+        self.assertEqual(dropped, {"x-http-method"})
+        self.assertIn("x-method-override", sent)
+
     def test_the_request_reaches_the_fetch_with_the_crawler_headers(self) -> None:
         # Тот же набор заголовков, что и у краулера: адаптер проверяет production-
         # запрос, и без `deviceid` WB отвечает 403.

@@ -83,8 +83,12 @@ async function (args) {
     if (FORBIDDEN_PREFIXES.some((prefix) => low.indexOf(prefix) === 0)) return true;
     if (FORBIDDEN_BY_VALUE.indexOf(low) < 0) return false;
     // The value is a list of methods; the header is forbidden when one of them is.
+    // The Fetch Standard strips HTTP whitespace (LF, CR, tab, space) around each
+    // value and nothing else, so `trim()` would over-strip: a non-breaking space
+    // is not HTTP whitespace, and `TRACE\u00A0` is not a forbidden method.
     return String(headers[h]).split(',')
-      .some((method) => FORBIDDEN_METHODS.indexOf(method.trim().toLowerCase()) >= 0);
+      .map((method) => method.replace(/^[\t\n\r ]+|[\t\n\r ]+$/g, ''))
+      .some((method) => FORBIDDEN_METHODS.indexOf(method.toLowerCase()) >= 0);
   });
 
   let resp;

@@ -59,6 +59,11 @@ the `proxy-` and `sec-` prefixes, and the `X-HTTP-Method*` names when their valu
 forbidden method. `user-agent` is not on that list, but Chrome ignores a page-supplied
 value for it, so the adapter reports it as dropped as well.
 
+The conditional names are compared the way the standard compares them: the value is split
+on commas and each part is stripped of HTTP whitespace only (LF, CR, tab, space). A
+non-breaking space is not HTTP whitespace, so `TRACE` followed by one is not a
+forbidden method and the browser sends that header through.
+
 ## Consequences
 
 - **Always** keep internal metadata out of the request header map — a URL is a field of the
@@ -73,5 +78,8 @@ value for it, so the adapter reports it as dropped as well.
 - **Always** take the adapter's forbidden-header list from the Fetch Standard and check it
   against the wire: a header the browser drops but the adapter reports as sent is the one
   failure this adapter exists to catch.
+- **Always** strip only HTTP whitespace when a header value is compared with the
+  standard's rules: `trim()` also removes Unicode whitespace the browser keeps, and the
+  adapter then reports a sent header as dropped.
 - The session cookies travel with `credentials: 'include'`; the browser context's cookie
   jar is no longer read by the downloader.
