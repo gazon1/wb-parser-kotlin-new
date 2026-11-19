@@ -85,12 +85,17 @@ Observed on 2026-11-19 against a real Chrome session:
 | `cookie`, `set-cookie` | no | forbidden header — dropped without an error |
 | `proxy-*` | no | forbidden prefix — dropped without an error |
 | `permissions-policy`, `http2-settings` | yes | not forbidden — they do reach WB |
+| `access-control-request-private-network` | yes | not forbidden here — Chrome sent it on the wire |
 | `__apiUrl`, `__catalogId` | yes | internal metadata, sent as headers — a leak |
 
 The forbidden set is the Fetch Standard's "forbidden request-header": the listed names, the
 `proxy-` and `sec-` prefixes, and the `X-HTTP-Method*` names when their value is a forbidden
 method (`CONNECT`, `TRACE`, `TRACK`). `user-agent` is not on that list, but Chrome ignores a
 page-supplied value for it.
+
+`access-control-request-private-network` is sometimes documented as forbidden by Chrome. On
+2026-11-19 it was sent on the wire by a same-origin request, so the adapter reports it as
+sent — adding it to the forbidden list would make the adapter lie in the other direction.
 
 `credentials: 'include'` on a same-origin request is what carries the session cookies; a
 `Cookie` header built from the browser context never leaves the page.

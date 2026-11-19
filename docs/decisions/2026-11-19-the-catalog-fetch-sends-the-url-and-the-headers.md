@@ -49,6 +49,9 @@ Observed on 2026-11-19 in a real Chrome session (chrome-use network capture):
 - A catalog request without `deviceid` answers 403; with it, 200.
 - `proxy-authorization` and `set-cookie` are dropped too; `permissions-policy` and
   `http2-settings` reach WB.
+- `access-control-request-private-network` reaches WB as well: it is documented as
+  forbidden by Chrome, but a same-origin request carried it, so the adapter reports it as
+  sent.
 
 So the old list was mostly theatre, and one real header (`deviceid`) was hiding in it. A
 `{url, headers}` argument removes the whole class of leak instead of filtering it: a key
