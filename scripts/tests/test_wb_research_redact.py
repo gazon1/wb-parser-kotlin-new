@@ -634,3 +634,28 @@ def test_a_proper_noun_after_a_credential_name_keeps_its_value():
     note = redact.redact_note("the token Wildberries uses for this request")
 
     assert "Wildberries" in note
+
+
+def test_a_profile_id_in_a_name_is_replaced():
+    # The finding of the review: a UUID is written in groups too short for the
+    # opaque-value rule, and the hyphen kept it out of the identifier rule.
+    name = redact.safe_identifier("capture-550e8400-e29b-41d4-a716-44665544a000", "capture")
+
+    assert "550e8400" not in name
+    assert name == "capture-opaque"
+
+
+def test_a_profile_id_in_a_variant_does_not_reach_the_capture():
+    probe = {
+        "probes": [
+            {
+                "variant": "550e8400-e29b-41d4-a716-44665544a000",
+                "url": "https://www.wildberries.ru/__internal/u-search",
+            }
+        ]
+    }
+
+    capture = redact.sanitize(probe, stem="probe")[0]
+
+    assert "550e8400" not in capture["id"]
+    assert "550e8400" not in capture["sourceFile"]

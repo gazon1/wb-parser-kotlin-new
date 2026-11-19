@@ -239,7 +239,9 @@ The rules the redactor applies:
 - an operator-chosen name — the name of the capture file, the variant of a
   probe — is reduced to a slug (no `@`, no `:`, no `/`, no spaces), an email
   address or a phone number in it is replaced, an opaque token in it (a long
-  run of letters, digits and dots — a session id, a JWT) is replaced, and a name
+  run of letters, digits and dots — a session id, a JWT) is replaced, a UUID in
+  it is replaced (the identifier of a profile, written in groups too short for
+  the other rules to see), and a name
   that carries a long run of digits is dropped: that is the shape of an account
   id. The name of the file is the source of the id of the capture as well, so it
   is reduced **once**, before either reaches the committed file;

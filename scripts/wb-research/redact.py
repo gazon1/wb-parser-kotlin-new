@@ -228,6 +228,13 @@ PHONE_NUMBER = re.compile(r"(?<!\d)(?:\+7[ .-]?|8[ .-])?\(?\d{3}\)?[ .-]\d{3}[ .
 # An opaque value inside a name: a token or a JWT. The hyphen is not part of it —
 # a name made of hyphenated words is a name, not a token.
 OPAQUE_IDENTIFIER = re.compile(r"[A-Za-z0-9._]{24,}")
+
+# A UUID inside a name: the identifier of a browser profile, written in groups.
+# The groups are short, so the opaque-value rule does not see it, and the hyphen
+# is what keeps it out of the opaque-identifier rule — so it is recognized by its
+# own shape.
+UUID_VALUE = re.compile(r"(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
 MAX_IDENTIFIER_LENGTH = 64
 
 # The characters a URL path is written with. A path that had a value replaced
@@ -312,13 +319,16 @@ def safe_identifier(value: Any, fallback: str) -> str:
     operator typed, and they end up in a committed file. A slug keeps the name
     readable — the name is what tells one capture from another — while a name
     that carries a long run of digits is dropped (that is the shape of an
-    account id), and an email address or a phone number in it is replaced: a
-    slug of them would still be them, spelled out.
+    account id), an email address or a phone number in it is replaced: a slug
+    of them would still be them, spelled out, and a UUID in it is replaced: it
+    is the identifier of a profile, written in groups too short for the other
+    rules to see.
     """
     raw = str(value or "")
     text = redact_credentials(raw, label="redacted")
     text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
+    text = UUID_VALUE.sub("opaque", text)
     text = OPAQUE_IDENTIFIER.sub("opaque", text)
     text = UNSAFE_IDENTIFIER.sub("-", text).strip("-")
     if not text or LONG_DIGIT_RUN.search(text):
