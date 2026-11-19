@@ -26,8 +26,8 @@ import ru.wbparser.domain.util.WB_BASE_URL
  * response is the real catalog: memory cards for `menu_v3_9467`, smartphones for
  * `menu_v3_9463`, and so on.
  *
- * The constants here were captured from a real browser session via CDP intercept; see
- * `scripts/wb_browser_fetch.py` for the equivalent Python path.
+ * The constants here were captured from a real browser session; the chrome-use adapter in
+ * `devtools/chrome-use-sites/wildberries/` reproduces that inspection for a live storefront.
  */
 internal object WbCatalogApi {
     /**
@@ -63,31 +63,28 @@ internal object WbCatalogApi {
     }
 
     /**
-     * WB-specific headers captured from a real browser session via CDP intercept.
+     * The headers WB's own catalog request carries, minus the ones the browser owns.
      *
-     * The referer points at [catalogUrl] because WB rejects a catalog API call whose referer
-     * does not match the catalog being requested.
+     * The Fetch standard forbids page JavaScript from setting `cookie`, `user-agent`,
+     * `referer` and the `sec-ch-ua*` client hints: the browser sets them itself and a value
+     * passed here is dropped without an error. The old list was full of them, which made it
+     * look like the crawler was impersonating Chrome while the browser was doing it anyway —
+     * and a stale `Chrome/143` in there was a fingerprint the browser never sent.
+     *
+     * What is left is what the storefront's own request carried and the browser lets us set.
+     * `deviceid` is the one WB insists on: a catalog request without it answers 403.
+     *
+     * Observed in a real Chrome session with the chrome-use adapter in
+     * `devtools/chrome-use-sites/wildberries/`; the browser's own `Referer` points at the
+     * catalog page the crawler navigated to, so it needs no help from here.
      */
-    fun buildWbHeaders(catalogUrl: String): Map<String, String> {
-        val catalogId = WbCatalogRequest.catalogIdOf(catalogUrl) ?: "unknown"
-        return mapOf(
-            "sec-ch-ua" to "\"Google Chrome\";v=\"143\", \"Chromium\";v=\"143\", \"Not-A Brand\";v=\"8\"",
-            "sec-ch-ua-mobile" to "?0",
-            "sec-ch-ua-platform" to "\"Linux\"",
+    fun buildWbHeaders(): Map<String, String> =
+        mapOf(
             "deviceid" to "site_a39361daf4ec45f2a68c5c6ca73c8adf",
             "x-requested-with" to "XMLHttpRequest",
-            "x-clientinfo" to
-                "appType=1&curr=rub&dest=$DEFAULT_DEST&spp=30&hide_vflags=4294967296&ab_testing=false&lang=ru",
-            "user-agent" to
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/143.0.0.0 Safari/537.36",
-            "x-userid" to "0",
             "x-spa-version" to "14.28.3",
-            "type" to "purchases_incorrect_search",
-            "referer" to "$WB_BASE_URL/catalog/$catalogId/list.aspx",
-            "accept" to "*/*",
+            "x-userid" to "0",
         )
-    }
 
     private const val API_PATH = "__internal/u-search/exactmatch/ru/common/v18/search"
 

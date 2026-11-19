@@ -16,30 +16,23 @@ internal object WbCatalogFetchScript {
     /**
      * The JS evaluated inside the page.
      *
-     * The argument is a JSON object carrying the headers plus the meta keys `__apiUrl` and
-     * `__cookies`; the script turns the cookie map into a `Cookie` header and issues the
-     * request with `credentials: 'include'`.
+     * The argument is a JSON object with exactly two fields: `url` and `headers`. They used to
+     * travel in one map, where the internal `__apiUrl`, `__catalogId` and `__cookies` keys were
+     * indistinguishable from headers — and the first two really did reach WB as request
+     * headers. A URL of its own makes "what is a header" impossible to get wrong.
+     *
+     * The request is made with `credentials: 'include'`, so the browser attaches the session
+     * cookies itself. A `Cookie` header set from page JavaScript is a forbidden header and is
+     * dropped by the browser without an error, so the manual cookie jar was dead weight: the
+     * cookies it carried never left the page.
      */
     val FETCH_SCRIPT: String =
         """
-        (headersArg) => {
-            const headers = JSON.parse(headersArg);
-            const apiUrl = headers.__apiUrl;
-            const fetchHeaders = {};
-            for (const [k, v] of Object.entries(headers)) {
-                if (k === '__cookies') continue;
-                fetchHeaders[k] = v;
-            }
-            // Build Cookie header from the __cookies map so the API call is authenticated.
-            const cookiesMap = JSON.parse(headers.__cookies || '{}');
-            const cookieParts = [];
-            for (const [k, v] of Object.entries(cookiesMap)) {
-                cookieParts.push(k + '=' + v);
-            }
-            if (cookieParts.length > 0) fetchHeaders['cookie'] = cookieParts.join('; ');
-            return fetch(apiUrl, {
+        (requestArg) => {
+            const request = JSON.parse(requestArg);
+            return fetch(request.url, {
                 method: 'GET',
-                headers: fetchHeaders,
+                headers: request.headers,
                 credentials: 'include'
             }).then(resp => resp.text().then(body => ({
                 status: resp.status,

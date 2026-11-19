@@ -634,6 +634,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** say what happened when a follow ends badly: a non-zero exit code is a message, not silence. _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
 - **Never** leave a widget's default width in a row of buttons: a Textual `Input` is 100% wide, and it pushes what follows it off the screen. _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
 - **Never** read a child's output in a thread. The subprocess layer reads it asynchronously, and a thread cannot be cancelled. _(from `2026-11-18-the-log-tab-is-a-cancellable-worker`)
+- **Always** compare a method byte-case-insensitively: only ASCII letters fold, while `toLowerCase()` also folds a Kelvin sign into `k` and makes a sent header look forbidden. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
+- **Always** keep internal metadata out of the request header map — a URL is a field of the fetch argument, not a header. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
+- **Always** keep the development adapter's default headers equal to `WbCatalogApi.buildWbHeaders()`: an adapter that sends a different request than the crawler verifies nothing (and gets 403 without `deviceid`). _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
+- **Always** strip only HTTP whitespace when a header value is compared with the standard's rules: `trim()` also removes Unicode whitespace the browser keeps, and the adapter then reports a sent header as dropped. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
+- **Always** take the adapter's forbidden-header list from the Fetch Standard and check it against the wire: a header the browser drops but the adapter reports as sent is the one failure this adapter exists to catch. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
+- **Always** verify a browser-fetch assumption against a real browser session, not against the configured constants. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
+- **Never** set `cookie`, `user-agent`, `referer`, `proxy-*` or `sec-*` from page JavaScript: the browser owns them and drops ours without an error. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)
 
 ## Per-tag
 
@@ -735,6 +742,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - SERIALIZABLE upserts under concurrency rely on the save-stage retry loop for `40001`. No serialization failures were observed in these runs, so the isolation level was left alone rather than changed on theory. _(from `2026-10-14-parallel-crawl-targets`)_
 - The browser adapters remain uncovered by design. Adding a browser-backed integration test is the only thing that will change that, and it needs a profile-per-test fixture CI does not have yet. _(from `2026-10-14-extract-browser-request-logic-for-testability`)_
+- The session cookies travel with `credentials: 'include'`; the browser context's cookie jar is no longer read by the downloader. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)_
 - `BrowserDownloader` takes `BorrowedPage` rather than `Page`, so the warm-up contract travels with the borrow instead of being re-derived at each call site. _(from `2026-10-14-antibot-session-is-site-wide`)_
 - `BrowserPool` and `BrowserDownloader` remain without unit tests — they need a real browser. The new concurrency logic was put where it *is* testable: `CrawlRunner`'s bound is verified by a peak-concurrency probe against a real PostgreSQL, including that `target-concurrency = 1` still measures exactly 1, so the probe cannot pass on a runner that ignored the setting. _(from `2026-10-14-parallel-crawl-targets`)_
 - `BrowserPool` no longer blocks a dispatcher thread with `Thread.sleep(3000)` at connect time. Warm-up now belongs to whoever needs a warm page, and is timed by the caller. _(from `2026-10-14-antibot-session-is-site-wide`)_
@@ -839,6 +847,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `crawler`
 
+- The session cookies travel with `credentials: 'include'`; the browser context's cookie jar is no longer read by the downloader. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)_
 - WB больше не отдаёт кэшбэк в этом ответе (`price.cashback = 0`), поэтому `cashback_percent` останется пустым, пока не появится другой источник. Это не регрессия: в старых данных кэшбэк тоже был пустым. _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)_
 - В логах появляются «профиль отдывает» и «цепи ждёт окна» — это ожидаемое поведение, а не сбой. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Данные в базе, собранные старым эндпоинтом, — популярная ротация под чужими названиями. Их нужно пересобрать (в debug-окружении база пересобрана с нуля). _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)_
@@ -1182,6 +1191,10 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - The `Side` hierarchy now has three variants. A fourth one is a new effect of the crawler, and it arrives with a stage, an interpreter and a test. _(from `2026-10-20-the-registry-is-total-by-construction`)_
 
+### `wildberries`
+
+- The session cookies travel with `credentials: 'include'`; the browser context's cookie jar is no longer read by the downloader. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)_
+
 ### `workflow`
 
 - Cluster prefixes (`A1`, `A2`, …) from the tech-debt plan may appear in subject after the `PR N` marker. _(from `2026-09-08-conventional-commits-and-cleanup-prs`)_
@@ -1321,6 +1334,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-17-the-read-only-tabs-are-panes` — python  tui
 - `2026-11-17-the-test-gate-runs-the-suite-that-exists` — gates  python
 - `2026-11-18-the-log-tab-is-a-cancellable-worker` — python  tui  architecture
+- `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers` — crawler  browser  wildberries
 
 ## Active entries
 
@@ -1453,3 +1467,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-17-the-read-only-tabs-are-panes` — The read-only tabs are panes, and the app refreshes only the active one
 - `2026-11-17-the-test-gate-runs-the-suite-that-exists` — The scripts' test gate runs pytest, so the gate guards the suite that exists
 - `2026-11-18-the-log-tab-is-a-cancellable-worker` — The log tab's follow is a cancellable worker, and the app waits for it
+- `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers` — The catalog fetch sends the URL and the headers, and nothing else

@@ -56,42 +56,79 @@ class WbCatalogApiTest :
             page1 shouldBe page9
         }
 
-        test("buildWbHeaders sets a referer matching the requested catalog") {
-            val headers = WbCatalogApi.buildWbHeaders(WbCatalogRequest.catalogUrlOf("131954"))
+        test("buildWbHeaders sends only the headers the browser lets page JavaScript set") {
+            val headers = WbCatalogApi.buildWbHeaders()
 
-            headers["referer"] shouldBe "https://www.wildberries.ru/catalog/131954/list.aspx"
+            // The Fetch standard forbids page JavaScript from setting these: the browser
+            // sets its own values and drops ours without an error. A stale `Chrome/143`
+            // in this list looked like an impersonation the browser never performed.
+            // Header names are case-insensitive: `Cookie` is the same forbidden header
+            // as `cookie`, and a case-sensitive check would let it through.
+            val names = headers.keys.map { it.lowercase() }
+            names.none { it == "cookie" || it == "user-agent" || it == "referer" } shouldBe true
+            names.none { it.startsWith("sec-") } shouldBe true
         }
 
-        test("buildWbHeaders keeps the client hints that identify a real Chrome session") {
-            val headers = WbCatalogApi.buildWbHeaders(WbCatalogRequest.catalogUrlOf("9463"))
+        test("buildWbHeaders sends exactly the four headers WB insists on") {
+            // The set is the contract, not a subset of it: a header added here goes to
+            // WB, and one removed from here is one WB may answer 403 to. The names are
+            // compared case-insensitively — HTTP header names are case-insensitive, so
+            // `Cookie` would be the very same header as `cookie`.
+            val names =
+                WbCatalogApi
+                    .buildWbHeaders()
+                    .keys
+                    .map { it.lowercase() }
+                    .toSet()
 
-            headers["sec-ch-ua-platform"] shouldBe "\"Linux\""
-            headers["user-agent"] shouldContain "Chrome/143"
+            names shouldBe setOf("deviceid", "x-requested-with", "x-spa-version", "x-userid")
+        }
+
+        test("buildWbHeaders keeps the headers WB's own catalog request carries") {
+            val headers = WbCatalogApi.buildWbHeaders()
+
+            headers["deviceid"] shouldBe "site_a39361daf4ec45f2a68c5c6ca73c8adf"
             headers["x-requested-with"] shouldBe "XMLHttpRequest"
-            headers["accept"] shouldBe "*/*"
+            headers["x-userid"] shouldBe "0"
+            headers["x-spa-version"] shouldBe "14.28.3"
         }
 
-        test("buildWbHeaders keeps dest in x-clientinfo consistent with the request URL") {
-            val headers = WbCatalogApi.buildWbHeaders(WbCatalogRequest.catalogUrlOf("9463"))
+        test("buildWbHeaders carries no header the storefront's own request does not have") {
+            // `x-clientinfo` and `type` were configured but never observed on the wire.
+            val headers = WbCatalogApi.buildWbHeaders()
 
-            headers["x-clientinfo"] shouldContain "dest=1259570991"
-        }
-
-        test("buildWbHeaders degrades to 'unknown' rather than throwing on an unparsable referer") {
-            WbCatalogApi.buildWbHeaders("not-a-catalog-url")["referer"] shouldContain "/catalog/unknown/"
+            headers.containsKey("x-clientinfo") shouldBe false
+            headers.containsKey("type") shouldBe false
         }
 
         test("the fetch script reads headers from its argument instead of embedding them") {
             // Header values such as "Linux" contain double quotes; interpolating them into the
             // script source produces invalid JS. They must arrive as a parsed argument.
-            WbCatalogFetchScript.FETCH_SCRIPT shouldContain "JSON.parse(headersArg)"
+            WbCatalogFetchScript.FETCH_SCRIPT shouldContain "JSON.parse(requestArg)"
             WbCatalogFetchScript.FETCH_SCRIPT shouldNotContain "site_a39361"
         }
 
-        test("the fetch script sends credentials and forwards the cookie jar") {
+        test("the fetch script hands the parsed headers to fetch instead of dropping them") {
+            // The script is a string, so this is a source-level check rather than an
+            // execution: it pins that the headers travel from the argument into the
+            // fetch call. A `headers: {}` in there would silently drop all four.
+            WbCatalogFetchScript.FETCH_SCRIPT shouldContain "fetch(request.url"
+            WbCatalogFetchScript.FETCH_SCRIPT shouldContain "headers: request.headers"
+        }
+
+        test("the fetch script sends credentials instead of a cookie header") {
+            // The browser attaches the session cookies itself. A `Cookie` header set from
+            // page JavaScript is a forbidden header and never leaves the page.
             WbCatalogFetchScript.FETCH_SCRIPT shouldContain "credentials: 'include'"
-            WbCatalogFetchScript.FETCH_SCRIPT shouldContain "__cookies"
-            WbCatalogFetchScript.FETCH_SCRIPT shouldContain "cookie"
+            WbCatalogFetchScript.FETCH_SCRIPT shouldNotContain "cookie"
+        }
+
+        test("the fetch script forwards no internal metadata as a request header") {
+            // `__apiUrl` and `__catalogId` used to travel in the same map as the headers,
+            // and WB received them as request headers. The URL now has a field of its own.
+            WbCatalogFetchScript.FETCH_SCRIPT shouldNotContain "__apiUrl"
+            WbCatalogFetchScript.FETCH_SCRIPT shouldNotContain "__catalogId"
+            WbCatalogFetchScript.FETCH_SCRIPT shouldNotContain "__cookies"
         }
 
         test("the fetch script reports the status so antibot responses can be told from empty ones") {

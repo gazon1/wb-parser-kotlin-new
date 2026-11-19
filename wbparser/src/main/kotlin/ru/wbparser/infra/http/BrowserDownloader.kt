@@ -242,13 +242,6 @@ open class BrowserDownloader(
     ): FetchResult {
         val page = borrowed.page
         val catalogUrl = WbCatalogRequest.catalogUrlOf(catalogId)
-        val headers: Map<String, String> = WbCatalogApi.buildWbHeaders(catalogUrl)
-        val headersWithMeta =
-            headers +
-                mapOf(
-                    "__apiUrl" to apiUrl,
-                    "__catalogId" to catalogId,
-                )
         return try {
             // Step 1: Pay the anti-bot navigation cost only on a cold profile.
             if (!borrowed.isWarm) {
@@ -263,20 +256,28 @@ open class BrowserDownloader(
             // already waited — it is the one place that knows the rate of the group
             // that serves the request, because the group is the address WB sees.
 
-            // Step 3: Extract cookies from the page context so they can be sent
-            // with the API fetch call (credentials: 'include' alone is insufficient
-            // for cross-domain XHR cookies — we explicitly pass them as a header).
-            val cookieMap = page.cookies(catalogUrl)
-            val headersWithCookies = headersWithMeta + ("__cookies" to objectMapper.writeValueAsString(cookieMap))
-            val headersJson = objectMapper.writeValueAsString(headersWithCookies)
+            // Step 3: The request goes out with the browser's own cookies.
+            //
+            // The page is on wildberries.ru and the API is on wildberries.ru, so
+            // `credentials: 'include'` makes the browser send the session cookies
+            // itself. A `Cookie` header set from page JavaScript is a forbidden
+            // header: the browser drops it without an error, so the manual cookie
+            // jar this used to build never left the page.
+            val requestJson =
+                objectMapper.writeValueAsString(
+                    mapOf(
+                        "url" to apiUrl,
+                        "headers" to WbCatalogApi.buildWbHeaders(),
+                    ),
+                )
 
-            // Step 4: Call the internal API — the page context + cookies are ready.
+            // Step 4: Call the internal API — the page context is ready.
             //
             // The request is counted before it goes out: the count is what WB counts,
             // and a request that never left (a JS error above) must not be in it.
             borrowed.markRequest()
             val fetchScript = WbCatalogFetchScript.FETCH_SCRIPT
-            val response: Map<*, *> = page.evaluate(fetchScript, headersJson) as Map<*, *>
+            val response: Map<*, *> = page.evaluate(fetchScript, requestJson) as Map<*, *>
 
             val status = (response["status"] as? Number)?.toInt() ?: 0
             val body = response["body"] as? String

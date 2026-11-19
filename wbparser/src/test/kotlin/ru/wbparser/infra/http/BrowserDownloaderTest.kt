@@ -130,7 +130,7 @@ class BrowserDownloaderTest :
             pool.close()
         }
 
-        test("the request carries the catalog API URL, the referer and the profile's cookies") {
+        test("the request carries the catalog API URL and only real headers") {
             val page =
                 FakeBrowserPage(
                     cookies = mapOf("wb_session" to "abc"),
@@ -142,11 +142,38 @@ class BrowserDownloaderTest :
             runBlocking { downloader.download(task()) }
 
             val argument = page.evaluations.single().argument as String
-            val headers = ObjectMapper().readValue(argument, Map::class.java) as Map<*, *>
-            (headers["__apiUrl"] as String) shouldContain "u-search/exactmatch"
-            (headers["__apiUrl"] as String) shouldContain "page=1"
-            (headers["referer"] as String) shouldContain "/catalog/131954/list.aspx"
-            (headers["__cookies"] as String) shouldContain "wb_session"
+            val request = ObjectMapper().readValue(argument, Map::class.java) as Map<*, *>
+            (request["url"] as String) shouldContain "u-search/exactmatch"
+            (request["url"] as String) shouldContain "page=1"
+
+            val headers = request["headers"] as Map<*, *>
+            headers["deviceid"] shouldBe "site_a39361daf4ec45f2a68c5c6ca73c8adf"
+            // Exactly the four headers the catalog request needs — no more, so an
+            // added one cannot reach WB unnoticed.
+            headers.keys.map { (it as String).lowercase() }.toSet() shouldBe
+                setOf("deviceid", "x-requested-with", "x-spa-version", "x-userid")
+            // Internal metadata is not a header, and a header the browser forbids is
+            // not sent at all — neither belongs in the request.
+            headers.keys.none { (it as String).startsWith("__") } shouldBe true
+            headers.containsKey("cookie") shouldBe false
+            pool.close()
+        }
+
+        test("the profile's cookies are left to the browser instead of being injected as a header") {
+            // A `Cookie` header set from page JavaScript is a forbidden header: the browser
+            // drops it silently, so the jar this used to build never reached WB.
+            val page =
+                FakeBrowserPage(
+                    cookies = mapOf("wb_session" to "abc"),
+                    evaluateAnswer = answer(),
+                )
+            val pool = poolOf(page)
+            val downloader = downloaderOf(pool)
+
+            runBlocking { downloader.download(task()) }
+
+            val argument = page.evaluations.single().argument as String
+            argument shouldNotContain "wb_session"
             pool.close()
         }
 
