@@ -60,6 +60,25 @@ internal object CatalogReadModel {
     const val REVIEW_POINTS_OBSERVATION: String = "feedback_points IS NOT NULL"
 
     /**
+     * The condition that says an observation is the current one of its product.
+     *
+     * The read model picks the newest observation of a product with `DISTINCT ON` and an
+     * order by `scraped_at DESC, id DESC`; this is the same rule written for a read that
+     * already knows the id of the row it looks for: a newer observation of the same
+     * product makes that row an old one. The rows without a product id are one product
+     * for the read model as well, so they are matched with the same rule.
+     */
+    const val CURRENT_OBSERVATION: String =
+        """
+        NOT EXISTS (
+            SELECT 1
+              FROM scraped_items newer
+             WHERE (newer.product_id = s.product_id
+                    OR (newer.product_id IS NULL AND s.product_id IS NULL))
+               AND (newer.scraped_at, newer.id) > (s.scraped_at, s.id))
+        """
+
+    /**
      * The columns of the read model.
      *
      * One list, so that the item list, the top-deals list and the single product read the

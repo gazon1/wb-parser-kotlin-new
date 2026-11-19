@@ -397,15 +397,49 @@ class CatalogQueriesTest :
         test("the price history of a product comes from its own target") {
             val first = fixture.seedTarget("Первая")
             val second = fixture.seedTarget("Вторая")
-            val item = fixture.seedItem(first, title = "Товар", productId = 555, priceKopecks = 10000)
-            fixture.seedItem(first, title = "Товар", productId = 555, priceKopecks = 11000)
-            fixture.seedItem(first, title = "Товар", productId = 555, priceKopecks = 12000)
-            fixture.seedItem(second, title = "Товар", productId = 555, priceKopecks = 13000)
+            fixture.seedItem(
+                first,
+                title = "Товар",
+                productId = 555,
+                priceKopecks = 10000,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            fixture.seedItem(
+                first,
+                title = "Товар",
+                productId = 555,
+                priceKopecks = 11000,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+            fixture.seedItem(
+                first,
+                title = "Товар",
+                productId = 555,
+                priceKopecks = 12000,
+                scrapedAt = Instant.parse("2026-01-03T00:00:00Z"),
+            )
+            fixture.seedItem(
+                second,
+                title = "Товар",
+                productId = 555,
+                priceKopecks = 13000,
+                scrapedAt = Instant.parse("2026-01-04T00:00:00Z"),
+            )
+            // The detail answers about the current observation of the product, so the
+            // newest row of the first target is the one that is asked for.
+            val current =
+                fixture.seedItem(
+                    first,
+                    title = "Товар",
+                    productId = 555,
+                    priceKopecks = 14000,
+                    scrapedAt = Instant.parse("2026-01-05T00:00:00Z"),
+                )
 
-            val detail = fixture.queries.getItem(item)
+            val detail = fixture.queries.getItem(current)
 
             detail.shouldNotBeNull()
-            detail.history shouldHaveSize 3
+            detail.history shouldHaveSize 4
         }
 
         test("a product that is not there is not found") {
@@ -493,6 +527,32 @@ class CatalogQueriesTest :
             val result = fixture.queries.listItems(CatalogQueryParams.parse(params()))
 
             result.items shouldHaveSize 0
+        }
+
+        test("an old observation of a product that left the catalog is not found") {
+            // The finding of the review: the detail read checked the observation it was
+            // given, so an older observation that paid points was served after the
+            // product had left the catalog.
+            val target = fixture.seedTarget("Категория")
+            val older =
+                fixture.seedItem(
+                    target,
+                    title = "Товар",
+                    feedbackPoints = 300,
+                    productId = 7L,
+                    priceKopecks = 49900,
+                    scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+                )
+            fixture.seedItem(
+                target,
+                title = "Товар",
+                feedbackPoints = null,
+                productId = 7L,
+                priceKopecks = 39900,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+
+            fixture.queries.getItem(older).shouldBeNull()
         }
 
         test("a row with no price has no price, and not a zero") {

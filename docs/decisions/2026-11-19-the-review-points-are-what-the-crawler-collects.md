@@ -60,7 +60,9 @@ review points are stored as their own value, end to end, and never as a cashback
   points is out of the catalog, even when an older observation of it did. The condition is
   applied to the read model and not inside it — inside, it would pick the newest observation
   that pays points and keep the product with a price it does not have. The detail read
-  applies it too: an observation outside the catalog is not found.
+  applies it too: an observation outside the catalog is not found. And the detail read
+  answers about the **current** observation of the product: an older observation is not
+  found either, because the product left the catalog when the newer observation arrived.
 
 ## Rationale
 
@@ -89,6 +91,9 @@ reported, dressed up as a fix.
   apply the same condition to every read of the catalog — the list, the targets, the top
   deals and the detail read. A read that answers about a product the list leaves out is
   two answers about two catalogs.
+- **Always** let the detail read answer about the current observation of the product. An
+  old observation is a price the product does not have, and the id of it is not an id the
+  storefront can show.
 - A crawl of a category now yields the review-point-carrying products of that category only
   (tens, not hundreds per category) — the catalog shrank because the catalog *is* the
   answer to "which of these products pay for a review".

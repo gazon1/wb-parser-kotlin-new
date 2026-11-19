@@ -93,6 +93,11 @@ class CatalogItemQueries(
      * applies. An observation that pays no review points is not a product of the
      * catalog, and a detail read that found it would answer about a product the
      * storefront cannot show.
+     *
+     * And it has to be the *current* observation of its product: the membership is
+     * decided on the newest observation, so an older observation that paid points is
+     * not a product of the catalog either — the product left it when the newer
+     * observation arrived.
      */
     fun getItem(id: UUID): ProductDetail? =
         dataSource.read { connection ->
@@ -106,6 +111,7 @@ class CatalogItemQueries(
                                 JOIN crawl_targets t ON t.id = s.target_id
                                WHERE s.id = ?
                                  AND s.${CatalogReadModel.REVIEW_POINTS_OBSERVATION}
+                                 AND ${CatalogReadModel.CURRENT_OBSERVATION}
                         )
                         SELECT ${CatalogCardProjection.columns("i")}
                           FROM i

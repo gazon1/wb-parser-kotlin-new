@@ -249,8 +249,8 @@ class CatalogRoutesTest {
                     .prepareStatement(
                         """
                         INSERT INTO scraped_items (id, target_id, product_url, content_hash, title,
-                                                   price_kopecks, cashback_percent, feedback_points, scraped_at)
-                        VALUES (?, ?, 'https://example.invalid/p/2', 'hash-2', 'Товар без баллов', 19900, 5.00, NULL, now())
+                                                   price_kopecks, cashback_percent, feedback_points, scraped_at, product_id)
+                        VALUES (?, ?, 'https://example.invalid/p/2', 'hash-2', 'Товар без баллов', 19900, 5.00, NULL, now(), 43)
                         """.trimIndent(),
                     ).use {
                         val id = UUID.randomUUID()
@@ -263,6 +263,48 @@ class CatalogRoutesTest {
 
         mockMvc
             .perform(get("/api/catalog/v1/items/$withoutPoints").header("X-Api-Key", "test-catalog-key"))
+            .andExpect(status().isNotFound())
+    }
+
+    @Test
+    fun anOldObservationOfAProductThatLeftTheCatalogIsNotFound() {
+        // The finding of the review: the detail read checked the observation it was
+        // given, so an older observation that paid points was served after the product
+        // had left the catalog.
+        val older =
+            dataSource.connection.use { connection ->
+                connection
+                    .prepareStatement(
+                        """
+                        INSERT INTO scraped_items (id, target_id, product_url, content_hash, title,
+                                                   price_kopecks, cashback_percent, feedback_points, scraped_at, product_id)
+                        VALUES (?, ?, 'https://example.invalid/p/3', 'hash-3', 'Товар с баллами', 19900, 5.00, 300, now() - interval '1 day', 42)
+                        """.trimIndent(),
+                    ).use {
+                        val id = UUID.randomUUID()
+                        it.setObject(1, id)
+                        it.setObject(2, target)
+                        it.executeUpdate()
+                        id
+                    }
+            }
+        dataSource.connection.use { connection ->
+            connection
+                .prepareStatement(
+                    """
+                    INSERT INTO scraped_items (id, target_id, product_url, content_hash, title,
+                                               price_kopecks, cashback_percent, feedback_points, scraped_at, product_id)
+                    VALUES (?, ?, 'https://example.invalid/p/4', 'hash-4', 'Товар без баллов', 19900, 5.00, NULL, now(), 42)
+                    """.trimIndent(),
+                ).use {
+                    it.setObject(1, UUID.randomUUID())
+                    it.setObject(2, target)
+                    it.executeUpdate()
+                }
+        }
+
+        mockMvc
+            .perform(get("/api/catalog/v1/items/$older").header("X-Api-Key", "test-catalog-key"))
             .andExpect(status().isNotFound())
     }
 

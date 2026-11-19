@@ -92,15 +92,43 @@ class CatalogItemQueriesTest :
         test("the price history of a product comes from its own target") {
             val first = fixture.seedTarget("Первая")
             val second = fixture.seedTarget("Вторая")
-            val item = fixture.seedItem(first, title = "Товар", productId = 555L, priceKopecks = 10000L)
-            fixture.seedItem(first, title = "Товар", productId = 555L, priceKopecks = 11000L)
-            fixture.seedItem(second, title = "Товар", productId = 555L, priceKopecks = 13000L)
+            fixture.seedItem(
+                first,
+                title = "Товар",
+                productId = 555L,
+                priceKopecks = 10000L,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            fixture.seedItem(
+                first,
+                title = "Товар",
+                productId = 555L,
+                priceKopecks = 11000L,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+            fixture.seedItem(
+                second,
+                title = "Товар",
+                productId = 555L,
+                priceKopecks = 13000L,
+                scrapedAt = Instant.parse("2026-01-03T00:00:00Z"),
+            )
+            // The detail answers about the current observation of the product, so the
+            // newest row of the first target is the one that is asked for.
+            val current =
+                fixture.seedItem(
+                    first,
+                    title = "Товар",
+                    productId = 555L,
+                    priceKopecks = 14000L,
+                    scrapedAt = Instant.parse("2026-01-04T00:00:00Z"),
+                )
 
-            val detail = queries().getItem(item)
+            val detail = queries().getItem(current)
 
             detail.shouldNotBeNull()
             // Three observations in its own target, and not the one of the other target.
-            detail.history shouldHaveSize 2
+            detail.history shouldHaveSize 3
         }
 
         test("a product that is not there is not found") {
