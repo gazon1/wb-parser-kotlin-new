@@ -47,21 +47,31 @@ Observed on 2026-11-19 in a real Chrome session (chrome-use network capture):
 - `cookie`, `user-agent`, `referer` and `sec-ch-ua*` were dropped by the browser; the wire
   carried the browser's own user agent and referer.
 - A catalog request without `deviceid` answers 403; with it, 200.
+- `proxy-authorization` and `set-cookie` are dropped too; `permissions-policy` and
+  `http2-settings` reach WB.
 
 So the old list was mostly theatre, and one real header (`deviceid`) was hiding in it. A
 `{url, headers}` argument removes the whole class of leak instead of filtering it: a key
 that is not under `headers` cannot become a header.
 
+The forbidden set is the Fetch Standard's "forbidden request-header" — the listed names,
+the `proxy-` and `sec-` prefixes, and the `X-HTTP-Method*` names when their value is a
+forbidden method. `user-agent` is not on that list, but Chrome ignores a page-supplied
+value for it, so the adapter reports it as dropped as well.
+
 ## Consequences
 
 - **Always** keep internal metadata out of the request header map — a URL is a field of the
   fetch argument, not a header.
-- **Never** set `cookie`, `user-agent`, `referer` or `sec-*` from page JavaScript: the
-  browser owns them and drops ours without an error.
+- **Never** set `cookie`, `user-agent`, `referer`, `proxy-*` or `sec-*` from page
+  JavaScript: the browser owns them and drops ours without an error.
 - **Always** verify a browser-fetch assumption against a real browser session, not against
   the configured constants.
 - **Always** keep the development adapter's default headers equal to
   `WbCatalogApi.buildWbHeaders()`: an adapter that sends a different request than the
   crawler verifies nothing (and gets 403 without `deviceid`).
+- **Always** take the adapter's forbidden-header list from the Fetch Standard and check it
+  against the wire: a header the browser drops but the adapter reports as sent is the one
+  failure this adapter exists to catch.
 - The session cookies travel with `credentials: 'include'`; the browser context's cookie
   jar is no longer read by the downloader.

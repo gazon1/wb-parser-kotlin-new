@@ -20,13 +20,18 @@ async function (args) {
   // Fetch forbids page JavaScript from setting these headers: the browser owns them,
   // and a value passed here is dropped without an error. Listing them next to the
   // request is the point of this adapter — a header that looks sent but never is.
+  // The names and the `proxy-` / `sec-` prefixes follow the Fetch Standard
+  // ("forbidden request-header"); the list was checked against a real Chrome
+  // request on the wire. `user-agent` is not on that list, but Chrome ignores a
+  // page-supplied value for it, so it is listed here as well.
   const FORBIDDEN = [
     'accept-charset', 'accept-encoding', 'access-control-request-headers',
     'access-control-request-method', 'connection', 'content-length', 'cookie',
     'cookie2', 'date', 'dnt', 'expect', 'host', 'keep-alive', 'origin',
-    'permissions-policy', 'referer', 'te', 'trailer', 'transfer-encoding',
+    'referer', 'set-cookie', 'te', 'trailer', 'transfer-encoding',
     'upgrade', 'via', 'user-agent'
   ];
+  const FORBIDDEN_PREFIXES = ['proxy-', 'sec-'];
   const API_PATH = '__internal/u-search/exactmatch/ru/common/v18/search';
   const DEST = '1259570991';
 
@@ -70,7 +75,8 @@ async function (args) {
   const names = Object.keys(headers);
   const dropped = names.filter((h) => {
     const low = h.toLowerCase();
-    return FORBIDDEN.indexOf(low) >= 0 || low.indexOf('sec-') === 0;
+    return FORBIDDEN.indexOf(low) >= 0 ||
+      FORBIDDEN_PREFIXES.some((prefix) => low.indexOf(prefix) === 0);
   });
 
   let resp;

@@ -55,8 +55,8 @@ The adapter sends the same four headers the crawler sends — `deviceid`, `x-req
 different one.
 
 `--extraHeaders` sends additional request headers as a JSON object. It is how the forbidden
-headers are demonstrated: pass `cookie`, `user-agent`, `referer` or a `sec-ch-ua*` hint and
-watch them land in `droppedByBrowser`.
+headers are demonstrated: pass `cookie`, `user-agent`, `referer`, a `sec-ch-ua*` hint or a
+`proxy-*` header and watch them land in `droppedByBrowser`.
 
 ```bash
 chrome-use site wildberries/catalog-request --catalog 131954 \
@@ -82,8 +82,15 @@ Observed on 2026-11-19 against a real Chrome session:
 | `deviceid` | yes | WB answers 403 without it |
 | `x-requested-with`, `x-userid`, `x-spa-version` | yes | carried by the storefront's own request |
 | `user-agent`, `referer`, `sec-ch-ua*` | no | forbidden headers — the browser sets its own |
-| `cookie` | no | forbidden header — dropped without an error |
+| `cookie`, `set-cookie` | no | forbidden header — dropped without an error |
+| `proxy-*` | no | forbidden prefix — dropped without an error |
+| `permissions-policy`, `http2-settings` | yes | not forbidden — they do reach WB |
 | `__apiUrl`, `__catalogId` | yes | internal metadata, sent as headers — a leak |
+
+The forbidden set is the Fetch Standard's "forbidden request-header": the listed names, the
+`proxy-` and `sec-` prefixes, and the `X-HTTP-Method*` names when their value is a forbidden
+method (`CONNECT`, `TRACE`, `TRACK`). `user-agent` is not on that list, but Chrome ignores a
+page-supplied value for it.
 
 `credentials: 'include'` on a same-origin request is what carries the session cookies; a
 `Cookie` header built from the browser context never leaves the page.
