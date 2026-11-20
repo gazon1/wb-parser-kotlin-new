@@ -970,14 +970,19 @@ def test_a_step_that_worked_is_exported(tmp_path, monkeypatch):
 def test_a_navigation_that_left_the_approved_pages_fails_the_step(tmp_path, monkeypatch):
     # The finding of the review: the site may answer the approved page with
     # another page — an action endpoint the config forbids — and the browser
-    # follows it. The tool reads the answer in the recording.
+    # follows it. The browser says where the session ended up, and a session
+    # on a page the config does not name fails the step.
     entries = [
         redirect("https://www.wildberries.ru/catalog/", "https://www.wildberries.ru/basket/add"),
         entry("https://www.wildberries.ru/__internal/u-search"),
     ]
     monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
-    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(entries, session_url="https://www.wildberries.ru/basket/add"),
+    )
     args = argparse.Namespace(
         name="step",
         investigation="demo",
@@ -993,6 +998,63 @@ def test_a_navigation_that_left_the_approved_pages_fails_the_step(tmp_path, monk
     assert any("left the approved pages" in note for note in report["notes"])
 
 
+def test_a_frame_of_an_approved_host_outside_the_approved_pages_is_not_a_navigation(tmp_path, monkeypatch):
+    # The finding of the review: the recording cannot tell the main frame of
+    # the tab from a frame of another site — both are documents in it — so a
+    # frame of an approved host outside the approved pages was read as a
+    # navigation of the session and failed the step. The browser tells them
+    # apart: the session is on the page the config names, and the step is a
+    # successful one. The frame is named in the report.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://www.wildberries.ru/basket/widget", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_OK
+
+    assert (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("basket/widget" in note for note in report["notes"])
+
+
+def test_a_session_on_a_page_the_config_does_not_name_fails_the_step(tmp_path, monkeypatch):
+    # The session is judged by the page it is on, and not by the origin alone:
+    # an approved origin answers a page the config does not name as well.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(entries, session_url="https://www.wildberries.ru/basket/add"),
+    )
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("the session left the approved pages" in note for note in report["notes"])
+
+
 def test_a_redirect_to_another_host_fails_the_step(tmp_path, monkeypatch):
     entries = [
         redirect("https://www.wildberries.ru/catalog/", "https://login.example.test/basket/add"),
@@ -1000,7 +1062,11 @@ def test_a_redirect_to_another_host_fails_the_step(tmp_path, monkeypatch):
     ]
     monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
-    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(entries, session_url="https://login.example.test/basket/add"),
+    )
     args = argparse.Namespace(
         name="step",
         investigation="demo",
@@ -1410,7 +1476,11 @@ def test_a_redirect_to_a_page_that_hides_a_host_behind_a_backslash_fails_the_ste
     ]
     monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
-    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(entries, session_url="https://evil.example\\@www.wildberries.ru/catalog/"),
+    )
     args = argparse.Namespace(
         name="step",
         investigation="demo",
@@ -1426,8 +1496,8 @@ def test_a_redirect_to_a_page_that_hides_a_host_behind_a_backslash_fails_the_ste
 def test_a_navigation_the_page_makes_itself_fails_the_step(tmp_path, monkeypatch):
     # The finding of the review: a redirect is an answer with a status of 3xx,
     # but the site may navigate the session in the page itself — a script that
-    # replaces the location. The recording shows that navigation as a document
-    # of its own, and it is judged by the same measure as a redirect.
+    # replaces the location. The browser says where the session went, and a
+    # session on a page the config does not name fails the step.
     entries = [
         entry("https://www.wildberries.ru/catalog/", "Document"),
         entry("https://www.wildberries.ru/basket/add", "Document"),
@@ -1435,7 +1505,11 @@ def test_a_navigation_the_page_makes_itself_fails_the_step(tmp_path, monkeypatch
     ]
     monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
-    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(entries, session_url="https://www.wildberries.ru/basket/add"),
+    )
     args = argparse.Namespace(
         name="step",
         investigation="demo",
@@ -1534,8 +1608,23 @@ def test_a_session_behind_a_backslash_is_not_an_approved_session():
     # the host `b.example` to the parser and the host `a.example` to the
     # browser. A session the check cannot read the way the browser reads it is
     # not a session it can approve.
-    assert capture.approved_session("https://www.wildberries.ru\\@evil.example/", ["www.wildberries.ru"]) is False
-    assert capture.approved_session("https://www.wildberries.ru/catalog/", ["www.wildberries.ru"]) is True
+    pages = ["https://www.wildberries.ru/catalog/"]
+    assert capture.session_problem("https://www.wildberries.ru\\@evil.example/", CONFIG["allowedOrigins"], pages) != ""
+    assert capture.session_problem("https://www.wildberries.ru/catalog/", CONFIG["allowedOrigins"], pages) == ""
+
+
+def test_a_session_on_a_page_the_config_does_not_name_is_not_an_approved_session():
+    # The session is judged by the page it is on: an approved origin answers a
+    # page the config does not name as well, and the query the site adds to
+    # the page is not a navigation of its own.
+    pages = CONFIG["allowedPages"]
+    assert capture.session_problem("https://www.wildberries.ru/basket/add", CONFIG["allowedOrigins"], pages) != ""
+    assert (
+        capture.session_problem(
+            "https://www.wildberries.ru/catalog/131954/list.aspx?search=x", CONFIG["allowedOrigins"], pages
+        )
+        == ""
+    )
 
 
 def test_an_approved_host_on_another_port_is_not_approved_traffic(tmp_path, monkeypatch):
@@ -1651,3 +1740,24 @@ def test_a_failed_step_answers_the_failure_even_with_an_unapproved_origin(tmp_pa
 
     report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
     assert report["unapprovedApiHosts"] == ["https://www.wildberries.ru:8443"]
+
+
+def test_a_pattern_that_names_an_origin_in_full_approves_that_origin():
+    config = {**CONFIG, "allowedOrigins": ["https://api.example.ru:8443"]}
+
+    reason, _ = capture.classify(entry("https://api.example.ru:8443/api"), config)
+
+    assert reason is None
+
+
+def test_the_same_host_on_another_port_is_an_unapproved_origin():
+    # The finding of the review: the report named an unknown host where the
+    # operator had approved a host on a port of its own, so a request of that
+    # host on another port was counted as the traffic of a host nobody knows
+    # and not as a request of an approved host on an unapproved origin.
+    config = {**CONFIG, "allowedOrigins": ["https://api.example.ru:8443"]}
+
+    reason, host = capture.classify(entry("https://api.example.ru:8444/api"), config)
+
+    assert reason == "origin-not-approved"
+    assert host == "https://api.example.ru:8444"

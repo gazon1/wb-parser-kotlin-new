@@ -258,15 +258,14 @@ was never answered is evidence of something different.
   is not committed.
 - **Never** let the site choose the page the session goes to: the page the
   operator opens may be answered with a redirect, and the browser follows it —
-  so the redirect of the navigation is read in the recording, and a navigation
-  that left the approved pages makes the step a failed one. The tool cannot
-  know what the site will answer before it answers it, and chrome-use cannot
-  allow-list the requests of a page: it aborts by pattern, and the site loads
-  a page from many hosts, so a route that aborts what the config does not
-  approve would break the page it is meant to capture. The guarantee the tool
-  keeps is the one it can hold — the commands it runs are commands that read
-  the page, and a step whose navigation left the approved pages is not
-  evidence of anything.
+  so the step reads where the session ended up, and a session on a page the
+  config does not name makes the step a failed one. The tool cannot know what
+  the site will answer before it answers it, and chrome-use cannot allow-list
+  the requests of a page: it aborts by pattern, and the site loads a page from
+  many hosts, so a route that aborts what the config does not approve would
+  break the page it is meant to capture. The guarantee the tool keeps is the one
+  it can hold — the commands it runs are commands that read the page, and a
+  step whose session left the approved pages is not evidence of anything.
 - **Never** run a page action of a program that is only called chrome-use: the
   action is the chrome-use command by its own name, and a path to another
   program of that name is refused.
@@ -286,20 +285,18 @@ was never answered is evidence of something different.
   `b.example` to the parser here. The URL is refused rather than guessed, and
   the page that is executed is the page that was judged. A URL whose host
   cannot be read at all names no host, and no page of it is approved.
-- **Never** read a redirect the browser reads differently from the way it is
-  judged: the site chooses the page of a redirect, and the browser reads a
-  backslash in it as a slash — so a redirect to `https://a.example\@b.example/`
-  names the host `b.example` to the parser and the host `a.example` to the
-  browser. Such a redirect is not an approved navigation, and the step that
-  followed it fails and is not committed.
+- **Never** read a session the browser reads differently from the way it is
+  judged: the browser reads a backslash in an http(s) URL as a slash, so a
+  session on `https://a.example\@b.example/` names the host `b.example` to the
+  parser and the host `a.example` to the browser. Such a session is not
+  approved, and the step fails and is not committed.
 - **Never** let the session go to a page the config does not name, whoever
   sends it there: a redirect is one way, and the page itself may navigate the
-  session — a script that replaces the location. The recording shows that
-  navigation as a document of its own, and a document of an approved host must
-  be a page the config names; a step that opened one fails and is not
-  committed. A document of another host is third-party traffic: the recording
-  cannot tell a frame of another site from a navigation to it, and such
-  traffic is kept out of the evidence.
+  session — a script that replaces the location. The browser says where the
+  session is, and a session on a page the config does not name fails the step
+  and is not committed. A document of another host is third-party traffic: the
+  recording cannot tell a frame of another site from a navigation to it, and
+  such traffic is kept out of the evidence.
 - **Always** approve an origin, and not a host: the same host on another port is
   another service, and the plain-http origin of an https host is another
   origin, so a request of it is not traffic of the approved one. A pattern that
@@ -321,9 +318,16 @@ was never answered is evidence of something different.
   The step reads that page after its actions, and a session on an origin the
   config does not approve fails the step — as does a browser that cannot say
   where the session is, because a step whose evidence says nothing about where
-  the session went shows nothing about what the step did. The origin is what is
-  judged, and not the page: the site may add query parameters to the page it
-  keeps the session on.
+  the session went shows nothing about what the step did. The origin and the
+  page are what is judged: the site may add query parameters to the page it
+  keeps the session on, and a query the tool did not ask for is not a
+  navigation of its own.
+- **Never** read a document of the recording as a navigation of the session: the
+  main frame of the tab and a frame of another site are both documents in it, so
+  a frame of an approved host outside the approved pages is not a navigation and
+  does not fail the step. The pages the recording shows that the config does
+  not name are named in the report, and the browser decides where the session
+  is.
 - **Never** let a navigation name a page the tool does not read: a navigation
   (`open`, `read`) names the page right after the verb, and a command that
   names no page is refused — `read` without a URL reads the tab that is open,

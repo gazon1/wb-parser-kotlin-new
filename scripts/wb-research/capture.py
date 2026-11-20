@@ -237,6 +237,31 @@ def approved_origin(url: str, patterns: list[str]) -> bool:
     return False
 
 
+def approved_host(host: str, patterns: list[str]) -> bool:
+    """Whether a host is one of the hosts the patterns name.
+
+    A pattern that names an origin in full (`https://api.example.ru:8443`)
+    approves that origin, and the host of it is a host the operator has in
+    mind: a request of the same host on another port is a request of an
+    approved host and not of a host nobody knows. The origin comparison still
+    decides whether the request is approved — this says only which host the
+    operator had in mind, so that the report names the origin of such a
+    request instead of an unknown host.
+    """
+    names: list[str] = []
+    for pattern in patterns:
+        pattern = pattern.strip()
+        if not pattern:
+            continue
+        if "://" in pattern:
+            named = origin_of(pattern)
+            if named is not None:
+                names.append(named[1])
+            continue
+        names.append(pattern)
+    return host_matches(host, names)
+
+
 def decode_layers(text: str) -> str:
     """The text as a server that decodes it again and again would read it.
 
@@ -374,7 +399,7 @@ def classify(entry: dict, config: dict) -> tuple[str | None, str]:
         return "type-not-kept", host
     if host_matches(host, config["noiseHosts"]):
         return "noise-host", host
-    if host_matches(host, config["allowedOrigins"]):
+    if approved_host(host, config["allowedOrigins"]):
         # The host is approved, and the origin is not: another port of the same
         # host, or the plain-http origin of an https one. The host is named in
         # the report, and the origin with it — the operator has to approve the
@@ -698,13 +723,14 @@ def session_page() -> str:
 
 
 def document_urls(entries: list[dict]) -> list[str]:
-    """The pages the browser opened, as the recording shows them.
+    """The pages the recording shows as documents.
 
     A document is a page: the page the operator opened, the page a redirect
     sent the browser to, and the page the page itself sent the browser to — a
     script that replaces the location is a navigation the site made, and the
-    recording shows it as a document of its own. The site chooses where the
-    session goes, and the tool reads the answer in the recording.
+    recording shows it as a document of its own. A frame of another site is a
+    document as well, and the recording cannot tell the two apart: the pages
+    here are named in the report, and the browser says where the session is.
     """
     urls: list[str] = []
     for entry in entries:
@@ -717,12 +743,12 @@ def document_urls(entries: list[dict]) -> list[str]:
 
 
 def approved_navigation(url: str, approved: list[str], pages: list[str], allowed_query: list[str]) -> bool:
-    """Whether the page a redirect sends the browser to is one the config approves.
+    """Whether a navigation the recording shows is one the config approves.
 
     The same three rules the page action is judged by: the host is approved,
     the page is approved, and the query carries nothing the config does not
-    name. A redirect is a navigation the operator did not ask for, so it is
-    held to the same measure.
+    name. A navigation the operator did not ask for is held to the same
+    measure.
     """
     if BACKSLASH in url:
         # The browser reads a backslash as a slash, so the page it would open
@@ -745,18 +771,33 @@ def approved_navigation(url: str, approved: list[str], pages: list[str], allowed
     return all(name in allowed_query for name in query_names(url))
 
 
-def approved_session(url: str, approved: list[str]) -> bool:
-    """Whether the session is on one of the approved origins.
+def session_problem(url: str, approved: list[str], pages: list[str]) -> str:
+    """Why the session is not on a page the config approves, and an empty
+    string when it is.
 
-    The origin is what is judged, and not the page: the site may add query
-    parameters to the page it keeps the session on, and the page itself is
-    judged by the recording. A URL the browser reads differently than the
-    parser reads it — a backslash — is not a URL this check can read, so it is
-    not approved.
+    The origin and the page are what is judged: the site may add query
+    parameters to the page it keeps the session on, and a query the tool did
+    not ask for is not a navigation of its own. A URL the browser reads
+    differently than the parser reads it — a backslash — is not a URL this
+    check can read, so it is not approved.
     """
+    if not url:
+        # The browser could not say where the session is. A step whose evidence
+        # says nothing about where the session went shows nothing about what
+        # the step did, so it is not a successful one.
+        return "the browser did not tell which page the session is on"
     if BACKSLASH in url:
-        return False
-    return approved_origin(url, approved)
+        # The browser reads a backslash as a slash, so the page the session is
+        # on is not the page this check reads: `https://a.example\@b.example/`
+        # is the host `b.example` to the parser and the host `a.example` to the
+        # browser. A page the tool cannot read the way the browser reads it is
+        # a page it cannot approve.
+        return f"the session is on a page the tool cannot read the way the browser reads it: {url}"
+    if not approved_origin(url, approved):
+        return f"the session left the approved origins: {url}"
+    if not approved_page(url, pages):
+        return f"the session left the approved pages: {url}"
+    return ""
 
 
 def run_page_action(action: list[str]) -> int:
@@ -876,60 +917,34 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     # The site may answer the page the operator opened with another page. The
     # browser follows it, so a redirect can carry the session to an action
     # endpoint the config forbids — and the tool cannot know that before the
-    # site answers. What it can do is read the answer in the recording: a
-    # navigation that left the approved pages makes the step a failed one,
-    # and the capture of a failed step is not evidence of what the step shows.
+    # site answers.
     #
-    # The same holds for a navigation the page itself makes: a script that
-    # replaces the location is a document of its own in the recording, and it
-    # is judged by the same measure as a redirect. A document of another host
-    # is a third-party frame — the recording cannot tell a frame from a
-    # navigation to another site — and it is third-party traffic, which the
-    # filter keeps out of the evidence; a document of an approved host is the
-    # session, and it must be a page the config names.
-    redirect_problem = ""
+    # The recording cannot tell the main frame of the tab from a frame of
+    # another site: both are documents in it, and a frame of an approved origin
+    # is not a navigation of the session either. So the recording does not
+    # decide the step — it names the pages it shows that the config does not
+    # name, and the browser decides where the session is.
+    pages = config.get("allowedPages", [])
     left_pages = [
         target
         for target in navigation_targets(entries)
-        if not approved_navigation(
-            target,
-            config["allowedOrigins"],
-            config.get("allowedPages", []),
-            config.get("allowedQueryParams", []),
-        )
+        if approved_origin(target, config["allowedOrigins"])
+        and not approved_navigation(target, config["allowedOrigins"], pages, config.get("allowedQueryParams", []))
     ]
     left_documents = [
         url
         for url in document_urls(entries)
         if approved_origin(url, config["allowedOrigins"])
-        and not approved_navigation(
-            url,
-            config["allowedOrigins"],
-            config.get("allowedPages", []),
-            config.get("allowedQueryParams", []),
-        )
+        and not approved_navigation(url, config["allowedOrigins"], pages, config.get("allowedQueryParams", []))
     ]
-    if left_pages or left_documents:
-        left = list(dict.fromkeys(left_pages + left_documents))
-        redirect_problem = "the navigation left the approved pages: " + "; ".join(left[:3])
-        failed = failed or EXIT_FAILED
+    left = list(dict.fromkeys(left_pages + left_documents))
 
-    # The recording cannot tell the main frame of the tab from a frame of
-    # another site: both are documents in it, and a document of another host is
-    # third-party traffic. The browser can tell them apart — the main frame of
-    # the tab is the page the session is on. A session that left the approved
-    # hosts observes something else, so the step fails: the capture of a failed
-    # step is not evidence of what the step shows.
-    session_url = session_page()
-    session_problem = ""
-    if not session_url:
-        # The browser could not say where the session is. A step whose evidence
-        # says nothing about where the session went shows nothing about what
-        # the step did, so it is not a successful one.
-        session_problem = "the browser did not tell which page the session is on"
-    elif not approved_session(session_url, config["allowedOrigins"]):
-        session_problem = f"the session left the approved origins: {session_url}"
-    if session_problem:
+    # The browser tells the main frame of the tab from a frame of another site:
+    # the main frame of the tab is the page the session is on. A session that
+    # left the approved pages observes something else, so the step fails: the
+    # capture of a failed step is not evidence of what the step shows.
+    problem = session_problem(session_page(), config["allowedOrigins"], pages)
+    if problem:
         failed = failed or EXIT_FAILED
 
     listed = chrome_use_json("network", "requests").get("requests", [])
@@ -987,11 +1002,12 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     if action_failure:
         notes.append(action_failure)
     else:
-        for problem in (redirect_problem, session_problem):
-            if problem:
-                notes.append(problem)
-        if not (redirect_problem or session_problem) and failed:
+        if problem:
+            notes.append(problem)
+        elif failed:
             notes.append(f"the page action failed with exit code {failed}, so the capture is partial")
+    if left:
+        notes.append("the recording shows a navigation the config does not approve: " + "; ".join(left[:3]))
 
     report = {
         "step": step,
@@ -1021,7 +1037,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
 
     if failed:
         print(
-            action_failure or redirect_problem or session_problem or f"the command failed with exit code {failed}",
+            action_failure or problem or f"the command failed with exit code {failed}",
             file=sys.stderr,
         )
         return EXIT_FAILED

@@ -259,26 +259,29 @@ decodes twice. The query of the page is judged
 too: a navigation may only carry the query parameters the config names
 (`allowedQueryParams`), because a parameter can switch an action on just as a
 path can. The site may answer the page the operator opens with another page:
-the browser follows the redirect, so the redirect of the navigation is read in
-the recording, and a navigation that left the approved pages makes the step a
-failed one — its capture is not exported, and the reason is in the report. A
-redirect is judged the way the browser reads it: the browser reads a backslash
-as a slash, so a redirect to `https://a.example\@b.example/` names the host
-`b.example` to the parser and the host `a.example` to the browser — such a
-redirect is not an approved navigation, and the step fails. The page may
-navigate the session by itself as well — a script that replaces the location —
-and the recording shows that navigation as a document of its own: a document of
-an approved host must be a page the config names, so such a step fails too. A
-document of another host is third-party traffic — the recording cannot tell a
-frame of another site from a navigation to it — and the filter keeps it out of
-the evidence. The browser tells them apart: it names the page of the main
-frame of the tab, and the step reads it after its actions. A session on a host
-the config does not approve fails the step, and so does a browser that cannot
-say where the session is — a step whose evidence says nothing about where the
-session went shows nothing about what the step did.
+the browser follows the redirect, so the step reads where the session ended up
+— the browser names the page of the main frame of the tab after its actions —
+and a session on a page the config does not name makes the step a failed one:
+its capture is not exported, and the reason is in the report. The origin and
+the page are what is judged: the site may add query parameters to the page it
+keeps the session on, and a query the tool did not ask for is not a navigation
+of its own. The session is read the way the browser reads it: the browser reads
+a backslash as a slash, so a session on `https://a.example\@b.example/` names
+the host `b.example` to the parser and the host `a.example` to the browser —
+such a session is not approved, and the step fails. The page may navigate the
+session by itself as well — a script that replaces the location — and the
+browser says where it went, so such a step fails too. A browser that cannot
+say where the session is fails the step as well — a step whose evidence says
+nothing about where the session went shows nothing about what the step did.
+The recording does not decide this: it cannot tell the main frame of the tab
+from a frame of another site — both are documents in it — so a frame of an
+approved host outside the approved pages is not a navigation of the session and
+does not fail the step. The pages the recording shows that the config does not
+name are named in the report, and a document of another host is third-party
+traffic that the filter keeps out of the evidence.
 The tool cannot know what the site will answer before it answers it, so the
 guarantee it keeps is the one it can hold: the commands it runs are commands
-that read the page, and a step whose navigation left the approved pages is not
+that read the page, and a step whose session left the approved pages is not
 committed. Several actions in one step are separated by `--`. The capture names
 the step, keeps the requests the config approves, reports what it dropped and
 hands the result to the redactor.
