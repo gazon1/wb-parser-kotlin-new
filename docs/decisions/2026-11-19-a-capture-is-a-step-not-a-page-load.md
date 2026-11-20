@@ -159,7 +159,8 @@ was never answered is evidence of something different.
   service chose is one word.
 - **Never** keep a value that hides behind percent-escapes: the name of a query
   parameter, the value of a query parameter, the value of an allowed header, the
-  key of a JSON answer, a note and an operator-chosen name are judged as the
+  name of a header, the key of a JSON answer, a note and an operator-chosen name
+  are judged as the
   server reads them — decoded layer by layer, at most three — because the server
   resolves every layer and an address behind two of them
   (`alice%2540example.com`) is the address all the same. A value that survives

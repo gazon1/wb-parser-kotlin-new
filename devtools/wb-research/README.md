@@ -534,7 +534,10 @@ The rules the redactor applies:
   (`sec-ch-ua-platform-version`), and it survives. A name that carries no
   letters at all is an id as well: a number written with a separator between
   its parts (`123456789-01`) is an account id in the shape the site writes ids
-  in;
+  in. The name is judged as the server reads it — decoded layer by layer, at
+  most three — so a name that hides an address behind one escape
+  (`alice%40example.com`) is the address all the same, and a name the rules
+  did not change keeps the spelling it came with;
 - an error keeps only the **kind** of the failure (the exception class), never
   its text: an error message can quote the response, the URL or the request;
 - every field copied from a capture is **validated** before it is copied: the

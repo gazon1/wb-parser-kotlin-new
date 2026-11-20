@@ -1776,3 +1776,29 @@ def test_a_character_no_file_can_hold_is_replaced():
     # that cannot be written is a failed export.
     assert redact.writable("a\ud800b") == "a?b"
     assert "\ud800" not in redact.redact_url("https://www.wildberries.ru/a\ud800b")
+
+
+def test_a_header_name_that_hides_an_address_behind_escapes_is_not_a_name():
+    # The finding of the review: the name of a header was judged as it was
+    # written, so an address behind one layer of escapes (`%40` is `@`) was a
+    # name the service chose. The name is judged as the server reads it.
+    assert redact.safe_header_name("alice%40example.com") == "<redacted:header-name>"
+    assert redact.safe_header_name("alice%2540example.com") == "<redacted:header-name>"
+    headers = redact.redact_headers(
+        [{"name": "alice%40example.com", "value": "x"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+    assert "alice%40example.com" not in json.dumps(headers)
+    assert redact.safe_header_names(["alice%40example.com", "x-requested-with"]) == [
+        "<redacted:header-name>",
+        "x-requested-with",
+    ]
+
+
+def test_a_header_name_that_survives_the_rules_keeps_its_spelling():
+    # The name is judged decoded, but a name the rules did not change keeps
+    # the spelling it came with: a change in one place must not rewrite
+    # another.
+    assert redact.safe_header_name("x%2duser") == "x%2duser"
+    assert redact.safe_header_name("referer") == "referer"
+    assert redact.safe_header_name("sec-ch-ua-platform-version") == "sec-ch-ua-platform-version"

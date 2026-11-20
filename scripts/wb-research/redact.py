@@ -1126,9 +1126,14 @@ def safe_header_name(name: Any) -> str:
     A name that is not a token is not a name: it can be an address or a
     credential. A name that is an identifier is not a name either. The fact
     that a header was there stays, the name does not.
+
+    The name is judged as the server reads it: a name that hides an address
+    behind percent-escapes is the address all the same. A name that survives
+    the rules keeps the spelling it came with.
     """
     text = str(name).lower()
-    if not HEADER_NAME.fullmatch(text) or is_identifier_name(text):
+    decoded = decode_layers(text)
+    if not HEADER_NAME.fullmatch(decoded) or is_identifier_name(decoded):
         return placeholder("header-name")
     return text
 
