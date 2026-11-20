@@ -152,11 +152,12 @@ was never answered is evidence of something different.
   phrase, and a phrase can be a person's name. The name of a parameter the
   service chose is one word.
 - **Never** keep a value that hides behind percent-escapes: the name of a query
-  parameter, the value of a query parameter and the value of an allowed header
-  are judged as the server reads them — decoded layer by layer, at most three —
-  because the server resolves every layer and an address behind two of them
-  (`alice%2540example.com`) is the address all the same. A value that survives
-  the rules unchanged keeps the spelling it came with.
+  parameter, the value of a query parameter, the value of an allowed header and
+  the key of a JSON answer are judged as the server reads them — decoded layer
+  by layer, at most three — because the server resolves every layer and an
+  address behind two of them (`alice%2540example.com`) is the address all the
+  same. A value that survives the rules unchanged keeps the spelling it came
+  with.
 - **Never** keep a UUID in an operator-chosen name: it is an identifier, and the
   opaque-value rule does not see it — the hyphens break the run of characters.
 - **Never** keep a content type beyond its media type and the safe parameters:

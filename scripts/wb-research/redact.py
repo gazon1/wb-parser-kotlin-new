@@ -551,13 +551,18 @@ def safe_key(key: Any) -> str:
     A key that carries a space is a phrase, not the name of a field: it is
     free text — a person's name, a sentence — that the answer happens to be
     keyed by. A field name the service chose is one word.
+
+    A key is judged as the server reads it: the escapes are resolved, layer by
+    layer, at most three. A key that hides behind them is a key that hides.
+    A key that survives the rules unchanged keeps the spelling it came with.
     """
     text = str(key)
-    if text.isdigit():
+    decoded = decode_layers(text)
+    if decoded.isdigit():
         return placeholder("key")
-    if any(character.isspace() for character in text):
+    if any(character.isspace() for character in decoded):
         return placeholder("key")
-    if redact_note(text) == text:
+    if redact_note(decoded) == decoded:
         return text
     return placeholder("key")
 

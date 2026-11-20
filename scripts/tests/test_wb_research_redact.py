@@ -1605,3 +1605,17 @@ def test_a_timing_phase_that_was_not_measured_is_dropped():
 
     assert timing["durationMs"] is None
     assert timing["timings"] == {"connect": 12, "wait": 445.8}
+
+
+def test_a_json_key_that_hides_behind_escapes_is_still_a_key_to_judge():
+    # The finding of the review: the key was judged as it was written, so an
+    # address behind percent-escapes reached the committed file.
+    assert redact.safe_key("alice%40example.com") == "<redacted:key>"
+    assert redact.safe_key("alice%2540example.com") == "<redacted:key>"
+    assert redact.safe_key("Ivan%20Petrov") == "<redacted:key>"
+    assert redact.safe_key("42") == "<redacted:key>"
+
+
+def test_a_json_key_that_survives_the_rules_keeps_its_spelling():
+    assert redact.safe_key("userId") == "userId"
+    assert redact.safe_key("a%2Db") == "a%2Db"
