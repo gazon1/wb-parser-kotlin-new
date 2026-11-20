@@ -41,16 +41,16 @@ It clears the request log, starts a chrome-use HAR recording, runs the page
 action, waits `--settle` seconds for the requests to be answered, stops the
 recording, filters the entries and exports the result through `redact.py`.
 
-The approved hosts live in one file, `devtools/wb-research/capture-config.json`:
-`allowedOrigins` (the Wildberries API hosts), `noiseHosts` (hosts whose traffic
-carries no API), `keptResourceTypes` (`Fetch` and `XHR` — a static asset is not
-an API call) and `maxBodyFetches`. The pages a capture may open are named in
-the same file: `allowedPages` and the query parameters a navigation may carry
+The approved origins live in one file, `devtools/wb-research/capture-config.json`:
+`allowedOrigins` (the origins of the Wildberries API), `noiseHosts` (hosts whose
+traffic carries no API), `keptResourceTypes` (`Fetch` and `XHR` — a static asset
+is not an API call) and `maxBodyFetches`. The pages a capture may open are named
+in the same file: `allowedPages` and the query parameters a navigation may carry
 (`allowedQueryParams`).
 
-An API-shaped request to a host that is neither approved nor marked as noise
-is **not** dropped: the capture writes everything it has, names the host and
-exits with code 2. The developer then approves the host with `--allow-host` or
+An API-shaped request to an origin that is neither approved nor marked as noise
+is **not** dropped: the capture writes everything it has, names the origin and
+exits with code 2. The developer then approves the origin with `--allow-host` or
 adds it to the config — a decision that is visible in the record.
 
 A request that was still in flight when the recording stopped has no status.
@@ -94,8 +94,9 @@ was never answered is evidence of something different.
   request the config keeps. Two definitions would let a kind of request that
   the config keeps slip past the unapproved-host check as ordinary traffic, and
   the capture would not stop for the host.
-- **Always** classify a host as `allowedOrigins` or `noiseHosts` before it can
-  be dropped; the config is the only source of that decision.
+- **Always** classify a request before it can be dropped: an origin of
+  `allowedOrigins` is approved, a host of `noiseHosts` is noise, and the config
+  is the only source of that decision.
 - **Never** write a response body into a capture; only its shape.
 - **Never** write a status for a request that has none: null with a reason.
 - **Always** wait for the in-flight requests before stopping a recording
@@ -284,13 +285,28 @@ was never answered is evidence of something different.
   committed. A document of another host is third-party traffic: the recording
   cannot tell a frame of another site from a navigation to it, and such
   traffic is kept out of the evidence.
+- **Always** approve an origin, and not a host: the same host on another port is
+  another service, and the plain-http origin of an https host is another
+  origin, so a request of it is not traffic of the approved one. A pattern that
+  names a host approves the origin that host serves — https on the default
+  port — and a pattern that names an origin in full approves that origin and
+  nothing else, so the operator can approve a service on a port of its own.
+  A request of an approved host on an unapproved origin is not dropped in
+  silence: it is counted as `origin-not-approved` and the tool stops for it,
+  naming the origin — the operator approves an origin, not the host it
+  belongs to. The noise list is the other case: it is the operator's statement
+  about a host — the traffic of that host carries no API — so the host is what
+  is matched there.
+- **Always** answer a failed step with the failure, even when a call went to
+  an unapproved origin as well: a step that failed has no evidence, and the
+  origin is named in the output and in the report either way.
 - **Never** trust the recording to say where the session went: it cannot tell the
   main frame of the tab from a frame of another site — both are documents in it.
   The browser tells them apart: it names the page of the main frame of the tab.
-  The step reads that page after its actions, and a session on a host the
+  The step reads that page after its actions, and a session on an origin the
   config does not approve fails the step — as does a browser that cannot say
   where the session is, because a step whose evidence says nothing about where
-  the session went shows nothing about what the step did. The host is what is
+  the session went shows nothing about what the step did. The origin is what is
   judged, and not the page: the site may add query parameters to the page it
   keeps the session on.
 - **Never** let a navigation name a page the tool does not read: a navigation

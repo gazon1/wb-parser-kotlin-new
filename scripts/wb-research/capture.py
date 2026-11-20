@@ -197,6 +197,46 @@ def host_matches(host: str, patterns: list[str]) -> bool:
     return False
 
 
+def origin_label(origin: tuple[str, str, int]) -> str:
+    """An origin as the operator reads it: the scheme, the host and the port."""
+    scheme, host, port = origin
+    return f"{scheme}://{host}:{port}"
+
+
+def approved_origin(url: str, patterns: list[str]) -> bool:
+    """Whether the URL is one of the approved origins.
+
+    An approval is of an origin, and not of a host: the same host on another
+    port is another service, and a request of another service is not traffic of
+    the approved one — so it is not approved, and the tool says so loudly
+    instead of keeping it as evidence of the approved host. The same goes for
+    the scheme: the plain-http origin of an https host is another origin.
+
+    A pattern names a host, and the origin it approves is the one the site
+    serves: https on the default port. A pattern that names an origin in full
+    (`https://api.example.ru:8443`) approves that origin and nothing else, so
+    the operator can approve a service on a port of its own.
+    """
+    origin = origin_of(url)
+    if origin is None:
+        return False
+    scheme, host, port = origin
+    for pattern in patterns:
+        pattern = pattern.strip()
+        if not pattern:
+            continue
+        if "://" in pattern:
+            named = origin_of(pattern)
+            if named is not None and named == origin:
+                return True
+            continue
+        if scheme != "https" or port != DEFAULT_PORTS["https"]:
+            continue
+        if host_matches(host, [pattern]):
+            return True
+    return False
+
+
 def decode_layers(text: str) -> str:
     """The text as a server that decodes it again and again would read it.
 
@@ -325,14 +365,22 @@ def classify(entry: dict, config: dict) -> tuple[str | None, str]:
     let a kind of request slip past the unapproved-host check as ordinary
     traffic, and the capture would not stop for it.
     """
-    host = host_of(entry.get("request", {}).get("url", ""))
+    url = entry.get("request", {}).get("url", "")
+    host = host_of(url)
     resource_type = entry.get("_resourceType", "")
-    if host_matches(host, config["allowedOrigins"]):
+    if approved_origin(url, config["allowedOrigins"]):
         if resource_type in config["keptResourceTypes"]:
             return None, host
         return "type-not-kept", host
     if host_matches(host, config["noiseHosts"]):
         return "noise-host", host
+    if host_matches(host, config["allowedOrigins"]):
+        # The host is approved, and the origin is not: another port of the same
+        # host, or the plain-http origin of an https one. The host is named in
+        # the report, and the origin with it — the operator has to approve the
+        # origin, not the host it belongs to.
+        origin = origin_of(url)
+        return "origin-not-approved", origin_label(origin) if origin else host
     if resource_type in config["keptResourceTypes"]:
         return "host-not-approved", host
     return "other-host", host
@@ -698,9 +746,9 @@ def approved_navigation(url: str, approved: list[str], pages: list[str], allowed
 
 
 def approved_session(url: str, approved: list[str]) -> bool:
-    """Whether the session is on a host the config approves.
+    """Whether the session is on one of the approved origins.
 
-    The host is what is judged, and not the page: the site may add query
+    The origin is what is judged, and not the page: the site may add query
     parameters to the page it keeps the session on, and the page itself is
     judged by the recording. A URL the browser reads differently than the
     parser reads it — a backslash — is not a URL this check can read, so it is
@@ -708,7 +756,7 @@ def approved_session(url: str, approved: list[str]) -> bool:
     """
     if BACKSLASH in url:
         return False
-    return host_matches(host_of(url), approved)
+    return approved_origin(url, approved)
 
 
 def run_page_action(action: list[str]) -> int:
@@ -853,7 +901,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     left_documents = [
         url
         for url in document_urls(entries)
-        if host_matches(host_of(url), config["allowedOrigins"])
+        if approved_origin(url, config["allowedOrigins"])
         and not approved_navigation(
             url,
             config["allowedOrigins"],
@@ -880,7 +928,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         # the step did, so it is not a successful one.
         session_problem = "the browser did not tell which page the session is on"
     elif not approved_session(session_url, config["allowedOrigins"]):
-        session_problem = f"the session left the approved hosts: {session_url}"
+        session_problem = f"the session left the approved origins: {session_url}"
     if session_problem:
         failed = failed or EXIT_FAILED
 
@@ -925,7 +973,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
 
     write_har(evidence_har, [entry for _index, entry in kept])
 
-    unapproved = sorted(dropped_hosts.get("host-not-approved", set()))
+    unapproved = sorted(dropped_hosts.get("host-not-approved", set()) | dropped_hosts.get("origin-not-approved", set()))
     notes = [
         f"step: {step}",
         f"kept {len(kept)} of {len(entries)} recorded requests",
@@ -967,7 +1015,8 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         print(f"  dropped {count} ({reason}): {show_hosts(dropped_hosts.get(reason, set()))}")
     for host in unapproved:
         print(
-            f"  an API call went to {host}, which is neither approved nor marked as noise — approve it with --allow-host"
+            f"  an API call went to {host}, which is neither approved nor marked as noise — "
+            "approve it with --allow-host"
         )
 
     if failed:
@@ -1098,7 +1147,7 @@ def main(argv: list[str] | None = None) -> int:
     step.add_argument("--investigation", required=True, help="the investigation id")
     step.add_argument("--name", required=True, help="the name of the step")
     step.add_argument("--config", default=str(CONFIG_PATH), help="the capture config to use")
-    step.add_argument("--allow-host", action="append", default=[], help="a host to approve for this run")
+    step.add_argument("--allow-host", action="append", default=[], help="a host or an origin to approve for this run")
     step.add_argument("--settle", type=float, default=3.0, help="seconds to wait for the requests to be answered")
     step.add_argument("command", nargs=argparse.REMAINDER, help="the page action, after `--`")
 
