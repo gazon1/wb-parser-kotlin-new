@@ -284,6 +284,15 @@ was never answered is evidence of something different.
   committed. A document of another host is third-party traffic: the recording
   cannot tell a frame of another site from a navigation to it, and such
   traffic is kept out of the evidence.
+- **Never** trust the recording to say where the session went: it cannot tell the
+  main frame of the tab from a frame of another site — both are documents in it.
+  The browser tells them apart: it names the page of the main frame of the tab.
+  The step reads that page after its actions, and a session on a host the
+  config does not approve fails the step — as does a browser that cannot say
+  where the session is, because a step whose evidence says nothing about where
+  the session went shows nothing about what the step did. The host is what is
+  judged, and not the page: the site may add query parameters to the page it
+  keeps the session on.
 - **Never** let a navigation name a page the tool does not read: a navigation
   (`open`, `read`) names the page right after the verb, and a command that
   names no page is refused — `read` without a URL reads the tab that is open,
