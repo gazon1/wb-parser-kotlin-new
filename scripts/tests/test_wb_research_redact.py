@@ -2046,3 +2046,59 @@ def test_a_path_segment_that_carries_a_space_is_a_phrase():
     # A segment the service chose is one word, and it keeps its spelling.
     assert redact.redact_path("/catalog/131954/list.aspx") == "/catalog/131954/list.aspx"
     assert redact.redact_path("/data-checker/api/v1/user/check") == "/data-checker/api/v1/user/check"
+
+
+def test_a_name_of_a_person_after_an_account_path_component_is_replaced():
+    # The finding of the review: a name of a person after a segment that names
+    # an account is an account id, and an account id is not always nine digits
+    # long.
+    assert redact.redact_path("/users/alice") == "/users/%3Credacted:account-id%3E"
+    assert redact.redact_path("/customers/johnsmith") == "/customers/%3Credacted:account-id%3E"
+    assert redact.redact_path("/profile/alex") == "/profile/%3Credacted:account-id%3E"
+
+
+def test_a_route_of_the_site_after_an_account_path_component_survives():
+    # The counterpart: the routes the site has are named one by one, and they
+    # keep their spelling. The pair is the whole route: there is no
+    # `users/check` in the site, and there the segment is an account id.
+    assert redact.redact_path("/data-checker/api/v1/user/check") == "/data-checker/api/v1/user/check"
+    assert redact.redact_path("/users/check") == "/users/%3Credacted:account-id%3E"
+
+
+def test_a_phrase_in_an_allowlisted_header_is_replaced():
+    # The finding of the review: the value of a header on the safe list went
+    # through the rules that need no name, but not the rule that reads a
+    # spaced value as free text.
+    headers = redact.redact_headers(
+        [{"name": "x-spa-version", "value": "John Smith"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert headers["x-spa-version"] == "<redacted:x-spa-version>"
+
+
+def test_a_structured_header_value_keeps_its_spaces():
+    # The counterpart: a user agent is a text with a grammar of its own, and
+    # the whole value is the evidence of the browser that made the request.
+    agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+    headers = redact.redact_headers([{"name": "user-agent", "value": agent}], redact.SAFE_REQUEST_HEADERS)
+
+    assert headers["user-agent"] == agent
+
+
+def test_a_name_of_a_person_in_a_user_agent_is_replaced():
+    # A user agent is a structured text, but a value of it that carries none
+    # of the signs of that grammar is a person's name.
+    headers = redact.redact_headers([{"name": "user-agent", "value": "Ivan Petrov"}], redact.SAFE_REQUEST_HEADERS)
+
+    assert headers["user-agent"] == "<redacted:user-agent>"
+
+
+def test_the_value_of_the_parameter_name_is_judged_by_its_value():
+    # The finding of the review: the parameter `name` names a person as
+    # easily as it names a thing. The qualified name of a capture is evidence
+    # and is kept; a name in letters is a person.
+    assert redact.redact_query_value("name", "Alice") == "<redacted:query-param>"
+    assert redact.redact_query_value("name", "John.Smith") == "<redacted:query-param>"
+    assert redact.redact_query_value("name", "john.smith") == "<redacted:query-param>"
+    assert redact.redact_query_value("name", "catalog.investigation.2026.11.19") == "catalog.investigation.2026.11.19"

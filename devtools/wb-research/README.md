@@ -565,7 +565,11 @@ The rules the redactor applies:
   promise about the value it carries: the value of an allowed header goes
   through the shape rules too, so an address, a UUID or an opaque token in it
   is replaced. A dotted name in it is a name, as everywhere else: its parts are
-  judged one by one;
+  judged one by one. A value that carries a space is a phrase in it as well:
+  what somebody typed, a person's name, and it is replaced. The value of a
+  header that is a structured text of its own keeps its spaces only when it
+  carries the signs of that grammar (`Mozilla/5.0 (X11; Linux x86_64)`), and
+  `Ivan Petrov` in a user agent is a person;
 - a response header keeps its value only if it is on its own allowlist
   (`content-encoding`, `content-length`, `content-type`, `server`,
   `statuscode`, `x-cache-status`); every other response header is dropped
@@ -606,8 +610,11 @@ The rules the redactor applies:
 - a query parameter that names a **person** — `username`, `full_name`,
   `first_name`, `last_name`, `address` — loses its value as well: the value is
   personal data whatever it looks like, and a single word is as personal as a
-  phrase. The parameter `name` is not among them: it carries the name the
-  operator chose for a capture, and that name is evidence;
+  phrase. The parameter `name` is not among them by name: it is judged by its
+  value. A qualified name with a number in it
+  (`catalog.investigation.2026.11.19`) says which capture it is, and it is
+  kept; a word, a name in letters and a dotted name of letters (`john.smith`)
+  are people, and they are replaced;
 - a **value that carries a space** is a phrase — what somebody typed, a person's
   name — and a value the service chose is one word. So a phrase is replaced even
   when the name of the parameter says nothing about it, and a path segment is
@@ -656,8 +663,10 @@ The rules the redactor applies:
   that the next segment is an account id, whatever its length — the digit-run
   rule needs nine digits, and an account id is not always that long. The id is
   judged by its shape: digits, a mix of letters and digits, or a separator
-  between them is an identifier. A plain word is the name of a route the
-  service chose (`user/check` is an endpoint, not an account);
+  between them is an identifier, and a name in letters is one as well
+  (`/users/alice`). The routes the site has are the exception, and they are
+  named one by one: `user/check` is an endpoint, not an account, and there the
+  segment keeps its spelling;
 - each segment of a path is judged on its own, and a segment the rules did not
   change keeps the spelling it came with: a change in one place must not
   rewrite another. `%2F` is not a separator to a browser, so a path that says

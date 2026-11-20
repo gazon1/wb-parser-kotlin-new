@@ -102,6 +102,21 @@ history.
 - **Always** judge a value by its shape, not by the name of the field that
   carries it: an allowlisted header and an ordinary query parameter go through
   the same rules, because a name is not a promise about the value it holds.
+- **Never** keep a name of a person after a segment that names an account: the
+  segment after `users`, `profile` or `customer` is an account id whatever its
+  shape — digits, a mix of letters and digits, or a name in letters
+  (`/users/alice`). The routes the site has are named one by one (`user/check`)
+  and there the segment keeps its spelling; everywhere else the segment after
+  the component is an id.
+- **Never** keep a phrase in an allowlisted header: a value that carries a
+  space is free text — a person's name — and a header on the safe list does not
+  make that text evidence. The value of a header that is a structured text of
+  its own (a user agent, a client hint) keeps its spaces only when it carries
+  the signs of that grammar; `Ivan Petrov` in a user agent is a person.
+- **Never** keep a name of a person under the parameter `name`: the value of
+  `name` is kept only when it is a qualified name with a number in it
+  (`catalog.investigation.2026.11.19`), which says which capture it is. A word,
+  a name in letters and a dotted name of letters (`john.smith`) are people.
 - **Always** recognize the name of a credential in every spelling of it
   (`access_token`, `accessToken`, `x-auth-token`): a new spelling of a name
   must not open a new hole. And a name that is a credential is one everywhere:

@@ -69,6 +69,18 @@ SAFE_RESPONSE_HEADERS = {
     "x-cache-status",
 }
 
+# Headers whose value is a structured text of its own: it carries spaces by
+# its grammar — a user agent names its platform, a client hint names its
+# brands — and the rule that reads a spaced value as free text would throw
+# the whole value away. The value of these two still goes through every other
+# rule: an address, a phone number and a token are replaced in them as well.
+STRUCTURED_HEADER_VALUES = {"user-agent", "sec-ch-ua"}
+
+# The signs a structured text carries and a name does not: a parenthesis, a
+# slash, a semicolon, a quote. A value of a structured header that carries
+# none of them is a phrase whatever the header is called.
+STRUCTURED_VALUE_MARKS = ("(", "/", ";", '"')
+
 # Query parameters whose value is never evidence.
 SENSITIVE_QUERY_PARAMS = {
     "access_token",
@@ -118,14 +130,20 @@ SENSITIVE_QUERY_PARAMS = {
     #
     # The parameter `name` is not among them: it carries the name the
     # operator chose for a capture, and that name is evidence — a dotted name
-    # says which capture it is. A phrase under it is still replaced, because
-    # a phrase is free text whatever the parameter is called.
+    # says which capture it is. It is judged by its value (see
+    # `is_qualified_name`): a name that is not a qualified name of a thing is
+    # replaced, whatever the parameter is called.
     "address",
     "first_name",
     "full_name",
     "last_name",
     "username",
 }
+
+# A part of a qualified name: a word in lower case, with hyphens or
+# underscores inside it. A part in letters is a word of a language, and a
+# qualified name made of such words is a person's name spelled with dots.
+QUALIFIED_NAME_PART = re.compile(r"^[a-z0-9]+(?:[_-][a-z0-9]+)*$")
 
 # A name that ends the way a credential name ends. The list above cannot hold
 # every name a service invents, and the fallback — the opaque-value rule —
@@ -293,6 +311,12 @@ ACCOUNT_PATH_COMPONENTS = {
     "user",
     "users",
 }
+
+# The routes of the site that follow a segment naming an account. The pair is
+# the whole route: `user/check` is an endpoint of the site, and there the
+# segment after the component is not an account id. `users/check` is not a
+# route the site has, and there the segment after the component is one.
+ACCOUNT_ROUTE_SEGMENTS = {("user", "check")}
 
 # A value that looks like an opaque credential: long, no spaces, no URL
 # punctuation. This is what catches a profile identifier or a token that the
@@ -738,6 +762,19 @@ def redact_generic_value(value: str) -> str:
     return text[:MAX_VALUE_LENGTH]
 
 
+def is_structured_header_value(name: str, value: str) -> bool:
+    """Whether the value of a header is a structured text and not a phrase.
+
+    The value of a user agent and of a client hint is a text with a grammar
+    of its own: it carries spaces and signs a name does not carry. A value of
+    such a header that carries none of the signs is a phrase whatever the
+    header is called: `Ivan Petrov` in a user agent is a person.
+    """
+    if name.lower() not in STRUCTURED_HEADER_VALUES:
+        return False
+    return any(mark in value for mark in STRUCTURED_VALUE_MARKS)
+
+
 def redact_header_value(name: str, value: str, safe: set[str]) -> str:
     """Reduce one header value to what may be committed.
 
@@ -750,6 +787,12 @@ def redact_header_value(name: str, value: str, safe: set[str]) -> str:
     The value is looked at as the server reads it: a capture may encode it
     once, twice or three times, and a value that hides an address behind two
     layers of escapes is the address all the same.
+
+    A value that carries a space is a phrase: what somebody typed, a person's
+    name. A value the browser chose is one word, so the phrase of an
+    allowlisted header is replaced as well — unless the header's value is a
+    structured text of its own, which the browser writes with signs a name
+    does not carry.
     """
     if name.lower() in safe:
         if name.lower() == "content-type":
@@ -764,6 +807,13 @@ def redact_header_value(name: str, value: str, safe: set[str]) -> str:
         decoded = decode_layers(value)
         if URL_VALUE.match(decoded):
             return redact_url(decoded)
+        if any(character.isspace() for character in decoded) and not is_structured_header_value(name, decoded):
+            # A value that carries a space is a phrase: what somebody typed, a
+            # person's name. A value the browser chose is one word, and the
+            # phrase of an allowlisted header is not evidence. The headers
+            # whose value is a structured text keep their spaces, and still
+            # go through every other rule.
+            return placeholder(name.lower())
         redacted = redact_generic_value(decoded)
         return redacted if redacted != decoded else value
     return placeholder(name.lower())
@@ -785,6 +835,11 @@ def redact_query_value(name: str, value: str) -> str:
     the search history of the session, and it can be a person's name. A name
     that names a person is redacted for the same reason: the value of
     `username` or `first_name` is personal data whatever it looks like.
+
+    The parameter `name` is judged by its value: a qualified name with a
+    number in it (`catalog.investigation.2026.11.19`) names a thing and is
+    kept, and any other name — a word, a name in letters — is a person and is
+    replaced.
 
     A value that carries a space is a phrase — what somebody typed, a person's
     name — and a value the service chose is one word. So a phrase is replaced
@@ -817,6 +872,14 @@ def redact_query_value(name: str, value: str) -> str:
     decoded = decode_layers(value)
     if URL_VALUE.match(decoded):
         return redact_url(decoded)
+    if plain_name.lower() == "name":
+        # The value of the parameter `name` names a person as easily as it
+        # names a thing. The value that is kept is the one that names a
+        # thing: a qualified name with a number in it
+        # (`catalog.investigation.2026.11.19`). A word, a name in letters, a
+        # dotted name of letters (`john.smith`) is a person, and a person is
+        # not evidence.
+        return value if is_qualified_name(decoded) else placeholder("query-param")
     if any(character.isspace() for character in decoded):
         # A value that carries a space is a phrase: what somebody typed — a
         # person's name, a sentence. A value the service chose is one word,
@@ -905,18 +968,21 @@ def redact_url(url: str) -> str:
     )
 
 
-def is_account_id(segment: str) -> bool:
-    """Whether a path segment is an account id.
+def is_qualified_name(value: str) -> bool:
+    """Whether a value names a thing and not a person.
 
-    The segment after a segment that names an account is an id, and an id is
-    not always nine digits long. It is judged by its shape: digits, a mix of
-    letters and digits, or a separator between them is an identifier. A plain
-    word is the name of a route the service chose — `user/check` is an
-    endpoint, not an account.
+    A qualified name is a name in parts: `catalog.investigation.2026.11.19`
+    says which capture it is, and the parts of it are words in lower case with
+    a number among them. A name in letters is a person: `Alice`, `John.Smith`
+    and `john.smith` are people however they are spelled, and a person's name
+    is not evidence.
     """
-    if not segment:
+    parts = value.split(".")
+    if len(parts) < 2:
         return False
-    return re.fullmatch(r"[A-Za-z]+", segment) is None
+    if not all(QUALIFIED_NAME_PART.match(part) for part in parts):
+        return False
+    return any(any(character.isdigit() for character in part) for part in parts)
 
 
 def redact_path(path: str) -> str:
@@ -953,9 +1019,15 @@ def redact_path(path: str) -> str:
             kept.append(quote(placeholder("phrase"), safe=PATH_SEGMENT_SAFE, errors="replace"))
             previous = decoded
             continue
-        if previous.lower() in ACCOUNT_PATH_COMPONENTS and is_account_id(decoded):
-            # The segment after a segment that names an account is an account id,
-            # and an account id is not always nine digits long.
+        if (
+            decoded
+            and previous.lower() in ACCOUNT_PATH_COMPONENTS
+            and (previous.lower(), decoded.lower()) not in ACCOUNT_ROUTE_SEGMENTS
+        ):
+            # The segment after a segment that names an account is an account
+            # id, and an account id is not always nine digits long: a name of
+            # a person is an account id as well. The routes the site has are
+            # the exception, and they are named one by one.
             kept.append(quote(placeholder("account-id"), safe=PATH_SEGMENT_SAFE, errors="replace"))
             previous = decoded
             continue
