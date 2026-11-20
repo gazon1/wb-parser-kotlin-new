@@ -522,6 +522,18 @@ def is_number(value: Any) -> bool:
     return not isinstance(value, float) or math.isfinite(value)
 
 
+def is_integral_number(value: Any) -> bool:
+    """A number that is a whole number — a count of bytes is not 1.5.
+
+    A count that was measured is a whole number, and a number with a fraction
+    in it is a malformed capture: rounding it would put a value in the
+    committed file that nobody measured.
+    """
+    if not is_number(value):
+        return False
+    return isinstance(value, int) or float(value).is_integer()
+
+
 def safe_key(key: Any) -> str:
     """A key of a JSON answer that may be committed.
 
@@ -962,9 +974,11 @@ def safe_status(value: Any) -> int | None:
     """The status of a response, if it is one.
 
     An HTTP status is a number between 100 and 599. A status that was never
-    answered is `null` with a reason, not a zero and not a string.
+    answered is `null` with a reason, not a zero and not a string. A status
+    with a fraction in it was never measured: truncating it would put a
+    number in the file that nobody saw.
     """
-    if not is_number(value):
+    if not is_integral_number(value):
         return None
     status = int(value)
     return status if 100 <= status <= 599 else None
@@ -972,7 +986,7 @@ def safe_status(value: Any) -> int | None:
 
 def safe_size(value: Any) -> int | None:
     """The size of a body in bytes, if it is a size."""
-    if not is_number(value):
+    if not is_integral_number(value):
         return None
     size = int(value)
     return size if size >= 0 else None
@@ -1064,16 +1078,20 @@ def har_timing(entry: dict[str, Any]) -> dict[str, Any]:
     The timing is an input like any other: the phases are taken by name and
     only a number survives, so a capture cannot carry a value into the file
     through a field nobody looked at.
+
+    A negative phase is not a measurement: the HAR writes `-1` for a phase it
+    did not measure, and such a phase is dropped rather than written as a
+    duration of minus a millisecond.
     """
     timings = entry.get("timings")
     kept: dict[str, Any] = {}
     if isinstance(timings, dict):
         for phase in HAR_TIMING_PHASES:
             value = timings.get(phase)
-            if is_number(value):
+            if is_number(value) and value >= 0:
                 kept[phase] = value
     duration = entry.get("time")
-    return {"durationMs": duration if is_number(duration) else None, "timings": kept}
+    return {"durationMs": duration if is_number(duration) and duration >= 0 else None, "timings": kept}
 
 
 # The fields of the capture annotation that may reach a committed file. The

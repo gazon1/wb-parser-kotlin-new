@@ -1587,3 +1587,21 @@ def test_a_uuid_in_a_query_parameter_name_is_replaced():
 
     assert "550e8400" not in url
     assert "%3Credacted%3Aquery-name%3E" in url
+
+
+def test_a_status_with_a_fraction_in_it_is_not_a_status():
+    # The finding of the review: the status was truncated, so a number that
+    # nobody measured reached the committed file.
+    assert redact.safe_status(200.9) is None
+    assert redact.safe_status(200.0) == 200
+    assert redact.safe_size(51715.8) is None
+    assert redact.safe_size(51715.0) == 51715
+
+
+def test_a_timing_phase_that_was_not_measured_is_dropped():
+    # The finding of the review: the HAR writes `-1` for a phase it did not
+    # measure, and a negative duration is not a measurement.
+    timing = redact.har_timing({"time": -1, "timings": {"dns": -1, "connect": 12, "wait": 445.8}})
+
+    assert timing["durationMs"] is None
+    assert timing["timings"] == {"connect": 12, "wait": 445.8}

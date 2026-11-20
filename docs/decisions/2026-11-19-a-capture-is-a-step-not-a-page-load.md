@@ -108,6 +108,9 @@ was never answered is evidence of something different.
   status, the size, the moment, the credentials mode, the header names and the
   flags. A capture is an input, and a field nobody looked at must not be able
   to carry a value into the committed file.
+- **Never** round a count that was measured: the status and the size are whole
+  numbers, and a number with a fraction in it was never measured. Truncating it
+  would put a value in the file that nobody saw.
 - **Never** keep the **name** of a header that is an identifier: a name is a
   token of characters, and a token can be a profile's UUID in either spelling,
   an account id or a hash of a session. The fact that the header was there
@@ -166,6 +169,8 @@ was never answered is evidence of something different.
   query values and the notes.
 - **Always** take only the known timing phases, and only a number as a duration:
   the timing is an input like any other.
+- **Never** write a phase that was not measured: the recording writes `-1` for a
+  phase it did not measure, and a negative duration is not a measurement.
 - **Never** attribute a response body to a request that cannot be told apart
   from a twin — the same method and the same URL, in the recording or in the
   request list: a mapping that cannot be verified is no mapping.

@@ -319,8 +319,9 @@ It is written as `status: null` with a reason, not as a fake HTTP value: a
 request without an answer is not a request that was answered with nothing.
 
 The timing is an input like any other: the phases are taken by name and only a
-number survives. A field nobody looked at must not be a way into a committed
-file.
+number survives. A negative phase is not a measurement — the HAR writes `-1` for
+a phase it did not measure — and such a phase is dropped. A field nobody looked
+at must not be a way into a committed file.
 
 Two requests that look the same — the same method and the same URL — cannot be
 told apart: the browser's list may hold them in another order, and a body
@@ -509,12 +510,13 @@ The rules the redactor applies:
 - an error keeps only the **kind** of the failure (the exception class), never
   its text: an error message can quote the response, the URL or the request;
 - every field copied from a capture is **validated** before it is copied: the
-  method is a word of letters, the status is a number between 100 and 599, the
-  size is a number that is not negative, the moment is an ISO-8601 timestamp,
-  the credentials mode is one of the three the browser knows, the header names
-  are tokens that are not identifiers, and the flags are flags. A capture is an
-  input, so a field nobody looked at must not be able to carry a value into the
-  committed file;
+  method is a word of letters, the status is a whole number between 100 and 599,
+  the size is a whole number that is not negative, the moment is an ISO-8601
+  timestamp, the credentials mode is one of the three the browser knows, the
+  header names are tokens that are not identifiers, and the flags are flags. A
+  number with a fraction in it was never measured, and rounding it would put a
+  value in the file that nobody saw. A capture is an input, so a field nobody
+  looked at must not be able to carry a value into the committed file;
 - the reason a body was not read is a **code**, not a text: `ambiguous`,
   `browser-error`, `no-body`, `not-read`. The browser's own error text quotes
   the URL and the request, so it is dropped at the source and never written
