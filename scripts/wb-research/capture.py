@@ -628,6 +628,25 @@ def navigation_targets(entries: list[dict]) -> list[str]:
     return targets
 
 
+def document_urls(entries: list[dict]) -> list[str]:
+    """The pages the browser opened, as the recording shows them.
+
+    A document is a page: the page the operator opened, the page a redirect
+    sent the browser to, and the page the page itself sent the browser to — a
+    script that replaces the location is a navigation the site made, and the
+    recording shows it as a document of its own. The site chooses where the
+    session goes, and the tool reads the answer in the recording.
+    """
+    urls: list[str] = []
+    for entry in entries:
+        if entry.get("_resourceType") != "Document":
+            continue
+        url = str(entry.get("request", {}).get("url", ""))
+        if url:
+            urls.append(url)
+    return urls
+
+
 def approved_navigation(url: str, approved: list[str], pages: list[str], allowed_query: list[str]) -> bool:
     """Whether the page a redirect sends the browser to is one the config approves.
 
@@ -777,6 +796,14 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     # site answers. What it can do is read the answer in the recording: a
     # navigation that left the approved pages makes the step a failed one,
     # and the capture of a failed step is not evidence of what the step shows.
+    #
+    # The same holds for a navigation the page itself makes: a script that
+    # replaces the location is a document of its own in the recording, and it
+    # is judged by the same measure as a redirect. A document of another host
+    # is a third-party frame — the recording cannot tell a frame from a
+    # navigation to another site — and it is third-party traffic, which the
+    # filter keeps out of the evidence; a document of an approved host is the
+    # session, and it must be a page the config names.
     redirect_problem = ""
     left_pages = [
         target
@@ -788,8 +815,20 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
             config.get("allowedQueryParams", []),
         )
     ]
-    if left_pages:
-        redirect_problem = "the navigation left the approved pages: " + "; ".join(left_pages[:3])
+    left_documents = [
+        url
+        for url in document_urls(entries)
+        if host_matches(host_of(url), config["allowedOrigins"])
+        and not approved_navigation(
+            url,
+            config["allowedOrigins"],
+            config.get("allowedPages", []),
+            config.get("allowedQueryParams", []),
+        )
+    ]
+    if left_pages or left_documents:
+        left = list(dict.fromkeys(left_pages + left_documents))
+        redirect_problem = "the navigation left the approved pages: " + "; ".join(left[:3])
         failed = failed or EXIT_FAILED
 
     listed = chrome_use_json("network", "requests").get("requests", [])

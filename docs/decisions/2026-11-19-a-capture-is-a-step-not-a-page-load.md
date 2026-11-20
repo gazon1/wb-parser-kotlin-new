@@ -276,6 +276,14 @@ was never answered is evidence of something different.
   names the host `b.example` to the parser and the host `a.example` to the
   browser. Such a redirect is not an approved navigation, and the step that
   followed it fails and is not committed.
+- **Never** let the session go to a page the config does not name, whoever
+  sends it there: a redirect is one way, and the page itself may navigate the
+  session — a script that replaces the location. The recording shows that
+  navigation as a document of its own, and a document of an approved host must
+  be a page the config names; a step that opened one fails and is not
+  committed. A document of another host is third-party traffic: the recording
+  cannot tell a frame of another site from a navigation to it, and such
+  traffic is kept out of the evidence.
 - **Never** let a navigation name a page the tool does not read: a navigation
   (`open`, `read`) names the page right after the verb, and a command that
   names no page is refused — `read` without a URL reads the tab that is open,
