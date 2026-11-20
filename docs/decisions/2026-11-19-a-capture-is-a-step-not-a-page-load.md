@@ -165,7 +165,10 @@ was never answered is evidence of something different.
   segment of a path is judged on its own, decoded, and a segment that was not
   changed keeps the spelling it came with. A change in one place must not
   change another — `%2F` is not a separator to a browser, so a path that says
-  `a/b` where the capture said `a%2Fb` names another endpoint.
+  `a/b` where the capture said `a%2Fb` names another endpoint. A segment that
+  *was* changed is written back without the separator among its safe
+  characters: a `/` inside it was written `%2F`, and writing it back as `/`
+  would turn one segment into two and name another endpoint.
 - **Never** keep a UUID in an operator-chosen name: it is an identifier, and the
   opaque-value rule does not see it — the hyphens break the run of characters.
 - **Never** keep a content type beyond its media type and the safe parameters:

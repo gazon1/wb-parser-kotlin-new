@@ -363,10 +363,13 @@ UUID_COMPACT = re.compile(
 
 MAX_IDENTIFIER_LENGTH = 64
 
-# The characters a URL path is written with. A path that had a value replaced
-# is put back with the same characters, so that the committed URL still looks
-# like the URL that was fetched.
-PATH_SAFE = "/:@&=+$,~!*'()-._"
+# The characters a single segment of a URL path is written with. A segment
+# that had a value replaced is put back with the same characters, so that the
+# committed URL still looks like the URL that was fetched. The separator is
+# not among them: a segment is not a path, and a `/` in it was written `%2F` —
+# writing it back as `/` would turn one segment into two and name another
+# endpoint.
+PATH_SEGMENT_SAFE = ":@&=+$,~!*'()-._"
 
 # The numbers a probe measured. Numbers are evidence — a count says what was
 # seen, and it cannot carry a name, a token or a sentence.
@@ -838,7 +841,7 @@ def redact_path(path: str) -> str:
         if previous.lower() in ACCOUNT_PATH_COMPONENTS and is_account_id(decoded):
             # The segment after a segment that names an account is an account id,
             # and an account id is not always nine digits long.
-            kept.append(quote(placeholder("account-id"), safe=PATH_SAFE))
+            kept.append(quote(placeholder("account-id"), safe=PATH_SEGMENT_SAFE))
             previous = decoded
             continue
         text = EMAIL_ADDRESS.sub("email", decoded)
@@ -854,7 +857,7 @@ def redact_path(path: str) -> str:
             # the name of a marker (`opaque123`) is a value, and it is replaced
             # like any other.
             text = "credential"
-        kept.append(segment if text == decoded else quote(text, safe=PATH_SAFE))
+        kept.append(segment if text == decoded else quote(text, safe=PATH_SEGMENT_SAFE))
         previous = decoded
     return "/".join(kept)
 

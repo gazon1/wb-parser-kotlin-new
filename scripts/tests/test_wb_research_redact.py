@@ -336,6 +336,28 @@ def test_an_encoded_phone_number_in_the_path_of_a_url_is_replaced():
     assert "999" not in url
 
 
+def test_an_encoded_slash_in_a_changed_segment_stays_encoded():
+    # The finding of the review: a segment is judged decoded, and the value that
+    # replaced it was written back with the separator among the safe characters.
+    # A `%2F` is not a separator to a browser, so writing it back as `/` turns
+    # one segment into two and names another endpoint.
+    url = redact.redact_url("https://www.wildberries.ru/catalog/a%2Falice%40example.com")
+
+    assert url == "https://www.wildberries.ru/catalog/a%2Femail"
+
+
+def test_an_unchanged_segment_keeps_the_slash_it_came_with():
+    url = redact.redact_url("https://www.wildberries.ru/catalog/a%2Fb")
+
+    assert url == "https://www.wildberries.ru/catalog/a%2Fb"
+
+
+def test_the_segments_of_a_path_keep_their_number():
+    path = redact.redact_path("/catalog/a%2Falice%40example.com/reset")
+
+    assert path.count("/") == 3
+
+
 def test_the_account_id_in_a_query_parameter_loses_its_value():
     # The account id is short enough to pass the opaque-value rule, so the
     # parameter name has to carry the rule.

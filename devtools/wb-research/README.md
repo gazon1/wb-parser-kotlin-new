@@ -473,7 +473,10 @@ The rules the redactor applies:
 - each segment of a path is judged on its own, and a segment the rules did not
   change keeps the spelling it came with: a change in one place must not
   rewrite another. `%2F` is not a separator to a browser, so a path that says
-  `a/b` where the capture said `a%2Fb` names another endpoint;
+  `a/b` where the capture said `a%2Fb` names another endpoint. A segment that
+  was changed is written back without the separator among its safe characters:
+  the `/` inside it was written `%2F`, and writing it back as `/` would turn
+  one segment into two;
 - a value that looks like an opaque credential — long, no spaces, dots allowed
   so a JWT does not slip through as three short words — loses its value,
   wherever it appears;
