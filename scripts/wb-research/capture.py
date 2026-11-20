@@ -496,6 +496,12 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     """Record one step, keep the evidence, and export it."""
     redactor = load_redactor()
     step = redactor.safe_identifier(args.name, "step")
+    if step != args.name:
+        # The name of a step is the name of the file it produces. A name the
+        # rules would reduce is refused: two names can reduce to one (`load/page`
+        # and `load-page`), and the second step would delete the evidence of
+        # the first one.
+        raise SystemExit(f"the name of a step is one name, not something to reduce: {args.name!r} would be {step!r}")
     investigation = safe_investigation(args.investigation)
     raw_dir = RAW_ROOT / investigation
     raw_har = raw_dir / "raw" / f"{step}.har"

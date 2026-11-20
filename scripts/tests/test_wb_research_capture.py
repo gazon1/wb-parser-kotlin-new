@@ -1043,3 +1043,39 @@ def test_a_step_whose_fixture_cannot_be_removed_is_not_exported(tmp_path, monkey
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
 
     assert capture.export_investigation("demo") == []
+
+
+def test_a_step_whose_name_would_be_reduced_is_refused(tmp_path, monkeypatch):
+    # The finding of the review: the name of a step was reduced to a slug, and
+    # two names can reduce to one — so the second step deleted the evidence of
+    # the first one.
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    args = argparse.Namespace(
+        name="load/page",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/"],
+        settle=0.0,
+    )
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.capture_step(args, CONFIG)
+
+    assert "load/page" in str(refusal.value)
+
+
+def test_a_step_whose_name_carries_a_long_run_of_digits_is_refused(tmp_path, monkeypatch):
+    # The name would have become the fallback name of every other step.
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    args = argparse.Namespace(
+        name="load12345678901234",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/"],
+        settle=0.0,
+    )
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.capture_step(args, CONFIG)
+
+    assert "load12345678901234" in str(refusal.value)

@@ -227,6 +227,10 @@ was never answered is evidence of something different.
   the exported ones: another step of the same investigation is not this one.
 - **Always** treat the investigation id as one name, not a path: it becomes a
   directory in the raw cache and a directory in the repository.
+- **Always** treat the name of a step as one name too: it is the name of the
+  file it produces, and a name the rules would reduce is refused. Two names can
+  reduce to one (`load/page` and `load-page`), and the second step would
+  delete the evidence of the first one.
 - **Never** drive a page action that could change the site: the page action of a
   step is a chrome-use command that reads the page, and an action that is not
   one of them — a click, a typed text, a filled form, a shell — is refused

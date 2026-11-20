@@ -198,6 +198,10 @@ capture.py step --investigation <id> --name <step> -- <page action>
 capture.py export --investigation <id>
 ```
 
+The name of a step is the name of the file it produces, so it is one name:
+a name the rules would reduce is refused (`load/page` would be `load-page`,
+and two names that reduce to one would delete each other's evidence).
+
 The page action is a `chrome-use` command that **reads** the page: `open`,
 `read`, `wait`, `expect`, `extract`, `snapshot`, `screenshot`, `scroll`,
 `scrollintoview`, `hover`, `focus`, `canvas`. A capture observes, so an action
@@ -367,15 +371,41 @@ it is part of the change, not a suggestion:
 2. Run the `initial-load` step above. The output says how many requests were
    kept and what was dropped.
 3. Run the `next-page` step above in the same browser.
-4. Check the evidence:
+4. Check the evidence — the **values**, not the names: a header whose name
+   says `token` is a name the site chose and it stays, and its value is a
+   placeholder. Only a value that is not a placeholder is a bug:
 
    ```bash
-   grep -riE 'cookie|authorization|token' \
-     devtools/wb-research/investigations/2026-11-19-wb-network-events-demo/evidence/
+   python3 - <<'PY'
+   import json, pathlib, re
+
+   secret = re.compile(r"cookie|authorization|token|session", re.I)
+   root = pathlib.Path("devtools/wb-research/investigations/2026-11-19-wb-network-events-demo/evidence")
+
+   def walk(node, path, found):
+       if isinstance(node, dict):
+           for key, value in node.items():
+               if secret.search(key):
+                   # A name that names a secret carries a placeholder, not a value.
+                   if isinstance(value, str) and not value.startswith("<redacted:"):
+                       found.append(f"{path}.{key}: {value}")
+               else:
+                   walk(value, f"{path}.{key}", found)
+       elif isinstance(node, list):
+           for index, value in enumerate(node):
+               walk(value, f"{path}[{index}]", found)
+       elif isinstance(node, str) and not node.startswith("<redacted:") and secret.search(node):
+           found.append(f"{path}: {node}")
+
+   found = []
+   for file in sorted(root.glob("*.json")):
+       walk(json.loads(file.read_text(encoding="utf-8")), file.name, found)
+   print("\n".join(found) or "no secret-shaped value in the evidence")
+   PY
    ```
 
-   Only placeholder names (`<redacted:deviceid>`, `<redacted:opaque>`) may
-   come back. A value is a bug.
+   A placeholder (`<redacted:deviceid>`, `<redacted:opaque>`) is the only
+   shape a removed value may take.
 5. Check that the fixture says what the browser did: a status, a content type,
    a size, a timing and the top-level keys of the answer.
 6. Export again (`capture.py export`) and diff the fixture. The redactor is
