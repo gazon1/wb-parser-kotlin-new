@@ -338,13 +338,27 @@ was never answered is evidence of something different.
 - **Never** read a document of the recording as a navigation of the session
   without asking the browser: the main frame of the tab and a frame of another
   site are both documents in it, so the recording alone cannot tell them apart.
-  The browser names the frames of the page it is on, and a frame that is still
-  there is a frame — not a place the session went, and it does not fail the
-  step. A document of the recording that is neither a frame nor a page the
-  config approves is a page the session visited and left: the step fails, and
-  the pages are named in the report. A browser that cannot name the frames of
-  the page fails the step as well — a step that cannot tell a frame from the
-  session cannot say where the session went.
+  The browser tells them apart — it names the frame of the tab and the frames
+  inside it. A frame inside the page that is still there is a frame and not a
+  place the session went, and it does not fail the step. The frame of the tab
+  is the session itself: a document of it is a navigation of the session, and
+  it is held to the same measure as any other navigation — the host, the page
+  and the query. A document of the recording that is neither a frame inside the
+  page nor a navigation the config approves is a page the session visited and
+  left: the step fails, and the pages are named in the report. A browser that
+  cannot name the frames of the page fails the step as well — a step that
+  cannot tell a frame from the session cannot say where the session went.
+- **Never** let a navigation carry a query the config does not name, whoever
+  makes it: a navigation is a request, and a request may change what it is
+  asked to change — a parameter can switch an action on just as a path can.
+  The site may add a parameter to the page it keeps the session on, and the
+  query of the page the session rests on is not a navigation of its own; but a
+  document of the tab that carries such a parameter is a navigation, and it
+  fails the step.
+- **Always** measure a request body by the bytes it was sent as: a body the
+  recording holds encoded is measured by its decoded bytes, and a text that is
+  not the encoding it claims has no size the tool can say — the length of
+  such a text is the length of something else.
 - **Never** let a navigation name a page the tool does not read: a navigation
   (`open`, `read`) names the page right after the verb, and a command that
   names no page is refused — `read` without a URL reads the tab that is open,

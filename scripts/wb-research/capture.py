@@ -724,8 +724,8 @@ def session_page() -> str:
     return str(data.get("url", ""))
 
 
-def browser_frames() -> list[str] | None:
-    """The pages the browser shows: the tab itself and the frames inside it.
+def browser_frames() -> list[dict] | None:
+    """The frames the browser shows: the tab itself and the frames inside it.
 
     The recording cannot tell the main frame of the tab from a frame of
     another site — both are documents in it. The browser tells them apart: it
@@ -746,22 +746,21 @@ def browser_frames() -> list[str] | None:
     frames = data.get("frames")
     if not isinstance(frames, list):
         return None
-    urls: list[str] = []
+    named: list[dict] = []
     for frame in frames:
         if not isinstance(frame, dict):
             continue
         url = str(frame.get("url", ""))
         if url:
-            urls.append(url)
-    return urls
+            named.append({"kind": str(frame.get("kind", "")), "url": url})
+    return named
 
 
 def same_page(url: str, other: str) -> bool:
     """Whether two URLs name the same page.
 
-    The page is the origin and the path: the query is what the site adds to
-    the page it keeps the session on, and it says nothing about which page
-    this is.
+    The page is the origin and the path: the query of a frame is the frame's
+    own business, and it says nothing about which page this is.
     """
     left = origin_of(url)
     right = origin_of(other)
@@ -977,15 +976,25 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     #
     # The recording cannot tell the main frame of the tab from a frame of
     # another site: both are documents in it. The browser tells them apart —
-    # it names the frames of the page it is on — and a frame that is still
-    # there is a frame, not a place the session went. A page that is not a
-    # frame and not a page the config approves is a page the session visited
-    # and left: the step fails, because the capture of a session that went
-    # somewhere else is not evidence of what the step shows.
+    # it names the frame of the tab and the frames inside it. A frame inside
+    # the page that is still there is a frame, not a place the session went.
+    # The frame of the tab is the session itself: a document of it is a
+    # navigation of the session, and it is held to the same measure as any
+    # other navigation — the host, the page and the query. A page that is
+    # neither an approved navigation nor a frame inside the page is a page the
+    # session visited and left: the step fails, because the capture of a
+    # session that went somewhere else is not evidence of what the step shows.
     pages = config.get("allowedPages", [])
     noise = config.get("noiseHosts", [])
     frames = browser_frames()
-    frame_pages = [frame for frame in (frames or []) if not approved_page(frame, pages)]
+    frame_pages = [frame["url"] for frame in (frames or []) if not approved_page(frame["url"], pages)]
+    # Only the frames inside the page are exempt. The frame of the tab is the
+    # session: a document of it is a navigation of the session, and a
+    # navigation that carries a query the config does not name is one the
+    # config does not approve — the site may add a parameter to a page it
+    # keeps the session on, but a parameter that switches an action on is not
+    # one the tool can let pass unnoticed.
+    inside = [frame["url"] for frame in (frames or []) if frame.get("kind") == "inline"]
     visited: list[str] = []
     if frames is not None:
         for url in dict.fromkeys(document_urls(entries) + navigation_targets(entries)):
@@ -996,9 +1005,9 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
                 continue
             if approved_navigation(url, config["allowedOrigins"], pages, config.get("allowedQueryParams", [])):
                 continue
-            if any(same_page(url, frame) for frame in frames):
-                # A frame that is still there is a frame, and not a place the
-                # session went.
+            if any(same_page(url, frame) for frame in inside):
+                # A frame inside the page that is still there is a frame, and
+                # not a place the session went.
                 continue
             visited.append(url)
 

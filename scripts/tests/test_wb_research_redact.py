@@ -1941,6 +1941,27 @@ def test_the_shape_of_a_request_body_is_the_names_of_its_fields():
     assert body["bodyBytes"] == len('{"filter":{"color":"red"},"page":2}')
 
 
+def test_the_size_of_an_encoded_request_body_is_the_size_of_the_body():
+    # The finding of the review: the size of a body the recording holds
+    # encoded was the size of the text that carries it, and the text is not the
+    # body — three bytes are four characters in base64.
+    entry = har_entry_with_body({"mimeType": "application/octet-stream", "text": "YWJj", "encoding": "base64"})
+
+    body = redact.capture_from_har_entry(entry, "c1", "step.har")["request"]["body"]
+
+    assert body["bodyBytes"] == 3
+
+
+def test_an_encoded_request_body_that_is_not_base64_has_no_size():
+    # A text that is not base64 is not a body the tool can measure: the length
+    # of the text would be the length of something else.
+    entry = har_entry_with_body({"mimeType": "application/octet-stream", "text": "not base64!", "encoding": "base64"})
+
+    body = redact.capture_from_har_entry(entry, "c1", "step.har")["request"]["body"]
+
+    assert body["bodyBytes"] is None
+
+
 def test_a_value_of_a_request_body_never_reaches_the_fixture():
     entry = har_entry_with_body(
         {"mimeType": "application/json", "text": '{"query":"колонки","token":"' + SECRET_TOKEN + '"}'}

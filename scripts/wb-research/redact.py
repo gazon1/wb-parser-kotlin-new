@@ -25,6 +25,8 @@ answer but no body.
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import math
 import re
@@ -1301,15 +1303,22 @@ def har_request_body(request: dict[str, Any]) -> dict[str, Any]:
     text = post.get("text")
     if not isinstance(text, str):
         return shape
-    shape["bodyBytes"] = len(text.encode("utf-8", "replace"))
     media_type = (shape["mimeType"] or "").lower()
-    if "form-urlencoded" in media_type:
-        shape["formFields"] = safe_keys(form_field_names(post, text))
-        return shape
     if post.get("encoding") == "base64":
         # The body is written as it was sent over the wire, and a body that is
-        # encoded says nothing about its shape until it is decoded. The size
-        # and the media type are what the recording holds.
+        # encoded says nothing about its shape until it is decoded. The size is
+        # the size of the body as it was sent — the bytes, not the text that
+        # carries them — and a text that is not base64 has no size the tool can
+        # say: the length of the text would be the length of something else.
+        try:
+            raw = base64.b64decode(text, validate=True)
+        except (binascii.Error, ValueError):
+            return shape
+        shape["bodyBytes"] = len(raw)
+        return shape
+    shape["bodyBytes"] = len(text.encode("utf-8", "replace"))
+    if "form-urlencoded" in media_type:
+        shape["formFields"] = safe_keys(form_field_names(post, text))
         return shape
     try:
         parsed = json.loads(text)

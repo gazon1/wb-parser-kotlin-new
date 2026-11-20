@@ -258,7 +258,11 @@ escape, so `%252e%252e` is `..` and `%252f` is a separator to a server that
 decodes twice. The query of the page is judged
 too: a navigation may only carry the query parameters the config names
 (`allowedQueryParams`), because a parameter can switch an action on just as a
-path can. The site may answer the page the operator opens with another page:
+path can. This holds for the navigations of the site as well: the site may add
+a parameter to the page it keeps the session on, and the query of the page the
+session rests on is not a navigation of its own — but a document of the tab that
+carries a parameter the config does not name is a navigation, and it fails the
+step. The site may answer the page the operator opens with another page:
 the browser follows the redirect, so the step reads where the session ended up
 — the browser names the page of the main frame of the tab after its actions —
 and a session on a page the config does not name makes the step a failed one:
@@ -278,12 +282,15 @@ say where the session is fails the step as well — a step whose evidence says
 nothing about where the session went shows nothing about what the step did.
 The recording does not decide this: it cannot tell the main frame of the tab
 from a frame of another site — both are documents in it. The browser does: it
-names the frames of the page it is on, and a frame that is still there is a
-frame — not a place the session went — and does not fail the step. A document
-of the recording that is neither a frame nor a page the config approves is a
-page the session visited and left, and such a step fails: the pages are named
-in the report. A browser that cannot name the frames of the page fails the
-step as well — a step that cannot tell a frame from the session cannot say
+names the frame of the tab and the frames inside it. A frame inside the page
+that is still there is a frame — not a place the session went — and does not
+fail the step. The frame of the tab is the session itself: a document of it is
+a navigation of the session and is held to the same measure as any other
+navigation — the host, the page and the query. A document of the recording
+that is neither a frame inside the page nor a navigation the config approves is
+a page the session visited and left, and such a step fails: the pages are
+named in the report. A browser that cannot name the frames of the page fails
+the step as well — a step that cannot tell a frame from the session cannot say
 where the session went. A document of another host that is a frame is
 third-party traffic that the filter keeps out of the evidence.
 The tool cannot know what the site will answer before it answers it, so the

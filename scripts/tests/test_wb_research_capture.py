@@ -907,7 +907,8 @@ def fake_browser(
         if args[:2] == ("frames", "--json"):
             if not frames_known:
                 return subprocess.CompletedProcess(args, 1, "", "unknown subcommand: frames")
-            payload = json.dumps({"success": True, "data": {"frames": [{"kind": "top", "url": url} for url in live]}})
+            listed = [{"kind": "top" if index == 0 else "inline", "url": url} for index, url in enumerate(live)]
+            payload = json.dumps({"success": True, "data": {"frames": listed}})
             return subprocess.CompletedProcess(args, 0, payload, "")
         return subprocess.CompletedProcess(args, 0, "", "")
 
@@ -1606,6 +1607,65 @@ def test_a_page_the_session_visited_and_left_fails_the_step(tmp_path, monkeypatc
     report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
     assert any("visited a page the config does not approve" in note for note in report["notes"])
     assert any("login.example.test" in note for note in report["notes"])
+
+
+def test_a_navigation_of_the_page_itself_with_a_query_the_config_does_not_name_fails_the_step(tmp_path, monkeypatch):
+    # The finding of the review: the frame exemption compared the pages
+    # without their query, so a navigation of the tab itself that carried a
+    # parameter the config does not name — a parameter that can switch an
+    # action on — was read as the frame that is still there. The frame of the
+    # tab is the session itself, and a navigation of it is held to the same
+    # measure as any other navigation: the host, the page and the query.
+    page = "https://www.wildberries.ru/catalog/131954/list.aspx?search=test&action=add-to-cart"
+    entries = [
+        entry(page, "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries, session_url=page))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("visited a page the config does not approve" in note for note in report["notes"])
+    assert any("action=add-to-cart" in note for note in report["notes"])
+
+
+def test_a_frame_inside_the_page_with_a_query_the_config_does_not_name_is_not_a_navigation(tmp_path, monkeypatch):
+    # A frame inside the page is the frame's own business: the query of a
+    # third-party frame is none of the tool's, and it cannot change the
+    # account the capture observes.
+    widget = "https://frames.example.test/widget?token=abc"
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry(widget, "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(entries, frames=["https://www.wildberries.ru/catalog/", widget]),
+    )
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_OK
+
+    assert (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
 
 
 def test_a_document_of_a_noise_host_is_not_a_page_the_session_visited(tmp_path, monkeypatch):
