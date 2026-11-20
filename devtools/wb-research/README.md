@@ -14,6 +14,7 @@ devtools/wb-research/
   README.md                            ← this file: the format
   investigations/
     <investigation-id>/
+      plan.yaml                        ← the plan of the experiment (optional)
       investigation.yaml               ← the record
       evidence/
         <bundle>.json                  ← sanitized evidence
@@ -22,6 +23,11 @@ devtools/wb-research/
 `<investigation-id>` is `<YYYY-MM-DD>-<slug>`: the date the investigation started
 and a short name for the scenario. The date is part of the id because the id is
 also the directory name, and a directory that is renamed stops being a reference.
+
+`plan.yaml` is the plan of the experiment, written before the experiment runs:
+the goal, the steps and what each step expects. It is optional — an
+investigation that was run by hand has no plan — and it is where a run that
+stopped is resumed from. See [The plan of an experiment](#the-plan-of-an-experiment).
 
 Raw captures are **not** part of this layout. They stay on the machine, outside
 the repository, in `~/.cache/wb-research/<investigation-id>/`.
@@ -783,3 +789,123 @@ it is never followed. The same applies to a response body quoted in a record.
    then the evidence, then the validation states, then the follow-up.
 4. Record the validation state honestly. A claim seen once is `observed`. If the
    record says `validated`, something outside the experiment confirmed it.
+
+## The plan of an experiment
+
+A plan is written **before** the experiment runs and is the scope of the run:
+what was meant to be done, step by step, and what each step was meant to show.
+
+```yaml
+id: 2026-11-20-wb-catalog-agent        # matches the directory name
+goal: how the seller catalog is loaded, sorted and paged
+scenario: wb-catalog-request
+site: www.wildberries.ru
+status: draft                           # draft | approved | running | concluded
+created: 2026-11-20T18:00:00+03:00
+steps:
+  - name: initial-load
+    command: chrome-use open "https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки"
+    expected: the storefront issues a catalog search request
+    settle: 8
+    state: planned                      # planned | done | failed | needs-human
+```
+
+`allow_hosts` names the origins the step may reach — the approval of one run,
+in the plan, instead of in the shared config:
+
+```yaml
+  - name: initial-load
+    command: chrome-use open "https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки"
+    allow_hosts:
+      - splitter.wb.ru
+    state: done
+    note: recorded 319 requests, kept 10
+```
+
+`approved_scope` is written by `plan.py approve`, not by hand: it is the
+fingerprint of the scope the approval covered.
+
+`command` is the `chrome-use` command of the step, exactly as it is run; several
+actions are separated by `--`. The states are the runner's: `done` is a recorded
+step, `failed` is a step whose action failed, `needs-human` is a step that waits
+for the operator.
+
+`scope` is written by the runner too: it is the fingerprint of the scope the
+state was made under — the command, the approved origins and the capture config
+of that run. It is what tells a state that belongs to this step from a state that
+belongs to another one.
+
+`scripts/wb-research/plan.py` runs an approved plan:
+
+```bash
+uv run python scripts/wb-research/plan.py approve --investigation 2026-11-20-wb-catalog-agent
+uv run python scripts/wb-research/plan.py run --investigation 2026-11-20-wb-catalog-agent
+```
+
+`approve` is the operator's act: it writes the fingerprint of the scope as it
+stands — the names, the commands and the approved origins of the steps, and
+the part of `capture-config.json` that decides what the session may reach — into
+`approved_scope`, and sets `status: approved`. `run` only compares: a plan
+without an `approved_scope`, or with one that does not match the plan, is
+refused. A plan that was widened after the approval — another command, another
+origin, another origin in the shared config — does not run on the old approval;
+the operator approves it again and the fingerprint is written anew.
+
+The part of the config that the approval covers is every setting that decides
+what the capture refuses to stop at: `allowedOrigins`, `allowedPages`,
+`allowedQueryParams`, `noiseHosts` and `keptResourceTypes`. The noise hosts and
+the kept request types are in it because they are not only about what is kept:
+a host that is noise is a host whose traffic is not held to the approval, and
+a request type that is not kept is not an API call, so an unapproved host can
+pass as ordinary traffic. `maxBodyFetches` is the one setting that is left out
+— it decides how many bodies are read, and nothing about what is reached.
+
+`run` executes only the steps that are `planned`, and it stops at the first
+step that did not finish — a run that stops is resumed by the next run, which
+skips the steps that are `done`. A plan that was not approved is not run at
+all: the approval is what makes the scope of the experiment a decision and not
+a guess.
+
+An approval plans the steps again whose state was made under another scope: a
+step whose command, whose approved origins or whose capture config changed since
+the state was written is planned again, because that state says nothing about the
+step as it stands now. A step whose scope did not change keeps its state, so
+approving the same plan again does not throw the work away.
+
+The run applies the same rule to every step it meets: a step whose state was
+made under another scope — or written by hand — runs again. A step that is
+`done` because a run made it so, under the scope of the approval, is the only
+step a run skips.
+
+One investigation runs once at a time: the runner takes a lock on the
+investigation for the whole run, and a second run of the same investigation is
+told that another one is going instead of writing the same files underneath it.
+The approval takes the same lock.
+
+The run freezes the config it runs under: it copies `capture-config.json` into
+the raw cache and hands that copy to every step of the run, and the scope of
+the approval is compared with the scope of the copy — not with the scope of the
+shared file, which may change while the run is going. A config that is widened
+mid-run therefore reaches no step of that run. The copy is the run's own — two
+runs of one investigation do not share it — and the run removes it when it is
+done.
+
+`settle` — how long a step waits for the answers — is part of the scope as
+well, and it is read from the plan alone: the run cannot shorten it. A step
+that stops listening earlier may miss the request that carries the answer, so
+its evidence is not the evidence of the same step with a longer wait.
+
+The id of the investigation is a name, not a path: the runner refuses an id that
+carries a separator or a `..`, the same rule the capture follows. The name of
+a step is checked the same way: it is the name of a file, so a name the rules
+would reduce is refused rather than quietly changed.
+
+## The agent workflow
+
+`.agents/skills/wb-research/SKILL.md` is the same workflow written for an AI
+agent: the plan, the approval, the run, the correlation of every action with
+its evidence, the report, and the boundaries — read-only, no bypass, no
+secrets, no scope the user did not approve.
+
+The agent does not add anything to the crawler: no chrome-use and no AI
+credential enters a Gradle module or the runtime.

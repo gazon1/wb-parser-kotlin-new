@@ -11,7 +11,7 @@
     "https://www.wildberries.ru/",
     "https://www.wildberries.ru/catalog/"
   ],
-  "allowedQueryParams": ["search"],
+  "allowedQueryParams": ["search", "sort"],
   "noiseHosts": [
     "a.wb.ru",
     "nel.wb.ru",

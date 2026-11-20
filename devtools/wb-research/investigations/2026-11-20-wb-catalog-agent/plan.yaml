@@ -1,0 +1,31 @@
+id: 2026-11-20-wb-catalog-agent
+goal: how the seller catalog is loaded, how the sort order is changed and how the next page of products
+  is loaded
+scenario: wb-catalog-request
+site: www.wildberries.ru
+status: concluded
+created: 2026-11-20 18:05:00+03:00
+steps:
+- name: initial-load
+  command: chrome-use open "https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки"
+  expected: the storefront issues a catalog search request and the traffic around it
+  allow_hosts:
+  - splitter.wb.ru
+  settle: 8
+  state: done
+  note: recorded 319 requests, kept 10
+- name: sort-by-rating
+  command: chrome-use open "https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки&sort=rating"
+  expected: the search request carries the sort order of the page URL; the hypothesis is that the sort
+    is a parameter of the request and not of the page
+  allow_hosts:
+  - splitter.wb.ru
+  settle: 8
+  state: done
+  note: recorded 312 requests, kept 8
+- name: next-page
+  command: chrome-use scroll down 20000 -- chrome-use scroll down 20000
+  expected: the page asks for more products of the same catalog
+  settle: 8
+  state: done
+  note: recorded 193 requests, kept 9
