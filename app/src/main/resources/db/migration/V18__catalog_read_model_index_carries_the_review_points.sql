@@ -20,6 +20,12 @@
 -- a build that holds a lock is a crawler that is not crawling. See
 -- `docs/operations/catalog-index-rollout.md`.
 --
+-- The column this index carries is added by `V16__scraped_items_feedback_points.sql`,
+-- so the build cannot happen before that migration has been applied: on a database
+-- without the column the concurrent build fails with "column feedback_points does not
+-- exist". The order on a live database is therefore V16, then the concurrent build,
+-- then this migration — `docs/operations/catalog-index-rollout.md` says so.
+--
 -- `CREATE INDEX CONCURRENTLY` cannot run inside a transaction block, and the crawler's
 -- migrations are applied inside one, so the build here is the ordinary one: on the
 -- production database the index is built before the migration is applied, concurrently,

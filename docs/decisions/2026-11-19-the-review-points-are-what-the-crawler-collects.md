@@ -108,6 +108,13 @@ reported, dressed up as a fix.
   visit the heap for every observation — the cost the covering index was built to avoid.
   The index's included columns cannot be changed in place, so `V18` builds the index again
   under a second name and renames it (see `docs/operations/catalog-index-rollout.md`).
+- **Always** apply the migration that adds a column before the concurrent build that
+  carries it. The read model's index carries `feedback_points`, and that column does not
+  exist until `V16` is applied: a build before that fails with "column feedback_points does
+  not exist", and letting the migration build the index instead holds the lock on the
+  crawler's table that the concurrent build exists to avoid. The rollout is three phases —
+  apply `V16`, build the index concurrently, apply `V17` and `V18` — and Flyway stops
+  where it is told to (`SPRING_FLYWAY_TARGET=16`).
 - The catalog's cashback-based sort, its `minCashback` filter and its "best cashback" list
   have nothing to sort by any more: no crawled product carries a wallet cashback, because the
   request does not ask for one. They keep working — they just report empty and order by

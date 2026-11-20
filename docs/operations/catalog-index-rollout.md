@@ -70,6 +70,26 @@ index and renames this one to `ix_scraped_items_product_latest_covering`. Build 
 before the migration is applied, as the rest of the indexes are — the migration finds it
 already there and only renames it.
 
+### When the index carries a column that a migration adds
+
+`feedback_points` does not exist until `V16__scraped_items_feedback_points.sql` has been
+applied, so the read model's index cannot be built before that. Its rollout is three
+phases, not one:
+
+1. **Apply V16.** It adds the column and touches no index, so it is quick and the crawler
+   keeps writing to the table. Flyway stops where it is told to: `SPRING_FLYWAY_TARGET=16`
+   (or `flyway migrate -target=16`) applies the migrations up to V16 and no further. The
+   deployment that carries the rest of this change does not set the target.
+2. **Build the index concurrently**, under the name `..._v2` — the statement above. The
+   column is there now, so the build succeeds; on a database that has not applied V16 it
+   fails with `column "feedback_points" does not exist`.
+3. **Apply V17 and V18.** V18 finds the index already built (`IF NOT EXISTS`), drops the
+   old one and renames the new one to the name the queries and the docs use.
+
+Between the first and the third phase the old index is still the one in use. It does not
+carry `feedback_points`, so the read model visits the heap for every observation — the
+cost the new index is built to remove, and the reason the third phase is not optional.
+
 The extension has to exist first, and it is created by the migration — so create it by
 hand as well, before the indexes:
 
