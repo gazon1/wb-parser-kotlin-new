@@ -26,8 +26,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import SplitResult, parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit
@@ -101,6 +103,13 @@ SENSITIVE_QUERY_PARAMS = {
     "userid",
     "user_id",
     "x-userid",
+    # The account the request was made from, under the other names the API
+    # spells it with. The value is a digit string, so it is short enough to
+    # pass the opaque-value rule.
+    "uid",
+    "account",
+    "accountid",
+    "account_id",
 }
 
 # A name that ends the way a credential name ends. The list above cannot hold
@@ -109,6 +118,26 @@ SENSITIVE_QUERY_PARAMS = {
 # The suffix is what a credential name ends with, whatever the service calls
 # the front of it.
 CREDENTIAL_NAME_SUFFIX = ("_token", "_secret", "_password", "_key", "_passwd")
+
+# Query parameters that carry free text — what somebody typed. The value is
+# the search history of the session, and it can be a person's name. It is not
+# evidence: the query an investigation asked is written in the record of the
+# investigation, on purpose, by the developer.
+#
+# The names are the ones the capture sources use for the same thing — the
+# search box of the site (`query`), the search of the redirect check
+# (`search`), and the short spellings another API would use (`q`, `term`).
+# A name that is not on the list is judged by its value instead.
+FREE_TEXT_QUERY_PARAMS = {
+    "keyword",
+    "keywords",
+    "phrase",
+    "q",
+    "query",
+    "search",
+    "term",
+    "text",
+}
 
 # The parts of a credential name. The name is what carries the rule; the value
 # beside it can be short, so the value itself cannot be recognized — only the
@@ -236,6 +265,20 @@ CREDENTIAL_PATH_COMPONENTS = {
 # `access_token`.
 CREDENTIAL_SEGMENT = re.compile(r"(?i)" + CREDENTIAL_NAME_PREFIX + CREDENTIAL_NAME)
 
+# A path segment that names an account. The segment after it is an account id
+# when it is a number, however short: the digit-run rule needs nine digits,
+# and an account id is not always that long.
+ACCOUNT_PATH_COMPONENTS = {
+    "account",
+    "accounts",
+    "customer",
+    "customers",
+    "profile",
+    "profiles",
+    "user",
+    "users",
+}
+
 # A value that looks like an opaque credential: long, no spaces, no URL
 # punctuation. This is what catches a profile identifier or a token that the
 # name-based rules did not. The dot is inside the character class because a JWT
@@ -268,6 +311,17 @@ MAX_VALUE_LENGTH = 200
 # a name is replaced: a slug of it would still be the address, spelled out.
 UNSAFE_IDENTIFIER = re.compile(r"[^A-Za-z0-9._-]+")
 LONG_DIGIT_RUN = re.compile(r"\d{9,}")
+
+# A run of digits in a value whose name says nothing about what it is — the
+# value of a header, the value of a query parameter. The site asks with digit
+# runs of its own — `dest=1259570991` is the catalog the page is about,
+# `hide_vflags=4294967296` is a mask of flags, `nm=161886426` is a card — and
+# those runs are the evidence: they say what the request asked for. They are
+# ten digits at the longest, so a longer run is not one of them: the account
+# the request was made from is a run like that (`user_id=2285324551794928359`),
+# and it must not reach a committed file. A run of ten digits is kept, because
+# it cannot be told apart from the site's own constants.
+VALUE_DIGIT_RUN = re.compile(r"\d{11,}")
 EMAIL_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 # A phone number, as people write it: ten or eleven digits in groups, with a
@@ -309,10 +363,13 @@ UUID_COMPACT = re.compile(
 
 MAX_IDENTIFIER_LENGTH = 64
 
-# The characters a URL path is written with. A path that had a value replaced
-# is put back with the same characters, so that the committed URL still looks
-# like the URL that was fetched.
-PATH_SAFE = "/:@&=+$,~!*'()-._"
+# The characters a single segment of a URL path is written with. A segment
+# that had a value replaced is put back with the same characters, so that the
+# committed URL still looks like the URL that was fetched. The separator is
+# not among them: a segment is not a path, and a `/` in it was written `%2F` —
+# writing it back as `/` would turn one segment into two and name another
+# endpoint.
+PATH_SEGMENT_SAFE = ":@&=+$,~!*'()-._"
 
 # The numbers a probe measured. Numbers are evidence — a count says what was
 # seen, and it cannot carry a name, a token or a sentence.
@@ -329,6 +386,17 @@ PRICE_PAIR_REQUIRED = ("id", "priceKopecks", "cashback")
 def placeholder(kind: str) -> str:
     """A stable marker for a value that was removed."""
     return f"<redacted:{kind}>"
+
+
+def writable(text: str) -> str:
+    """The text as a UTF-8 file can hold it.
+
+    A capture can carry a character no file can store — a lone surrogate, for
+    instance. Such a character is not evidence, and a file that cannot be
+    written is a failed export: the character is replaced instead of ending
+    the run.
+    """
+    return text.encode("utf-8", "replace").decode("utf-8")
 
 
 def looks_like_credential(value: str) -> bool:
@@ -445,20 +513,100 @@ def safe_identifier(value: Any, fallback: str) -> str:
     rules to see.
     """
     raw = str(value or "")
-    text = redact_credentials(raw, label="redacted")
-    text = EMAIL_ADDRESS.sub("email", text)
-    text = PHONE_NUMBER.sub("phone", text)
-    text = UUID_VALUE.sub("opaque", text)
-    text = redact_opaque_run(text)
-    text = UNSAFE_IDENTIFIER.sub("-", text).strip("-")
+    decoded = decode_layers(raw)
+    redacted = _identifier_text(decoded)
+    # The name is judged as the server reads it: a name that hides an address
+    # behind an escape is the address all the same. A name that survives the
+    # rules unchanged keeps the spelling it came with.
+    source = redacted if redacted != decoded else raw
+    text = UNSAFE_IDENTIFIER.sub("-", source).strip("-")
     if not text or LONG_DIGIT_RUN.search(text):
         return fallback
     return text[:MAX_IDENTIFIER_LENGTH]
 
 
+def _identifier_text(value: str) -> str:
+    """The personal values of an operator-chosen name, replaced."""
+    text = redact_credentials(value, label="redacted")
+    text = EMAIL_ADDRESS.sub("email", text)
+    text = PHONE_NUMBER.sub("phone", text)
+    text = UUID_VALUE.sub("opaque", text)
+    text = UUID_COMPACT.sub("opaque", text)
+    return redact_opaque_run(text)
+
+
 def is_number(value: Any) -> bool:
-    """A number that is not a boolean — `True` is not a count of one."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    """A number that is not a boolean — `True` is not a count of one.
+
+    A float that is not finite is not a number either: `NaN` and `Infinity` are
+    what a malformed capture carries, and a count of them is not evidence —
+    nor a value that can be turned into a count.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return not isinstance(value, float) or math.isfinite(value)
+
+
+def is_integral_number(value: Any) -> bool:
+    """A number that is a whole number — a count of bytes is not 1.5.
+
+    A count that was measured is a whole number, and a number with a fraction
+    in it is a malformed capture: rounding it would put a value in the
+    committed file that nobody measured.
+    """
+    if not is_number(value):
+        return False
+    return isinstance(value, int) or float(value).is_integer()
+
+
+def is_count(value: Any) -> bool:
+    """A number that can be a count — whole and not below zero.
+
+    A count says how many there were, and there cannot be fewer than none of
+    them: a negative count or one with a fraction in it is a malformed
+    capture, and it is not evidence of what was seen.
+    """
+    return is_integral_number(value) and value >= 0
+
+
+def safe_key(key: Any) -> str:
+    """A key of a JSON answer that may be committed.
+
+    A key is a name the service chose, and a name can be a person's address or
+    an account id: `{"alice@example.com": ...}` is an answer whose key *is* the
+    address. A key that survives the rules unchanged is kept as it is — the
+    shape of the answer is the evidence — and a key that does not becomes one
+    placeholder, so the fact that there was a key stays and the value does not.
+
+    A key made of digits only is an identifier, not a name: an answer indexed
+    by account id carries the id in the key. The digit-run rule needs nine
+    digits and an account id is not always that long, so the key is judged by
+    its shape: digits only means it is an id.
+
+    A key that carries a space is a phrase, not the name of a field: it is
+    free text — a person's name, a sentence — that the answer happens to be
+    keyed by. A field name the service chose is one word.
+
+    A key is judged as the server reads it: the escapes are resolved, layer by
+    layer, at most three. A key that hides behind them is a key that hides.
+    A key that survives the rules unchanged keeps the spelling it came with.
+    """
+    text = str(key)
+    decoded = decode_layers(text)
+    if decoded.isdigit():
+        return placeholder("key")
+    if any(character.isspace() for character in decoded):
+        return placeholder("key")
+    if redact_note(decoded) == decoded:
+        return text
+    return placeholder("key")
+
+
+def safe_keys(keys: Any) -> list[str] | None:
+    """The top-level keys of a JSON answer, safe to commit."""
+    if not isinstance(keys, list):
+        return None
+    return sorted(safe_key(key) for key in keys)
 
 
 def redact_measurements(probe: dict[str, Any]) -> dict[str, Any]:
@@ -471,7 +619,7 @@ def redact_measurements(probe: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for name in MEASUREMENT_COUNTS:
         value = probe.get(name)
-        if is_number(value):
+        if is_count(value):
             out[name] = value
     for name in MEASUREMENT_VALUES:
         values = probe.get(name)
@@ -525,14 +673,26 @@ def redact_note(note: str) -> str:
     So a note loses its email addresses and its phone numbers, its long digit
     runs (that is the shape of an account id), its URLs become redacted URLs,
     and an opaque value in it is dropped.
+
+    A note is judged as the server reads it: the escapes are resolved, layer by
+    layer, at most three, because an address behind two of them is the address
+    all the same. A note that survives the rules unchanged keeps the spelling
+    it came with.
     """
-    text = EMAIL_ADDRESS.sub("email", str(note))
+    raw = str(note)
+    decoded = decode_layers(raw)
+    redacted = _redact_note_text(decoded)
+    return redacted[:MAX_VALUE_LENGTH] if redacted != decoded else raw[:MAX_VALUE_LENGTH]
+
+
+def _redact_note_text(text: str) -> str:
+    """The personal values of a note, replaced."""
+    text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
     text = URL_IN_TEXT.sub(lambda match: redact_url(match.group(0)), text)
     text = redact_credentials(text)
     text = OPAQUE_TOKEN.sub(placeholder("opaque"), text)
-    text = LONG_DIGIT_RUN.sub(placeholder("account-id"), text)
-    return text[:MAX_VALUE_LENGTH]
+    return LONG_DIGIT_RUN.sub(placeholder("account-id"), text)
 
 
 def redact_generic_value(value: str) -> str:
@@ -543,16 +703,20 @@ def redact_generic_value(value: str) -> str:
     values that only their shape gives away. So the value goes through the rules
     that need no name: a UUID is the identifier of a profile — in either
     spelling, and wherever it sits in the value — a long opaque run is a token,
-    and the personal values are replaced as they are everywhere else.
+    a long run of digits is an account id, and the personal values are replaced
+    as they are everywhere else.
 
     A dotted name is a name: its parts are judged one by one, so a name of
     dotted words survives and a token inside it does not.
     """
     text = UUID_VALUE.sub(placeholder("opaque"), value)
     text = UUID_COMPACT.sub(placeholder("opaque"), text)
+    # The digit rule comes after the UUID rule: the digits of a UUID are part
+    # of it, and a rule that runs first would eat the identifier.
+    text = VALUE_DIGIT_RUN.sub(placeholder("id"), text)
     # The whole value may be one run of opaque characters — hyphens and all —
     # or a run may sit inside a value that carries other words.
-    text = opaque_parts(text) if OPAQUE_VALUE.match(text) else OPAQUE_RUN.sub(opaque_parts, text)
+    text = opaque_parts(text) if OPAQUE_VALUE.match(text) else OPAQUE_RUN.sub(lambda m: opaque_parts(m.group(0)), text)
     text = redact_credentials(text)
     text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
@@ -567,11 +731,26 @@ def redact_header_value(name: str, value: str, safe: set[str]) -> str:
     what may be shown; the value still goes through the rules — including the
     ones that need no name, because an allowlisted name is not a promise about
     the value it carries.
+
+    The value is looked at as the server reads it: a capture may encode it
+    once, twice or three times, and a value that hides an address behind two
+    layers of escapes is the address all the same.
     """
     if name.lower() in safe:
+        if name.lower() == "content-type":
+            # A content type is judged by its own rule wherever it is read: the
+            # media type and the parameters that may be committed, nothing
+            # else. A server may answer with anything, and the same value in a
+            # header and in the field of a capture is one value.
+            content_type = safe_content_type(value)
+            return content_type if content_type is not None else placeholder(name.lower())
         if URL_VALUE.match(value):
             return redact_url(value)
-        return redact_generic_value(value)
+        decoded = decode_layers(value)
+        if URL_VALUE.match(decoded):
+            return redact_url(decoded)
+        redacted = redact_generic_value(decoded)
+        return redacted if redacted != decoded else value
     return placeholder(name.lower())
 
 
@@ -586,16 +765,39 @@ def redact_query_value(name: str, value: str) -> str:
     name is: `access_token`, `accessToken` and `x-auth-token` are the same
     name. The name is recognized by the same rule the rest of the redactor
     uses, so that a new spelling of a name does not open a new hole.
+
+    A name that carries free text is redacted as well: what somebody typed is
+    the search history of the session, and it can be a person's name.
+
+    A run of digits is replaced when it is longer than the runs the site asks
+    with (`VALUE_DIGIT_RUN`): the account the request was made from is such a
+    run, and it is not evidence. A run of ten digits stays — it cannot be told
+    apart from the site's own constants (`dest=1259570991`), and those are
+    the evidence.
+
+    The name and the value are looked at as the server reads them: a capture
+    may encode either once, twice or three times, and a value that hides an
+    address behind two layers of escapes is the address all the same.
     """
-    if name.lower() in SENSITIVE_QUERY_PARAMS:
+    plain_name = decode_layers(name)
+    if plain_name.lower() in FREE_TEXT_QUERY_PARAMS:
         return placeholder("query-param")
-    if name.lower().endswith(CREDENTIAL_NAME_SUFFIX):
+    if plain_name.lower() in SENSITIVE_QUERY_PARAMS:
         return placeholder("query-param")
-    if CREDENTIAL_SEGMENT.fullmatch(name) is not None:
+    if plain_name.lower().endswith(CREDENTIAL_NAME_SUFFIX):
+        return placeholder("query-param")
+    if CREDENTIAL_SEGMENT.fullmatch(plain_name) is not None:
         return placeholder("query-param")
     if URL_VALUE.match(value):
         return redact_url(value)
-    return redact_generic_value(value)
+    # The value may be encoded once, twice or three times, and the server
+    # resolves every layer. So the rules look at the value as the server reads
+    # it, and only a value that survives them unchanged keeps its spelling.
+    decoded = decode_layers(value)
+    if URL_VALUE.match(decoded):
+        return redact_url(decoded)
+    redacted = redact_generic_value(decoded)
+    return redacted if redacted != decoded else value
 
 
 def redact_error(value: Any) -> str | None:
@@ -612,6 +814,29 @@ def redact_error(value: Any) -> str | None:
     return match.group(0) if match else placeholder("error")
 
 
+def safe_query_name(name: str) -> str:
+    """The name of a query parameter, if it may be committed.
+
+    The name is part of the URL and part of the evidence, and an ordinary name
+    (`resultset`, `spp`, `dest`) stays as it is. A name that carries personal
+    data — an address, a phone number, an account id, an opaque token — is not
+    a name but a value that happens to stand on the left of the `=`, so it
+    becomes one placeholder. A name made of digits only is an identifier, the
+    way a key of digits is.
+
+    A name that carries a space is a phrase, not the name of a field: it is
+    free text — a person's name — that the request happens to be keyed by. A
+    name the service chose is one word.
+
+    The name is judged as the server reads it: a name that hides an address
+    behind two layers of escapes is the address all the same.
+    """
+    decoded = decode_layers(name)
+    if decoded.isdigit() or any(character.isspace() for character in decoded) or redact_note(decoded) != decoded:
+        return placeholder("query-name")
+    return name
+
+
 def redact_url(url: str) -> str:
     """Keep the URL's structure; drop the values that could identify a session.
 
@@ -619,39 +844,89 @@ def redact_url(url: str) -> str:
     evidence, and it is the part of a URL most likely to carry a token. The
     user information of the authority (`user:password@host`) is dropped for the
     same reason — it is a credential, and it is not evidence either.
+
+    A URL the parser refuses — an unclosed IPv6 bracket, a host it cannot
+    read — is replaced whole: where the user information ends and the path
+    begins is unknown there, and a URL that cannot be judged must not be
+    guessed at. A URL that carries a character no file can hold is kept, with
+    that character replaced: the URL is evidence, and a character that cannot
+    be written is not a reason to lose it.
     """
-    parts = urlsplit(url)
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return placeholder("url")
+    try:
+        authority = authority_without_userinfo(parts)
+    except ValueError:
+        # A port the parser refuses is a port of a URL it cannot read: where
+        # the authority ends is unknown, and dropping the port would name
+        # another endpoint than the capture saw.
+        return placeholder("url")
     query = []
     for name, value in parse_qsl(parts.query, keep_blank_values=True):
-        query.append((name, redact_query_value(name, value)))
-    return urlunsplit((parts.scheme, authority_without_userinfo(parts), redact_path(parts.path), urlencode(query), ""))
+        query.append((safe_query_name(name), redact_query_value(name, value)))
+    return writable(
+        urlunsplit(
+            (
+                parts.scheme,
+                authority,
+                redact_path(parts.path),
+                urlencode(query, errors="replace"),
+                "",
+            )
+        )
+    )
+
+
+def is_account_id(segment: str) -> bool:
+    """Whether a path segment is an account id.
+
+    The segment after a segment that names an account is an id, and an id is
+    not always nine digits long. It is judged by its shape: digits, a mix of
+    letters and digits, or a separator between them is an identifier. A plain
+    word is the name of a route the service chose — `user/check` is an
+    endpoint, not an account.
+    """
+    if not segment:
+        return False
+    return re.fullmatch(r"[A-Za-z]+", segment) is None
 
 
 def redact_path(path: str) -> str:
     """A URL path, without the values in it that could identify a session.
 
     The path is part of the URL, and it carries values as well: a reset link
-    (`/reset/<token>`), a profile (`/users/<address>`), a phone number. The
-    query values are judged by their value already; the path was kept as it
-    came, so anything in it reached the committed file as it was.
+    (`/reset/<token>`), a profile (`/users/<address>`), a phone number, an
+    account id. The query values are judged by their value already; the path
+    was kept as it came, so anything in it reached the committed file as it
+    was.
 
     The path is looked at decoded: a capture may spell an address as
-    `alice%40example.com`, and the plain patterns would not see it. The path
-    is put back encoded, and only when a value was actually replaced — an
-    ordinary path is kept as it came.
+    `alice%40example.com`, and the plain patterns would not see it. Each
+    segment is judged on its own, and a segment that was not changed keeps the
+    spelling it came with: a change in one place must not change the spelling
+    of another. `%2F` is not a separator to a browser, so a path that says
+    `a/b` where the capture said `a%2Fb` says another endpoint.
     """
     if not path:
         return path
-    decoded = decode_path(path)
-    segments = decoded.split("/")
-    kept = []
+    kept: list[str] = []
     previous = ""
-    for segment in segments:
-        text = EMAIL_ADDRESS.sub("email", segment)
+    for segment in path.split("/"):
+        decoded = decode_layers(segment)
+        if previous.lower() in ACCOUNT_PATH_COMPONENTS and is_account_id(decoded):
+            # The segment after a segment that names an account is an account id,
+            # and an account id is not always nine digits long.
+            kept.append(quote(placeholder("account-id"), safe=PATH_SEGMENT_SAFE, errors="replace"))
+            previous = decoded
+            continue
+        text = EMAIL_ADDRESS.sub("email", decoded)
         text = PHONE_NUMBER.sub("phone", text)
         text = OPAQUE_TOKEN.sub("opaque", text)
+        text = LONG_DIGIT_RUN.sub(placeholder("account-id"), text)
         text = redact_credentials(text, label="credential")
-        if names_a_credential(previous) and text == segment and not text.startswith("<redacted:"):
+        if names_a_credential(previous) and text == decoded and not text.startswith("<redacted:"):
             # The segment after a segment that names a credential is one, even
             # when it is short enough to pass every length-based rule. The value
             # is judged by whether it is still there: a segment that was already
@@ -659,27 +934,26 @@ def redact_path(path: str) -> str:
             # the name of a marker (`opaque123`) is a value, and it is replaced
             # like any other.
             text = "credential"
-        kept.append(text)
-        previous = segment
-    text = "/".join(kept)
-    if text == decoded:
-        return path
-    return quote(text, safe=PATH_SAFE)
+        kept.append(segment if text == decoded else quote(text, safe=PATH_SEGMENT_SAFE, errors="replace"))
+        previous = decoded
+    return "/".join(kept)
 
 
-def decode_path(path: str) -> str:
-    """The path as the server reads it, with the escapes resolved.
+def decode_layers(text: str) -> str:
+    """The text as the server reads it, with the escapes resolved.
 
-    A capture may encode a value once or twice; the server resolves every
-    layer, so the sanitizer has to look at the same text.
+    A capture may encode a value once, twice or three times; the server
+    resolves every layer, so the sanitizer has to look at the same text. The
+    number of layers is bounded: a value that is still encoded after three
+    rounds is left as it is, and the rules look at what is left of it.
     """
-    text = path
+    current = text
     for _ in range(3):
-        decoded = unquote(text)
-        if decoded == text:
+        decoded = unquote(current)
+        if decoded == current:
             break
-        text = decoded
-    return text
+        current = decoded
+    return current
 
 
 def authority_without_userinfo(parts: SplitResult) -> str:
@@ -687,24 +961,32 @@ def authority_without_userinfo(parts: SplitResult) -> str:
 
     `urlsplit(...).netloc` carries `user:password@host` as well, and the
     user information is a credential: it must not reach the repository.
+
+    A port the parser refuses is raised to the caller: the URL is one the
+    parser cannot read, and the caller replaces it whole.
     """
     host = parts.hostname or ""
     if ":" in host and not host.startswith("["):
         # An IPv6 host: it needs its brackets back.
         host = f"[{host}]"
-    try:
-        port = parts.port
-    except ValueError:
-        port = None
-    return f"{host}:{port}" if port else host
+    port = parts.port
+    return f"{host}:{port}" if port is not None else host
 
 
 def redact_headers(headers: list[dict[str, Any]], safe: set[str]) -> dict[str, str]:
     """Map header names to their values, keeping only the allowed ones."""
     out: dict[str, str] = {}
     for header in headers:
-        name = str(header.get("name", "")).lower()
-        if not name:
+        raw = str(header.get("name", "")).lower()
+        if not raw:
+            continue
+        name = safe_header_name(raw)
+        if name != raw:
+            # The name is not a name: a header of a capture can be spelled
+            # anything, and the name itself would reach the committed file.
+            key = placeholder("header-name")
+            if key not in out:
+                out[key] = placeholder("header-name")
             continue
         if name in safe:
             out[name] = redact_header_value(name, str(header.get("value", "")), safe)
@@ -713,27 +995,328 @@ def redact_headers(headers: list[dict[str, Any]], safe: set[str]) -> dict[str, s
     return dict(sorted(out.items()))
 
 
+# The media type of a content type header: `type/subtype`, and nothing else.
+MEDIA_TYPE = re.compile(r"(?i)^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$")
+
+# The parameters of a content type header that may be kept. A charset is a
+# name and a number of characters; anything else can carry a value of its own.
+SAFE_CONTENT_TYPE_PARAMS = {"charset"}
+
+
+def safe_content_type(value: Any) -> str | None:
+    """The media type of a response, and the parameters that may be committed.
+
+    The content type comes from the server, and a server may answer with
+    anything: a media type and a list of parameters is what a content type
+    is, so only that is kept. The parameters that survive are named ones —
+    `charset` — and their value is a token of characters, not free text.
+
+    The media type is judged by its shape as well: the server chooses it, but
+    a subtype that carries a UUID or an account id is a value and not a media
+    type, and a content type without a media type is not a content type.
+    """
+    if not isinstance(value, str):
+        return None
+    parts = value.split(";")
+    media = parts[0].strip()
+    if not MEDIA_TYPE.match(media):
+        return None
+    if redact_generic_value(media) != media:
+        return None
+    if media.split("/", 1)[1].isdigit():
+        # A subtype made of digits only is an identifier and not a media type:
+        # no service names a media type that way, and the digit-run rule needs
+        # eleven digits to see a value the site asks with.
+        return None
+    kept = [media]
+    for part in parts[1:]:
+        name, separator, raw = part.partition("=")
+        if not separator:
+            continue
+        name = name.strip().lower()
+        raw = raw.strip()
+        if name not in SAFE_CONTENT_TYPE_PARAMS:
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}", raw):
+            continue
+        if redact_generic_value(raw) != raw:
+            # The parameter is a name and a value, and the value is judged by
+            # its shape as well: a charset is a word (`utf-8`), and a run of
+            # digits in it is an account id.
+            continue
+        kept.append(f"{name}={raw}")
+    return "; ".join(kept)
+
+
+# The method of a request: a token of letters and nothing else. The capture is
+# an input, so a field nobody looked at must not be able to carry a value.
+HTTP_METHOD = re.compile(r"[A-Za-z]{3,12}")
+
+
+def safe_method(value: Any) -> str | None:
+    """The method of a request, if it is one.
+
+    A method is a word of letters: `GET`, `POST`, `PROPFIND`. Anything else in
+    this field is not a method, and a value that rode in here would reach the
+    committed file as if it were the method.
+    """
+    if not isinstance(value, str) or not HTTP_METHOD.fullmatch(value):
+        return None
+    return value.upper()
+
+
+def safe_status(value: Any) -> int | None:
+    """The status of a response, if it is one.
+
+    An HTTP status is a number between 100 and 599. A status that was never
+    answered is `null` with a reason, not a zero and not a string. A status
+    with a fraction in it was never measured: truncating it would put a
+    number in the file that nobody saw.
+    """
+    if not is_integral_number(value):
+        return None
+    status = int(value)
+    return status if 100 <= status <= 599 else None
+
+
+def safe_size(value: Any) -> int | None:
+    """The size of a body in bytes, if it is a size."""
+    if not is_integral_number(value):
+        return None
+    size = int(value)
+    return size if size >= 0 else None
+
+
+# The moment a HAR entry was recorded: an ISO-8601 timestamp.
+ISO_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})")
+
+
+def safe_timestamp(value: Any) -> str | None:
+    """When the request started, if the capture said when.
+
+    A timestamp is a moment of the calendar, so its shape is not enough: a
+    month of ninety-nine days is not a date, and an offset of ninety-nine
+    hours is not a timezone. A timestamp that is not a real moment is dropped.
+    """
+    if not isinstance(value, str) or not ISO_TIMESTAMP.fullmatch(value):
+        return None
+    try:
+        datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+    except ValueError:
+        return None
+    return value
+
+
+# The credentials mode of a request. The browser knows three of them.
+CREDENTIALS_MODES = {"include", "omit", "same-origin"}
+
+
+def safe_credentials(value: Any) -> str | None:
+    """The credentials mode of a request, if it is one."""
+    if not isinstance(value, str):
+        return None
+    return value if value in CREDENTIALS_MODES else None
+
+
+# The name of a header: a token of the characters a name may carry.
+HEADER_NAME = re.compile(r"[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}")
+
+
+def is_identifier_name(name: str) -> bool:
+    """Whether the name of a header is an identifier rather than a name.
+
+    A name is a token of characters, and a token can be an identifier: a
+    profile's UUID in either spelling, an account id, a hash of a session.
+    Such a name is a value that happens to stand where a name stands, and it
+    must not reach the committed file.
+
+    A name the service chose is made of words: a run that mixes letters with
+    digits is a token — the header of a JWT, a hash — and a name of digits
+    only is an id. A name that carries no letters at all is an id as well: a
+    number written with a separator between its parts (`123456789-01`) is an
+    account id in the shape the site writes ids in, and a name the service
+    chose always carries a word.
+    """
+    if UUID_VALUE.fullmatch(name) or UUID_COMPACT.fullmatch(name):
+        return True
+    if not any(character.isalpha() for character in name) and any(character.isdigit() for character in name):
+        return True
+    return len(name) >= OPAQUE_MIXED_LENGTH and any(c.isdigit() for c in name) and any(c.isalpha() for c in name)
+
+
+def safe_header_name(name: Any) -> str:
+    """The name of a header, if it may be committed.
+
+    A name that is not a token is not a name: it can be an address or a
+    credential. A name that is an identifier is not a name either. The fact
+    that a header was there stays, the name does not.
+
+    The name is judged as the server reads it: a name that hides an address
+    behind percent-escapes is the address all the same. A name that survives
+    the rules keeps the spelling it came with.
+    """
+    text = str(name).lower()
+    decoded = decode_layers(text)
+    if not HEADER_NAME.fullmatch(decoded) or is_identifier_name(decoded):
+        return placeholder("header-name")
+    return text
+
+
+def safe_header_names(names: Any) -> list[str]:
+    """The names of the headers that were sent, if they are names.
+
+    A name that is not a token is not a name: it can be an address or a
+    credential. A name that is an identifier is not a name either. The fact
+    that a header was there stays, the name does not.
+    """
+    if not isinstance(names, list):
+        return []
+    return sorted(safe_header_name(name) for name in names)
+
+
+def safe_bool(value: Any) -> bool | None:
+    """A flag of the capture, if it is a flag."""
+    return value if isinstance(value, bool) else None
+
+
+# The phases a HAR records. Only a number is evidence of a phase; anything else
+# in a timing field is dropped, the way an unknown header value is dropped.
+HAR_TIMING_PHASES = ("blocked", "dns", "connect", "send", "wait", "receive", "ssl")
+
+
+def har_timing(entry: dict[str, Any]) -> dict[str, Any]:
+    """How long the request took. The HAR knows it; the browser does not.
+
+    The timing is an input like any other: the phases are taken by name and
+    only a number survives, so a capture cannot carry a value into the file
+    through a field nobody looked at.
+
+    A negative phase is not a measurement: the HAR writes `-1` for a phase it
+    did not measure, and such a phase is dropped rather than written as a
+    duration of minus a millisecond.
+    """
+    timings = entry.get("timings")
+    kept: dict[str, Any] = {}
+    if isinstance(timings, dict):
+        for phase in HAR_TIMING_PHASES:
+            value = timings.get(phase)
+            if is_number(value) and value >= 0:
+                kept[phase] = value
+    duration = entry.get("time")
+    return {"durationMs": duration if is_number(duration) and duration >= 0 else None, "timings": kept}
+
+
+# The fields of the capture annotation that may reach a committed file. The
+# annotation is written into the HAR by the capture, and the HAR is an input:
+# a field this sanitizer does not know may carry anything, so it is dropped
+# rather than copied.
+CAPTURE_ANNOTATION_FIELDS = ("available", "reason", "bodyBytes", "isJson", "jsonType", "topLevelKeys")
+
+# The reasons a body was not read. The annotation carries the code of the
+# reason, not its text: the browser's own error text is not a reason, it is the
+# text of a failure, and it may quote the URL or the request. The codes are
+# the bridge between the capture and this module, and the text of a reason
+# belongs to this module — the evidence format is written here.
+CAPTURE_REASONS = {
+    "ambiguous": "several requests looked the same, so no body was attributed to this one",
+    "browser-error": "the browser did not return the response body",
+    "no-body": "the request detail carried no body",
+    "not-read": "the response body was not read",
+}
+
+# The kinds of JSON body there are. Anything else is not a kind, and a kind
+# that is not one of these says nothing.
+JSON_TYPES = ("object", "array", "scalar")
+
+
+def safe_reason(value: Any) -> str:
+    """The reason a body was not read, if it is one of the reasons.
+
+    The annotation is an input, so a reason that is not one of the codes is
+    not kept: it may be the browser's own error text, which quotes the
+    request.
+    """
+    return CAPTURE_REASONS.get(str(value), placeholder("error"))
+
+
+def har_schema(entry: dict[str, Any]) -> dict[str, Any]:
+    """The shape of the response body, when the capture read it.
+
+    The capture that produced the HAR can read the body of a request one by one
+    and keep only its shape. It writes that shape into the entry as `_capture`.
+    An entry without it means the body was never read — which is not the same as
+    a body that was read and was empty.
+
+    The annotation is an input, not a trusted source: only the fields this
+    sanitizer knows are taken, and each of them only with the type it is
+    supposed to have. A capture cannot smuggle a value into the fixture
+    through a field nobody looked at.
+    """
+    annotation = entry.get("_capture")
+    if not isinstance(annotation, dict):
+        return {"available": False, "reason": "the capture did not read the response body"}
+    shape: dict[str, Any] = {}
+    for field in CAPTURE_ANNOTATION_FIELDS:
+        if field not in annotation:
+            continue
+        value = annotation[field]
+        if field in ("available", "isJson"):
+            shape[field] = safe_bool(value)
+        elif field == "reason":
+            shape[field] = safe_reason(value)
+        elif field == "bodyBytes":
+            shape[field] = safe_size(value)
+        elif field == "jsonType":
+            shape[field] = value if value in JSON_TYPES else None
+        else:
+            shape[field] = safe_keys(value)
+    return shape
+
+
+def har_response(response: dict[str, Any], pending: bool) -> dict[str, Any]:
+    """What came back.
+
+    A request that was still in flight when the capture stopped has no answer:
+    the browser reports a zero status and an empty content type, and those are
+    not HTTP values. They become null with a reason, so that a request without
+    an answer cannot be read as a request that was answered with nothing.
+    """
+    content = response.get("content", {}) or {}
+    if pending:
+        return {
+            "status": None,
+            "contentType": None,
+            "bodyBytes": None,
+            "headers": {},
+            "reason": "the capture recorded no status for this request",
+        }
+    return {
+        "status": safe_status(response.get("status")),
+        "contentType": safe_content_type(content.get("mimeType")),
+        "bodyBytes": safe_size(content.get("size")),
+        "headers": redact_headers(response.get("headers", []) or [], SAFE_RESPONSE_HEADERS),
+    }
+
+
 def capture_from_har_entry(entry: dict[str, Any], capture_id: str, source_file: str) -> dict[str, Any]:
     """One HAR entry as one capture."""
     request = entry.get("request", {})
     response = entry.get("response", {})
-    content = response.get("content", {}) or {}
+    annotation = entry.get("_capture") if isinstance(entry.get("_capture"), dict) else {}
+    pending = safe_bool(annotation.get("pending")) is True or not response.get("status")
     return {
         "id": capture_id,
         "source": "har",
         "sourceFile": safe_identifier(source_file, "capture"),
-        "started": entry.get("startedDateTime"),
+        "started": safe_timestamp(entry.get("startedDateTime")),
         "request": {
-            "method": request.get("method"),
+            "method": safe_method(request.get("method")),
             "url": redact_url(str(request.get("url", ""))),
             "headers": redact_headers(request.get("headers", []) or [], SAFE_REQUEST_HEADERS),
         },
-        "response": {
-            "status": response.get("status"),
-            "contentType": content.get("mimeType"),
-            "bodyBytes": content.get("size"),
-            "headers": redact_headers(response.get("headers", []) or [], SAFE_RESPONSE_HEADERS),
-        },
+        "response": har_response(response, pending),
+        "timing": har_timing(entry),
+        "schema": har_schema(entry),
         "body": {"included": False, "reason": "a response body may carry personal data"},
     }
 
@@ -749,22 +1332,22 @@ def capture_from_probe(probe: dict[str, Any], capture_id: str, source_file: str)
         "source": "probe",
         "sourceFile": safe_identifier(source_file, "capture"),
         "request": {
-            "method": probe.get("method"),
+            "method": safe_method(probe.get("method")),
             "url": redact_url(str(probe.get("url", ""))),
-            "credentials": probe.get("credentials"),
-            "headersSent": sorted(probe.get("headerNames", []) or []),
+            "credentials": safe_credentials(probe.get("credentials")),
+            "headersSent": safe_header_names(probe.get("headerNames")),
             "headerValuesCaptured": False,
         },
         "response": {
-            "status": probe.get("status"),
-            "contentType": probe.get("contentType"),
-            "bodyBytes": probe.get("bodyBytes"),
-            "isJson": probe.get("isJson"),
+            "status": safe_status(probe.get("status")),
+            "contentType": safe_content_type(probe.get("contentType")),
+            "bodyBytes": safe_size(probe.get("bodyBytes")),
+            "isJson": safe_bool(probe.get("isJson")),
             "error": redact_error(probe.get("error")),
         },
         "schema": {
-            "topLevelKeys": probe.get("topLevelKeys"),
-            "productCount": probe.get("productCount"),
+            "topLevelKeys": safe_keys(probe.get("topLevelKeys")),
+            "productCount": probe.get("productCount") if is_count(probe.get("productCount")) else None,
         },
         "measurements": redact_measurements(probe),
         "body": {"included": False, "reason": "a response body may carry personal data"},
@@ -782,22 +1365,22 @@ def capture_from_adapter(data: dict[str, Any], capture_id: str, source_file: str
         "source": "adapter",
         "sourceFile": safe_identifier(source_file, "capture"),
         "request": {
-            "method": request.get("method"),
+            "method": safe_method(request.get("method")),
             "url": redact_url(str(request.get("url", ""))),
-            "credentials": request.get("credentials"),
-            "headersSent": sorted(request.get("sentByBrowser", []) or []),
-            "headersDroppedByBrowser": sorted(request.get("droppedByBrowser", []) or []),
+            "credentials": safe_credentials(request.get("credentials")),
+            "headersSent": safe_header_names(request.get("sentByBrowser")),
+            "headersDroppedByBrowser": safe_header_names(request.get("droppedByBrowser")),
             "headerValuesCaptured": False,
         },
         "response": {
-            "status": response.get("status"),
-            "contentType": response.get("contentType"),
-            "bodyBytes": shape.get("bodyBytes"),
-            "isJson": shape.get("isJson"),
+            "status": safe_status(response.get("status")),
+            "contentType": safe_content_type(response.get("contentType")),
+            "bodyBytes": safe_size(shape.get("bodyBytes")),
+            "isJson": safe_bool(shape.get("isJson")),
         },
         "schema": {
-            "topLevelKeys": shape.get("topLevelKeys"),
-            "productCount": shape.get("productCount"),
+            "topLevelKeys": safe_keys(shape.get("topLevelKeys")),
+            "productCount": shape.get("productCount") if is_count(shape.get("productCount")) else None,
         },
         "body": {"included": False, "reason": "a response body may carry personal data"},
     }
@@ -867,7 +1450,9 @@ def main(argv: list[str] | None = None) -> int:
     }
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(fixture, indent=2, ensure_ascii=False, sort_keys=False) + "\n", encoding="utf-8")
+    out.write_text(
+        writable(json.dumps(fixture, indent=2, ensure_ascii=False, sort_keys=False) + "\n"), encoding="utf-8"
+    )
     print(f"{out}: {len(captures)} capture(s)")
     return 0
 
