@@ -817,7 +817,9 @@ def test_a_period_names_its_lower_bound() -> None:
     today = asyncio.run(mod._since(api, mod.Period.today))
     assert today is not None
     assert (today.hour, today.minute, today.second, today.microsecond) == (0, 0, 0, 0)
-    assert today.utcoffset() == datetime.now().astimezone().utcoffset(), "midnight of the operator's own day"
+    # Back through the system zone: the bound is midnight of the operator's own day, and
+    # a fixed offset taken from "now" would land an hour off on a daylight-saving change.
+    assert today.astimezone().hour == 0
 
     # No run, or a run whose start was never recorded: the window is empty, not the
     # whole table. A bound of "now" is how an empty window is said.
@@ -854,6 +856,26 @@ def test_a_field_choice_is_saved_and_restored(tmp_path, monkeypatch) -> None:
             assert json.loads(mod.COLUMNS_FILE.read_text()) == [name for name in mod.ITEM_COLUMNS if name != "price"]
 
         assert mod.ItemsPane().columns == [name for name in mod.ITEM_COLUMNS if name != "price"]
+
+    asyncio.run(scenario())
+
+
+def test_the_last_field_cannot_be_unchecked(tmp_path, monkeypatch) -> None:
+    """A table with no fields is nothing on screen, and the choice would come back as "all"."""
+    mod = _load_wbparser()
+    monkeypatch.setattr(mod, "COLUMNS_FILE", tmp_path / "items-columns.json")
+
+    async def scenario() -> None:
+        pane = mod.ItemsPane()
+        async with _host(mod, pane).run_test() as pilot:
+            for index in range(len(mod.ITEM_COLUMNS)):
+                pane.query_one(f"#col-{index}", mod.Checkbox).toggle()
+                await pilot.pause()
+
+            last = len(mod.ITEM_COLUMNS) - 1
+            assert pane.query_one(f"#col-{last}", mod.Checkbox).value is True, "the last field stays on"
+            assert pane.columns == [mod.ITEM_COLUMNS[last]]
+            assert json.loads(mod.COLUMNS_FILE.read_text()) == [mod.ITEM_COLUMNS[last]]
 
     asyncio.run(scenario())
 

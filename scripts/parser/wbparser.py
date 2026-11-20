@@ -1055,7 +1055,10 @@ async def _since(api: Api, period: str) -> datetime | None:
     no run has a start at all.
     """
     if period == Period.today:
-        return datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+        # Midnight is built as a naive local datetime and only then resolved through the
+        # system zone: `now().astimezone()` carries a *fixed* offset, and on a daylight
+        # saving change the offset at midnight is not the offset now.
+        return datetime.combine(datetime.now().date(), datetime.min.time()).astimezone()
     if period == Period.last_run:
         jobs = await api.get("/api/admin/jobs", list[Job], role="admin", limit=1)
         return (jobs[0].started_at if jobs else None) or datetime.now(UTC)
@@ -1799,11 +1802,15 @@ class ItemsPane(Pane):
         yield ProductTable(id="items-table")
 
     @on(Checkbox.Changed)
-    def _on_columns(self) -> None:
+    def _on_columns(self, event: Checkbox.Changed) -> None:
         """A field choice is a preference: it is saved and the page on screen redrawn."""
-        self.columns = [
-            name for index, name in enumerate(ITEM_COLUMNS) if self.query_one(f"#col-{index}", Checkbox).value
-        ]
+        chosen = [name for index, name in enumerate(ITEM_COLUMNS) if self.query_one(f"#col-{index}", Checkbox).value]
+        if not chosen:
+            # A table with no fields is a table with nothing in it, and the choice would
+            # come back as "all fields" on the next start: the last one stays on.
+            event.checkbox.value = True
+            return
+        self.columns = chosen
         try:
             _save_columns(self.columns)
         except OSError as error:
@@ -1848,11 +1855,7 @@ class ItemsPane(Pane):
             + "  [dim](click a row to open)[/dim]"
         )
         self.urls = [str(item.product_url) for item in result.items]
-        table = self.query_one("#items-table", ProductTable)
-        if not self.columns:
-            table.clear(columns=True)
-            return
-        fill(table, _visible(items_section(result), self.columns))
+        fill(self.query_one("#items-table", ProductTable), _visible(items_section(result), self.columns))
 
 
 class RunsPane(Pane):
