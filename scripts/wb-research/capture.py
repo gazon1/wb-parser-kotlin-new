@@ -37,7 +37,7 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
-from urllib.parse import SplitResult, urlsplit
+from urllib.parse import SplitResult, unquote, urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -140,6 +140,7 @@ def load_config(path: Path, extra_hosts: list[str]) -> dict:
     config = json.loads(path.read_text(encoding="utf-8"))
     config["allowedOrigins"] = list(config.get("allowedOrigins", [])) + list(extra_hosts)
     config["allowedPages"] = list(config.get("allowedPages", []))
+    config["allowedQueryParams"] = list(config.get("allowedQueryParams", []))
     config["noiseHosts"] = list(config.get("noiseHosts", []))
     config["keptResourceTypes"] = list(config.get("keptResourceTypes", list(API_RESOURCE_TYPES)))
     config["maxBodyFetches"] = int(config.get("maxBodyFetches", 50))
@@ -443,7 +444,31 @@ def page_actions(command: list[str]) -> list[list[str]]:
     return actions
 
 
-def check_read_only(actions: list[list[str]], approved: list[str], pages: list[str]) -> None:
+def query_names(url: str) -> list[str]:
+    """The names of the query parameters of a URL, as the server reads them.
+
+    The name is read the way the server reads it: a percent-escape in a name
+    is a character of the name, so `%73earch` is the name `search`. The value
+    is not read — the name is what the server switches on, and the value of an
+    approved name is free text.
+    """
+    parts = url_parts(url)
+    if parts is None:
+        return []
+    names = []
+    for pair in parts.query.split("&"):
+        if not pair:
+            continue
+        names.append(unquote(pair.split("=", 1)[0]))
+    return names
+
+
+def check_read_only(
+    actions: list[list[str]],
+    approved: list[str],
+    pages: list[str],
+    query_params: list[str] | None = None,
+) -> None:
     """Refuse a page action that could change the site.
 
     The tool observes. A page action is the chrome-use command that reads the
@@ -456,7 +481,12 @@ def check_read_only(actions: list[list[str]], approved: list[str], pages: list[s
     page may only open an approved host and an approved page — a navigation is
     a request, and a request may change what it is asked to change: an
     approved host answers a GET that adds to the cart as well.
+
+    The query of the page is a request as well: a parameter can switch an
+    action on, so a parameter the config does not name is refused. The names
+    the config approves are the query parameters of the page.
     """
+    allowed_query = list(query_params or [])
     for action in actions:
         if action[0] != "chrome-use":
             raise SystemExit(f"the page action must be the chrome-use command, not {action[0]!r}")
@@ -497,6 +527,12 @@ def check_read_only(actions: list[list[str]], approved: list[str], pages: list[s
                 f"the page action may only open an approved page, not {url!r} — "
                 f"the pages the config approves: {', '.join(pages) or 'none'}"
             )
+        for name in query_names(url):
+            if name not in allowed_query:
+                raise SystemExit(
+                    f"the page action may only open a page whose query the config names, not {url!r} — "
+                    f"the query parameters the config approves: {', '.join(allowed_query) or 'none'}"
+                )
 
 
 def run_page_action(action: list[str]) -> int:
@@ -532,7 +568,12 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         raise SystemExit("no command to run — put the page action after `--`")
     # Checked before the recording starts too: an action that changes the site
     # must never run inside a capture of a logged-in session.
-    check_read_only(actions, config["allowedOrigins"], config.get("allowedPages", []))
+    check_read_only(
+        actions,
+        config["allowedOrigins"],
+        config.get("allowedPages", []),
+        config.get("allowedQueryParams", []),
+    )
 
     cleared = chrome_use("network", "requests", "--clear")
     if cleared.returncode != 0:
@@ -544,17 +585,25 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
             f"chrome-use did not clear the request log: {(cleared.stderr or cleared.stdout).strip()[:400]}"
         )
 
-    for stale in (raw_har, evidence_har, report_path, exported_fixture):
+    # The exported fixture goes first: it is the artifact the repository
+    # holds, and a stale fixture read as the result of this run is worse than
+    # a stale recording in the cache. The other artifacts are the recording of
+    # the previous run, and they must not survive into this one — a capture
+    # that was not saved would otherwise be read as this step's capture, and
+    # the filtered file is what the export reads. The report of the previous
+    # run carries its notes and its counts, and a run that fails before it
+    # writes one would otherwise leave them standing.
+    for stale in (exported_fixture, raw_har, evidence_har, report_path):
         if stale.exists():
-            # The recording of the previous run of this step. It must not
-            # survive into this one: a capture that was not saved would
-            # otherwise be read as this step's capture — and the filtered file
-            # is what the export reads. The exported fixture is what the
-            # repository holds, so a capture that fails leaves no evidence
-            # standing as if it were the result of this run. The report of the
-            # previous run carries its notes and its counts, and a run that
-            # fails before it writes one would otherwise leave them standing.
-            stale.unlink()
+            try:
+                stale.unlink()
+            except OSError as error:
+                # The previous run's artifact stays. The step cannot be
+                # trusted to overwrite it, so the step stops here rather than
+                # leave a stale artifact standing as if it were this run's.
+                raise SystemExit(
+                    f"the previous run of this step could not be removed: {stale} ({error.strerror or error})"
+                ) from error
 
     started = chrome_use("network", "har", "start")
     if started.returncode != 0:

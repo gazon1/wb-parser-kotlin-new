@@ -37,6 +37,7 @@ def no_real_browser(monkeypatch):
 CONFIG = {
     "allowedOrigins": ["www.wildberries.ru", "*.wbcontent.net"],
     "allowedPages": ["https://www.wildberries.ru/", "https://www.wildberries.ru/catalog/"],
+    "allowedQueryParams": ["search"],
     "noiseHosts": ["a.wb.ru"],
     "keptResourceTypes": ["Fetch", "XHR"],
     "maxBodyFetches": 50,
@@ -569,7 +570,7 @@ def test_several_read_only_page_actions_are_one_step(tmp_path, monkeypatch):
         ["chrome-use", "scroll", "down", "20000", "--", "chrome-use", "scroll", "down", "20000"]
     )
 
-    capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"])
+    capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
 
     assert len(actions) == 2
 
@@ -1120,4 +1121,75 @@ def test_a_separator_behind_an_escape_in_a_query_is_not_a_path():
     # The query is not a path: the page it asks for is the same page.
     actions = capture.page_actions(["chrome-use", "open", "https://www.wildberries.ru/catalog/?search=a%2fb"])
 
-    capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"])
+    capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+
+def test_a_query_parameter_the_config_does_not_name_is_refused():
+    # The finding of the review: the page was approved by its path, and the
+    # query was not judged at all — so a parameter that switches an action on
+    # rode into the capture on an approved page.
+    actions = capture.page_actions(["chrome-use", "open", "https://www.wildberries.ru/catalog/?action=add-to-cart"])
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+    assert "query" in str(refusal.value)
+
+
+def test_a_query_parameter_the_config_names_is_allowed():
+    actions = capture.page_actions(
+        ["chrome-use", "open", "https://www.wildberries.ru/catalog/131954/list.aspx?search=%D0%BA%D0%BE"]
+    )
+
+    capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+
+def test_a_query_parameter_is_read_the_way_the_server_reads_it():
+    # The name is decoded: the server sees `search`, so the check does too.
+    actions = capture.page_actions(["chrome-use", "open", "https://www.wildberries.ru/catalog/?%73earch=x"])
+
+    capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+
+def test_a_query_parameter_that_is_decoded_once_more_is_not_the_named_one():
+    # The server decodes once: `%2573earch` is the name `%73earch`, and the
+    # name the config does not name is refused.
+    actions = capture.page_actions(["chrome-use", "open", "https://www.wildberries.ru/catalog/?%2573earch=x"])
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+    assert "query" in str(refusal.value)
+
+
+def test_the_fixture_of_the_previous_run_is_removed_before_the_raw_artifacts(tmp_path, monkeypatch):
+    # The finding of the review: the committed fixture was removed last, so a
+    # failure to remove an earlier artifact left the previous evidence
+    # standing as if it were the result of this run.
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path / "raw")
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    fixture = capture.EVIDENCE_ROOT / "demo" / "evidence" / "step.json"
+    fixture.parent.mkdir(parents=True, exist_ok=True)
+    fixture.write_text('{"schema": "wb-research/evidence/v1"}', encoding="utf-8")
+    raw_har = capture.RAW_ROOT / "demo" / "raw" / "step.har"
+    raw_har.parent.mkdir(parents=True, exist_ok=True)
+    raw_har.write_text("{}", encoding="utf-8")
+
+    real_unlink = Path.unlink
+
+    def refuse_the_raw_recording(self, *args, **kwargs):
+        if self == raw_har:
+            raise PermissionError(13, "Permission denied")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", refuse_the_raw_recording)
+
+    args = argparse.Namespace(
+        name="step", investigation="demo", command=["chrome-use", "open", "https://www.wildberries.ru/"], settle=0.0
+    )
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.capture_step(args, CONFIG)
+
+    assert "previous run" in str(refusal.value)
+    assert not fixture.exists()

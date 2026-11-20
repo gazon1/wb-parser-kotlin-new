@@ -44,7 +44,9 @@ recording, filters the entries and exports the result through `redact.py`.
 The approved hosts live in one file, `devtools/wb-research/capture-config.json`:
 `allowedOrigins` (the Wildberries API hosts), `noiseHosts` (hosts whose traffic
 carries no API), `keptResourceTypes` (`Fetch` and `XHR` — a static asset is not
-an API call) and `maxBodyFetches`.
+an API call) and `maxBodyFetches`. The pages a capture may open are named in
+the same file: `allowedPages` and the query parameters a navigation may carry
+(`allowedQueryParams`).
 
 An API-shaped request to a host that is neither approved nor marked as noise
 is **not** dropped: the capture writes everything it has, names the host and
@@ -276,5 +278,18 @@ was never answered is evidence of something different.
   step: the command is not there, or it cannot be executed, and the step did not reach the
   state it was supposed to reach. Its report says so, and the export skips it — now and at
   every later export.
+- **Never** open a page whose query the config does not name: the query of a
+  page is a request as well, and a parameter can switch an action on — so the
+  config names the query parameters a navigation may carry
+  (`allowedQueryParams`), and a parameter it does not name is refused. The
+  name is read the way the server reads it (the server decodes once, so
+  `%73earch` is `search` and `%2573earch` is not it); the value of a named
+  parameter is free text, and the redactor keeps it out of the committed
+  evidence either way.
+- **Never** let a previous run of a step stand as if it were this one: the
+  exported fixture is removed first — it is the artifact the repository holds,
+  and a stale fixture is read as the result of the current run — and an
+  artifact that cannot be removed stops the step instead of leaving it
+  standing.
 - The tool stays in `scripts/` and `devtools/`: no production module depends on
   it and it adds no runtime dependency.

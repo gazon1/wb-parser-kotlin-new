@@ -224,7 +224,10 @@ the host `a.example` to the browser and `b.example` to the check. Such a URL
 is refused rather than guessed, and the page that is opened is the page that
 was approved. A path that hides a separator behind an escape (`%2f`, `%5c`) is
 refused as well: the browser sends it as it is written, but a server or a proxy
-may decode it, and then it is another path. Several actions in one step are separated by `--`. The capture names
+may decode it, and then it is another path. The query of the page is judged
+too: a navigation may only carry the query parameters the config names
+(`allowedQueryParams`), because a parameter can switch an action on just as a
+path can. Several actions in one step are separated by `--`. The capture names
 the step, keeps the requests the config approves, reports what it dropped and
 hands the result to the redactor.
 
@@ -260,7 +263,9 @@ The fixture of the step that was just recorded has to be among the exported
 ones: another step of the same investigation being exported is not this one.
 The recording of the previous run of a step is deleted before the new one
 starts — the raw recording, the filtered file the export reads and the fixture
-the repository holds — and a
+the repository holds — and the fixture goes first: it is the artifact the
+repository holds, and an artifact that cannot be removed stops the step rather
+than leaving it standing. A
 browser that failed to save the capture is an error: the file of an earlier
 run must not be read as the capture of this one, and neither must the fixture
 of an earlier run stand as the evidence of this one.
@@ -307,6 +312,8 @@ hosts.
 ```json
 {
   "allowedOrigins": ["www.wildberries.ru", "api.wildberries.ru"],
+  "allowedPages": ["https://www.wildberries.ru/", "https://www.wildberries.ru/catalog/"],
+  "allowedQueryParams": ["search"],
   "noiseHosts": ["*.wbbasket.ru", "*.wbcontent.net"],
   "keptResourceTypes": ["Fetch", "XHR"],
   "maxBodyFetches": 50
@@ -322,6 +329,14 @@ hosts.
   what an API call is: a kind that is on the list is an API call on an approved
   host and on an unapproved one alike, so an unapproved host cannot slip past
   the check as ordinary traffic.
+- `allowedPages` — the pages a capture may open. A named page approves the
+  origin it names — the scheme, the host and the port — and the path it names
+  and the paths under it, by path segment.
+- `allowedQueryParams` — the names of the query parameters a navigation may
+  carry. The query of a page is a request as well, and a parameter can switch
+  an action on, so a parameter the config does not name is refused. The name
+  is read the way the server reads it: the server decodes once, so `?%73earch`
+  is `search` and `?%2573earch` is not it.
 - `maxBodyFetches` — how many response bodies one step may read, so a busy
   page does not cost one request per entry.
 
