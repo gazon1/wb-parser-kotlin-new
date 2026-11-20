@@ -34,6 +34,30 @@ enum class CatalogSort(
     PriceDesc("COALESCE(i.sale_price_kopecks, i.price_kopecks) DESC NULLS LAST, i.id"),
     CashbackPercentDesc("i.cashback_percent DESC NULLS LAST, i.scraped_at DESC, i.id"),
     CashbackPercentAsc("i.cashback_percent ASC NULLS LAST, i.scraped_at DESC, i.id"),
+
+    /**
+     * The review points as a count — «Баллы ВБ за отзыв» as WB sends them.
+     *
+     * A product without points sorts last: absent is not zero, and a product that pays
+     * nothing is not a cheap answer to "the most points".
+     */
+    FeedbackPointsDesc("i.feedback_points DESC NULLS LAST, i.scraped_at DESC, i.id"),
+    FeedbackPointsAsc("i.feedback_points ASC NULLS LAST, i.scraped_at DESC, i.id"),
+
+    /**
+     * The review points as a share of the price the product is sold at.
+     *
+     * WB spends a point as a ruble, so the share is the points over the price — the two
+     * values are in the same unit. The price is the one the card shows (the sale price
+     * when there is one), and the ratio is scaled by 10 000 because the price is in
+     * kopecks and the share is a percentage: `points × 100 / (kopecks / 100)`.
+     *
+     * A product with no points, or with no price to divide by, sorts last — there is no
+     * share to compare.
+     */
+    FeedbackPointsShareDesc("$POINTS_SHARE DESC NULLS LAST, i.scraped_at DESC, i.id"),
+    FeedbackPointsShareAsc("$POINTS_SHARE ASC NULLS LAST, i.scraped_at DESC, i.id"),
+
     TitleAsc("i.title ASC NULLS LAST, i.id"),
     TitleDesc("i.title DESC NULLS LAST, i.id"),
     ;
@@ -57,3 +81,15 @@ enum class CatalogSort(
         fun fromName(name: String?): CatalogSort? = name?.let { candidate -> entries.firstOrNull { it.name == candidate } }
     }
 }
+
+/**
+ * The points as a share of the price the product is sold at, in percent.
+ *
+ * An expression rather than a column, because it is derived from two of them: the points
+ * are a count of rubles and the price is in kopecks, so `points × 10000 / kopecks` is
+ * `points × 100 / price in rubles`. A price of zero is turned into `NULL` instead of
+ * dividing by it: a product with no usable price has no share, and it sorts with the
+ * products that pay no points.
+ */
+private const val POINTS_SHARE: String =
+    "i.feedback_points * 10000.0 / NULLIF(COALESCE(i.sale_price_kopecks, i.price_kopecks), 0)"

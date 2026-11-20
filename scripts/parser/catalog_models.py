@@ -155,4 +155,4 @@ class ProductDetail(ProductCard):
     )
 
 
-# source-sha256: 83192fad6eea745546c453d712346ef7febe02988725ed54d2b4469694e27fe7
+# source-sha256: 5d623eaa051b69c2646fb35917d20de981b714f10a60efcb0dda384e2044989b

@@ -20,8 +20,8 @@ import io.kotest.matchers.shouldBe
  */
 class CatalogSortTest :
     FunSpec({
-        test("there are exactly eight sort orders") {
-            CatalogSort.entries.size shouldBe 8
+        test("there are exactly twelve sort orders") {
+            CatalogSort.entries.size shouldBe 12
         }
 
         test("every sort order ends with the id of the row") {
@@ -48,6 +48,25 @@ class CatalogSortTest :
                 "i.cashback_percent DESC NULLS LAST, i.scraped_at DESC, i.id"
             CatalogSort.CashbackPercentAsc.orderBy shouldBe
                 "i.cashback_percent ASC NULLS LAST, i.scraped_at DESC, i.id"
+        }
+
+        test("the points orders sort by the count and not by the share") {
+            CatalogSort.FeedbackPointsDesc.orderBy shouldBe
+                "i.feedback_points DESC NULLS LAST, i.scraped_at DESC, i.id"
+            CatalogSort.FeedbackPointsAsc.orderBy shouldBe
+                "i.feedback_points ASC NULLS LAST, i.scraped_at DESC, i.id"
+        }
+
+        test("the share orders divide the points by the price the card shows") {
+            // The same expression in both directions: the points are a count of rubles and
+            // the price is in kopecks, so `× 10000 / kopecks` is the share in percent.
+            val share =
+                "i.feedback_points * 10000.0 / NULLIF(COALESCE(i.sale_price_kopecks, i.price_kopecks), 0)"
+
+            CatalogSort.FeedbackPointsShareDesc.orderBy shouldBe
+                "$share DESC NULLS LAST, i.scraped_at DESC, i.id"
+            CatalogSort.FeedbackPointsShareAsc.orderBy shouldBe
+                "$share ASC NULLS LAST, i.scraped_at DESC, i.id"
         }
 
         test("no two sort orders read the same") {
@@ -78,6 +97,10 @@ class CatalogSortTest :
             names shouldContain "PriceDesc"
             names shouldContain "CashbackPercentDesc"
             names shouldContain "CashbackPercentAsc"
+            names shouldContain "FeedbackPointsDesc"
+            names shouldContain "FeedbackPointsAsc"
+            names shouldContain "FeedbackPointsShareDesc"
+            names shouldContain "FeedbackPointsShareAsc"
             names shouldContain "TitleAsc"
             names shouldContain "TitleDesc"
         }

@@ -4,6 +4,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import java.math.BigDecimal
+import java.time.Instant
 import java.util.UUID
 
 /**
@@ -77,6 +78,26 @@ class CatalogQueryParamsTest :
         test("a target id that is not a UUID is a bad request, not a server error") {
             shouldThrow<CatalogBadRequestException> {
                 CatalogQueryParams.parse(params("targetId" to "not-a-uuid"))
+            }
+        }
+
+        test("a timestamp with an offset is read as a moment") {
+            val params = CatalogQueryParams.parse(params("scrapedAfter" to "2026-11-20T03:00:00+03:00"))
+
+            params.scrapedAfter?.toInstant() shouldBe Instant.parse("2026-11-20T00:00:00Z")
+        }
+
+        test("a timestamp without an offset is a bad request") {
+            // A local time would mean the server's zone, and the same URL would mean
+            // different moments in different deployments.
+            shouldThrow<CatalogBadRequestException> {
+                CatalogQueryParams.parse(params("scrapedAfter" to "2026-11-20T00:00:00"))
+            }
+        }
+
+        test("a timestamp that is not a timestamp is a bad request") {
+            shouldThrow<CatalogBadRequestException> {
+                CatalogQueryParams.parse(params("scrapedAfter" to "today"))
             }
         }
 

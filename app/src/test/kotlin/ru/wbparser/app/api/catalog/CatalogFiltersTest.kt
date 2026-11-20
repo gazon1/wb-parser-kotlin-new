@@ -3,6 +3,7 @@ package ru.wbparser.app.api.catalog
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import java.math.BigDecimal
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -83,6 +84,16 @@ class CatalogFiltersTest :
 
             filters.value.clauses shouldBe listOf("model.in_stock = true")
             filters.value.values shouldBe emptyList()
+        }
+
+        test("the scraped-after filter goes outside the read model") {
+            val filters = CatalogFilters.from(CatalogQueryParams.parse(params("scrapedAfter" to "2026-11-20T00:00:00Z")))
+
+            filters.identity.sql shouldBe ""
+            // The current observation, not the history behind it: a product observed
+            // today is in the answer, and one last observed last week is out.
+            filters.value.clauses shouldBe listOf("model.scraped_at >= ?")
+            filters.value.values shouldBe listOf(OffsetDateTime.parse("2026-11-20T00:00:00Z"))
         }
 
         test("the values come in the order the clauses do") {

@@ -123,6 +123,20 @@ class AdminRoutesTest :
                     ps.setNull(8, java.sql.Types.VARCHAR)
                     ps.setString(9, "the address refused the connection")
                     ps.executeUpdate()
+
+                    // A row whose start was never recorded. The column is nullable, and a
+                    // DESC order puts NULL first by default — the API must not call this
+                    // row the newest run.
+                    ps.setString(1, "55555555-5555-5555-5555-555555555555")
+                    ps.setString(2, otherTargetId.toString())
+                    ps.setString(3, "Created")
+                    ps.setNull(4, java.sql.Types.TIMESTAMP)
+                    ps.setNull(5, java.sql.Types.TIMESTAMP)
+                    ps.setInt(6, 0)
+                    ps.setInt(7, 0)
+                    ps.setNull(8, java.sql.Types.VARCHAR)
+                    ps.setNull(9, java.sql.Types.VARCHAR)
+                    ps.executeUpdate()
                 }
                 val errorsSql =
                     "INSERT INTO crawl_errors (id, url, error_message, category, is_resolved, created_at) " +
@@ -229,6 +243,15 @@ class AdminRoutesTest :
             val jobs = dataSource.fetchAdminJobs(limit = 1, targetId = null)
 
             jobs.size shouldBe 1
+        }
+
+        test("a job whose start was never recorded does not come before a started run") {
+            // `ORDER BY started_at DESC` puts NULL first in PostgreSQL; the operator who
+            // asks for the newest run must get one that started.
+            val jobs = adminDataSource().fetchAdminJobs(limit = 20, targetId = null)
+
+            jobs.first().startedAt shouldNotBe null
+            jobs.last().startedAt shouldBe null
         }
 
         test("a created target is served back to the operator") {

@@ -95,6 +95,7 @@ try:
     from textual.screen import ModalScreen
     from textual.widgets import (
         Button,
+        Checkbox,
         DataTable,
         Footer,
         Header,
@@ -523,6 +524,14 @@ def _points(item: ProductCard) -> str:
     return f"{item.feedback_points} Б" if item.feedback_points is not None else "—"
 
 
+def _points_share(item: ProductCard) -> str:
+    """The points as a share of the paid price — WB spends a point as a ruble."""
+    kopecks = item.sale_price_kopecks if item.sale_price_kopecks is not None else item.price_kopecks
+    if item.feedback_points is None or not kopecks:
+        return "—"
+    return f"{item.feedback_points * 10000 / kopecks:.1f}%"
+
+
 def _duration(job: Job) -> str:
     """How long the run took — or that it is still going, which is not a duration."""
     if job.completed_at is None:
@@ -611,11 +620,38 @@ class Section:
     rows: list[list[Any]]
 
 
+# The fields of a product, in the order the table shows them. The order is also the
+# order of the checkbox row, so one list describes both.
+ITEM_COLUMNS = ["target", "title", "price", "cashback", "points", "points %", "scraped"]
+
+# The operator's field choice, kept between runs next to the browser profiles.
+COLUMNS_FILE = Path.home() / ".wbparser" / "items-columns.json"
+
+
+def _saved_columns() -> list[str]:
+    """The fields the operator chose last time; unknown names are dropped, all when none is left."""
+    try:
+        saved = json.loads(COLUMNS_FILE.read_text())
+    except (OSError, ValueError):
+        return list(ITEM_COLUMNS)
+    # The file is the operator's to edit: a root that is not a list is a file to ignore,
+    # not a reason for the terminal to fail on start.
+    if not isinstance(saved, list):
+        return list(ITEM_COLUMNS)
+    kept = [name for name in ITEM_COLUMNS if name in saved]
+    return kept or list(ITEM_COLUMNS)
+
+
+def _save_columns(columns: list[str]) -> None:
+    COLUMNS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    COLUMNS_FILE.write_text(json.dumps(columns))
+
+
 def items_section(page: ItemsPage) -> Section:
     """The products of one page, as rows a renderer turns into a table."""
     return Section(
         f"products — page {page.page + 1}/{max(1, page.total_pages)}, {page.total_count} total",
-        ["target", "title", "price", "cashback", "points", "scraped"],
+        ITEM_COLUMNS,
         [
             [
                 item.target_name,
@@ -623,6 +659,7 @@ def items_section(page: ItemsPage) -> Section:
                 _price(item),
                 _cashback(item),
                 _points(item),
+                _points_share(item),
                 _age(item.scraped_at),
             ]
             for item in page.items
@@ -991,8 +1028,41 @@ class Sort(StrEnum):
     price_desc = "PriceDesc"
     cashback_desc = "CashbackPercentDesc"
     cashback_asc = "CashbackPercentAsc"
+    points_desc = "FeedbackPointsDesc"
+    points_asc = "FeedbackPointsAsc"
+    points_share_desc = "FeedbackPointsShareDesc"
+    points_share_asc = "FeedbackPointsShareAsc"
     title_asc = "TitleAsc"
     title_desc = "TitleDesc"
+
+
+class Period(StrEnum):
+    """The preset windows of the items tab: the whole table, today, or the last crawl run."""
+
+    all = "all"
+    today = "today"
+    last_run = "last run"
+
+
+async def _since(api: Api, period: str) -> datetime | None:
+    """
+    The lower bound of one preset: `today` is local midnight, `last run` is when the
+    newest crawl started — the catalog's clock, not this tool's.
+
+    A `last run` with no recorded start is an **empty** window, and a bound of "now" is
+    how that is said: reading it as "no bound" would answer the last run with the whole
+    table. The jobs endpoint orders a row without a start last, so this only happens when
+    no run has a start at all.
+    """
+    if period == Period.today:
+        # Midnight is built as a naive local datetime and only then resolved through the
+        # system zone: `now().astimezone()` carries a *fixed* offset, and on a daylight
+        # saving change the offset at midnight is not the offset now.
+        return datetime.combine(datetime.now().date(), datetime.min.time()).astimezone()
+    if period == Period.last_run:
+        jobs = await api.get("/api/admin/jobs", list[Job], role="admin", limit=1)
+        return (jobs[0].started_at if jobs else None) or datetime.now(UTC)
+    return None
 
 
 async def _fetch_items(
@@ -1007,6 +1077,7 @@ async def _fetch_items(
     min_price: float | None = None,
     max_price: float | None = None,
     min_cashback: float | None = None,
+    scraped_after: datetime | None = None,
 ) -> ItemsPage:
     return await api.get(
         "/api/catalog/v1/items",
@@ -1021,6 +1092,7 @@ async def _fetch_items(
         minPrice=min_price,
         maxPrice=max_price,
         minCashback=min_cashback,
+        scrapedAfter=scraped_after.isoformat() if scraped_after else None,
     )
 
 
@@ -1316,6 +1388,38 @@ def fill(table: DataTable, section: Section) -> None:
     table.add_columns(*section.columns)
     for row in section.rows:
         table.add_row(*(_cell(cell) for cell in row))
+
+
+def _visible(section: Section, columns: list[str]) -> Section:
+    """The same rows with only the chosen fields, in the order the section defines them."""
+    keep = [index for index, name in enumerate(section.columns) if name in columns]
+    return Section(
+        section.title,
+        [section.columns[index] for index in keep],
+        [[row[index] for index in keep] for row in section.rows],
+    )
+
+
+class ProductTable(DataTable):
+    """
+    A table that reports a click on a row.
+
+    The base class stops the click in its own handler, so a handler above it in the
+    DOM never sees the click. Reporting it here, before the base class runs, is the
+    one place a row click is still visible.
+    """
+
+    class RowClicked(Message):
+        def __init__(self, row: int) -> None:
+            self.row = row
+            super().__init__()
+
+    @on(events.Click)
+    def _row_click(self, event: events.Click) -> None:
+        meta = event.style.meta
+        row = meta.get("row")
+        if isinstance(row, int) and row >= 0 and not meta.get("out_of_bounds", False):
+            self.post_message(self.RowClicked(row))
 
 
 class Pane(Vertical):
@@ -1661,11 +1765,24 @@ class ItemsPane(Pane):
         super().__init__(*args, **kwargs)
         # The product URLs of the rows on screen, so a click can open one.
         self.urls: list[str] = []
+        # The fields to draw, and the page they belong to: a field change redraws
+        # that page without asking the API again.
+        self.columns = _saved_columns()
+        self.page: ItemsPage | None = None
+        # The window the table shows. The select posts a Changed for its own initial
+        # value on mount, and that one starts no load.
+        self.period = Period.all.value
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="items-controls", classes="row"):
             yield Input(placeholder="query (-q)", id="items-q")
             yield Input(placeholder="target UUID", id="items-target")
+            yield Select(
+                [(p.value, p.value) for p in Period],
+                value=Period.all.value,
+                allow_blank=False,
+                id="items-period",
+            )
             yield Select(
                 [(s.value, s.value) for s in Sort],
                 value=Sort.date_desc.value,
@@ -1675,29 +1792,70 @@ class ItemsPane(Pane):
             yield Input(placeholder="page", value="0", id="items-page", classes="small")
             yield Input(placeholder="size", value="20", id="items-size", classes="small")
             yield Button("Load", id="btn-items", variant="primary")
+        with Horizontal(id="items-columns", classes="row"):
+            # The id is the field's position, not its name: a header may carry characters
+            # that a Textual identifier cannot ("points %").
+            for index, name in enumerate(ITEM_COLUMNS):
+                yield Checkbox(name, value=name in self.columns, id=f"col-{index}")
         yield Static("", id="pane-status", classes="box")
         yield Static("", id="items-info")
-        yield DataTable(id="items-table")
+        yield ProductTable(id="items-table")
+
+    @on(Checkbox.Changed)
+    def _on_columns(self, event: Checkbox.Changed) -> None:
+        """A field choice is a preference: it is saved and the page on screen redrawn."""
+        chosen = [name for index, name in enumerate(ITEM_COLUMNS) if self.query_one(f"#col-{index}", Checkbox).value]
+        if not chosen:
+            # A table with no fields is a table with nothing in it, and the choice would
+            # come back as "all fields" on the next start: the last one stays on.
+            event.checkbox.value = True
+            return
+        self.columns = chosen
+        try:
+            _save_columns(self.columns)
+        except OSError as error:
+            self._status(f"[red]{escape(str(error))}[/red]")
+        if self.page is not None:
+            self.show(self.page)
+
+    @on(Select.Changed, "#items-period")
+    def _on_period(self, event: Select.Changed) -> None:
+        """A new window is a new list: it starts from the first page."""
+        if str(event.value) == self.period:
+            return
+        self.period = str(event.value)
+        self.query_one("#items-page", Input).value = "0"
+        self.reload()
 
     async def fetch(self) -> ItemsPage:
         # The filters are read here, on the app's event loop: a widget read from a
         # thread worker is a widget read while it may be changing.
         query = self.query_one("#items-q", Input).value or None
         target = self.query_one("#items-target", Input).value or None
+        period = str(self.query_one("#items-period", Select).value)
         sort = str(self.query_one("#items-sort", Select).value)
         page = _number(self.query_one("#items-page", Input).value, 0)
         size = _number(self.query_one("#items-size", Input).value, 20)
         async with Api() as api:
-            return await _fetch_items(api, target=target, query=query, page=page, page_size=size, sort=sort)
+            return await _fetch_items(
+                api,
+                target=target,
+                query=query,
+                page=page,
+                page_size=size,
+                sort=sort,
+                scraped_after=await _since(api, period),
+            )
 
     def show(self, result: ItemsPage) -> None:
+        self.page = result
         self.query_one("#items-info", Static).update(
             f"page {result.page + 1}/{max(1, result.total_pages)} — {result.total_count} total"
             + (f" (data {_age(result.data_as_of)})" if result.data_as_of else "")
             + "  [dim](click a row to open)[/dim]"
         )
         self.urls = [str(item.product_url) for item in result.items]
-        fill(self.query_one("#items-table", DataTable), items_section(result))
+        fill(self.query_one("#items-table", ProductTable), _visible(items_section(result), self.columns))
 
 
 class RunsPane(Pane):
@@ -1811,7 +1969,7 @@ class WbparserApp(App):
     DataTable { height: 1fr; }
     #items-table, #runs-targets, #runs-jobs, #runs-errors, #sched-due, #sched-upcoming, #history-table { height: 1fr; min-height: 8; }
     #items-controls Input { width: 24; }
-    #items-controls Select { width: 22; }
+    #items-controls Select { width: 26; }
     #items-controls .small { width: 8; }
     /* An Input is 100% wide by default: in the log row that pushed the buttons
        off the screen, and a Stop button that cannot be pressed stops nothing. */
@@ -1986,18 +2144,10 @@ class WbparserApp(App):
         else:
             self._note(f"[yellow]Could not open browser for {escape(url)}[/yellow]")
 
-    @on(events.Click, "#items-table")
-    def _open_item_click(self, event: events.Click) -> None:
+    @on(ProductTable.RowClicked)
+    def _open_item_click(self, event: ProductTable.RowClicked) -> None:
         """Open the clicked product row in the default browser."""
-        meta = event.style.meta
-        row = meta.get("row")
-        if row is None or meta.get("out_of_bounds", False):
-            return
-        try:
-            idx = int(row)
-        except (TypeError, ValueError):
-            return
-        self._open_item_by_row(idx)
+        self._open_item_by_row(event.row)
 
     @on(DataTable.CellSelected, "#items-table")
     def _open_item_selected(self, event: DataTable.CellSelected) -> None:
