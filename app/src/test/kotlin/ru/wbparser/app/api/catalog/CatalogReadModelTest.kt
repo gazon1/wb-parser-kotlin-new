@@ -146,6 +146,21 @@ class CatalogReadModelTest :
                 "(s.feedback_points IS NOT NULL OR (s.cashback_percent > 0 AND s.match_id IS NOT NULL))"
         }
 
+        test("the counters read the whole table") {
+            val sql =
+                CatalogReadModel.currentProducts(
+                    CatalogFilters.Where.EMPTY,
+                    CurrentScope.PRODUCT,
+                    CatalogMembership.ALL,
+                )
+
+            // The counters describe the catalog, not one of its two populations: a
+            // counter that took the review points by default would answer "how many
+            // products are there" with a number about the review-points list.
+            sql shouldContain "WHERE TRUE"
+            sql shouldNotContain "feedback_points IS NOT NULL"
+        }
+
         test("the target grain keeps the targets apart") {
             val sql = CatalogReadModel.currentProductTargets(CatalogFilters.Where.EMPTY)
 

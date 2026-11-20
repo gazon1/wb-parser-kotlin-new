@@ -93,7 +93,8 @@ So the order the phases enforce is this:
 And the second rule, which the release's own API makes necessary:
 
 > The API that answers about the new catalog is started **after** the new crawler has
-> filled it.
+> filled it — and "filled" is checked by the coverage of the targets, not by a count
+> that stopped growing (phase 4).
 
 The second rule is not about the data — it is about what the new API answers. The new
 release answers about the products that pay **review points**, and the rows that are in
@@ -136,6 +137,20 @@ writer, and it keeps running the release it is running.
 > locally: 16". The running instance does not validate — it keeps serving — but a restart
 > of it needs `SPRING_FLYWAY_ENABLED=false`, because the migrations of this rollout are
 > applied deliberately, by the one-shot instance, and not by the server.
+>
+> A restart of the old release is a restart of the **API** only, and the worker of that
+> release must be off:
+>
+> ```bash
+> CRAWLER_WORKER_ENABLED=false SPRING_FLYWAY_ENABLED=false \
+>   java -jar app/build/libs/app.jar
+> ```
+>
+> The old release's crawler writes the cashback in the old unit, and from phase 3 on that
+> unit is the wrong one: the rows it writes would be read as percentages of a percentage.
+> The old crawler is therefore stopped for good in phase 3, and a restart of the old
+> release in any phase starts it with the worker off — an operator who starts it with the
+> worker on writes the old unit into a converted column.
 
 #### Phase 2 — build the index concurrently, and prove that it is valid
 
@@ -184,6 +199,18 @@ old unit — that is what the conversion is for. The new crawler must not be sta
 before step 2, whatever else happens: its rows would be read by the conversion as rows
 of the old unit.
 
+And the old crawler must not be started **after** step 2, whatever else happens: it
+writes the cashback in the old unit into a column that now holds a percentage, and the
+row is wrong by a factor of a hundred. There is no conversion that can fix it afterwards
+without reading every row the old crawler has written in the meantime, so the rule is
+simple — after `V17`, the old crawler does not run again. If the old release has to be
+restarted in this phase, it is restarted with the worker off:
+
+```bash
+CRAWLER_WORKER_ENABLED=false SPRING_FLYWAY_ENABLED=false \
+  java -jar app/build/libs/app.jar
+```
+
 Between the first and the third phase the old index is still the one in use. It does not
 carry `feedback_points`, so the read model visits the heap for every observation — the
 cost the new index is built to remove, and the reason the third phase is not optional.
@@ -201,9 +228,60 @@ The number that says how far the crawler has come:
 SELECT COUNT(*) FROM latest_product_observations WHERE feedback_points IS NOT NULL;
 ```
 
-The cutover is when that number has stopped growing — the crawler has been around the
-circle, and every product that pays review points has a current observation that says
-so. The API instance on the VPS is then replaced by the new release:
+**The gate is not that this number stopped growing.** A number that stopped growing is
+also what a crawler that has stopped looks like — a crawler that failed on its first
+target, or whose process died, leaves the number exactly where it was — and cutting the
+API over to a catalog that was never filled is a mistake that a visitor sees. The gate
+is the **coverage of the targets**, checked against the crawler's own record of what it
+did: every active target must have been read by the *new* crawler.
+
+```sql
+SELECT t.id, t.name, t.last_crawled_at
+  FROM crawl_targets t
+ WHERE t.is_active
+   AND (t.last_crawled_at IS NULL
+        OR t.last_crawled_at < TIMESTAMPTZ '2026-11-19 12:00:00+00');
+```
+
+An empty result is the answer we want: the crawler has been around the circle, and every
+target has been read since the switch. The timestamp is the moment the new crawler was
+started — the operator knows it, and it is the only thing in the check that is not in the
+database. `last_crawled_at` moves only for a target that was actually read, so a target
+that failed stays in the list and the cutover waits for it.
+
+The same check in terms of the crawler's runs, for a target whose read is recorded as a
+run rather than as a timestamp:
+
+```sql
+SELECT t.id, t.name
+  FROM crawl_targets t
+ WHERE t.is_active
+   AND NOT EXISTS (
+       SELECT 1
+         FROM crawl_target_runs r
+        WHERE r.target_id = t.id
+          AND r.outcome = 'ok'
+          AND r.finished_at >= TIMESTAMPTZ '2026-11-19 12:00:00+00');
+```
+
+A target that can never be read — a category WB does not answer for, an address that is
+blocked — keeps the check non-empty forever. Then the cutover is the operator's
+decision, and it is written down in the release notes: the alternative is a catalog that
+never goes live.
+
+The number of products is the second half of the gate, and it is a floor rather than a
+plateau: the catalog the new API serves must not be empty.
+
+```sql
+SELECT COUNT(*) FROM latest_product_observations WHERE feedback_points IS NOT NULL;
+```
+
+The number is not compared with the size of the old catalog: the new catalog holds the
+products that pay review points, and it is smaller than the old one by exactly the
+products that pay none.
+
+Both checks pass — the target coverage is empty and the count is above zero — and the
+API instance on the VPS is replaced by the new release:
 
 ```bash
 just deploy <tag>
@@ -212,7 +290,7 @@ just deploy <tag>
 Before that moment the old API serves the old catalog; after it, the new API serves the
 catalog of the products that pay review points. There is no moment in between where the
 new API serves an empty catalog — unless the crawler has not been around the circle yet,
-and the count above is what says so.
+and the coverage check above is what says so.
 
 The extension has to exist first, and it is created by the migration — so create it by
 hand as well, before the indexes:

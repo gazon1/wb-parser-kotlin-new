@@ -67,9 +67,14 @@ review points are stored as their own value, end to end, and never as a cashback
   never overlap — the review points and the wallet cashback — and a read that hard-wired the
   catalog's membership would answer the cashback list with an empty result even while the
   table held observations that pay a cashback. The catalog's own reads (the list, the
-  targets, the counters) ask for the review points; the top-deals list asks for the cashback;
-  the detail read accepts either, because the id of a card can come from either list — the
-  cashback branch with a match id, because that is the key the top-deals list groups by.
+  targets) ask for the review points; the top-deals list asks for the cashback; the detail
+  read accepts either, because the id of a card can come from either list — the cashback
+  branch with a match id, because that is the key the top-deals list groups by. The
+  **counters** are not a list: they describe the catalog itself, so `total_products` counts
+  **every** product of the table and `products_with_cashback` counts the **cashback**
+  population. A counter that took the review points by default answers "how many products
+  are there" with a number about one of the two populations, and a cashback counter read
+  from that population is always zero — the populations never meet.
 
 ## Rationale
 
@@ -95,10 +100,14 @@ reported, dressed up as a fix.
 - **MUST** keep review points and cashback percentage in separate fields, columns and
   outputs. They are different units.
 - **Always** decide whether a product is in the catalog on its newest observation, and
-  apply the same condition to every read of the catalog — the list, the targets and the
-  counters read the catalog's membership, the top-deals list reads the cashback one, and
-  the detail read accepts either. A read that answers about a product the list leaves out
-  is two answers about two catalogs, so the detail read serves only what a list shows.
+  apply the same condition to every read of the catalog — the list and the targets read the
+  catalog's membership, the top-deals list reads the cashback one, and the detail read
+  accepts either. A read that answers about a product the list leaves out is two answers
+  about two catalogs, so the detail read serves only what a list shows.
+- **Always** count the counters against the population they name: `total_products` counts
+  every product of the table, `products_with_cashback` counts the cashback population, and
+  neither takes the review points by default. The size of the catalog is not the size of
+  one of its two populations.
 - **Always** name the population a read answers about. The review points and the wallet
   cashback are two populations that never appear on the same product, so a read that
   hard-wired one of them would answer the other list with an empty result — the "best
@@ -134,6 +143,15 @@ reported, dressed up as a fix.
   201243 ₽. The rollout is four phases: apply `V16` with the old writer still running,
   build the index concurrently and prove that it is valid, then stop the writer, apply
   `V17` and `V18`, start the new writer, and cut the API over last
+  (`docs/operations/catalog-index-rollout.md`).
+- **Never** start the old crawler after `V17` is applied, and **always** start a restart of
+  the old release with the worker off. The old crawler writes the cashback in the old unit
+  into a column that now holds a percentage, and the row is wrong by a factor of a hundred;
+  the conversion cannot fix it afterwards without reading every row written in the meantime.
+- **Never** cut the API over on a count that stopped growing, and **always** check the
+  coverage of the targets instead: every active target must have been read by the new
+  crawler, successfully, since it was started. A crawler that has stopped leaves the count
+  exactly where it was, and a catalog that was never filled is a mistake a visitor sees
   (`docs/operations/catalog-index-rollout.md`).
 - **Never** let the serving instance apply the migrations of a rollout, and **always** cut
   the API over after the new crawler has filled the catalog. The new release answers about

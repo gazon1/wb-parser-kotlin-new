@@ -217,6 +217,9 @@ data class TargetsResponse(
  *
  * [withCashback] counts observations and [productsWithCashback] counts products, for the
  * same reason: both numbers exist, and they are not the same number.
+ *
+ * The counters name the population they count: [totalProducts] counts every product of
+ * the table, and [productsWithCashback] counts the products that pay a wallet cashback.
  */
 data class SiteStats(
     val totalItems: Int,

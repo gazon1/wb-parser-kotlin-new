@@ -4,6 +4,10 @@ package ru.wbparser.app.api.catalog
  * Who is in the catalog: the condition that says an observation belongs to a population
  * the API shows.
  *
+ * The populations are named, and every read names the one it answers about. The
+ * counters that describe the catalog itself name [ALL] — they are not a list, and the
+ * size of the catalog is the size of the table.
+ *
  * ## Why the membership is named instead of hard-wired
  *
  * The table holds two populations, and they never overlap: the observations that carry
@@ -30,6 +34,17 @@ internal enum class CatalogMembership {
     CASHBACK_DEAL,
 
     /**
+     * Every product of the table: the counters that describe the catalog itself.
+     *
+     * The counters are not a list — nobody asks for "the products that pay no cashback
+     * and no points". They answer "how big is the catalog", and the answer is every
+     * product in it, not the part of it the storefront happens to show. A counter that
+     * counted only the review points would answer a question about the catalog with a
+     * number about one of its two populations.
+     */
+    ALL,
+
+    /**
      * Everything the API shows: either of the two populations.
      *
      * The detail read is asked by an id, and the id can come from any list — so it
@@ -48,6 +63,7 @@ internal enum class CatalogMembership {
      */
     fun condition(alias: String): String =
         when (this) {
+            ALL -> "TRUE"
             REVIEW_POINTS -> "$alias.${CatalogReadModel.REVIEW_POINTS_OBSERVATION}"
             CASHBACK_DEAL -> "$alias.${CatalogReadModel.CASHBACK_DEAL_OBSERVATION}"
             SHOWN -> shown(alias)

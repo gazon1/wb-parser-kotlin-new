@@ -61,4 +61,22 @@ class CatalogStatsQueriesTest :
             stats.withCashback shouldBe 1
             stats.newestScrapedAt.shouldNotBeNull()
         }
+
+        test("the counters name the population they count") {
+            val target = fixture.seedTarget("Категория")
+            // A product that pays a wallet cashback and no review points.
+            fixture.seedItem(target, productId = 1L, cashbackPercent = 30.0, feedbackPoints = null)
+            // A product that pays review points and no cashback.
+            fixture.seedItem(target, productId = 2L, cashbackPercent = null, feedbackPoints = 500)
+
+            val stats = queries().siteStats()
+
+            // Both products are in the catalog — the counter is about the catalog, not
+            // about one of its two populations.
+            stats.totalItems shouldBe 2
+            stats.totalProducts shouldBe 2
+            // The cashback counter counts the cashback population, and only it.
+            stats.withCashback shouldBe 1
+            stats.productsWithCashback shouldBe 1
+        }
     })

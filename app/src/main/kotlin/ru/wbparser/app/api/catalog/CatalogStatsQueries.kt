@@ -18,6 +18,23 @@ import java.time.Instant
  * have to read every row to count them, and the count would be a different number on
  * every request that arrived while the crawler was writing.
  *
+ * ## What population each counter counts
+ *
+ * The counters describe the catalog itself, and the catalog is bigger than the list the
+ * storefront shows: the table holds the products that pay review points and the products
+ * that pay a wallet cashback, and they never overlap. So the counters name their
+ * population explicitly:
+ *
+ * - `totalProducts` counts **every** product of the table ([CatalogMembership.ALL]) —
+ *   the size of the catalog, not the size of the review-points list inside it;
+ * - `productsWithCashback` counts the **cashback** population
+ *   ([CatalogMembership.CASHBACK_DEAL]) — the products the top-deals list is built from;
+ * - `withCashback` counts the observations that pay a cashback.
+ *
+ * A counter that took the review points by default would answer "how many products are
+ * there" with a number about one of the two populations, and a cashback counter read
+ * from that population would always be zero: the populations never meet.
+ *
  * Запрос называет два момента намеренно, потому что это две разные оси:
  * `newest_scraped_at` — счётчик о данных, а `data_as_of` — момент, о котором данные
  * ответа. Для этого агрегата они совпадают (самое свежее наблюдение — оно же самое
@@ -35,15 +52,18 @@ class CatalogStatsQueries(
                 .prepareStatement(
                     """
                     WITH i AS (
-                    ${CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY, CurrentScope.PRODUCT)}
+                    ${CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY, CurrentScope.PRODUCT, CatalogMembership.ALL)}
+                    ),
+                    c AS (
+                    ${CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY, CurrentScope.PRODUCT, CatalogMembership.CASHBACK_DEAL)}
                     )
                     SELECT (SELECT COUNT(*) FROM scraped_items)                    AS total_items,
                            (SELECT COUNT(*) FROM crawl_targets)                   AS total_targets,
                            (SELECT MAX(scraped_at) FROM scraped_items)           AS newest_scraped_at,
                            (SELECT MAX(scraped_at) FROM i)                       AS data_as_of,
-                           (SELECT COUNT(*) FROM scraped_items WHERE cashback_percent IS NOT NULL) AS with_cashback,
+                           (SELECT COUNT(*) FROM scraped_items WHERE cashback_percent > 0) AS with_cashback,
                            (SELECT COUNT(*) FROM i)                              AS total_products,
-                           (SELECT COUNT(*) FROM i WHERE cashback_percent IS NOT NULL) AS products_with_cashback
+                           (SELECT COUNT(*) FROM c)                              AS products_with_cashback
                     """.trimIndent(),
                 ).use { statement ->
                     statement.executeQuery().use { resultSet ->
