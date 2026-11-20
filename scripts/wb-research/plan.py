@@ -235,6 +235,10 @@ def settle_of(step: dict) -> float:
     alone — a run cannot shorten it behind the approval.
     """
     value = step.get("settle", DEFAULT_SETTLE)
+    if isinstance(value, bool):
+        # A YAML `true` is a bool, and bool is an int: float(True) is 1.0, so
+        # a typo in the plan would become a one-second wait instead of an error.
+        raise SystemExit(f"the step {step.get('name')} has a malformed settle: {value!r}")
     try:
         seconds = float(value)
     except (TypeError, ValueError) as error:

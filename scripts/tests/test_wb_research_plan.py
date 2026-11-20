@@ -220,7 +220,7 @@ def test_a_changed_settle_needs_a_new_approval(investigation, tmp_path, monkeypa
     assert calls == []
 
 
-@pytest.mark.parametrize("settle", ["soon", -1])
+@pytest.mark.parametrize("settle", ["soon", -1, True, False])
 def test_a_malformed_settle_is_refused(investigation, settle):
     """The wait of a step is a number of seconds."""
     with pytest.raises(SystemExit, match="malformed settle"):
