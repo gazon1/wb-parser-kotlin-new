@@ -850,3 +850,36 @@ def test_a_qualifier_alone_is_not_a_credential():
     assert redact.redact_query_value("promo_code", "WB-42") == "WB-42"
     assert redact.redact_query_value("key_code", "ABC") == "ABC"
     assert redact.redact_query_value("token_type", "Bearer") == "Bearer"
+
+
+def test_a_credential_name_with_any_qualifier_is_a_credential():
+    # The finding of the review: the qualifier was one word, `code`, so a name
+    # that carries another one was not a credential name at all.
+    assert redact.redact_query_value("auth_code_id", "abc123") == "<redacted:query-param>"
+    assert redact.redact_query_value("authCodeId", "abc123") == "<redacted:query-param>"
+    assert redact.redact_query_value("auth_nonce", "abc123") == "<redacted:query-param>"
+    assert redact.redact_query_value("otp_value", "123456") == "<redacted:query-param>"
+    assert redact.redact_query_value("sid_hash", "abc123") == "<redacted:query-param>"
+
+
+def test_a_credential_name_with_any_qualifier_is_replaced_everywhere():
+    note = redact.redact_note("callback failed: auth_code_id=abc123")
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "auth_nonce=abc123"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+    url = redact.redact_url("https://example.com/callback/authCodeId/abc123")
+
+    assert "abc123" not in note
+    assert "abc123" not in headers["user-agent"]
+    assert "abc123" not in url
+
+
+def test_a_glued_qualifier_is_only_a_known_word():
+    # The counterpart: a qualifier that is glued to the name cannot be told
+    # from an ordinary word, so only a known one is a qualifier there.
+    assert redact.redact_query_value("authcode", "abc123") == "<redacted:query-param>"
+    assert redact.redact_query_value("sidebar", "Alice") == "Alice"
+    assert redact.redact_query_value("authorship", "Alice") == "Alice"
+    assert redact.redact_note("sidebar=abc123") == "sidebar=abc123"
+    assert redact.redact_note("authors=Alice") == "authors=Alice"

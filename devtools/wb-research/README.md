@@ -240,7 +240,14 @@ The rules the redactor applies:
   `_wbauid` — are credential names everywhere: a note and an allowlisted header
   are not places where `auth=abc123` is safe. Such a name may carry a qualifier
   and stay one: `auth_code`, `authCode`, `authorization_code` are credential
-  names. The qualifier alone is not one — `code` is a word of the site
+  names. The qualifier is not one fixed word — a service calls it `code`,
+  `nonce`, `value` or `hash`, and the value behind it is short, so a qualifier
+  the sanitizer does not know is a secret that reaches the committed file. A
+  qualifier that is separated from the name (`auth_code`, `auth_code_id`) or
+  that has a hump of its own (`authCode`, `authCodeId`) is therefore any word;
+  a qualifier that is glued to the name (`authcode`) is one of the known words,
+  because there it cannot be told from an ordinary word (`sidebar`). The
+  qualifier alone is not a credential — `code` is a word of the site
   (`promo_code`), and `key_code` is a business term;
 - a path segment that names a credential (`reset`, `otp`, `token`,
   `access_token`, `oauth.access_token`) says that the next segment is one,
