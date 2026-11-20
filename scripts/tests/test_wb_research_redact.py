@@ -1639,3 +1639,13 @@ def test_a_media_type_that_carries_an_identifier_is_not_a_media_type():
     assert redact.safe_content_type("application/123456789012345") is None
     assert redact.safe_content_type("application/json") == "application/json"
     assert redact.safe_content_type("text/html; charset=utf-8") == "text/html; charset=utf-8"
+
+
+def test_a_path_keeps_the_spelling_of_a_segment_it_did_not_change():
+    # The finding of the review: the path was decoded and put back encoded as
+    # a whole, so a change in one segment rewrote the spelling of another.
+    path = redact.redact_path("/catalog/a%2Fb/users/123456789012")
+
+    assert path == "/catalog/a%2Fb/users/%3Credacted:account-id%3E"
+    assert redact.redact_path("/catalog/a%2Fb") == "/catalog/a%2Fb"
+    assert redact.redact_path("/data-checker/api/v1/user/check") == "/data-checker/api/v1/user/check"

@@ -823,29 +823,30 @@ def redact_path(path: str) -> str:
     was.
 
     The path is looked at decoded: a capture may spell an address as
-    `alice%40example.com`, and the plain patterns would not see it. The path
-    is put back encoded, and only when a value was actually replaced — an
-    ordinary path is kept as it came.
+    `alice%40example.com`, and the plain patterns would not see it. Each
+    segment is judged on its own, and a segment that was not changed keeps the
+    spelling it came with: a change in one place must not change the spelling
+    of another. `%2F` is not a separator to a browser, so a path that says
+    `a/b` where the capture said `a%2Fb` says another endpoint.
     """
     if not path:
         return path
-    decoded = decode_layers(path)
-    segments = decoded.split("/")
-    kept = []
+    kept: list[str] = []
     previous = ""
-    for segment in segments:
-        if previous.lower() in ACCOUNT_PATH_COMPONENTS and is_account_id(segment):
+    for segment in path.split("/"):
+        decoded = decode_layers(segment)
+        if previous.lower() in ACCOUNT_PATH_COMPONENTS and is_account_id(decoded):
             # The segment after a segment that names an account is an account id,
             # and an account id is not always nine digits long.
-            kept.append(placeholder("account-id"))
-            previous = segment
+            kept.append(quote(placeholder("account-id"), safe=PATH_SAFE))
+            previous = decoded
             continue
-        text = EMAIL_ADDRESS.sub("email", segment)
+        text = EMAIL_ADDRESS.sub("email", decoded)
         text = PHONE_NUMBER.sub("phone", text)
         text = OPAQUE_TOKEN.sub("opaque", text)
         text = LONG_DIGIT_RUN.sub(placeholder("account-id"), text)
         text = redact_credentials(text, label="credential")
-        if names_a_credential(previous) and text == segment and not text.startswith("<redacted:"):
+        if names_a_credential(previous) and text == decoded and not text.startswith("<redacted:"):
             # The segment after a segment that names a credential is one, even
             # when it is short enough to pass every length-based rule. The value
             # is judged by whether it is still there: a segment that was already
@@ -853,12 +854,9 @@ def redact_path(path: str) -> str:
             # the name of a marker (`opaque123`) is a value, and it is replaced
             # like any other.
             text = "credential"
-        kept.append(text)
-        previous = segment
-    text = "/".join(kept)
-    if text == decoded:
-        return path
-    return quote(text, safe=PATH_SAFE)
+        kept.append(segment if text == decoded else quote(text, safe=PATH_SAFE))
+        previous = decoded
+    return "/".join(kept)
 
 
 def decode_layers(text: str) -> str:

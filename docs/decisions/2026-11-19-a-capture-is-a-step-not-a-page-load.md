@@ -161,6 +161,11 @@ was never answered is evidence of something different.
   address behind two of them (`alice%2540example.com`) is the address all the
   same. A value that survives the rules unchanged keeps the spelling it came
   with.
+- **Never** rewrite the spelling of a path segment the rules did not change: each
+  segment of a path is judged on its own, decoded, and a segment that was not
+  changed keeps the spelling it came with. A change in one place must not
+  change another — `%2F` is not a separator to a browser, so a path that says
+  `a/b` where the capture said `a%2Fb` names another endpoint.
 - **Never** keep a UUID in an operator-chosen name: it is an identifier, and the
   opaque-value rule does not see it — the hyphens break the run of characters.
 - **Never** keep a content type beyond its media type and the safe parameters:
