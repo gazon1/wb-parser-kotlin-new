@@ -856,6 +856,13 @@ def redact_url(url: str) -> str:
         parts = urlsplit(url)
     except ValueError:
         return placeholder("url")
+    try:
+        authority = authority_without_userinfo(parts)
+    except ValueError:
+        # A port the parser refuses is a port of a URL it cannot read: where
+        # the authority ends is unknown, and dropping the port would name
+        # another endpoint than the capture saw.
+        return placeholder("url")
     query = []
     for name, value in parse_qsl(parts.query, keep_blank_values=True):
         query.append((safe_query_name(name), redact_query_value(name, value)))
@@ -863,7 +870,7 @@ def redact_url(url: str) -> str:
         urlunsplit(
             (
                 parts.scheme,
-                authority_without_userinfo(parts),
+                authority,
                 redact_path(parts.path),
                 urlencode(query, errors="replace"),
                 "",
@@ -954,15 +961,15 @@ def authority_without_userinfo(parts: SplitResult) -> str:
 
     `urlsplit(...).netloc` carries `user:password@host` as well, and the
     user information is a credential: it must not reach the repository.
+
+    A port the parser refuses is raised to the caller: the URL is one the
+    parser cannot read, and the caller replaces it whole.
     """
     host = parts.hostname or ""
     if ":" in host and not host.startswith("["):
         # An IPv6 host: it needs its brackets back.
         host = f"[{host}]"
-    try:
-        port = parts.port
-    except ValueError:
-        port = None
+    port = parts.port
     return f"{host}:{port}" if port is not None else host
 
 
@@ -1373,7 +1380,7 @@ def capture_from_adapter(data: dict[str, Any], capture_id: str, source_file: str
         },
         "schema": {
             "topLevelKeys": safe_keys(shape.get("topLevelKeys")),
-            "productCount": shape.get("productCount") if is_number(shape.get("productCount")) else None,
+            "productCount": shape.get("productCount") if is_count(shape.get("productCount")) else None,
         },
         "body": {"included": False, "reason": "a response body may carry personal data"},
     }

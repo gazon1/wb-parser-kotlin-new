@@ -294,6 +294,20 @@ def test_a_port_of_zero_survives():
     assert url == "https://www.wildberries.ru:0/catalog/0/list.aspx"
 
 
+def test_a_url_with_a_port_the_parser_refuses_is_replaced():
+    # The finding of the review: a port out of range is a URL the parser
+    # cannot read — dropping the port would name another endpoint.
+    url = redact.redact_url("https://www.wildberries.ru:99999/api/search")
+
+    assert url == "<redacted:url>"
+
+
+def test_a_url_with_a_port_that_is_not_a_number_is_replaced():
+    url = redact.redact_url("https://www.wildberries.ru:port/api/search")
+
+    assert url == "<redacted:url>"
+
+
 def test_a_value_in_the_path_of_a_url_is_replaced():
     # The finding of the review: the path is part of the URL too, and it carries
     # a token, an address and a phone number just as the query does.
@@ -1520,6 +1534,34 @@ def test_the_fields_of_a_probe_are_validated_before_they_are_copied():
     assert capture["response"]["isJson"] is None
     assert capture["schema"]["productCount"] is None
     assert "@" not in json.dumps(capture)
+
+
+def test_the_product_count_of_an_adapter_result_is_a_count():
+    data = {
+        "data": {
+            "result": {
+                "response": {"shape": {"productCount": -1}},
+            }
+        }
+    }
+
+    capture = redact.capture_from_adapter(data, "adapter-001", "adapter")
+
+    assert capture["schema"]["productCount"] is None
+
+
+def test_the_product_count_of_an_adapter_result_is_not_a_fraction():
+    data = {
+        "data": {
+            "result": {
+                "response": {"shape": {"productCount": 1.5}},
+            }
+        }
+    }
+
+    capture = redact.capture_from_adapter(data, "adapter-001", "adapter")
+
+    assert capture["schema"]["productCount"] is None
 
 
 def test_the_method_of_a_request_survives():
