@@ -202,9 +202,12 @@ The page action is a `chrome-use` command that **reads** the page: `open`,
 `read`, `wait`, `expect`, `extract`, `snapshot`, `screenshot`, `scroll`,
 `scrollintoview`, `hover`, `focus`, `canvas`. A capture observes, so an action
 that could change the site — a click, a typed text, a filled form, a shell —
-is refused before the recording starts. Several actions in one step are
-separated by `--`. The capture names the step, keeps the requests the config
-approves, reports what it dropped and hands the result to the redactor.
+is refused before the recording starts. The program is `chrome-use` itself, by
+its own name: a path to another program of that name is refused as well. An
+action that opens a page may only open a host the config approves, because a
+navigation is a request. Several actions in one step are separated by `--`.
+The capture names the step, keeps the requests the config approves, reports
+what it dropped and hands the result to the redactor.
 
 ```bash
 # one step: open the catalog page and record what it asks for

@@ -79,6 +79,10 @@ READ_ONLY_PAGE_ACTIONS = {
     "wait",
 }
 
+# The page actions that navigate. A navigation is a request, and a request may
+# change what it is asked to change, so the host it opens has to be approved.
+NAVIGATION_PAGE_ACTIONS = {"open", "read"}
+
 _REDACTOR = None
 
 
@@ -315,24 +319,33 @@ def page_actions(command: list[str]) -> list[list[str]]:
     return actions
 
 
-def check_read_only(actions: list[list[str]]) -> None:
+def check_read_only(actions: list[list[str]], approved: list[str]) -> None:
     """Refuse a page action that could change the site.
 
-    The tool observes. A page action is a chrome-use command that reads the
+    The tool observes. A page action is the chrome-use command that reads the
     page, and nothing else: a shell, a click on the cart, a filled form are
     refused before the recording starts, so a capture cannot change the
     account it observes.
+
+    The program is the chrome-use command by its own name: a path to a program
+    that happens to be called chrome-use is not it. And an action that opens a
+    page may only open an approved host — a navigation is a request, and a
+    request may change what it is asked to change.
     """
     for action in actions:
-        program = Path(action[0]).name
-        if program != "chrome-use":
-            raise SystemExit(f"the page action must be a chrome-use command, not {action[0]!r}")
+        if action[0] != "chrome-use":
+            raise SystemExit(f"the page action must be the chrome-use command, not {action[0]!r}")
         verb = action[1] if len(action) > 1 else ""
         if verb not in READ_ONLY_PAGE_ACTIONS:
             raise SystemExit(
                 f"{verb or 'a command'} is not a read-only page action — a capture observes. "
                 f"The actions that read the page: {', '.join(sorted(READ_ONLY_PAGE_ACTIONS))}"
             )
+        if verb not in NAVIGATION_PAGE_ACTIONS:
+            continue
+        url = action[2] if len(action) > 2 else ""
+        if url.startswith("http") and not host_matches(host_of(url), approved):
+            raise SystemExit(f"the page action may only open an approved host, not {host_of(url)}")
 
 
 def run_page_action(action: list[str]) -> int:
@@ -362,7 +375,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         raise SystemExit("no command to run — put the page action after `--`")
     # Checked before the recording starts too: an action that changes the site
     # must never run inside a capture of a logged-in session.
-    check_read_only(actions)
+    check_read_only(actions, config["allowedOrigins"])
 
     cleared = chrome_use("network", "requests", "--clear")
     if cleared.returncode != 0:

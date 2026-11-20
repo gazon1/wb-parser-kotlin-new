@@ -183,5 +183,10 @@ was never answered is evidence of something different.
   one of them — a click, a typed text, a filled form, a shell — is refused
   before the recording starts. The capture observes, so the cart, the orders
   and the account stay as they were.
+- **Never** run a page action of a program that is only called chrome-use: the
+  action is the chrome-use command by its own name, and a path to another
+  program of that name is refused.
+- **Never** open a host the config does not approve: a navigation is a request,
+  and a request may change what it is asked to change.
 - The tool stays in `scripts/` and `devtools/`: no production module depends on
   it and it adds no runtime dependency.

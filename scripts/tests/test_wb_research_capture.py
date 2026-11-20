@@ -349,7 +349,7 @@ def test_the_capture_of_the_previous_run_does_not_survive(tmp_path, monkeypatch)
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
     monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
     args = argparse.Namespace(
-        name="step", investigation="demo", command=["chrome-use", "open", "https://example.test/"], settle=0.0
+        name="step", investigation="demo", command=["chrome-use", "open", "https://www.wildberries.ru/"], settle=0.0
     )
 
     with pytest.raises(SystemExit):
@@ -376,7 +376,7 @@ def test_the_evidence_of_the_previous_run_does_not_survive(tmp_path, monkeypatch
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
     monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
     args = argparse.Namespace(
-        name="step", investigation="demo", command=["chrome-use", "open", "https://example.test/"], settle=0.0
+        name="step", investigation="demo", command=["chrome-use", "open", "https://www.wildberries.ru/"], settle=0.0
     )
 
     with pytest.raises(SystemExit):
@@ -404,7 +404,7 @@ def test_the_exported_fixture_of_the_previous_run_does_not_survive(tmp_path, mon
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
     monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
     args = argparse.Namespace(
-        name="step", investigation="demo", command=["chrome-use", "open", "https://example.test/"], settle=0.0
+        name="step", investigation="demo", command=["chrome-use", "open", "https://www.wildberries.ru/"], settle=0.0
     )
 
     with pytest.raises(SystemExit):
@@ -431,7 +431,7 @@ def test_the_report_of_the_previous_run_does_not_survive(tmp_path, monkeypatch):
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
     monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
     args = argparse.Namespace(
-        name="step", investigation="demo", command=["chrome-use", "open", "https://example.test/"], settle=0.0
+        name="step", investigation="demo", command=["chrome-use", "open", "https://www.wildberries.ru/"], settle=0.0
     )
 
     with pytest.raises(SystemExit):
@@ -457,7 +457,7 @@ def test_a_capture_that_could_not_clear_the_request_log_is_refused(tmp_path, mon
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
     monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
     args = argparse.Namespace(
-        name="step", investigation="demo", command=["chrome-use", "open", "https://example.test/"], settle=0.0
+        name="step", investigation="demo", command=["chrome-use", "open", "https://www.wildberries.ru/"], settle=0.0
     )
 
     with pytest.raises(SystemExit):
@@ -566,6 +566,53 @@ def test_several_read_only_page_actions_are_one_step(tmp_path, monkeypatch):
         ["chrome-use", "scroll", "down", "20000", "--", "chrome-use", "scroll", "down", "20000"]
     )
 
-    capture.check_read_only(actions)
+    capture.check_read_only(actions, CONFIG["allowedOrigins"])
 
     assert len(actions) == 2
+
+
+def test_a_program_that_is_called_chrome_use_is_not_the_chrome_use_command(tmp_path, monkeypatch):
+    # The finding of the review: the name of the program was enough, so a path
+    # to any program of that name was run.
+    calls = []
+
+    def fake_chrome_use(*args):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["/tmp/chrome-use", "open", "https://www.wildberries.ru/"],
+        settle=0.0,
+    )
+
+    with pytest.raises(SystemExit):
+        capture.capture_step(args, CONFIG)
+
+    assert not any("start" in call for call in calls)
+
+
+def test_a_page_action_may_only_open_an_approved_host(tmp_path, monkeypatch):
+    # The finding of the review: a navigation is a request, and a request may
+    # change what it is asked to change.
+    calls = []
+
+    def fake_chrome_use(*args):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
+    args = argparse.Namespace(
+        name="step", investigation="demo", command=["chrome-use", "open", "https://example.test/buy"], settle=0.0
+    )
+
+    with pytest.raises(SystemExit):
+        capture.capture_step(args, CONFIG)
+
+    assert not any("start" in call for call in calls)
