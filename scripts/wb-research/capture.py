@@ -539,9 +539,19 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         raise SystemExit(f"chrome-use did not start recording: {(started.stderr or started.stdout).strip()[:400]}")
 
     failed = 0
+    action_failure = ""
     try:
         for action in actions:
-            code = run_page_action(action)
+            try:
+                code = run_page_action(action)
+            except OSError as error:
+                # The page action could not be run at all — the command is not
+                # there, or it cannot be executed. The step did not reach the
+                # state it was supposed to reach, so it is a failed step like
+                # any other: its report says so and the export skips it.
+                action_failure = f"the page action could not be run: {error}"
+                failed = EXIT_FAILED
+                break
             if code:
                 failed = code
                 # The actions after the failure are not run: the step did not
@@ -620,7 +630,9 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         notes.append("the response bodies were not read: " + "; ".join(body_problems))
     else:
         notes.append("the response bodies were read and only their shape was kept")
-    if failed:
+    if action_failure:
+        notes.append(action_failure)
+    elif failed:
         notes.append(f"the page action failed with exit code {failed}, so the capture is partial")
 
     report = {
@@ -649,7 +661,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         )
 
     if failed:
-        print(f"the command failed with exit code {failed}", file=sys.stderr)
+        print(action_failure or f"the command failed with exit code {failed}", file=sys.stderr)
         return EXIT_FAILED
     if step not in exported:
         # The step that was just recorded is not among the exported fixtures.
@@ -677,6 +689,23 @@ def show_hosts(hosts: set[str], limit: int = 6) -> str:
     return ", ".join(ordered[:limit]) + f" and {len(ordered) - limit} more"
 
 
+def read_report(path: Path) -> dict | None:
+    """The report of a step, or None when the step did not finish.
+
+    A step that ran to the end always leaves a report behind. A report that is
+    not there, or that cannot be read, is the remains of a run that died: the
+    page action raised, the step was interrupted, and nothing was written down
+    about what the step showed.
+    """
+    if not path.exists():
+        return None
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return report if isinstance(report, dict) else None
+
+
 def export_investigation(investigation: str) -> list[str]:
     """Redact every step of an investigation into a fixture the repository can hold.
 
@@ -688,14 +717,18 @@ def export_investigation(investigation: str) -> list[str]:
     evidence_dir = EVIDENCE_ROOT / investigation / "evidence"
     exported: list[str] = []
     failed_steps: list[str] = []
+    unfinished_steps: list[str] = []
     for step_har in sorted(raw_dir.glob("*.har")):
         report_path = raw_dir / f"{step_har.stem}.report.json"
-        notes = []
-        failed = False
-        if report_path.exists():
-            report = json.loads(report_path.read_text(encoding="utf-8"))
-            notes = report.get("notes", [])
-            failed = bool(report.get("failedExitCode"))
+        report = read_report(report_path)
+        if report is None:
+            # The step did not finish, so its capture is not evidence of what
+            # the step shows — neither now nor at a later export.
+            print(f"  {step_har.stem}: the step did not finish, so its capture is not exported", file=sys.stderr)
+            unfinished_steps.append(step_har.stem)
+            continue
+        notes = report.get("notes", [])
+        failed = bool(report.get("failedExitCode"))
         if failed:
             # A step whose action failed is a partial capture. It is not
             # evidence of what the step shows, so it does not become a fixture
@@ -716,11 +749,13 @@ def export_investigation(investigation: str) -> list[str]:
         print(f"  {show_path(out)}: {proc.stdout.strip()}")
         exported.append(step_har.stem)
     if not exported:
-        if failed_steps:
-            print(
-                f"no capture to export for {investigation} — every step failed: {', '.join(failed_steps)}",
-                file=sys.stderr,
-            )
+        if failed_steps or unfinished_steps:
+            reasons = []
+            if failed_steps:
+                reasons.append("every step failed: " + ", ".join(failed_steps))
+            if unfinished_steps:
+                reasons.append("no step finished: " + ", ".join(unfinished_steps))
+            print(f"no capture to export for {investigation} — {'; '.join(reasons)}", file=sys.stderr)
         else:
             print(f"no capture to export for {investigation} — run the step verb first", file=sys.stderr)
     return exported

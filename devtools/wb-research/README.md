@@ -262,7 +262,15 @@ of an earlier run stand as the evidence of this one.
 A page action that fails ends the step: the actions after it are not run, and
 the capture of the step is partial, so it is not exported — neither now nor at
 a later `export` of the same investigation. A failed step leaves no fixture in
-the repository: a partial capture is not evidence of what the step shows.
+the repository: a partial capture is not evidence of what the step shows. A
+page action that cannot be run at all — the command is not there — is a failed
+step like any other.
+
+Only a step that ran to the end becomes a fixture. A step that ran to the end
+always leaves a report behind, and a capture without one is the remains of a
+run that died — the page action raised, or the step was interrupted. Such a
+capture is not exported either, and a report that cannot be read is treated as
+a step that did not finish.
 
 The request log has to be cleared before the recording starts, and a browser
 that refused to clear it is an error too: the bodies are looked up in that

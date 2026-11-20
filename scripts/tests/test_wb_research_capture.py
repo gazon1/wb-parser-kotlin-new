@@ -282,6 +282,7 @@ def test_a_capture_without_a_body_annotation_says_the_body_was_never_read(tmp_pa
         }
     }
     (raw_dir / "plain.har").write_text(json.dumps(har), encoding="utf-8")
+    (raw_dir / "plain.report.json").write_text(json.dumps({"notes": ["step: plain"]}), encoding="utf-8")
     monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
 
@@ -507,6 +508,7 @@ def test_an_export_with_a_capture_succeeds(tmp_path, monkeypatch):
         }
     }
     (raw_dir / "step.har").write_text(json.dumps(har), encoding="utf-8")
+    (raw_dir / "step.report.json").write_text(json.dumps({"notes": ["step: step"]}), encoding="utf-8")
     monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
 
@@ -902,3 +904,58 @@ def test_a_url_whose_host_cannot_be_read_names_no_host(tmp_path, monkeypatch):
         capture.capture_step(args, CONFIG)
 
     assert not any("start" in call for call in calls)
+
+
+def test_a_page_action_that_cannot_be_run_is_a_failed_step(tmp_path, monkeypatch):
+    # The finding of the review: an exception while the page action was run
+    # ended the capture with a traceback and left no report behind — and the
+    # export read the capture of that step as if the step had finished.
+    def missing_action(action):
+        raise FileNotFoundError(2, "No such file or directory", "chrome-use")
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser())
+    monkeypatch.setattr(capture, "run_page_action", missing_action)
+    args = argparse.Namespace(
+        name="step", investigation="demo", command=["chrome-use", "open", "https://www.wildberries.ru/"], settle=0.0
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert report["failedExitCode"] == capture.EXIT_FAILED
+    fixture = tmp_path / "investigations" / "demo" / "evidence" / "step.json"
+    assert not fixture.exists()
+    # A later export of the same investigation does not turn it into one
+    # either: the capture of a step that failed is a partial one.
+    assert capture.export_investigation("demo") == []
+    assert not fixture.exists()
+
+
+def test_a_capture_of_a_step_that_did_not_finish_is_not_exported(tmp_path, monkeypatch):
+    # A step that ran to the end always leaves a report behind. A capture
+    # without one is the remains of a run that died, and it is not evidence of
+    # what the step shows.
+    raw_dir = tmp_path / "demo"
+    raw_dir.mkdir()
+    (raw_dir / "step.har").write_text(json.dumps({"log": {"entries": []}}), encoding="utf-8")
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+
+    assert capture.export_investigation("demo") == []
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+
+
+def test_a_report_that_cannot_be_read_leaves_the_capture_unexported(tmp_path, monkeypatch):
+    raw_dir = tmp_path / "demo"
+    raw_dir.mkdir()
+    (raw_dir / "step.har").write_text(json.dumps({"log": {"entries": []}}), encoding="utf-8")
+    (raw_dir / "step.report.json").write_text("{not json", encoding="utf-8")
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+
+    assert capture.export_investigation("demo") == []
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()

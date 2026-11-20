@@ -247,5 +247,13 @@ was never answered is evidence of something different.
   file can hold (a lone surrogate) is replaced instead of failing the export:
   the evidence is worth more than the character, and a failed export is a lost
   step.
+- **Never** export a capture of a step that did not finish: a step that ran to the end always
+  leaves a report behind, and a capture without one is the remains of a run that died — the
+  page action raised, or the step was interrupted. Such a capture is not evidence of what
+  the step shows, and a report that cannot be read is a step that did not finish.
+- **Never** let a page action that cannot be run at all be something else than a failed
+  step: the command is not there, or it cannot be executed, and the step did not reach the
+  state it was supposed to reach. Its report says so, and the export skips it — now and at
+  every later export.
 - The tool stays in `scripts/` and `devtools/`: no production module depends on
   it and it adds no runtime dependency.
