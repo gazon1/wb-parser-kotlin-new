@@ -174,7 +174,8 @@ was never answered is evidence of something different.
   run of digits is an account id, and it is dropped. The media type is judged
   by its shape as well: a subtype that carries a UUID or an account id is a
   value and not a media type, and a content type without a media type is not
-  kept.
+  kept. A subtype made of digits only is an identifier whatever its length:
+  no service names a media type that way.
 - **Never** keep the value of an allowed header as it is: the name says what may
   be shown, not that the value is safe. A user agent that carries an address and
   a server header that carries an opaque value go through the same rules as the

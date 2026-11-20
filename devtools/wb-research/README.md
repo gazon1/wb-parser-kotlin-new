@@ -535,7 +535,9 @@ The rules the redactor applies:
   (`charset`) only: a server may answer with anything, and the same value in a
   header goes through the rules. The media type is judged by its shape as
   well: a subtype that carries a UUID or an account id is a value and not a
-  media type, and a content type without a media type is not kept;
+  media type, and a content type without a media type is not kept. A subtype
+  made of digits only is an identifier whatever its length — no service names
+  a media type that way;
 - the numbers a probe measured are kept — counts (`total`, `productCount`,
   `productsWithPoints`, `productsWithCashback`) and the distinct values of a
   numeric field — because a number cannot carry a name, a token or a sentence;

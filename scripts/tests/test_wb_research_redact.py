@@ -1649,3 +1649,13 @@ def test_a_path_keeps_the_spelling_of_a_segment_it_did_not_change():
     assert path == "/catalog/a%2Fb/users/%3Credacted:account-id%3E"
     assert redact.redact_path("/catalog/a%2Fb") == "/catalog/a%2Fb"
     assert redact.redact_path("/data-checker/api/v1/user/check") == "/data-checker/api/v1/user/check"
+
+
+def test_a_media_type_with_a_numeric_subtype_is_not_a_media_type():
+    # The finding of the review: the digit-run rule needs eleven digits, so a
+    # shorter numeric subtype survived — and no service names a media type
+    # that way.
+    assert redact.safe_content_type("application/1234567890") is None
+    assert redact.safe_content_type("application/123456") is None
+    assert redact.safe_content_type("application/1") is None
+    assert redact.safe_content_type("application/json") == "application/json"

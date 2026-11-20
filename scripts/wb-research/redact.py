@@ -943,6 +943,11 @@ def safe_content_type(value: Any) -> str | None:
         return None
     if redact_generic_value(media) != media:
         return None
+    if media.split("/", 1)[1].isdigit():
+        # A subtype made of digits only is an identifier and not a media type:
+        # no service names a media type that way, and the digit-run rule needs
+        # eleven digits to see a value the site asks with.
+        return None
     kept = [media]
     for part in parts[1:]:
         name, separator, raw = part.partition("=")
