@@ -1559,3 +1559,31 @@ def test_a_twice_encoded_address_in_an_allowed_header_value_is_replaced():
     )
 
     assert "alice" not in headers["x-cache-status"]
+
+
+def test_a_uuid_in_a_note_is_replaced():
+    # The finding of the review: the note was judged by the rules, and the
+    # opaque-value rule is what sees a UUID — it is a run of characters long
+    # enough, hyphens and all.
+    note = redact.redact_note("profile 550e8400-e29b-41d4-a716-446655440000")
+
+    assert "550e8400" not in note
+
+
+def test_a_uuid_in_a_path_segment_is_replaced():
+    url = redact.redact_url("https://example.com/device/550e8400-e29b-41d4-a716-446655440000")
+
+    assert "550e8400" not in url
+
+
+def test_a_uuid_in_a_json_key_is_replaced():
+    key = redact.safe_key("550e8400-e29b-41d4-a716-446655440000")
+
+    assert key == "<redacted:key>"
+
+
+def test_a_uuid_in_a_query_parameter_name_is_replaced():
+    url = redact.redact_url("https://example.com/api?550e8400-e29b-41d4-a716-446655440000=1")
+
+    assert "550e8400" not in url
+    assert "%3Credacted%3Aquery-name%3E" in url
