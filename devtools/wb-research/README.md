@@ -846,6 +846,15 @@ refused. A plan that was widened after the approval — another command, another
 origin, another origin in the shared config — does not run on the old approval;
 the operator approves it again and the fingerprint is written anew.
 
+The part of the config that the approval covers is every setting that decides
+what the capture refuses to stop at: `allowedOrigins`, `allowedPages`,
+`allowedQueryParams`, `noiseHosts` and `keptResourceTypes`. The noise hosts and
+the kept request types are in it because they are not only about what is kept:
+a host that is noise is a host whose traffic is not held to the approval, and
+a request type that is not kept is not an API call, so an unapproved host can
+pass as ordinary traffic. `maxBodyFetches` is the one setting that is left out
+— it decides how many bodies are read, and nothing about what is reached.
+
 `run` executes only the steps that are `planned`, and it stops at the first
 step that did not finish — a run that stops is resumed by the next run, which
 skips the steps that are `done`. A plan that was not approved is not run at

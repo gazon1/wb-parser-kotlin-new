@@ -68,6 +68,15 @@ scope it finds with the one that was approved. A plan that was widened after
 the approval does not match the fingerprint and is refused until it is
 approved again, so the approval binds to a plan and not to a moment.
 
+The part of the config the approval covers is every setting that decides what
+the capture refuses to stop at: the approved origins, the pages, the query
+parameters, the noise hosts and the kept request types. The last two are in it
+because a setting that only decided what is kept would be harmless, and these
+do not: a host that is noise is a host whose traffic is not held to the
+approval, and a request type that is not kept is not an API call, so an
+unapproved host passes as ordinary traffic. Only the limit on the bodies stays
+out — it decides how much is read, not what is reached.
+
 A pause is a state, not an improvisation. A CAPTCHA, a login, an ambiguous page
 or an origin the config does not approve stops the run, is named in the plan
 and is answered by the operator. The runner never works around a blockage and
@@ -112,6 +121,10 @@ every other run.
   writes the fingerprint of the approved scope into the plan and the runner
   refuses a run whose scope differs — a wider step and a wider capture config
   alike — so a plan that was widened during a pause needs a new approval.
+- **Always** cover every setting of the capture config that decides what the
+  capture refuses to stop at: the origins, the pages, the query parameters, the
+  noise hosts and the kept request types. A setting that is left out of the
+  fingerprint is a setting that can be widened under an old approval.
 - **Never** let the id of an investigation or the name of a step be a path: they
   name directories and files, and a name that climbs out of one is refused
   before anything is read or written.

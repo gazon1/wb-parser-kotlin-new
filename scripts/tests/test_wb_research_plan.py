@@ -374,6 +374,89 @@ def test_a_changed_config_needs_a_new_approval(investigation, tmp_path, monkeypa
     assert calls == []
 
 
+@pytest.mark.parametrize(
+    ("field", "before", "after"),
+    [
+        ("noiseHosts", ["a.wb.ru"], ["a.wb.ru", "evil.example"]),
+        ("keptResourceTypes", ["Fetch", "XHR"], ["Fetch"]),
+    ],
+)
+def test_a_changed_reachability_setting_needs_a_new_approval(
+    field, before, after, investigation, tmp_path, monkeypatch
+):
+    """A setting that decides what the capture refuses to stop at is part of the scope."""
+    config = tmp_path / "capture-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "allowedOrigins": ["www.wildberries.ru"],
+                "allowedPages": [],
+                "allowedQueryParams": [],
+                field: before,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plan, "CONFIG_PATH", config)
+
+    name = investigation([step("initial-load")])
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    # The setting is widened after the approval: a new host is marked as noise,
+    # or a kind of request stops counting as an API call.
+    config.write_text(
+        json.dumps(
+            {
+                "allowedOrigins": ["www.wildberries.ru"],
+                "allowedPages": [],
+                "allowedQueryParams": [],
+                field: after,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="approve it again"):
+        plan.run(name, 8.0)
+
+    assert calls == []
+
+
+def test_the_noise_hosts_are_normalized_in_the_scope(investigation, tmp_path, monkeypatch):
+    """The same hosts in another order or another case are the same scope."""
+    config = tmp_path / "capture-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "allowedOrigins": ["www.wildberries.ru"],
+                "allowedPages": [],
+                "allowedQueryParams": [],
+                "noiseHosts": ["A.WB.RU", "b.wb.ru"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plan, "CONFIG_PATH", config)
+
+    name = investigation([step("initial-load")])
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    config.write_text(
+        json.dumps(
+            {
+                "allowedOrigins": ["www.wildberries.ru"],
+                "allowedPages": [],
+                "allowedQueryParams": [],
+                "noiseHosts": ["b.wb.ru", "a.wb.ru"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert len(calls) == 1
+
+
 def test_a_malformed_allow_hosts_is_refused(investigation):
     """The approved origins are a list of names, not a string."""
     name = investigation([{**step("initial-load"), "allow_hosts": "splitter.wb.ru"}], status="draft")

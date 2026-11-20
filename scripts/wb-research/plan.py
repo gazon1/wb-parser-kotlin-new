@@ -43,6 +43,7 @@ INVESTIGATIONS = REPO_ROOT / "devtools" / "wb-research" / "investigations"
 RAW_ROOT = Path.home() / ".cache" / "wb-research"
 
 _REDACTOR = None
+_CAPTURE = None
 
 # The states of a step. `planned` is the only one the runner acts on, so a run
 # that was interrupted resumes at the first step that did not finish.
@@ -121,6 +122,18 @@ def load_redactor():
     return module
 
 
+def load_capture():
+    """The capture next door. Its defaults are the defaults here."""
+    global _CAPTURE
+    if _CAPTURE is not None:
+        return _CAPTURE
+    spec = importlib.util.spec_from_file_location("wb_research_capture", CAPTURE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _CAPTURE = module
+    return module
+
+
 def safe_step_name(name: str) -> str:
     """The name of a step, checked the way the capture checks it.
 
@@ -171,8 +184,18 @@ def config_scope() -> dict:
     The capture reads the shared config when it runs a step, so the config is
     part of the scope a plan runs under: a config that allows another origin
     or another page widens what the session may reach, exactly as a wider
-    command in the plan does. The rest of the config — the noise hosts, the
-    resource types, the limit — decides what is kept, not what is reached.
+    command in the plan does.
+
+    The noise hosts and the kept resource types are part of it for the same
+    reason, and not because they decide what is kept: a host that is noise is
+    a host whose traffic is not held to the approval, and a request type that
+    is not kept is a request type that is not an API call — so both decide
+    what the capture refuses to stop at. The limit on the bodies is the one
+    setting that only decides what is read.
+
+    The defaults are the defaults of the capture: a config that leaves a
+    setting out is read by the capture as its own default, and the scope has
+    to say the same thing.
     """
     if not CONFIG_PATH.is_file():
         raise SystemExit(f"no capture config at {CONFIG_PATH}")
@@ -184,6 +207,8 @@ def config_scope() -> dict:
         "allowedOrigins": sorted(config.get("allowedOrigins", [])),
         "allowedPages": sorted(config.get("allowedPages", [])),
         "allowedQueryParams": sorted(config.get("allowedQueryParams", [])),
+        "noiseHosts": sorted(str(host).strip().lower() for host in config.get("noiseHosts", [])),
+        "keptResourceTypes": sorted(config.get("keptResourceTypes", list(load_capture().API_RESOURCE_TYPES))),
     }
 
 

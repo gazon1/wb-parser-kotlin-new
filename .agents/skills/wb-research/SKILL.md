@@ -84,8 +84,10 @@ Never, and the tools already refuse most of it:
   committed is a placeholder (`<redacted:deviceid>`), and the only shape a
   removed value may take.
 - **No scope creep.** The approved origins, pages and query parameters live in
-  `devtools/wb-research/capture-config.json`. Changing them changes what the
-  session may touch — ask first, and say it in the record.
+  `devtools/wb-research/capture-config.json`, and so do the noise hosts and the
+  kept request types — they decide what the capture refuses to stop at, not
+  only what it keeps. Changing any of them changes what the session may touch
+  — ask first, and say it in the record.
 - **Nothing enters production.** No chrome-use, no AI and no credential in a
   Gradle module or in the crawler. This workflow is a development tool.
 
