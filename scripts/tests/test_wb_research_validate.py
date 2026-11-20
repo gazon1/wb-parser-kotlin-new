@@ -13,6 +13,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -45,17 +48,17 @@ def variant(name: str, **fields) -> dict:
     return {"name": name, "repeat": 2, **fields}
 
 
-def answer(status: int = 200, ids=(1, 2), total: int = 10, error: str | None = None) -> dict:
+def answer(status: int = 200, ids=(1, 2), total: int = 10, error: str | None = None, is_json: bool = True) -> dict:
     """What the page script reports for one request."""
     return {
         "status": status,
         "contentType": "application/json" if status == 200 else "text/plain",
         "bodyBytes": 233 if status == 200 else 0,
-        "isJson": status == 200,
-        "topLevelKeys": ["products", "total"] if status == 200 else None,
-        "productCount": len(ids) if status == 200 else None,
-        "total": total if status == 200 else None,
-        "productIds": list(ids) if status == 200 else [],
+        "isJson": status == 200 and is_json,
+        "topLevelKeys": ["products", "total"] if status == 200 and is_json else None,
+        "productCount": len(ids) if status == 200 and is_json else None,
+        "total": total if status == 200 and is_json else None,
+        "productIds": list(ids) if status == 200 and is_json else [],
         "droppedByBrowser": [],
         "error": error,
     }
@@ -341,6 +344,101 @@ def test_a_failed_probe_is_not_a_result(world, monkeypatch):
     summary = read_summary(place.directory)
     assert summary["experiments"][1]["outcome"] == validate.FAILED
     assert summary["experiments"][1]["state"] == validate.INCONCLUSIVE
+
+
+def test_a_changed_json_shape_is_a_change(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="same", compare=["json"])])
+    validate.approve(INVESTIGATION)
+    # Same status and media type, but the variant is not JSON: the comparison
+    # has to see it, or an answer that stopped being parsable looks unchanged.
+    fake_browser(
+        monkeypatch,
+        [answer(is_json=True), answer(is_json=True), answer(is_json=False), answer(is_json=False)],
+    )
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+
+    summary = read_summary(place.directory)
+    assert "json" in summary["experiments"][1]["comparisons"][0]["changedFields"]
+    assert summary["experiments"][1]["state"] == validate.REJECTED
+
+
+def test_the_reference_cannot_declare_an_expectation(world, monkeypatch):
+    world([{"name": "baseline", "kind": "replay", "repeat": 2, "expect": "same"}])
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="cannot declare an expectation"):
+        validate.approve(INVESTIGATION)
+
+
+def test_the_probe_script_parses_a_text_plain_json_answer(monkeypatch):
+    """The browser-side script is executed, not replaced: it is the instrument."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+
+    body = json.dumps({"products": [{"id": 1}], "total": 7, "note": "колонки"}, ensure_ascii=False)
+    result, sent = run_probe_script(node, body=body, content_type="text/plain; charset=UTF-8")
+
+    assert result["status"] == 200
+    assert result["isJson"] is True
+    assert result["topLevelKeys"] == ["products", "total", "note"]
+    assert result["productCount"] == 1
+    assert result["productIds"] == [1]
+    assert result["total"] == 7
+    assert result["bodyBytes"] == len(body.encode("utf-8"))
+    assert sent["method"] == "GET"
+    assert sent["credentials"] == "include"
+
+
+def test_the_probe_script_reports_a_malformed_answer_and_the_dropped_headers(monkeypatch):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+
+    result, _ = run_probe_script(
+        node,
+        body="not json",
+        content_type="text/plain",
+        headers={"deviceid": "x", "referer": "https://example.test/", "cookie": "a=b", "sec-ch-ua": "y"},
+    )
+
+    assert result["isJson"] is False
+    assert result["topLevelKeys"] is None
+    assert result["productIds"] == []
+    assert set(result["droppedByBrowser"]) == {"referer", "cookie", "sec-ch-ua"}
+
+
+def run_probe_script(node: str, body: str, content_type: str, headers: dict | None = None) -> tuple[dict, dict]:
+    """Execute PROBE_SCRIPT under Node with a fetch that answers the test's body."""
+    runner = """
+const spec = JSON.parse(process.env.PROBE_SPEC);
+const fn = eval('(' + process.env.PROBE_SCRIPT + ')');
+const response = {
+  status: 200,
+  headers: {get: (name) => (name.toLowerCase() === 'content-type' ? process.env.PROBE_TYPE : null)},
+  text: async () => process.env.PROBE_BODY
+};
+let sent = null;
+globalThis.fetch = async (url, init) => {
+  sent = {url: url, method: init.method, credentials: init.credentials, headers: init.headers};
+  return response;
+};
+fn(spec).then((result) => process.stdout.write(JSON.stringify({result: result, sent: sent})));
+"""
+    spec = {"url": "https://www.wildberries.ru/x", "method": "GET", "headers": headers or {}, "credentials": "include"}
+    env = dict(
+        os.environ,
+        PROBE_SPEC=json.dumps(spec),
+        PROBE_SCRIPT=validate.PROBE_SCRIPT,
+        PROBE_BODY=body,
+        PROBE_TYPE=content_type,
+    )
+    completed = subprocess.run([node, "-"], input=runner, capture_output=True, text=True, check=False, env=env)
+    if completed.returncode != 0:
+        raise AssertionError(f"the probe script failed: {completed.stderr}")
+    payload = json.loads(completed.stdout)
+    return payload["result"], payload["sent"]
 
 
 def test_a_reload_is_a_reload_and_not_another_experiment(world, monkeypatch):

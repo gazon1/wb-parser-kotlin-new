@@ -140,8 +140,10 @@ is the operator's question, not the tool's problem.
 - **Always** stop probing after a refusal and mark the rest "not run": a burst of
   requests against a site that said no is not evidence.
 - **Always** compare one variation with the reference on the status, the media
-  type, the shape, the counts and the order — a byte count is not evidence of a
-  change, and a body is never committed.
+  type, whether the body is JSON, the shape, the counts and the order — a byte
+  count is not evidence of a change, and a body is never committed. A response
+  that stopped being parsable is a change even when its status and media type
+  did not move.
 - **Always** keep the tool outside the mandatory CI: it needs a real browser and
   a live site, and its tests replace the browser with a function.
 - **Always** replay `GET` only, and treat a `5xx` as a failed request: a POST may

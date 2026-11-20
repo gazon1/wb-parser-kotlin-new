@@ -1007,8 +1007,9 @@ A refusal ends the run: after a blocked answer the remaining probes are marked
 
 The evidence keeps the request (method, redacted URL, credentials, the header
 names sent and the names the browser dropped), the response (status, media
-type, size, whether it was JSON), the shape of the answer (top-level keys, the
-number of products, the total) and the ordered product ids. The body, the
+type, size in UTF-8 bytes, whether it was JSON), the shape of the answer
+(top-level keys, the number of products, the total) and the ordered product
+ids. The body, the
 cookies and the header values are never in it. The summary keeps the order as
 a hash; the ids stay in the evidence.
 

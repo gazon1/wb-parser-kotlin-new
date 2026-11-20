@@ -134,10 +134,10 @@ BLOCKED = "blocked"
 OUTCOMES = (COMPLETED, FAILED, BLOCKED, INCONCLUSIVE)
 
 # The parts of an observation a variant is compared on. A status, a media type,
-# the shape of the answer, the number of products, their order and the total
-# are what a parameter can plausibly change; a byte count is not — the same
-# answer is not the same size twice.
-COMPARED_FIELDS = ("status", "contentType", "schema", "count", "order", "total")
+# whether the body is JSON, the shape of the answer, the number of products,
+# their order and the total are what a parameter can plausibly change; a byte
+# count is not — the same answer is not the same size twice.
+COMPARED_FIELDS = ("status", "contentType", "json", "schema", "count", "order", "total")
 
 # How many product ids one observation keeps. A catalog page is a hundred
 # products; the cap is only a guard against a malformed answer, not a filter.
@@ -219,7 +219,7 @@ async (spec) => {
     droppedByBrowser: dropped,
     status: resp.status,
     contentType: resp.headers.get('content-type') || '',
-    bodyBytes: text.length,
+    bodyBytes: new TextEncoder().encode(text).length,
     isJson: false,
     topLevelKeys: null,
     productCount: null,
@@ -489,6 +489,11 @@ def check_experiments(experiments: list[dict], base: dict) -> None:
     )
     if varies:
         raise SystemExit("the first experiment is the reference: it cannot vary anything")
+    if first.get("expect") or first.get("compare"):
+        # The reference is what the others are compared with; a claim about it
+        # has nothing to be judged against, and a run that accepts one would
+        # reach the summary with an empty list of comparisons.
+        raise SystemExit("the first experiment is the reference: it cannot declare an expectation")
 
 
 def declared_request(plan: dict, request: dict, record: dict) -> dict:
@@ -856,6 +861,7 @@ def comparable(observation: dict) -> dict:
     return {
         "status": observation["response"]["status"],
         "contentType": observation["response"]["contentType"],
+        "json": observation["response"]["isJson"],
         "schema": observation["schema"]["topLevelKeys"],
         "count": observation["schema"]["productCount"],
         "order": observation["ordering"]["productIds"],
@@ -925,6 +931,8 @@ def state_of(
             return INCONCLUSIVE, "the runs of the experiment disagree"
         return OBSERVED, ""
     verdicts = [expectation_met(experiment, comparison) for comparison in comparisons]
+    if not verdicts:
+        return INCONCLUSIVE, "an expectation with no comparison to judge"
     if any(verdict is None for verdict in verdicts):
         return INCONCLUSIVE, "the response cannot be compared to the baseline"
     if len(set(verdicts)) > 1:

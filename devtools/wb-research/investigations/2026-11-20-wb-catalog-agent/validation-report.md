@@ -6,7 +6,7 @@
 - Query parameters: `ab_testing`, `appType`, `curr`, `dest`, `hide_vflags`, `inheritFilters`, `lang`, `locale`, `query`, `resultset`, `sort`, `spp`, `suppressSpellcheck`
 - Headers named by the plan: `deviceid`, `x-requested-with`, `x-spa-version`, `x-userid`
 - Evidence: [`evidence/validation.json`](evidence/validation.json)
-- Generated: 2026-11-20T22:36:41+00:00
+- Generated: 2026-11-20T22:57:27+00:00
 - Baseline: `baseline` — reproduced
 
 The headers' values are not in `experiments.yaml` and never reach this report: the plan names the headers, and their values are read from a local file outside the repository.
@@ -26,33 +26,33 @@ The headers' values are not in `experiments.yaml` and never reach this report: t
 
 ### `baseline` — reproduced
 
-- run 1: 200 text/plain; charset=UTF-8, 143983 bytes, 100 products, total 113624, keys [metadata, products, total], order `1caa3e560532` — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 143983 bytes, 100 products, total 113624, keys [metadata, products, total], order `1caa3e560532` — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 148447 bytes, 100 products, total 113601, keys [metadata, products, total], order `fcce9832c315` — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 148447 bytes, 100 products, total 113601, keys [metadata, products, total], order `fcce9832c315` — **completed**
 
 ### `sort-priceup` — validated
 
-- run 1: 200 text/plain; charset=UTF-8, 126545 bytes, 100 products, total 113458, keys [metadata, products, total], order `35b9f4f2a3eb`; vs the baseline: changed (order, total) — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 126545 bytes, 100 products, total 113458, keys [metadata, products, total], order `35b9f4f2a3eb`; vs the baseline: changed (order, total) — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 129871 bytes, 100 products, total 113435, keys [metadata, products, total], order `35b9f4f2a3eb`; vs the baseline: changed (order, total) — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 129871 bytes, 100 products, total 113435, keys [metadata, products, total], order `35b9f4f2a3eb`; vs the baseline: changed (order, total) — **completed**
 
 ### `page-2` — validated
 
-- run 1: 200 text/plain; charset=UTF-8, 139726 bytes, 100 products, total 113624, keys [metadata, products, total], order `8c3c69f469e7`; vs the baseline: changed (order) — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 139726 bytes, 100 products, total 113624, keys [metadata, products, total], order `8c3c69f469e7`; vs the baseline: changed (order) — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 145983 bytes, 100 products, total 113601, keys [metadata, products, total], order `c4bbb468a1ca`; vs the baseline: changed (order) — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 145983 bytes, 100 products, total 113601, keys [metadata, products, total], order `c4bbb468a1ca`; vs the baseline: changed (order) — **completed**
 
 ### `page-0` — observed
 
-- run 1: 200 application/json, 210 bytes, keys [filters, name, normQuery, query, rmi, rs, search_result, shardKey]; vs the baseline: changed (contentType, schema, count, order, total) — **completed**
+- run 1: 200 application/json, 224 bytes, keys [filters, name, normQuery, query, rmi, rs, search_result, shardKey]; vs the baseline: changed (contentType, schema, count, order, total) — **completed**
 
 ### `after-reload` — validated
 
-- run 1: 200 text/plain; charset=UTF-8, 143983 bytes, 100 products, total 113624, keys [metadata, products, total], order `1caa3e560532`; vs the baseline: same (nothing) — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 143983 bytes, 100 products, total 113624, keys [metadata, products, total], order `1caa3e560532`; vs the baseline: same (nothing) — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 148447 bytes, 100 products, total 113601, keys [metadata, products, total], order `fcce9832c315`; vs the baseline: same (nothing) — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 148447 bytes, 100 products, total 113601, keys [metadata, products, total], order `fcce9832c315`; vs the baseline: same (nothing) — **completed**
 
 ### `without-cookies` — inconclusive
 
 the site refused the request — a refusal is not a validation
 
-- run 1: 498 text/html, 1132 bytes; vs the baseline: changed (status, contentType, schema, count, order, total) — **blocked**
+- run 1: 498 text/html, 1132 bytes; vs the baseline: changed (status, contentType, json, schema, count, order, total) — **blocked**
 - run 2: not run — the site refused the request
 
 ## What was not established
