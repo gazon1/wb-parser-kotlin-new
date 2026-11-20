@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -510,8 +511,15 @@ def safe_identifier(value: Any, fallback: str) -> str:
 
 
 def is_number(value: Any) -> bool:
-    """A number that is not a boolean — `True` is not a count of one."""
-    return isinstance(value, (int, float)) and not isinstance(value, bool)
+    """A number that is not a boolean — `True` is not a count of one.
+
+    A float that is not finite is not a number either: `NaN` and `Infinity` are
+    what a malformed capture carries, and a count of them is not evidence —
+    nor a value that can be turned into a count.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return False
+    return not isinstance(value, float) or math.isfinite(value)
 
 
 def safe_key(key: Any) -> str:

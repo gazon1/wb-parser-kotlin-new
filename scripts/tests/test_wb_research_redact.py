@@ -1492,3 +1492,12 @@ def test_the_name_of_a_header_that_the_service_chose_survives():
     )
 
     assert headers["sec-ch-ua-platform-version"] == "<redacted:sec-ch-ua-platform-version>"
+
+
+def test_a_number_that_is_not_finite_is_not_a_number():
+    # The finding of the review: a malformed capture carries `NaN` and
+    # `Infinity`, and a count of them is not evidence.
+    assert redact.safe_size(json.loads('{"size": Infinity}')["size"]) is None
+    assert redact.safe_status(json.loads('{"status": NaN}')["status"]) is None
+    assert redact.safe_size(51715) == 51715
+    assert redact.safe_status(200) == 200
