@@ -4,7 +4,7 @@ scenario: wb-network-events
 site: www.wildberries.ru
 status: concluded
 created: 2026-11-19T20:06:00+03:00
-updated: 2026-11-19T20:40:00+03:00
+updated: 2026-11-20T13:40:00+03:00
 raw_captures: ~/.cache/wb-research/2026-11-19-wb-network-events-demo/
 tools:
   - name: chrome-use
@@ -26,8 +26,11 @@ steps:
     observed: >-
       nine requests on the approved hosts, among them three card lists against
       /__internal/u-card/cards/v4/list and another catalog search. The analytics host
-      search-goods.wildberries.ru answered the query as a JSON array
-    evidence: [next-page-003, next-page-005, next-page-007]
+      search-goods.wildberries.ru answered the query as a JSON array. Four of the
+      requests are POSTs to the antibot endpoint, and each of them carries a body of
+      1.1 to 1.7 KB of JSON whose top level is a single encoded string, not an
+      object of named fields
+    evidence: [next-page-003, next-page-005, next-page-007, next-page-001]
 
 api_candidates:
   - id: storefront-catalog-search
