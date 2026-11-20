@@ -148,6 +148,8 @@ reported, dressed up as a fix.
   the old release with the worker off. The old crawler writes the cashback in the old unit
   into a column that now holds a percentage, and the row is wrong by a factor of a hundred;
   the conversion cannot fix it afterwards without reading every row written in the meantime.
+  From `V19` on the database refuses those rows itself, so the rule is enforced and not
+  remembered (see `2026-11-19-the-writer-declares-the-unit-it-writes.md`).
 - **Never** cut the API over on a count that stopped growing, and **always** check the
   coverage of the targets instead: every active target must have been read by the new
   crawler, successfully, since it was started. A crawler that has stopped leaves the count

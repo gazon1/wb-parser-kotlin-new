@@ -174,6 +174,10 @@ docker exec "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -v "catalog_password=$CATALO
 
 echo "→ filling the table with $ROWS observations"
 docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d wbparser >/dev/null <<SQL
+-- The table holds the cashback as a percentage, and the database refuses a write that
+-- does not declare the unit it writes in (V19).
+SET crawler.cashback_unit = 'percent';
+
 INSERT INTO crawl_targets (id, name, start_url, max_depth, is_active, root_category_name, created_at, updated_at)
 VALUES ('11111111-1111-1111-1111-111111111111', 'Нагрузка', 'https://example.invalid/c', 1, true, 'Нагрузка', now(), now());
 

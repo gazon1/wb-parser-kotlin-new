@@ -673,7 +673,9 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Never** read `price.cashback` as an amount of money. It is a percentage. (Unchanged from the superseded ADR.) _(from `2026-11-19-the-review-points-are-what-the-crawler-collects`)
 - **Never** rename an index that is not valid. A `CREATE INDEX CONCURRENTLY` that failed leaves one behind, and `CREATE INDEX IF NOT EXISTS` sees only the name: without a check the migration would drop the index that works and rename the one the planner ignores. `V18` refuses to run on such an index. _(from `2026-11-19-the-review-points-are-what-the-crawler-collects`)
 - **Never** send `fcashback=1` with a catalog request. It selects a product set without review points. _(from `2026-11-19-the-review-points-are-what-the-crawler-collects`)
-- **Never** start the old crawler after `V17` is applied, and **always** start a restart of the old release with the worker off. The old crawler writes the cashback in the old unit into a column that now holds a percentage, and the row is wrong by a factor of a hundred; the conversion cannot fix it afterwards without reading every row written in the meantime. _(from `2026-11-19-the-review-points-are-what-the-crawler-collects`)
+- **Never** start the old crawler after `V17` is applied, and **always** start a restart of the old release with the worker off. The old crawler writes the cashback in the old unit into a column that now holds a percentage, and the row is wrong by a factor of a hundred; the conversion cannot fix it afterwards without reading every row written in the meantime. From `V19` on the database refuses those rows itself, so the rule is enforced and not remembered (see `2026-11-19-the-writer-declares-the-unit-it-writes.md`). _(from `2026-11-19-the-review-points-are-what-the-crawler-collects`)
+- **Always** declare the unit in the session the write happens in — `SET LOCAL` inside the write transaction, so the declaration cannot outlive it. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)
+- **Never** write into `scraped_items` without declaring the unit the write is in. A write path that does not declare it is refused by the database, at the first row. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)
 
 ## Per-tag
 
@@ -892,12 +894,16 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 - *(Historical, superseded.)* With `fcashback=1` in the request, the crawl of a category yielded the cashback-carrying products of that category only (tens, not hundreds per category) — the catalog shrank because the catalog *is* the answer to "which of these products carry a cashback". The crawler now asks for review points instead; the catalog it sees is the review-points catalog. _(from `2026-11-19-the-cashback-is-a-percentage-and-wb-sends-it-only-when-asked`)_
 - A crawl of a category now yields the review-point-carrying products of that category only (tens, not hundreds per category) — the catalog shrank because the catalog *is* the answer to "which of these products pay for a review". _(from `2026-11-19-the-review-points-are-what-the-crawler-collects`)_
+- After `V19` there is no rollback of the *writer*: the old release cannot be started with its worker on, because the database refuses its rows. A rollback can still give back the old *reader* — the old release with the worker off and Flyway off, serving a catalog it does not fill. The rollback drill (`scripts/rollback-drill.sh`) therefore rehearses the reader, and its seed declares the unit the way the writer does. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
 - Observations that do carry a cashback are converted by the migration `V17__scraped_items_cashback_is_a_percentage.sql`. The old writer took the percentage for kopecks, so the stored amount is the percentage divided by a hundred (`0.03` rubles for a 3 % cashback) and the stored percentage is a number that depended on the price rather than on the cashback. The migration restores the percentage by multiplying the stored amount by a hundred, and derives the money amount from the price that was paid. A column whose meaning changed cannot keep its old rows — they would be read as a wrong answer, not as a missing one. _(from `2026-11-19-the-cashback-is-a-percentage-and-wb-sends-it-only-when-asked`)_
 - Products crawled before this change keep their stored `cashback_percent = NULL`; they are re-crawled, not migrated. _(from `2026-11-19-the-cashback-is-a-percentage-and-wb-sends-it-only-when-asked`)_
 - Products crawled before this change keep their stored `feedback_points = NULL`; they are re-crawled, not migrated. _(from `2026-11-19-the-review-points-are-what-the-crawler-collects`)_
 - The catalog's cashback-based sort and its `minCashback` filter have nothing to sort by any more: no crawled product carries a wallet cashback, because the request does not ask for one. They keep working — they just report empty and order by recency. The top-deals list is the other way round: it answers about the cashback observations the table holds, so it is empty only while no observation pays a cashback. Sorting the catalog by review points is a separate decision, and this one does not make it. _(from `2026-11-19-the-review-points-are-what-the-crawler-collects`)_
+- The declaration is not a proof: a writer that declares the unit and then writes the other one is not caught. That is a bug in the writer, not a mismatch of releases. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
+- The old crawler cannot write after `V19` is applied: its writes are refused, loudly, at the first row. The rule "the old crawler does not run after `V17`" is now enforced by the database instead of by the operator's memory, and a restart of the old release with the worker on fails instead of corrupting the catalog. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
 - The session cookies travel with `credentials: 'include'`; the browser context's cookie jar is no longer read by the downloader. _(from `2026-11-19-the-catalog-fetch-sends-the-url-and-the-headers`)_
 - WB больше не отдаёт кэшбэк в этом ответе (`price.cashback = 0`), поэтому `cashback_percent` останется пустым, пока не появится другой источник. Это не регрессия: в старых данных кэшбэк тоже был пустым. _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)_
+- `V19` is applied in the same phase as `V17` and `V18`, while no writer runs (`docs/operations/catalog-index-rollout.md`): the one-shot instance applies them one after another, so there is no window in which the old writer can write into the converted column. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
 - В логах появляются «профиль отдывает» и «цепи ждёт окна» — это ожидаемое поведение, а не сбой. _(from `2026-10-20-antibot-profile-rotation-and-backoff`)_
 - Данные в базе, собранные старым эндпоинтом, — популярная ротация под чужими названиями. Их нужно пересобрать (в debug-окружении база пересобрана с нуля). _(from `2026-10-20-wb-catalog-api-endpoint-and-token`)_
 - Конфиг `browser-jitter-min-ms`/`browser-jitter-max-ms` описывает jitter **pacer'а**, а не браузера. _(from `2026-10-20-the-request-rate-has-one-owner`)_
@@ -935,18 +941,22 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `database`
 
 - A job with no heartbeat and no start time falls back to its creation time — the third branch — so a row that was never touched still ages out. _(from `2026-10-20-job-timestamps-carry-an-offset`)_
+- After `V19` there is no rollback of the *writer*: the old release cannot be started with its worker on, because the database refuses its rows. A rollback can still give back the old *reader* — the old release with the worker off and Flyway off, serving a catalog it does not fill. The rollback drill (`scripts/rollback-drill.sh`) therefore rehearses the reader, and its seed declares the unit the way the writer does. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
 - Deleting a target through the admin API deletes its scraped items and category mappings too. _(from `2026-10-19-admin-api-target-write-path-and-category-tree`)_
 - Jobs left `Running` by a crash are now reported as `Crashed` with an explanatory `error_message`, instead of looking like a running crawl. _(from `2026-10-19-crawl-job-heartbeat-and-crash-reconciliation`)_
+- The declaration is not a proof: a writer that declares the unit and then writes the other one is not caught. That is a bug in the writer, not a mismatch of releases. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
 - The executed-test floor in `config/gates/test-runs-floor.txt` is raised to 44 in the same commit. Verified by control: removing `TargetQueriesPostgresTest` leaves Gradle reporting `BUILD SUCCESSFUL` while the floor gate exits 1 with "ran 31 tests, floor is 44". _(from `2026-10-08-discover-test-migrations`)_
 - The gate compares columns — names, types, nullability. It does not compare defaults, indexes or constraints: the unique index on `(target_id, content_hash)` and the `now()` defaults are described in the migrations and read by the code, and a comparison of them would be a second specification to maintain. _(from `2026-10-19-schema-drift-gate`)_
 - The gate needs Docker, like the rest of the integration suites, and is skipped by `SKIP_DB=1 ./check.sh` — which is reported explicitly, never silently. _(from `2026-10-19-application-startup-gate`)_
 - The item path writes one statement per item, and the category path one per distinct category. A future change that batches these needs the empty-row behaviour of `addBatch()` handled explicitly — and a test that would fail if it were not. _(from `2026-10-19-exposed-single-row-writes-and-unmasked-db-errors`)_
+- The old crawler cannot write after `V19` is applied: its writes are refused, loudly, at the first row. The rule "the old crawler does not run after `V17`" is now enforced by the database instead of by the operator's memory, and a restart of the old release with the worker on fails instead of corrupting the catalog. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
 - The reconciliation runs on every boot. It touches only rows that have been quiet for more than five minutes, so a normal startup changes nothing. _(from `2026-10-19-crawl-job-heartbeat-and-crash-reconciliation`)_
 - The reconciliation stays a single statement over all stale rows, and its result does not depend on the time zone of the machine that runs it. _(from `2026-10-20-job-timestamps-carry-an-offset`)_
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role are removed only after the rollback window has closed and a rollback drill has been run — not before. _(from `2026-10-19-catalog-read-api-contract`)_
 - Verified by drift probe: a simulated `V3` renaming `price_kopecks` fails 5 of 5 write-path tests and leaves `TargetQueries` green. Under the old list it would have failed none. _(from `2026-10-08-discover-test-migrations`)_
 - `EXPOSED_SQL_LOG_LEVEL=DEBUG` re-enables the per-statement log for a debugging session. The crawl's log volume grows by two orders of magnitude while it is on. _(from `2026-10-19-exposed-single-row-writes-and-unmasked-db-errors`)_
 - `TargetQueriesPostgresTest` and `SavedItemsPersistencePostgresTest` share `PostgresFixture`, and both call `db.clear()` from `beforeTest`. The SQLite suites already did; the Postgres ones did not, so their results depended on declaration order. _(from `2026-10-08-discover-test-migrations`)_
+- `V19` is applied in the same phase as `V17` and `V18`, while no writer runs (`docs/operations/catalog-index-rollout.md`): the one-shot instance applies them one after another, so there is no window in which the old writer can write into the converted column. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
 - `catalog_mappings.catalog_name` and `node_name` stay null until WB gives the crawler a source for category names. Filling them with a guess would be worse than leaving them empty. _(from `2026-10-19-admin-api-target-write-path-and-category-tree`)_
 - `crawl_jobs.last_heartbeat_at` is now meaningful; queries that assumed it was always null should be revisited. _(from `2026-10-19-crawl-job-heartbeat-and-crash-reconciliation`)_
 - `latest_product_observations` отдаёт по строке на товар; историю цен по-прежнему видно в `scraped_items`. _(from `2026-10-20-versioned-catalog-and-latest-observation-view`)_
@@ -1041,6 +1051,13 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `lint`
 
 - The nightly run costs a full pipeline every day. It is the price of knowing that the repository is still healthy when nobody touches it. _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
+
+### `migration`
+
+- After `V19` there is no rollback of the *writer*: the old release cannot be started with its worker on, because the database refuses its rows. A rollback can still give back the old *reader* — the old release with the worker off and Flyway off, serving a catalog it does not fill. The rollback drill (`scripts/rollback-drill.sh`) therefore rehearses the reader, and its seed declares the unit the way the writer does. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
+- The declaration is not a proof: a writer that declares the unit and then writes the other one is not caught. That is a bug in the writer, not a mismatch of releases. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
+- The old crawler cannot write after `V19` is applied: its writes are refused, loudly, at the first row. The rule "the old crawler does not run after `V17`" is now enforced by the database instead of by the operator's memory, and a restart of the old release with the worker on fails instead of corrupting the catalog. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
+- `V19` is applied in the same phase as `V17` and `V18`, while no writer runs (`docs/operations/catalog-index-rollout.md`): the one-shot instance applies them one after another, so there is no window in which the old writer can write into the converted column. _(from `2026-11-19-the-writer-declares-the-unit-it-writes`)_
 
 ### `migrations`
 
@@ -1406,6 +1423,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-19-the-current-observation-is-decided-at-a-named-grain` — api  data-model
 - `2026-11-19-the-research-format-is-a-file-in-the-repository` — research  tooling
 - `2026-11-19-the-review-points-are-what-the-crawler-collects` — api  crawler  data-model
+- `2026-11-19-the-writer-declares-the-unit-it-writes` — database  crawler  migration
 
 ## Active entries
 
@@ -1543,3 +1561,4 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - `2026-11-19-the-current-observation-is-decided-at-a-named-grain` — the current observation is decided at a grain the read names
 - `2026-11-19-the-research-format-is-a-file-in-the-repository` — A Wildberries investigation is a file in the repository, not a chat message
 - `2026-11-19-the-review-points-are-what-the-crawler-collects` — the review points are what the crawler collects, and WB sends them only when asked
+- `2026-11-19-the-writer-declares-the-unit-it-writes` — the writer declares the unit it writes, and the database refuses a write that does not

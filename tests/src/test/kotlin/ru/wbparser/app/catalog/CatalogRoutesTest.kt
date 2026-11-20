@@ -26,6 +26,7 @@ import ru.wbparser.app.WbParser
 import ru.wbparser.app.api.catalog.CatalogCache
 import ru.wbparser.app.api.catalog.CatalogReadiness
 import ru.wbparser.app.config.CatalogDataSource
+import java.sql.Connection
 import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
@@ -133,6 +134,30 @@ class CatalogRoutesTest {
     private lateinit var target: UUID
     private lateinit var item: UUID
 
+    /**
+     * A write, the way a writer writes it.
+     *
+     * The database refuses a row whose writer did not declare the unit it writes in
+     * (`V19__the_writer_declares_the_unit_it_writes.sql`), and a test that writes rows
+     * is such a writer: it declares the unit in the transaction it writes in, the same
+     * way the crawler does.
+     */
+    private fun <T> write(block: (Connection) -> T): T =
+        dataSource.connection.use { connection ->
+            connection.autoCommit = false
+            try {
+                connection.createStatement().use {
+                    it.execute("SET LOCAL crawler.cashback_unit = 'percent'")
+                }
+                val written = block(connection)
+                connection.commit()
+                written
+            } catch (failure: Throwable) {
+                connection.rollback()
+                throw failure
+            }
+        }
+
     @BeforeEach
     fun seed() {
         provisionTheCatalogRoleOnce()
@@ -156,7 +181,7 @@ class CatalogRoutesTest {
                 }
         }
         item =
-            dataSource.connection.use { connection ->
+            write { connection ->
                 connection
                     .prepareStatement(
                         """
@@ -296,7 +321,7 @@ class CatalogRoutesTest {
         // The finding of the review: the detail endpoint read the observation table
         // directly, so it served a product that the list leaves out.
         val withoutPoints =
-            dataSource.connection.use { connection ->
+            write { connection ->
                 connection
                     .prepareStatement(
                         """
@@ -324,7 +349,7 @@ class CatalogRoutesTest {
         // given, so an older observation that paid points was served after the product
         // had left the catalog.
         val older =
-            dataSource.connection.use { connection ->
+            write { connection ->
                 connection
                     .prepareStatement(
                         """
@@ -340,7 +365,7 @@ class CatalogRoutesTest {
                         id
                     }
             }
-        dataSource.connection.use { connection ->
+        write { connection ->
             connection
                 .prepareStatement(
                     """
@@ -515,7 +540,7 @@ class CatalogRoutesTest {
      * ответа: это две разные оси, и только фиксированный момент это показывает.
      */
     private fun seedAtAFixedMoment() {
-        dataSource.connection.use { connection ->
+        write { connection ->
             connection.createStatement().use { it.execute("TRUNCATE scraped_items") }
             connection
                 .prepareStatement(

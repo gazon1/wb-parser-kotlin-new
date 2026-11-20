@@ -35,6 +35,13 @@ private val log = LoggerFactory.getLogger("ru.wbparser.infra.db.repositories.Sav
  * rollback itself fails, that failure is attached to the original as suppressed and logged,
  * because the original is the failure the save-stage retry loop has to act on.
  *
+ * ## The unit is declared
+ *
+ * `scraped_items` holds the cashback as a percentage, and the database refuses a write
+ * that does not declare the unit it writes in. The declaration is a line of this write
+ * path, so the release that writes the old unit — which has no such line — cannot write
+ * at all. See `V19__the_writer_declares_the_unit_it_writes.sql`.
+ *
  * ## Exposed DSL
  *
  * Uses [BatchUpsertStatement] — no raw SQL string. The conflict target is expressed as
@@ -53,6 +60,11 @@ fun DataSource.upsertSavedItems(
     exposedOnce()
 
     transaction(Connection.TRANSACTION_SERIALIZABLE) {
+        // The unit this writer writes in, declared to the database. `scraped_items`
+        // holds the cashback as a percentage, and the database refuses a write that
+        // does not say so — so a writer that writes the old unit cannot write at all.
+        // See `V19__the_writer_declares_the_unit_it_writes.sql`.
+        TransactionManager.current().exec("SET LOCAL crawler.cashback_unit = 'percent'")
         for (item in items) {
             upsertOneItem(item, targetUuid, subjectNames)
         }

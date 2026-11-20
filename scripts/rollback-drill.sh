@@ -216,6 +216,10 @@ docker exec "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -v "catalog_password=$CATALO
 # pass against a database that holds nothing — which is exactly the database a
 # rollback must not be trusted with.
 docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d wbparser >/dev/null <<SQL
+-- From migration V19 on, the database refuses a row whose writer did not declare
+-- the unit it writes. The drill writes the percent, so it declares it.
+SET crawler.cashback_unit = 'percent';
+
 INSERT INTO crawl_targets (id, name, start_url, max_depth, is_active, root_category_name)
 VALUES ('11111111-1111-1111-1111-111111111111', 'Откат', 'https://example.invalid/c', 1, true, 'Откат');
 

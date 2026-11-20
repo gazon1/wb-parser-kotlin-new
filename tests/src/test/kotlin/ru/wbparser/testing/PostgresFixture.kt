@@ -115,12 +115,29 @@ object Migrations {
 class PostgresFixture {
     lateinit var ds: DataSource
 
-    fun start(container: PostgreSQLContainer<*>) {
+    /**
+     * Start the database.
+     *
+     * [declaresTheUnit] says whether the fixture's connections declare the unit they
+     * write in. It is on by default — the fixture writes the way the writer writes. A
+     * suite that needs the session of a writer that knows nothing about the declaration
+     * turns it off.
+     */
+    fun start(
+        container: PostgreSQLContainer<*>,
+        declaresTheUnit: Boolean = true,
+    ) {
         ds =
             PGSimpleDataSource().apply {
                 setUrl(container.jdbcUrl)
                 user = container.username
                 password = container.password
+                // The fixture writes the way the writer writes: it declares the unit it
+                // writes in, because the database refuses a write that does not
+                // (`V19__the_writer_declares_the_unit_it_writes.sql`).
+                if (declaresTheUnit) {
+                    setOptions("-c crawler.cashback_unit=percent")
+                }
             }
         applyMigrations(ds)
     }

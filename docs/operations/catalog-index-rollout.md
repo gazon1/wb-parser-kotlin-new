@@ -150,7 +150,9 @@ writer, and it keeps running the release it is running.
 > unit is the wrong one: the rows it writes would be read as percentages of a percentage.
 > The old crawler is therefore stopped for good in phase 3, and a restart of the old
 > release in any phase starts it with the worker off — an operator who starts it with the
-> worker on writes the old unit into a converted column.
+> worker on writes the old unit into a converted column. From phase 3 on the database
+> refuses those rows (`V19`), so the mistake is a failed crawl and not a corrupted
+> catalog — but a failed crawl is still a failed crawl.
 
 #### Phase 2 — build the index concurrently, and prove that it is valid
 
@@ -175,13 +177,13 @@ DROP INDEX CONCURRENTLY ix_scraped_items_product_latest_covering_v2;
 This is a prerequisite, not a suggestion: `V18` refuses to run on an index that is not
 valid — it raises, the deployment fails, and the index that works stays in place.
 
-#### Phase 3 — apply V17 and V18, then let the new writer run
+#### Phase 3 — apply V17, V18 and V19, then let the new writer run
 
 1. **Stop the crawler.** The conversion reads every row and rewrites it. A writer that
    keeps writing the old unit during the conversion leaves rows that were never
    converted, and a writer that writes the new unit during it leaves rows the
    conversion reads the wrong way round.
-2. **Apply V17 and V18** — the same one-shot instance as in phase 1, this time without
+2. **Apply V17, V18 and V19** — the same one-shot instance as in phase 1, this time without
    `SPRING_FLYWAY_TARGET`:
 
    ```bash
@@ -190,7 +192,8 @@ valid — it raises, the deployment fails, and the index that works stays in pla
    ```
 
    V17 converts the rows; V18 finds the index built in phase 2, drops the old one and
-   renames the new one to the name the queries and the docs use.
+   renames the new one to the name the queries and the docs use; V19 makes the database
+   refuse a write that does not declare the unit it writes in.
 3. **Start the new crawler** — the new release with the writer on. Every row it writes
    is in the new unit, and the conversion has already run.
 
@@ -210,6 +213,23 @@ restarted in this phase, it is restarted with the worker off:
 CRAWLER_WORKER_ENABLED=false SPRING_FLYWAY_ENABLED=false \
   java -jar app/build/libs/app.jar
 ```
+
+After `V19` that rule is enforced rather than remembered: the old release does not
+declare the unit it writes in, so the database refuses its rows —
+
+```text
+ERROR:  scraped_items holds the cashback as a percentage: the writer must declare the unit
+        it writes with SET LOCAL crawler.cashback_unit = 'percent'
+```
+
+— and the crawl fails at the first row instead of filling the catalog with cashbacks
+that are wrong by a factor of a hundred. The environment variable above is still the
+right thing to set: a writer that is refused is a failed crawl, not a harmless one.
+
+After `V19` the rollback of the *writer* is not available any more — the old release
+cannot be started with its worker on. What a rollback can still give back is the old
+*reader*: the old release with the worker off and Flyway off, serving a catalog it does
+not fill.
 
 Between the first and the third phase the old index is still the one in use. It does not
 carry `feedback_points`, so the read model visits the heap for every observation — the

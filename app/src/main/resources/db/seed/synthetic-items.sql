@@ -30,6 +30,13 @@
 --      sale price is always strictly below the price.
 -- ==============================================================================
 
+-- The seed writes into `scraped_items` the way the crawler does: it declares the unit
+-- it writes in, because the database refuses a write that does not
+-- (`V19__the_writer_declares_the_unit_it_writes.sql`). The declaration is a session
+-- setting, so it is one `SET` for the whole file.
+
+SET crawler.cashback_unit = 'percent';
+
 -- ── Targets ──────────────────────────────────────────────────────────────────
 -- The fourth target is deliberately empty: it is the "configured but nothing crawled
 -- yet" state, and it is the one the storefront's category list has to survive.
