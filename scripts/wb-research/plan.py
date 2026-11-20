@@ -31,6 +31,7 @@ import re
 import shlex
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import yaml
@@ -288,10 +289,14 @@ def config_snapshot(investigation: str) -> Path:
     The run hands the capture this file instead: every step of the run works
     under the config the approval covered, whatever the shared file says
     afterwards.
+
+    The file is the run's own: two runs of the same investigation do not share
+    it, so one run cannot overwrite the config of another one. The run removes
+    it when it is done.
     """
     directory = RAW_ROOT / safe_investigation(investigation)
     directory.mkdir(parents=True, exist_ok=True)
-    path = directory / "approved-config.json"
+    path = directory / f"approved-config-{uuid.uuid4().hex}.json"
     if not CONFIG_PATH.is_file():
         raise SystemExit(f"no capture config at {CONFIG_PATH}")
     path.write_text(CONFIG_PATH.read_text(encoding="utf-8"), encoding="utf-8")
@@ -412,43 +417,47 @@ def run(investigation: str) -> int:
     if not approved:
         raise SystemExit("the plan was not approved — approve it: plan.py approve --investigation <id>")
     snapshot = config_snapshot(investigation)
-    config = config_scope(snapshot)
-    if approved != scope_of(steps, config):
-        raise SystemExit(
-            "the scope of the plan is not the scope that was approved — the operator has to approve it again"
-        )
+    try:
+        config = config_scope(snapshot)
+        if approved != scope_of(steps, config):
+            raise SystemExit(
+                "the scope of the plan is not the scope that was approved — the operator has to approve it again"
+            )
 
-    plan["status"] = RUNNING
-    save_plan(path, plan)
-
-    stopped = False
-    for step in steps:
-        state = step.get("state", PLANNED)
-        if state == DONE:
-            continue
-        if state != PLANNED:
-            # A step that failed or that needs a human is where the run
-            # stopped. It stays until a human says it may go on.
-            print(f"{step['name']}: {state} — {step.get('note', '')}")
-            stopped = True
-            break
-        new_state, output = run_step(investigation, step, snapshot)
-        step["state"] = new_state
-        step["note"] = note_of(investigation, step["name"], new_state)
-        # The scope the state was made under: a later approval compares it with
-        # the scope of the step and plans the step again when they differ.
-        step["scope"] = step_scope(step, config)
+        plan["status"] = RUNNING
         save_plan(path, plan)
-        if output:
-            print(output)
-        if new_state != DONE:
-            stopped = True
-            break
 
-    print("the state of the plan:")
-    for step in steps:
-        print(f"  {step['name']}: {step.get('state', PLANNED)}")
-    return EXIT_FAILED if stopped else EXIT_OK
+        stopped = False
+        for step in steps:
+            state = step.get("state", PLANNED)
+            if state == DONE:
+                continue
+            if state != PLANNED:
+                # A step that failed or that needs a human is where the run
+                # stopped. It stays until a human says it may go on.
+                print(f"{step['name']}: {state} — {step.get('note', '')}")
+                stopped = True
+                break
+            new_state, output = run_step(investigation, step, snapshot)
+            step["state"] = new_state
+            step["note"] = note_of(investigation, step["name"], new_state)
+            # The scope the state was made under: a later approval compares it
+            # with the scope of the step and plans the step again when they differ.
+            step["scope"] = step_scope(step, config)
+            save_plan(path, plan)
+            if output:
+                print(output)
+            if new_state != DONE:
+                stopped = True
+                break
+
+        print("the state of the plan:")
+        for step in steps:
+            print(f"  {step['name']}: {step.get('state', PLANNED)}")
+        return EXIT_FAILED if stopped else EXIT_OK
+    finally:
+        # The frozen config is the run's own and it is gone when the run is.
+        snapshot.unlink(missing_ok=True)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -92,7 +92,8 @@ steps that come after it — under an approval that was given for the old one.
 The runner therefore copies the config into the raw cache at the start of the
 run, compares the scope of the approval with the scope of that copy, and hands
 the copy to every step. The scope that is checked and the scope that is run
-are the same file.
+are the same file. The copy is the run's own — a fixed name would let one run
+overwrite the config of another one — and the run removes it when it is done.
 
 The wait of a step belongs to the scope of the step. It is part of what the
 step observes — a step that stops listening earlier may miss the request that
@@ -150,7 +151,8 @@ every other run.
 - **Always** run under the config the approval covered: the runner freezes the
   config at the start of the run, checks the approval against that copy and
   hands the copy to every step, so a config that is widened mid-run reaches no
-  step of that run.
+  step of that run. The copy is the run's own — a shared name would let one run
+  overwrite the config of another one.
 - **Always** approve the wait of a step with the step: `settle` is part of the
   scope, it comes from the plan, and the runner has no override for it — a
   shorter wait is a different observation, not the same one faster.

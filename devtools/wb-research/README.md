@@ -876,7 +876,9 @@ The run freezes the config it runs under: it copies `capture-config.json` into
 the raw cache and hands that copy to every step of the run, and the scope of
 the approval is compared with the scope of the copy — not with the scope of the
 shared file, which may change while the run is going. A config that is widened
-mid-run therefore reaches no step of that run.
+mid-run therefore reaches no step of that run. The copy is the run's own — two
+runs of one investigation do not share it — and the run removes it when it is
+done.
 
 `settle` — how long a step waits for the answers — is part of the scope as
 well, and it is read from the plan alone: the run cannot shorten it. A step

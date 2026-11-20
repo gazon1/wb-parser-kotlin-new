@@ -443,6 +443,7 @@ def test_the_config_is_frozen_for_the_run(investigation, tmp_path, monkeypatch):
 
     name = investigation([step("initial-load"), step("next-page")])
     approved = plan.config_scope()
+    frozen: list[dict] = []
 
     def run_step(investigation, step, config_path):
         # Somebody widens the shared config while the first step is running.
@@ -456,6 +457,7 @@ def test_the_config_is_frozen_for_the_run(investigation, tmp_path, monkeypatch):
             ),
             encoding="utf-8",
         )
+        frozen.append(json.loads(Path(config_path).read_text(encoding="utf-8")))
         return plan.DONE, "recorded"
 
     monkeypatch.setattr(plan, "run_step", run_step)
@@ -466,10 +468,41 @@ def test_the_config_is_frozen_for_the_run(investigation, tmp_path, monkeypatch):
     for step_written in written["steps"]:
         assert step_written["scope"] == plan.step_scope(step_written, approved)
 
-    snapshot = tmp_path / "raw" / name / "approved-config.json"
-    frozen = json.loads(snapshot.read_text(encoding="utf-8"))
-    assert frozen["allowedOrigins"] == ["www.wildberries.ru"]
+    # Every step worked under the config as it was approved.
+    assert frozen and all(entry["allowedOrigins"] == ["www.wildberries.ru"] for entry in frozen)
     assert "evil.example" in config.read_text(encoding="utf-8")
+
+
+def test_every_run_has_its_own_frozen_config(investigation, tmp_path, monkeypatch):
+    """Two runs of one investigation do not share the config they run under."""
+    config = tmp_path / "capture-config.json"
+    config.write_text(
+        json.dumps({"allowedOrigins": ["www.wildberries.ru"], "allowedPages": [], "allowedQueryParams": []}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plan, "CONFIG_PATH", config)
+
+    first = plan.config_snapshot("2026-11-20-wb-catalog-agent")
+    second = plan.config_snapshot("2026-11-20-wb-catalog-agent")
+
+    assert first != second
+    assert first.read_text(encoding="utf-8") == second.read_text(encoding="utf-8")
+
+
+def test_the_frozen_config_is_gone_when_the_run_is(investigation, tmp_path, monkeypatch):
+    """The run leaves no copy of the config behind."""
+    name = investigation([step("initial-load")])
+    seen: list[str] = []
+
+    def run_step(investigation, step, config_path):
+        seen.append(str(config_path))
+        return plan.DONE, "recorded"
+
+    monkeypatch.setattr(plan, "run_step", run_step)
+
+    assert plan.run(name) == plan.EXIT_OK
+
+    assert seen and not Path(seen[0]).exists()
 
 
 def test_a_changed_config_plans_the_steps_again(investigation, tmp_path, monkeypatch):
