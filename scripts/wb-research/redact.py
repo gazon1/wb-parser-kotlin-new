@@ -112,6 +112,19 @@ SENSITIVE_QUERY_PARAMS = {
     "account",
     "accountid",
     "account_id",
+    # The person the request is about. A name, a first name, a last name, a
+    # user name, an address: the value is personal data whatever it looks
+    # like, and a single word is as personal as a phrase.
+    #
+    # The parameter `name` is not among them: it carries the name the
+    # operator chose for a capture, and that name is evidence — a dotted name
+    # says which capture it is. A phrase under it is still replaced, because
+    # a phrase is free text whatever the parameter is called.
+    "address",
+    "first_name",
+    "full_name",
+    "last_name",
+    "username",
 }
 
 # A name that ends the way a credential name ends. The list above cannot hold
@@ -769,7 +782,13 @@ def redact_query_value(name: str, value: str) -> str:
     uses, so that a new spelling of a name does not open a new hole.
 
     A name that carries free text is redacted as well: what somebody typed is
-    the search history of the session, and it can be a person's name.
+    the search history of the session, and it can be a person's name. A name
+    that names a person is redacted for the same reason: the value of
+    `username` or `first_name` is personal data whatever it looks like.
+
+    A value that carries a space is a phrase — what somebody typed, a person's
+    name — and a value the service chose is one word. So a phrase is replaced
+    even when the name of the parameter says nothing about it.
 
     A run of digits is replaced when it is longer than the runs the site asks
     with (`VALUE_DIGIT_RUN`): the account the request was made from is such a
@@ -798,6 +817,11 @@ def redact_query_value(name: str, value: str) -> str:
     decoded = decode_layers(value)
     if URL_VALUE.match(decoded):
         return redact_url(decoded)
+    if any(character.isspace() for character in decoded):
+        # A value that carries a space is a phrase: what somebody typed — a
+        # person's name, a sentence. A value the service chose is one word,
+        # and the phrase is not evidence.
+        return placeholder("query-param")
     redacted = redact_generic_value(decoded)
     return redacted if redacted != decoded else value
 
@@ -910,6 +934,10 @@ def redact_path(path: str) -> str:
     spelling it came with: a change in one place must not change the spelling
     of another. `%2F` is not a separator to a browser, so a path that says
     `a/b` where the capture said `a%2Fb` says another endpoint.
+
+    A segment that carries a space is a phrase, not a name the service chose:
+    it is free text — a person's name — and it is replaced like the key of a
+    JSON answer and the name of a query parameter are.
     """
     if not path:
         return path
@@ -917,6 +945,14 @@ def redact_path(path: str) -> str:
     previous = ""
     for segment in path.split("/"):
         decoded = decode_layers(segment)
+        if any(character.isspace() for character in decoded):
+            # A segment that carries a space is a phrase, not a name the
+            # service chose: it is free text — a person's name — and it is
+            # not evidence. The rule is the one a key of a JSON answer and
+            # the name of a query parameter go through.
+            kept.append(quote(placeholder("phrase"), safe=PATH_SEGMENT_SAFE, errors="replace"))
+            previous = decoded
+            continue
         if previous.lower() in ACCOUNT_PATH_COMPONENTS and is_account_id(decoded):
             # The segment after a segment that names an account is an account id,
             # and an account id is not always nine digits long.

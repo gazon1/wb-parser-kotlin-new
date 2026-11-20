@@ -168,6 +168,19 @@ was never answered is evidence of something different.
   is an id: a number written with a separator between its parts
   (`123456789-01`) is an account id in the shape the site writes ids in, and a
   name the service chose always carries a word.
+- **Never** let a frame the browser names badly pass unnoticed: a frame entry
+  that is malformed, or that names no URL, means the browser cannot say which
+  frames the page has — and a check that judges half of the frames judges
+  nothing. The list is refused, not shortened, and the step fails.
+- **Never** keep a value that carries a space: a phrase is free text — a
+  person's name — and a value the service chose is one word. It is the rule a
+  key of a JSON answer and the name of a query parameter go through, and it
+  holds for a query value and for a path segment alike.
+- **Never** keep the value of a parameter that names a person: `username`,
+  `full_name`, `first_name`, `last_name`, `address`. The value is personal data
+  whatever it looks like, and a single word is as personal as a phrase. The
+  parameter `name` is not among them: it carries the name the operator chose
+  for a capture, and that name is evidence.
 - **Never** keep the value of a free-text query parameter (`query`, `search`,
   `text`, and the short spellings of the same thing — `q`, `term`, `keyword`,
   `keywords`, `phrase`): what somebody typed is the search history of the

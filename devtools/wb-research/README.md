@@ -300,6 +300,9 @@ approved host is a request of the site itself, and an approved host answers a
 GET that adds to the cart as well — so such a frame is held to the same measure
 as any other navigation, the page and the query, and a frame the config does
 not approve fails the step.
+A browser that names one of the frames badly — an entry that is not a frame at
+all, or a frame without a URL — has not named the frames of the page, and the
+step fails: a list that is half a list is a list the check cannot judge.
 An approval is of an origin and not of a host: the same host on another port is
 another service, and a navigation is judged by that same measure the API
 traffic is judged by — so an origin the config names in full
@@ -592,6 +595,16 @@ The rules the redactor applies:
   session, and it can be a person's name. The query an investigation asked is
   written in `investigation.yaml`, on purpose, by the developer; the machine
   fixture carries the names of the parameters only;
+- a query parameter that names a **person** — `username`, `full_name`,
+  `first_name`, `last_name`, `address` — loses its value as well: the value is
+  personal data whatever it looks like, and a single word is as personal as a
+  phrase. The parameter `name` is not among them: it carries the name the
+  operator chose for a capture, and that name is evidence;
+- a **value that carries a space** is a phrase — what somebody typed, a person's
+  name — and a value the service chose is one word. So a phrase is replaced even
+  when the name of the parameter says nothing about it, and a path segment is
+  judged the same way: `/users/Ivan%20Petrov` is a phrase, and the segment the
+  service chose is one word (`list.aspx`);
 - a run of digits in a value whose name says nothing about it — the value of a
   query parameter, the value of an allowlisted header — is replaced when it is
   **longer than the runs the site asks with**: the account the request was made
@@ -726,8 +739,9 @@ The rules the redactor applies:
   A count is a count: whole and not below zero, and a negative count or one
   with a fraction in it is a malformed capture, not evidence;
 - placeholders are stable (`<redacted:deviceid>`, `<redacted:opaque>`,
-  `<redacted:error>`, `<redacted:account-id>`, `<redacted:id>`), so a diff shows
-  what changed, not that something was removed;
+  `<redacted:error>`, `<redacted:account-id>`, `<redacted:id>`,
+  `<redacted:phrase>`), so a diff shows what changed, not that something was
+  removed;
 - a URL the parser cannot read — an unclosed IPv6 bracket — is replaced whole
   (`<redacted:url>`): where the user information ends and the path begins is
   unknown there, and a URL that cannot be judged must not be guessed at. The

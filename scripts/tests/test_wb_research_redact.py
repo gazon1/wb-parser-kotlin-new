@@ -2009,3 +2009,40 @@ def test_the_fields_of_a_form_body_are_kept_and_its_values_are_not():
 
     assert body["formFields"] == ["search"]
     assert "колонки" not in json.dumps(body, ensure_ascii=False)
+
+
+def test_a_query_value_that_carries_a_space_is_a_phrase():
+    # The finding of the review: a value that is a person's name reached the
+    # committed file whenever the name of the parameter did not say so — a
+    # phrase is free text, and the rule the key of a JSON answer and the name
+    # of a query parameter go through is the rule of a phrase.
+    assert redact.redact_query_value("username", "Ivan Petrov") == "<redacted:query-param>"
+    assert redact.redact_query_value("username", "Ivan%20Petrov") == "<redacted:query-param>"
+    assert redact.redact_query_value("sidebar", "Ivan Petrov") == "<redacted:query-param>"
+    # A value the service chose is one word, and it stays.
+    assert redact.redact_query_value("sidebar", "Alice") == "Alice"
+
+
+def test_the_value_of_a_parameter_that_names_a_person_is_not_kept():
+    # The same finding: the value of a parameter that names a person is
+    # personal data whatever it looks like — a single word is as personal as
+    # a phrase.
+    assert redact.redact_query_value("username", "Ivan") == "<redacted:query-param>"
+    assert redact.redact_query_value("full_name", "Ivan Petrov") == "<redacted:query-param>"
+    assert redact.redact_query_value("first_name", "Ivan") == "<redacted:query-param>"
+    assert redact.redact_query_value("last_name", "Petrov") == "<redacted:query-param>"
+    assert redact.redact_query_value("address", "Moscow") == "<redacted:query-param>"
+    # The parameter `name` carries the name the operator chose for a capture,
+    # and that name is evidence; a phrase under it is still free text.
+    assert redact.redact_query_value("name", "catalog.investigation.2026.11.19") == "catalog.investigation.2026.11.19"
+    assert redact.redact_query_value("name", "Ivan Petrov") == "<redacted:query-param>"
+
+
+def test_a_path_segment_that_carries_a_space_is_a_phrase():
+    # The finding of the review: a path segment that is a person's name
+    # reached the committed file as it came.
+    assert redact.redact_path("/Ivan%20Petrov") == "/%3Credacted:phrase%3E"
+    assert redact.redact_path("/catalog/Ivan%20Petrov/list.aspx") == "/catalog/%3Credacted:phrase%3E/list.aspx"
+    # A segment the service chose is one word, and it keeps its spelling.
+    assert redact.redact_path("/catalog/131954/list.aspx") == "/catalog/131954/list.aspx"
+    assert redact.redact_path("/data-checker/api/v1/user/check") == "/data-checker/api/v1/user/check"

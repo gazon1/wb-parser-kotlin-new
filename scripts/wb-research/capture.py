@@ -757,10 +757,16 @@ def browser_frames() -> list[dict] | None:
     named: list[dict] = []
     for frame in frames:
         if not isinstance(frame, dict):
-            continue
+            # A frame the browser cannot name is a frame the check cannot
+            # judge, and a check that judges half of the frames judges nothing:
+            # the inventory is refused, not shortened.
+            return None
         url = str(frame.get("url", ""))
-        if url:
-            named.append({"kind": str(frame.get("kind", "")), "url": url})
+        if not url:
+            # The same case: a frame without a URL is a frame the tool cannot
+            # tell a frame of another site from.
+            return None
+        named.append({"kind": str(frame.get("kind", "")), "url": url})
     return named
 
 

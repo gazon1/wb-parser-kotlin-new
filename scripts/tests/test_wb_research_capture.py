@@ -878,6 +878,7 @@ def fake_browser(
     session_url: str = "https://www.wildberries.ru/catalog/",
     frames: list[str] | None = None,
     frames_known: bool = True,
+    frames_raw: list | None = None,
 ):
     """A browser that answers the tool and saves a capture with the given entries.
 
@@ -887,7 +888,9 @@ def fake_browser(
 
     `frames` are the pages the browser shows: the tab itself and the frames
     inside it. `None` means the tab alone. `frames_known` is a browser whose
-    chrome-use cannot name the frames of the page at all.
+    chrome-use cannot name the frames of the page at all. `frames_raw` is the
+    answer of the browser as it is — the frames of a browser that names one of
+    them badly.
     """
     recorded = entries if entries is not None else [entry("https://www.wildberries.ru/__internal/u-search")]
     live = frames if frames is not None else ([session_url] if session_url else [])
@@ -907,7 +910,11 @@ def fake_browser(
         if args[:2] == ("frames", "--json"):
             if not frames_known:
                 return subprocess.CompletedProcess(args, 1, "", "unknown subcommand: frames")
-            listed = [{"kind": "top" if index == 0 else "inline", "url": url} for index, url in enumerate(live)]
+            listed = (
+                frames_raw
+                if frames_raw is not None
+                else [{"kind": "top" if index == 0 else "inline", "url": url} for index, url in enumerate(live)]
+            )
             payload = json.dumps({"success": True, "data": {"frames": listed}})
             return subprocess.CompletedProcess(args, 0, payload, "")
         return subprocess.CompletedProcess(args, 0, "", "")
@@ -1830,6 +1837,77 @@ def test_a_browser_that_cannot_say_which_frames_the_page_has_fails_the_step(tmp_
     monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
     monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
     monkeypatch.setattr(capture, "chrome_use", fake_browser(entries, frames_known=False))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("the browser did not tell which frames the page has" in note for note in report["notes"])
+
+
+def test_a_browser_that_names_only_some_of_the_frames_fails_the_step(tmp_path, monkeypatch):
+    # The finding of the review: the frames the browser names badly were
+    # dropped from the list, and the rest was returned as if it were the whole
+    # inventory — so a frame the tool cannot judge was a frame nobody saw. A
+    # list that names one frame badly is a list the browser cannot give, and
+    # the step fails.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(
+            entries,
+            frames_raw=[
+                {"kind": "top", "url": "https://www.wildberries.ru/catalog/"},
+                {"kind": "inline"},
+            ],
+        ),
+    )
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("the browser did not tell which frames the page has" in note for note in report["notes"])
+
+
+def test_a_browser_that_names_a_frame_not_at_all_fails_the_step(tmp_path, monkeypatch):
+    # The same case: a frame that is not an entry the tool can read is a frame
+    # the tool cannot judge.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(
+            entries,
+            frames_raw=[
+                {"kind": "top", "url": "https://www.wildberries.ru/catalog/"},
+                "https://frames.example.test/widget",
+            ],
+        ),
+    )
     args = argparse.Namespace(
         name="step",
         investigation="demo",
