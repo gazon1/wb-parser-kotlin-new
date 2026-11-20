@@ -8,6 +8,7 @@ lets a later run resume.
 
 from __future__ import annotations
 
+import fcntl
 import importlib.util
 import json
 import subprocess
@@ -184,6 +185,21 @@ def test_a_plan_of_another_investigation_is_refused(investigation, tmp_path):
 
     with pytest.raises(SystemExit, match="another investigation"):
         plan.run(name)
+
+
+def test_two_runs_of_one_investigation_do_not_overlap(investigation, tmp_path, monkeypatch):
+    """One investigation runs once at a time: the files of it are named after it."""
+    name = investigation([step("initial-load")])
+    lock = tmp_path / "raw" / name / "run.lock"
+    lock.parent.mkdir(parents=True, exist_ok=True)
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+    with lock.open("w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(SystemExit, match="another run"):
+            plan.run(name)
+
+    assert calls == []
 
 
 def test_a_changed_settle_needs_a_new_approval(investigation, tmp_path, monkeypatch):

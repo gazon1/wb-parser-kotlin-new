@@ -100,6 +100,13 @@ step observes — a step that stops listening earlier may miss the request that
 carries the answer — so it is read from the plan, it is approved with the
 step, and the run cannot shorten it: the runner has no override for it.
 
+One investigation runs once at a time. The plan, the capture and the evidence
+are named after the investigation and the step, so two runs of the same
+investigation would write the same files: one of them would delete the
+recording of the other, and the plan would keep the state of a run whose
+evidence is gone. The runner therefore holds a lock on the investigation for the
+whole run, and the approval holds the same lock.
+
 A pause is a state, not an improvisation. A CAPTCHA, a login, an ambiguous page
 or an origin the config does not approve stops the run, is named in the plan
 and is answered by the operator. The runner never works around a blockage and
@@ -156,6 +163,9 @@ every other run.
 - **Always** approve the wait of a step with the step: `settle` is part of the
   scope, it comes from the plan, and the runner has no override for it — a
   shorter wait is a different observation, not the same one faster.
+- **Always** run one investigation once at a time: the runner holds a lock on
+  the investigation for the whole run and for the approval, so two runs cannot
+  write the same plan, capture and evidence underneath each other.
 - **Always** cover every setting of the capture config that decides what the
   capture refuses to stop at: the origins, the pages, the query parameters, the
   noise hosts and the kept request types. A setting that is left out of the

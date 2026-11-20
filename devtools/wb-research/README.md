@@ -872,6 +872,11 @@ the state was written is planned again, because that state says nothing about th
 step as it stands now. A step whose scope did not change keeps its state, so
 approving the same plan again does not throw the work away.
 
+One investigation runs once at a time: the runner takes a lock on the
+investigation for the whole run, and a second run of the same investigation is
+told that another one is going instead of writing the same files underneath it.
+The approval takes the same lock.
+
 The run freezes the config it runs under: it copies `capture-config.json` into
 the raw cache and hands that copy to every step of the run, and the scope of
 the approval is compared with the scope of the copy — not with the scope of the

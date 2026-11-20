@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import fcntl
 import hashlib
 import importlib.util
 import json
@@ -32,6 +33,7 @@ import shlex
 import subprocess
 import sys
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
 
 import yaml
@@ -368,6 +370,30 @@ def note_of(investigation: str, name: str, state: str) -> str:
     return ""
 
 
+@contextmanager
+def investigation_lock(investigation: str):
+    """One run of one investigation at a time.
+
+    The plan, the capture and the evidence of an investigation are named after
+    the investigation and the step, so two runs of the same investigation
+    write the same files: one of them would delete the recording of the other
+    and the plan would keep the state of a run whose evidence is gone. The
+    lock is taken for the whole run and is not waited for — the second run is
+    told that another one is going, and it starts when that one is done.
+    """
+    directory = RAW_ROOT / safe_investigation(investigation)
+    directory.mkdir(parents=True, exist_ok=True)
+    with (directory / "run.lock").open("w") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            raise SystemExit(f"another run of {investigation} is going — wait for it to end") from error
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def approve(investigation: str) -> int:
     """Approve the plan as it stands and write down what was approved.
 
@@ -384,21 +410,22 @@ def approve(investigation: str) -> int:
     change keeps its state — the run resumes where it stopped.
     """
     path = plan_path(investigation)
-    plan = load_plan(path)
-    steps = check_plan(plan, investigation)
-    config = config_scope()
-    for step in steps:
-        if step.get("scope") == step_scope(step, config):
-            continue
-        state = step.get("state", PLANNED)
-        step["state"] = PLANNED
-        step.pop("note", None)
-        step.pop("scope", None)
-        if state != PLANNED:
-            print(f"{step['name']}: {state} → planned — the step is not the one that was run")
-    plan["approved_scope"] = scope_of(steps, config)
-    plan["status"] = APPROVED
-    save_plan(path, plan)
+    with investigation_lock(investigation):
+        plan = load_plan(path)
+        steps = check_plan(plan, investigation)
+        config = config_scope()
+        for step in steps:
+            if step.get("scope") == step_scope(step, config):
+                continue
+            state = step.get("state", PLANNED)
+            step["state"] = PLANNED
+            step.pop("note", None)
+            step.pop("scope", None)
+            if state != PLANNED:
+                print(f"{step['name']}: {state} → planned — the step is not the one that was run")
+        plan["approved_scope"] = scope_of(steps, config)
+        plan["status"] = APPROVED
+        save_plan(path, plan)
     print(f"the plan is approved: {investigation}")
     print(f"the scope that was approved: {plan['approved_scope'][:12]}")
     return EXIT_OK
@@ -407,57 +434,59 @@ def approve(investigation: str) -> int:
 def run(investigation: str) -> int:
     """Run the steps of the plan that are not done yet."""
     path = plan_path(investigation)
-    plan = load_plan(path)
-    steps = check_plan(plan, investigation)
+    with investigation_lock(investigation):
+        plan = load_plan(path)
+        steps = check_plan(plan, investigation)
 
-    status = plan.get("status")
-    if status not in {APPROVED, RUNNING}:
-        raise SystemExit(f"the plan is not approved (status: {status})")
-    approved = plan.get("approved_scope")
-    if not approved:
-        raise SystemExit("the plan was not approved — approve it: plan.py approve --investigation <id>")
-    snapshot = config_snapshot(investigation)
-    try:
-        config = config_scope(snapshot)
-        if approved != scope_of(steps, config):
-            raise SystemExit(
-                "the scope of the plan is not the scope that was approved — the operator has to approve it again"
-            )
+        status = plan.get("status")
+        if status not in {APPROVED, RUNNING}:
+            raise SystemExit(f"the plan is not approved (status: {status})")
+        approved = plan.get("approved_scope")
+        if not approved:
+            raise SystemExit("the plan was not approved — approve it: plan.py approve --investigation <id>")
+        snapshot = config_snapshot(investigation)
+        try:
+            config = config_scope(snapshot)
+            if approved != scope_of(steps, config):
+                raise SystemExit(
+                    "the scope of the plan is not the scope that was approved — the operator has to approve it again"
+                )
 
-        plan["status"] = RUNNING
-        save_plan(path, plan)
-
-        stopped = False
-        for step in steps:
-            state = step.get("state", PLANNED)
-            if state == DONE:
-                continue
-            if state != PLANNED:
-                # A step that failed or that needs a human is where the run
-                # stopped. It stays until a human says it may go on.
-                print(f"{step['name']}: {state} — {step.get('note', '')}")
-                stopped = True
-                break
-            new_state, output = run_step(investigation, step, snapshot)
-            step["state"] = new_state
-            step["note"] = note_of(investigation, step["name"], new_state)
-            # The scope the state was made under: a later approval compares it
-            # with the scope of the step and plans the step again when they differ.
-            step["scope"] = step_scope(step, config)
+            plan["status"] = RUNNING
             save_plan(path, plan)
-            if output:
-                print(output)
-            if new_state != DONE:
-                stopped = True
-                break
 
-        print("the state of the plan:")
-        for step in steps:
-            print(f"  {step['name']}: {step.get('state', PLANNED)}")
-        return EXIT_FAILED if stopped else EXIT_OK
-    finally:
-        # The frozen config is the run's own and it is gone when the run is.
-        snapshot.unlink(missing_ok=True)
+            stopped = False
+            for step in steps:
+                state = step.get("state", PLANNED)
+                if state == DONE:
+                    continue
+                if state != PLANNED:
+                    # A step that failed or that needs a human is where the run
+                    # stopped. It stays until a human says it may go on.
+                    print(f"{step['name']}: {state} — {step.get('note', '')}")
+                    stopped = True
+                    break
+                new_state, output = run_step(investigation, step, snapshot)
+                step["state"] = new_state
+                step["note"] = note_of(investigation, step["name"], new_state)
+                # The scope the state was made under: a later approval compares
+                # it with the scope of the step and plans the step again when
+                # they differ.
+                step["scope"] = step_scope(step, config)
+                save_plan(path, plan)
+                if output:
+                    print(output)
+                if new_state != DONE:
+                    stopped = True
+                    break
+
+            print("the state of the plan:")
+            for step in steps:
+                print(f"  {step['name']}: {step.get('state', PLANNED)}")
+            return EXIT_FAILED if stopped else EXIT_OK
+        finally:
+            # The frozen config is the run's own and it is gone when the run is.
+            snapshot.unlink(missing_ok=True)
 
 
 def main(argv: list[str] | None = None) -> int:

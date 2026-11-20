@@ -69,6 +69,10 @@ resumed by the next run. An approval plans a step again when the scope it was
 run under has changed since: a state that belongs to another command, another
 origin or another config says nothing about the step as it stands.
 
+One investigation runs once at a time: a second run of the same investigation
+is refused while the first one is going, because the plan, the capture and the
+evidence of an investigation are named after it.
+
 The run freezes the config it runs under: every step of a run works under the
 copy of the capture config that the run made, so a config that is widened while
 the run is going reaches no step of that run.
