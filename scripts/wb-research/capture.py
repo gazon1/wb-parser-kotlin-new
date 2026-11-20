@@ -354,7 +354,11 @@ def response_shape(detail: dict) -> dict:
         return {"available": False, "reason": "browser-error" if detail.get("responseBodyError") else "no-body"}
     shape = {
         "available": True,
-        "bodyBytes": len(body.encode("utf-8")),
+        # The size of the body as it would be written: a character no UTF-8
+        # file can hold is replaced, and the size of the body as it is stored
+        # is the size that matters. Counting the bytes of strict UTF-8 would
+        # end the capture on a body nobody can read.
+        "bodyBytes": len(body.encode("utf-8", "replace")),
         "isJson": False,
         "jsonType": None,
         "topLevelKeys": None,

@@ -246,7 +246,8 @@ was never answered is evidence of something different.
   and a URL that cannot be judged must not be guessed at. A character no UTF-8
   file can hold (a lone surrogate) is replaced instead of failing the export:
   the evidence is worth more than the character, and a failed export is a lost
-  step.
+  step. The size of a body is counted in the encoding it would be written in,
+  so counting it cannot end the capture either.
 - **Never** export a capture of a step that did not finish: a step that ran to the end always
   leaves a report behind, and a capture without one is the remains of a run that died — the
   page action raised, or the step was interrupted. Such a capture is not evidence of what

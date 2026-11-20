@@ -959,3 +959,15 @@ def test_a_report_that_cannot_be_read_leaves_the_capture_unexported(tmp_path, mo
     assert capture.export_investigation("demo") == []
 
     assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+
+
+def test_a_body_with_a_character_no_file_can_hold_is_still_measured():
+    # The finding of the review: the size of the body was counted in the bytes
+    # of strict UTF-8, so a lone surrogate ended the capture before the shape
+    # of the answer was known.
+    shape = capture.response_shape({"responseBody": '{"a":"x\ud800y"}'})
+
+    assert shape["available"] is True
+    assert shape["isJson"] is True
+    assert shape["topLevelKeys"] == ["a"]
+    assert shape["bodyBytes"] == 11
