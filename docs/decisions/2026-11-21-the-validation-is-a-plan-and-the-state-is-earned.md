@@ -61,7 +61,15 @@ the fingerprint the operator approved.
 
 Only a `GET` is replayed. The investigation format carries POST candidates —
 the antibot service is one — and a POST is not a request a read-only tool may
-repeat: the page's `fetch` would send it and the site may act on it.
+repeat: the page's `fetch` would send it and the site may act on it. A redirect
+is not followed either: the approved origin is the only origin, and a redirect
+the site answers with is the site choosing a destination the operator did not
+approve.
+
+A replay is only the approved request if the browser sent it. The browser drops
+a few header names by design (`referer`, `cookie`, `user-agent`, the `sec-*`
+family), so an observation whose named header was dropped is `inconclusive` —
+an incomplete replay, not a validation — and the run stops.
 
 The approval is a fingerprint of the scope, written into the plan as
 `approved_scope` — the page, the endpoint, the query as the plan writes it,
@@ -77,8 +85,9 @@ The state is earned by the evidence, not chosen by the writer:
 - `validated` — a controlled variation repeated, its expectation held every
   time, and the reference itself reproduced;
 - `rejected` — a stable answer contradicts the expectation;
-- `inconclusive` — a refusal, a failure (a transport error or a 5xx), an
-  unreadable answer, disagreeing runs, or a sample of one.
+- `inconclusive` — a refusal, a failure (a transport error, a 5xx or a
+  redirect), an incomplete replay (a dropped header), an unreadable answer,
+  disagreeing runs, or a sample of one.
 
 A refusal ends the run: after a `403`, `429` or WB's `498` the remaining probes
 are marked "not run" instead of hammering the site, and the run exits `2`. A
@@ -146,7 +155,12 @@ is the operator's question, not the tool's problem.
   did not move.
 - **Always** keep the tool outside the mandatory CI: it needs a real browser and
   a live site, and its tests replace the browser with a function.
-- **Always** replay `GET` only, and treat a `5xx` as a failed request: a POST may
-  change the site, and a server error is not an answer that can validate a claim.
+- **Always** replay `GET` only, without following a redirect, and treat a `5xx`
+  as a failed request: a POST may change the site, a redirect leaves the
+  approved origin, and a server error is not an answer that can validate a
+  claim.
+- **Always** treat a dropped header as an incomplete replay: the browser did not
+  send the request the plan described, so the observation is `inconclusive` and
+  the run stops.
 - **Never** let `validate.py` click, type, bypass a CAPTCHA, a rate limit or an
   access control, or reach an origin the capture config does not approve.

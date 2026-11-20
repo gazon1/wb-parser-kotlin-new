@@ -954,7 +954,8 @@ The candidate contributes its method, endpoint, query and header names; the
 plan overrides the query. Only a `GET` is replayed — the workflow is read-only,
 and the investigation format carries POST candidates (the antibot service is
 one) that must not be repeated. The request is a `fetch` from the page's own
-context, with the browser's cookies unless the plan says otherwise.
+context, with the browser's cookies unless the plan says otherwise, and a
+redirect is not followed: the approved origin is the only origin.
 
 **One experiment, one variation.** An experiment changes exactly one of: one
 query parameter (`vary`), one removal (`remove`), the credentials mode
@@ -974,7 +975,11 @@ from a local file outside the repository —
 
 A path inside the repository is refused, and a header the plan names and the
 file does not carry stops the run: a request replayed without the header it was
-seen with is a different request.
+seen with is a different request. The browser drops a few header names by
+design (`referer`, `cookie`, `user-agent`, the `sec-*` family); a plan that
+names one gets an **incomplete replay** — the observation is `inconclusive`, the
+run stops, and the report names the header. It is not a validation of the
+request the plan described.
 
 The **query** is part of the plan and part of the approval, so a value the
 record wrote as `<redacted:…>` has to be written in the plan. A query value the
@@ -1023,7 +1028,7 @@ A state is not a label the operator chooses; the evidence decides it:
 | `reproduced` | the same answer came back from independent runs |
 | `validated` | a controlled variation repeated, its expectation held every time, and the reference itself was reproduced |
 | `rejected` | a stable answer contradicts the expectation |
-| `inconclusive` | the site refused, the request failed (a transport error or a 5xx), the answer could not be read, the runs disagree, or one sample is all there is |
+| `inconclusive` | the site refused, the request failed (a transport error, a 5xx or a redirect), the browser dropped a header the plan names, the answer could not be read, the runs disagree, or one sample is all there is |
 
 A refusal, a failure and a single sample are never reported as a validation:
 the report names them, and the run says so in its exit code.

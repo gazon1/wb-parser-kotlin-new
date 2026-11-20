@@ -197,7 +197,8 @@ async (spec) => {
       method: spec.method || 'GET',
       headers: headers,
       credentials: spec.credentials || 'include',
-      cache: 'no-store'
+      cache: 'no-store',
+      redirect: 'error'
     });
   } catch (e) {
     return {error: 'fetch_failed', headerNames: names, droppedByBrowser: dropped};
@@ -783,17 +784,21 @@ def probe(request: dict, session: str | None) -> dict:
     return result
 
 
-def outcome_of(status: int | None, error: str | None) -> str:
+def outcome_of(status: int | None, error: str | None, dropped: bool = False) -> str:
     """What one observation is, in the language of the validation model.
 
     The probe reports a code, not the browser's message, so the code is what
     the outcome is read from. A body that could not be read is not an answer
-    either — the status says something and the shape says nothing.
+    either — the status says something and the shape says nothing. A replay
+    the browser sent without a header the plan names is not the approved
+    request, however clear the answer looks.
     """
     if error == "body_unreadable":
         return INCONCLUSIVE
     if error is not None:
         return FAILED
+    if dropped:
+        return INCONCLUSIVE
     if status is None:
         return INCONCLUSIVE
     if status in BLOCKED_STATUSES:
@@ -811,10 +816,11 @@ def observation(experiment: dict, run: int, request: dict, result: dict) -> dict
     status = redact.safe_status(result.get("status"))
     raw_error = result.get("error") if isinstance(result.get("error"), str) else None
     error = raw_error if raw_error in PROBE_ERRORS else redact.redact_error(raw_error)
-    outcome = outcome_of(status, raw_error)
     dropped = result.get("droppedByBrowser") if isinstance(result.get("droppedByBrowser"), list) else []
     dropped_lower = {str(name).lower() for name in dropped}
     sent = [name for name in request["headers"] if name.lower() not in dropped_lower]
+    missing = [name for name in request["headers"] if name.lower() in dropped_lower]
+    outcome = outcome_of(status, raw_error, bool(missing))
     ids = [
         value
         for value in (result.get("productIds") or [])
@@ -852,6 +858,7 @@ def observation(experiment: dict, run: int, request: dict, result: dict) -> dict
             if ids
             else None,
         },
+        "replay": {"complete": not missing, "missingHeaders": redact.safe_header_names(missing)},
         "outcome": outcome,
     }
 
@@ -921,6 +928,14 @@ def state_of(
             return INCONCLUSIVE, "the site refused the request — a refusal is not a validation"
         if any(entry["outcome"] == FAILED for entry in observations):
             return INCONCLUSIVE, "an observation did not complete — a failed request is not a result"
+        missing = sorted(
+            {name for entry in observations for name in (entry.get("replay") or {}).get("missingHeaders") or []}
+        )
+        if missing:
+            return INCONCLUSIVE, (
+                f"the browser dropped {', '.join(missing)}, which the plan names — "
+                "the replay is not the request that was approved"
+            )
         return INCONCLUSIVE, "the response could not be read"
     if experiment.get("expect") is None:
         # A variant without an expectation says what was seen, not whether it
@@ -1008,6 +1023,8 @@ def run_experiments(
                 stopped = "the site refused the request"
             elif entry["outcome"] == FAILED:
                 stopped = "the browser could not make the request"
+            elif entry["outcome"] == INCONCLUSIVE:
+                stopped = "the replay could not be completed"
     return observations
 
 
@@ -1181,6 +1198,8 @@ def report_of(summary: dict) -> str:
                 detail += f", total {schema['total']}"
             if schema["topLevelKeys"]:
                 detail += ", keys [" + ", ".join(schema["topLevelKeys"]) + "]"
+            if entry["request"]["headersDroppedByBrowser"]:
+                detail += ", dropped " + ", ".join(entry["request"]["headersDroppedByBrowser"])
             if ordering.get("orderHash"):
                 detail += f", order `{ordering['orderHash'][:12]}`"
             if comparison:

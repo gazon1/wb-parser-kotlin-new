@@ -147,6 +147,10 @@
         ],
         "orderHash": "fcce9832c3156aed1e4b2a52af11b6ead4fb672a94c6bc2da674d19780c656b8"
       },
+      "replay": {
+        "complete": true,
+        "missingHeaders": []
+      },
       "outcome": "completed"
     },
     {
@@ -292,6 +296,10 @@
         ],
         "orderHash": "fcce9832c3156aed1e4b2a52af11b6ead4fb672a94c6bc2da674d19780c656b8"
       },
+      "replay": {
+        "complete": true,
+        "missingHeaders": []
+      },
       "outcome": "completed"
     },
     {
@@ -436,6 +444,10 @@
           2114708689
         ],
         "orderHash": "35b9f4f2a3eb970f368aea8bef3f3c3f869fa8e254dc2b504122dafa57e3aa46"
+      },
+      "replay": {
+        "complete": true,
+        "missingHeaders": []
       },
       "outcome": "completed",
       "comparison": {
@@ -594,6 +606,10 @@
         ],
         "orderHash": "35b9f4f2a3eb970f368aea8bef3f3c3f869fa8e254dc2b504122dafa57e3aa46"
       },
+      "replay": {
+        "complete": true,
+        "missingHeaders": []
+      },
       "outcome": "completed",
       "comparison": {
         "status": "changed",
@@ -633,7 +649,7 @@
       "response": {
         "status": 200,
         "contentType": "text/plain; charset=UTF-8",
-        "bodyBytes": 145983,
+        "bodyBytes": 145987,
         "isJson": true,
         "error": null
       },
@@ -725,6 +741,7 @@
           504562002,
           404097690,
           1117034535,
+          619476158,
           480061693,
           541592330,
           542329903,
@@ -745,11 +762,14 @@
           400463758,
           1238295118,
           1946487118,
-          619476158,
           996482762,
           177241210
         ],
-        "orderHash": "c4bbb468a1ca0aad79cc954ed4b418dcbbbadec231daa583673f4a599506bb0a"
+        "orderHash": "d28ecd9d44121b64d37d39ac5ebd51b102e3ab9d051e3227e4017048f38bc32e"
+      },
+      "replay": {
+        "complete": true,
+        "missingHeaders": []
       },
       "outcome": "completed",
       "comparison": {
@@ -789,7 +809,7 @@
       "response": {
         "status": 200,
         "contentType": "text/plain; charset=UTF-8",
-        "bodyBytes": 145983,
+        "bodyBytes": 145987,
         "isJson": true,
         "error": null
       },
@@ -881,6 +901,7 @@
           504562002,
           404097690,
           1117034535,
+          619476158,
           480061693,
           541592330,
           542329903,
@@ -901,11 +922,14 @@
           400463758,
           1238295118,
           1946487118,
-          619476158,
           996482762,
           177241210
         ],
-        "orderHash": "c4bbb468a1ca0aad79cc954ed4b418dcbbbadec231daa583673f4a599506bb0a"
+        "orderHash": "d28ecd9d44121b64d37d39ac5ebd51b102e3ab9d051e3227e4017048f38bc32e"
+      },
+      "replay": {
+        "complete": true,
+        "missingHeaders": []
       },
       "outcome": "completed",
       "comparison": {
@@ -966,6 +990,10 @@
       "ordering": {
         "productIds": [],
         "orderHash": null
+      },
+      "replay": {
+        "complete": true,
+        "missingHeaders": []
       },
       "outcome": "completed",
       "comparison": {
@@ -1127,6 +1155,10 @@
         ],
         "orderHash": "fcce9832c3156aed1e4b2a52af11b6ead4fb672a94c6bc2da674d19780c656b8"
       },
+      "replay": {
+        "complete": true,
+        "missingHeaders": []
+      },
       "outcome": "completed",
       "comparison": {
         "status": "same",
@@ -1281,6 +1313,10 @@
         ],
         "orderHash": "fcce9832c3156aed1e4b2a52af11b6ead4fb672a94c6bc2da674d19780c656b8"
       },
+      "replay": {
+        "complete": true,
+        "missingHeaders": []
+      },
       "outcome": "completed",
       "comparison": {
         "status": "same",
@@ -1329,6 +1365,10 @@
       "ordering": {
         "productIds": [],
         "orderHash": null
+      },
+      "replay": {
+        "complete": true,
+        "missingHeaders": []
       },
       "outcome": "blocked",
       "comparison": {

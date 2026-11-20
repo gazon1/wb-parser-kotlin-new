@@ -389,6 +389,8 @@ def test_the_probe_script_parses_a_text_plain_json_answer(monkeypatch):
     assert result["bodyBytes"] == len(body.encode("utf-8"))
     assert sent["method"] == "GET"
     assert sent["credentials"] == "include"
+    # A redirect is not followed: the approved origin is the only origin.
+    assert sent["redirect"] == "error"
 
 
 def test_the_probe_script_reports_a_malformed_answer_and_the_dropped_headers(monkeypatch):
@@ -421,7 +423,7 @@ const response = {
 };
 let sent = null;
 globalThis.fetch = async (url, init) => {
-  sent = {url: url, method: init.method, credentials: init.credentials, headers: init.headers};
+  sent = {url: url, method: init.method, credentials: init.credentials, headers: init.headers, redirect: init.redirect};
   return response;
 };
 fn(spec).then((result) => process.stdout.write(JSON.stringify({result: result, sent: sent})));
@@ -469,7 +471,7 @@ def test_the_headers_values_never_reach_a_committed_file(world, monkeypatch):
     assert "x-requested-with" in sent
 
 
-def test_the_evidence_keeps_the_names_the_browser_dropped(world, monkeypatch):
+def test_a_dropped_header_is_an_incomplete_replay(world, monkeypatch):
     place = world([baseline()], request={"headers": ["deviceid", "referer"]})
     (place.raw / "request.json").write_text(
         json.dumps({"headers": {"deviceid": "site_test_value", "referer": "https://www.wildberries.ru/catalog/"}}),
@@ -478,13 +480,21 @@ def test_the_evidence_keeps_the_names_the_browser_dropped(world, monkeypatch):
     validate.approve(INVESTIGATION)
     result = answer()
     result["droppedByBrowser"] = ["referer"]
-    fake_browser(monkeypatch, [result, result])
-    validate.run(INVESTIGATION, None, False)
+    calls = fake_browser(monkeypatch, [result, result])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+    # The browser will drop the same header on the next run, so there is no
+    # next run: one incomplete replay is enough to stop.
+    assert len(calls["probes"]) == 1
 
     evidence = json.loads((place.directory / validate.EVIDENCE_FILE).read_text(encoding="utf-8"))
     request = evidence["captures"][0]["request"]
     assert request["headersDroppedByBrowser"] == ["referer"]
     assert request["headersSent"] == ["deviceid"]
+    assert evidence["captures"][0]["replay"] == {"complete": False, "missingHeaders": ["referer"]}
+    summary = read_summary(place.directory)
+    assert summary["experiments"][0]["state"] == validate.INCONCLUSIVE
+    assert "referer" in summary["not_validated"][0]["reason"]
 
 
 def test_a_redacted_query_value_has_to_be_written_in_the_plan(world, monkeypatch):

@@ -1,7 +1,7 @@
 schema: wb-research/validation/v1
 id: 2026-11-20-wb-catalog-agent
 candidate: storefront-catalog-search
-generated: '2026-11-20T22:57:27+00:00'
+generated: '2026-11-20T23:03:31+00:00'
 plan_scope: 692eeb104ed984954c81852464864e8c8ec541cac10f48d47a38cf67af7a710c
 page: https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E
 request:
@@ -273,7 +273,7 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 145983
+      bodyBytes: 145987
       isJson: true
       error: null
     schema:
@@ -285,7 +285,7 @@ experiments:
       total: 113601
     outcome: completed
     ordering:
-      orderHash: c4bbb468a1ca0aad79cc954ed4b418dcbbbadec231daa583673f4a599506bb0a
+      orderHash: d28ecd9d44121b64d37d39ac5ebd51b102e3ab9d051e3227e4017048f38bc32e
     comparison:
       status: changed
       changedFields:
@@ -315,7 +315,7 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 145983
+      bodyBytes: 145987
       isJson: true
       error: null
     schema:
@@ -327,7 +327,7 @@ experiments:
       total: 113601
     outcome: completed
     ordering:
-      orderHash: c4bbb468a1ca0aad79cc954ed4b418dcbbbadec231daa583673f4a599506bb0a
+      orderHash: d28ecd9d44121b64d37d39ac5ebd51b102e3ab9d051e3227e4017048f38bc32e
     comparison:
       status: changed
       changedFields:
