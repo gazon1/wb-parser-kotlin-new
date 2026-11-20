@@ -1619,3 +1619,14 @@ def test_a_json_key_that_hides_behind_escapes_is_still_a_key_to_judge():
 def test_a_json_key_that_survives_the_rules_keeps_its_spelling():
     assert redact.safe_key("userId") == "userId"
     assert redact.safe_key("a%2Db") == "a%2Db"
+
+
+def test_a_timestamp_that_is_not_a_moment_is_not_a_timestamp():
+    # The finding of the review: the shape of a timestamp is not a date — a
+    # month of ninety-nine days is not a month.
+    assert redact.safe_timestamp("2026-99-99T99:99:99Z") is None
+    assert redact.safe_timestamp("2026-11-19T13:00:00+99:99") is None
+    assert redact.safe_timestamp("2026-02-30T10:00:00Z") is None
+    assert redact.safe_timestamp("2025-02-29T00:00:00Z") is None
+    assert redact.safe_timestamp("2026-11-19T13:00:00Z") == "2026-11-19T13:00:00Z"
+    assert redact.safe_timestamp("2024-02-29T13:00:00.123+03:00") == "2024-02-29T13:00:00.123+03:00"

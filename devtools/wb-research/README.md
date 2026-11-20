@@ -516,7 +516,8 @@ The rules the redactor applies:
 - every field copied from a capture is **validated** before it is copied: the
   method is a word of letters, the status is a whole number between 100 and 599,
   the size is a whole number that is not negative, the moment is an ISO-8601
-  timestamp, the credentials mode is one of the three the browser knows, the
+  timestamp of a real moment — a month of ninety-nine days is not a date —, the
+  credentials mode is one of the three the browser knows, the
   header names are tokens that are not identifiers, and the flags are flags. A
   number with a fraction in it was never measured, and rounding it would put a
   value in the file that nobody saw. A capture is an input, so a field nobody

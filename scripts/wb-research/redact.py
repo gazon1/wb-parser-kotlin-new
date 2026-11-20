@@ -29,6 +29,7 @@ import json
 import math
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import SplitResult, parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit
@@ -1002,8 +1003,17 @@ ISO_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\
 
 
 def safe_timestamp(value: Any) -> str | None:
-    """When the request started, if the capture said when."""
+    """When the request started, if the capture said when.
+
+    A timestamp is a moment of the calendar, so its shape is not enough: a
+    month of ninety-nine days is not a date, and an offset of ninety-nine
+    hours is not a timezone. A timestamp that is not a real moment is dropped.
+    """
     if not isinstance(value, str) or not ISO_TIMESTAMP.fullmatch(value):
+        return None
+    try:
+        datetime.fromisoformat(value[:-1] + "+00:00" if value.endswith("Z") else value)
+    except ValueError:
         return None
     return value
 

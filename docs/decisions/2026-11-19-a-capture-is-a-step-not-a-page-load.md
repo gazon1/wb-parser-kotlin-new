@@ -111,6 +111,9 @@ was never answered is evidence of something different.
 - **Never** round a count that was measured: the status and the size are whole
   numbers, and a number with a fraction in it was never measured. Truncating it
   would put a value in the file that nobody saw.
+- **Never** keep a timestamp of a moment that did not happen: the shape of a
+  timestamp is not a date — a month of ninety-nine days is not a month — so the
+  moment is checked against the calendar as well as against the format.
 - **Never** keep the **name** of a header that is an identifier: a name is a
   token of characters, and a token can be a profile's UUID in either spelling,
   an account id or a hash of a session. The fact that the header was there
