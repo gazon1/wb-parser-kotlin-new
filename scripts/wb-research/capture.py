@@ -31,7 +31,6 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-import posixpath
 import re
 import subprocess
 import sys
@@ -60,6 +59,11 @@ EXIT_UNAPPROVED_API = 2
 # the repository, so it has to be one name and nothing else: a name that could
 # climb out of either directory is not an id.
 INVESTIGATION_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+# The dot segments of a path, however they are written: a browser resolves
+# `%2e%2e` as `..`, so a check that does not know that approves another page.
+DOT_SEGMENT = re.compile(r"\.|%2e", re.IGNORECASE)
+DOUBLE_DOT_SEGMENT = re.compile(r"(?:\.|%2e){2}", re.IGNORECASE)
 
 # The page actions a capture may drive. The issue that asked for the tool says
 # read-only observation only: no cart, no purchase, no account. So the actions
@@ -147,17 +151,29 @@ def host_matches(host: str, patterns: list[str]) -> bool:
 
 
 def page_path(url: str) -> str:
-    """The path of a URL, resolved: `.` and `..` are the segments they are.
+    """The path of a URL, resolved: the dot segments are the segments they are.
 
     A browser resolves the segments of a path before it asks for the page, so
     a check that does not resolve them would approve a path that the browser
-    reads as another one.
+    reads as another one. A dot segment is a dot segment however it is
+    written: `.`, `%2e` and `..`, `%2e%2e`, `.%2e` are the same two segments.
     """
     path = urlsplit(url).path
-    if not path:
+    if not path or path == "/":
         return "/"
-    resolved = posixpath.normpath(path)
-    return resolved if resolved.startswith("/") else "/" + resolved
+    segments: list[str] = []
+    for segment in path.split("/"):
+        if DOUBLE_DOT_SEGMENT.fullmatch(segment):
+            if segments:
+                segments.pop()
+            continue
+        if DOT_SEGMENT.fullmatch(segment):
+            continue
+        segments.append(segment)
+    resolved = "/".join(segments)
+    if not resolved.startswith("/"):
+        resolved = "/" + resolved
+    return resolved.rstrip("/") or "/"
 
 
 def approved_page(url: str, pages: list[str]) -> bool:
@@ -173,7 +189,10 @@ def approved_page(url: str, pages: list[str]) -> bool:
     and not `/catalogue/x`.
     """
     for page in pages:
-        if urlsplit(page).scheme.lower() not in ("http", "https"):
+        page_parts = urlsplit(page)
+        if page_parts.scheme.lower() not in ("http", "https"):
+            continue
+        if page_parts.scheme.lower() != urlsplit(url).scheme.lower():
             continue
         if host_of(page) != host_of(url):
             continue
