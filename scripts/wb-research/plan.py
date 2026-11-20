@@ -458,6 +458,14 @@ def run(investigation: str) -> int:
             stopped = False
             for step in steps:
                 state = step.get("state", PLANNED)
+                if step.get("scope") != step_scope(step, config):
+                    # The state was made under another scope — another command,
+                    # another origin, another config, or by hand. It says
+                    # nothing about this step, so the step runs again.
+                    state = PLANNED
+                    step["state"] = PLANNED
+                    step.pop("note", None)
+                    step.pop("scope", None)
                 if state == DONE:
                     continue
                 if state != PLANNED:

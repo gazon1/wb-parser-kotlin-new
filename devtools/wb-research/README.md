@@ -872,6 +872,11 @@ the state was written is planned again, because that state says nothing about th
 step as it stands now. A step whose scope did not change keeps its state, so
 approving the same plan again does not throw the work away.
 
+The run applies the same rule to every step it meets: a step whose state was
+made under another scope — or written by hand — runs again. A step that is
+`done` because a run made it so, under the scope of the approval, is the only
+step a run skips.
+
 One investigation runs once at a time: the runner takes a lock on the
 investigation for the whole run, and a second run of the same investigation is
 told that another one is going instead of writing the same files underneath it.

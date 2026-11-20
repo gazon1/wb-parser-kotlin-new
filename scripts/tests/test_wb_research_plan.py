@@ -448,6 +448,24 @@ def test_a_state_that_no_run_made_is_not_trusted(investigation, tmp_path, monkey
     assert approved["steps"][0]["state"] == plan.PLANNED
 
 
+def test_a_state_that_appeared_after_the_approval_is_not_trusted(investigation, tmp_path, monkeypatch):
+    """A step that is done without a run behind it runs again."""
+    name = investigation([step("initial-load")])
+
+    written = read_plan(tmp_path, name)
+    written["steps"][0]["state"] = plan.DONE
+    (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    assert plan.run(name) == plan.EXIT_OK
+    assert calls == ['chrome-use open "https://www.wildberries.ru/"']
+
+    written = read_plan(tmp_path, name)
+    assert written["steps"][0]["state"] == plan.DONE
+    assert written["steps"][0]["scope"]
+
+
 def test_the_config_is_frozen_for_the_run(investigation, tmp_path, monkeypatch):
     """A config that changes while the run is going does not reach the capture."""
     config = tmp_path / "capture-config.json"

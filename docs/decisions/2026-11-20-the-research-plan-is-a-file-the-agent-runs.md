@@ -86,6 +86,10 @@ while the evidence on disk is from the old one. A step whose scope did not
 change keeps its state, so approving the same plan again resumes the work
 instead of throwing it away.
 
+The run applies the same rule to every step it meets: a step whose state was
+made under another scope, or written by hand after the approval, runs again. A
+step is skipped only when a run made it so, under the scope of the approval.
+
 A run works under the config it froze. The capture reads the config itself, so
 a config that changed while the run was going would widen the scope of the
 steps that come after it — under an approval that was given for the old one.
@@ -152,9 +156,10 @@ every other run.
   refuses a run whose scope differs — a wider step and a wider capture config
   alike — so a plan that was widened during a pause needs a new approval.
 - **Always** bind the state of a step to the scope it was made under: the
-  runner writes that scope into the step, and an approval plans the step again
-  when the scope has changed. A step that is `done` under another scope is a
-  step that has to run again — otherwise the plan claims a command it never ran.
+  runner writes that scope into the step, the approval and the run both plan a
+  step again when the scope has changed. A step that is `done` under another
+  scope is a step that has to run again — otherwise the plan claims a command
+  it never ran.
 - **Always** run under the config the approval covered: the runner freezes the
   config at the start of the run, checks the approval against that copy and
   hands the copy to every step, so a config that is widened mid-run reaches no

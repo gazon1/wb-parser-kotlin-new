@@ -67,7 +67,9 @@ plan the user did not read.
 The runner only acts on a step in state `planned`, so a run that stops is
 resumed by the next run. An approval plans a step again when the scope it was
 run under has changed since: a state that belongs to another command, another
-origin or another config says nothing about the step as it stands.
+origin or another config says nothing about the step as it stands. The run
+applies the same rule: a step whose state was made under another scope — or
+written by hand — runs again.
 
 One investigation runs once at a time: a second run of the same investigation
 is refused while the first one is going, because the plan, the capture and the
