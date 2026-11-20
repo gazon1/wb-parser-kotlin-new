@@ -1077,11 +1077,14 @@ def is_identifier_name(name: str) -> bool:
 
     A name the service chose is made of words: a run that mixes letters with
     digits is a token — the header of a JWT, a hash — and a name of digits
-    only is an id.
+    only is an id. A name that carries no letters at all is an id as well: a
+    number written with a separator between its parts (`123456789-01`) is an
+    account id in the shape the site writes ids in, and a name the service
+    chose always carries a word.
     """
-    if name.isdigit():
-        return True
     if UUID_VALUE.fullmatch(name) or UUID_COMPACT.fullmatch(name):
+        return True
+    if not any(character.isalpha() for character in name) and any(character.isdigit() for character in name):
         return True
     return len(name) >= OPAQUE_MIXED_LENGTH and any(c.isdigit() for c in name) and any(c.isalpha() for c in name)
 

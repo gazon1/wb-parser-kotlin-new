@@ -1550,6 +1550,13 @@ def test_an_identifier_among_the_headers_that_were_sent_is_replaced():
     assert names == ["<redacted:header-name>", "<redacted:header-name>", "content-type"]
 
 
+def test_a_number_with_a_separator_in_a_header_name_is_replaced():
+    # The finding of the review: a number written with a separator between its
+    # parts is an account id in the shape the site writes ids in.
+    assert redact.safe_header_name("123456789-01") == "<redacted:header-name>"
+    assert redact.safe_header_name("123456789_01") == "<redacted:header-name>"
+
+
 def test_the_name_of_a_header_that_the_service_chose_survives():
     # A name the service chose is made of words — long ones included.
     headers = redact.redact_headers(
@@ -1558,6 +1565,12 @@ def test_the_name_of_a_header_that_the_service_chose_survives():
     )
 
     assert headers["sec-ch-ua-platform-version"] == "<redacted:sec-ch-ua-platform-version>"
+
+
+def test_an_ordinary_header_name_survives():
+    # A name the service chose carries a word, and a word is not an identifier.
+    assert redact.safe_header_name("x-spa-version") == "x-spa-version"
+    assert redact.safe_header_name("x-userid") == "x-userid"
 
 
 def test_a_number_that_is_not_finite_is_not_a_number():

@@ -518,7 +518,10 @@ The rules the redactor applies:
   account id, a hash of a session. A name like that is a value that stands
   where a name stands, so it is replaced and the fact that the header was
   there stays. A name the service chose is made of words, long ones included
-  (`sec-ch-ua-platform-version`), and it survives;
+  (`sec-ch-ua-platform-version`), and it survives. A name that carries no
+  letters at all is an id as well: a number written with a separator between
+  its parts (`123456789-01`) is an account id in the shape the site writes ids
+  in;
 - an error keeps only the **kind** of the failure (the exception class), never
   its text: an error message can quote the response, the URL or the request;
 - every field copied from a capture is **validated** before it is copied: the

@@ -118,7 +118,10 @@ was never answered is evidence of something different.
   token of characters, and a token can be a profile's UUID in either spelling,
   an account id or a hash of a session. The fact that the header was there
   stays, the name does not. A name the service chose is made of words, long
-  ones included, and it stays as it is.
+  ones included, and it stays as it is. A name that carries no letters at all
+  is an id: a number written with a separator between its parts
+  (`123456789-01`) is an account id in the shape the site writes ids in, and a
+  name the service chose always carries a word.
 - **Never** keep the value of a free-text query parameter (`query`, `search`,
   `text`, and the short spellings of the same thing — `q`, `term`, `keyword`,
   `keywords`, `phrase`): what somebody typed is the search history of the
