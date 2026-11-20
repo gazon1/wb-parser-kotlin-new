@@ -1138,6 +1138,30 @@ def test_an_opaque_value_in_an_allowed_response_header_is_replaced():
     assert "abcdef0123456789abcdef" not in headers["server"]
 
 
+def test_a_long_digit_run_in_an_allowed_header_is_replaced():
+    # The finding of the review: the value of an allowed header went through
+    # the shape rules, but not through the digit rule — so an account id in a
+    # user agent reached the committed file as it was.
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "Wildberries/1.0 2285324551794928359"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert "2285324551794928359" not in headers["user-agent"]
+    assert "id" in headers["user-agent"]
+
+
+def test_the_digit_run_of_the_site_stays_in_an_allowed_header():
+    # The rule is about a run that is longer than the runs the site asks with:
+    # a ten-digit run cannot be told apart from the site's own constants.
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "Wildberries/1.0 1259570991"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert "1259570991" in headers["user-agent"]
+
+
 def test_an_ordinary_content_type_survives():
     assert redact.safe_content_type("text/plain; charset=UTF-8") == "text/plain; charset=UTF-8"
 

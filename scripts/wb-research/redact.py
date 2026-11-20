@@ -310,7 +310,8 @@ MAX_VALUE_LENGTH = 200
 UNSAFE_IDENTIFIER = re.compile(r"[^A-Za-z0-9._-]+")
 LONG_DIGIT_RUN = re.compile(r"\d{9,}")
 
-# A run of digits in the value of a query parameter. The site asks with digit
+# A run of digits in a value whose name says nothing about what it is — the
+# value of a header, the value of a query parameter. The site asks with digit
 # runs of its own — `dest=1259570991` is the catalog the page is about,
 # `hide_vflags=4294967296` is a mask of flags, `nm=161886426` is a card — and
 # those runs are the evidence: they say what the request asked for. They are
@@ -318,7 +319,7 @@ LONG_DIGIT_RUN = re.compile(r"\d{9,}")
 # the request was made from is a run like that (`user_id=2285324551794928359`),
 # and it must not reach a committed file. A run of ten digits is kept, because
 # it cannot be told apart from the site's own constants.
-QUERY_DIGIT_RUN = re.compile(r"\d{11,}")
+VALUE_DIGIT_RUN = re.compile(r"\d{11,}")
 EMAIL_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 # A phone number, as people write it: ten or eleven digits in groups, with a
@@ -630,13 +631,17 @@ def redact_generic_value(value: str) -> str:
     values that only their shape gives away. So the value goes through the rules
     that need no name: a UUID is the identifier of a profile — in either
     spelling, and wherever it sits in the value — a long opaque run is a token,
-    and the personal values are replaced as they are everywhere else.
+    a long run of digits is an account id, and the personal values are replaced
+    as they are everywhere else.
 
     A dotted name is a name: its parts are judged one by one, so a name of
     dotted words survives and a token inside it does not.
     """
     text = UUID_VALUE.sub(placeholder("opaque"), value)
     text = UUID_COMPACT.sub(placeholder("opaque"), text)
+    # The digit rule comes after the UUID rule: the digits of a UUID are part
+    # of it, and a rule that runs first would eat the identifier.
+    text = VALUE_DIGIT_RUN.sub(placeholder("id"), text)
     # The whole value may be one run of opaque characters — hyphens and all —
     # or a run may sit inside a value that carries other words.
     text = opaque_parts(text) if OPAQUE_VALUE.match(text) else OPAQUE_RUN.sub(opaque_parts, text)
@@ -678,7 +683,7 @@ def redact_query_value(name: str, value: str) -> str:
     the search history of the session, and it can be a person's name.
 
     A run of digits is replaced when it is longer than the runs the site asks
-    with (`QUERY_DIGIT_RUN`): the account the request was made from is such a
+    with (`VALUE_DIGIT_RUN`): the account the request was made from is such a
     run, and it is not evidence. A run of ten digits stays — it cannot be told
     apart from the site's own constants (`dest=1259570991`), and those are
     the evidence.
@@ -693,10 +698,7 @@ def redact_query_value(name: str, value: str) -> str:
         return placeholder("query-param")
     if URL_VALUE.match(value):
         return redact_url(value)
-    # The shape rules come first: a UUID is an identifier in either spelling,
-    # and its digits are part of it — the digit rule must not eat it.
-    text = redact_generic_value(value)
-    return QUERY_DIGIT_RUN.sub(placeholder("id"), text)
+    return redact_generic_value(value)
 
 
 def redact_error(value: Any) -> str | None:

@@ -396,7 +396,8 @@ The rules the redactor applies:
   session, and it can be a person's name. The query an investigation asked is
   written in `investigation.yaml`, on purpose, by the developer; the machine
   fixture carries the names of the parameters only;
-- a run of digits in the value of a query parameter is replaced when it is
+- a run of digits in a value whose name says nothing about it — the value of a
+  query parameter, the value of an allowlisted header — is replaced when it is
   **longer than the runs the site asks with**: the account the request was made
   from is such a run (`user_id=2285324551794928359`), and it is not evidence. The
   site's own constants are ten digits at the longest (`dest=1259570991`,

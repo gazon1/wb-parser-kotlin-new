@@ -113,8 +113,9 @@ was never answered is evidence of something different.
   `keywords`, `phrase`): what somebody typed is the search history of the
   session, and the query of an investigation belongs in the record of the
   investigation.
-- **Never** keep a run of digits in the value of a query parameter that is
-  longer than the runs the site asks with: the account the request was made
+- **Never** keep a run of digits in a value whose name says nothing about it —
+  the value of a query parameter, the value of an allowlisted header — when it
+  is longer than the runs the site asks with: the account the request was made
   from is such a run (`user_id=2285324551794928359`). The site's own constants
   are ten digits at the longest (`dest=1259570991`, `hide_vflags=4294967296`)
   and they stay — they say what the request asked for, and a ten-digit run
