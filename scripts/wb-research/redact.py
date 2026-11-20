@@ -388,6 +388,17 @@ def placeholder(kind: str) -> str:
     return f"<redacted:{kind}>"
 
 
+def writable(text: str) -> str:
+    """The text as a UTF-8 file can hold it.
+
+    A capture can carry a character no file can store — a lone surrogate, for
+    instance. Such a character is not evidence, and a file that cannot be
+    written is a failed export: the character is replaced instead of ending
+    the run.
+    """
+    return text.encode("utf-8", "replace").decode("utf-8")
+
+
 def looks_like_credential(value: str) -> bool:
     """A value that looks like a credential rather than like an ordinary word.
 
@@ -816,12 +827,32 @@ def redact_url(url: str) -> str:
     evidence, and it is the part of a URL most likely to carry a token. The
     user information of the authority (`user:password@host`) is dropped for the
     same reason — it is a credential, and it is not evidence either.
+
+    A URL the parser refuses — an unclosed IPv6 bracket, a host it cannot
+    read — is replaced whole: where the user information ends and the path
+    begins is unknown there, and a URL that cannot be judged must not be
+    guessed at. A URL that carries a character no file can hold is kept, with
+    that character replaced: the URL is evidence, and a character that cannot
+    be written is not a reason to lose it.
     """
-    parts = urlsplit(url)
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return placeholder("url")
     query = []
     for name, value in parse_qsl(parts.query, keep_blank_values=True):
         query.append((safe_query_name(name), redact_query_value(name, value)))
-    return urlunsplit((parts.scheme, authority_without_userinfo(parts), redact_path(parts.path), urlencode(query), ""))
+    return writable(
+        urlunsplit(
+            (
+                parts.scheme,
+                authority_without_userinfo(parts),
+                redact_path(parts.path),
+                urlencode(query, errors="replace"),
+                "",
+            )
+        )
+    )
 
 
 def is_account_id(segment: str) -> bool:
@@ -863,7 +894,7 @@ def redact_path(path: str) -> str:
         if previous.lower() in ACCOUNT_PATH_COMPONENTS and is_account_id(decoded):
             # The segment after a segment that names an account is an account id,
             # and an account id is not always nine digits long.
-            kept.append(quote(placeholder("account-id"), safe=PATH_SEGMENT_SAFE))
+            kept.append(quote(placeholder("account-id"), safe=PATH_SEGMENT_SAFE, errors="replace"))
             previous = decoded
             continue
         text = EMAIL_ADDRESS.sub("email", decoded)
@@ -879,7 +910,7 @@ def redact_path(path: str) -> str:
             # the name of a marker (`opaque123`) is a value, and it is replaced
             # like any other.
             text = "credential"
-        kept.append(segment if text == decoded else quote(text, safe=PATH_SEGMENT_SAFE))
+        kept.append(segment if text == decoded else quote(text, safe=PATH_SEGMENT_SAFE, errors="replace"))
         previous = decoded
     return "/".join(kept)
 
@@ -1390,7 +1421,9 @@ def main(argv: list[str] | None = None) -> int:
     }
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(fixture, indent=2, ensure_ascii=False, sort_keys=False) + "\n", encoding="utf-8")
+    out.write_text(
+        writable(json.dumps(fixture, indent=2, ensure_ascii=False, sort_keys=False) + "\n"), encoding="utf-8"
+    )
     print(f"{out}: {len(captures)} capture(s)")
     return 0
 

@@ -240,5 +240,12 @@ was never answered is evidence of something different.
   `b.example` to the parser here. The URL is refused rather than guessed, and
   the page that is executed is the page that was judged. A URL whose host
   cannot be read at all names no host, and no page of it is approved.
+- **Never** let a value the redactor cannot judge end the run: a URL the parser
+  refuses — an unclosed IPv6 bracket — is replaced whole (`<redacted:url>`),
+  because where the user information ends and the path begins is unknown there,
+  and a URL that cannot be judged must not be guessed at. A character no UTF-8
+  file can hold (a lone surrogate) is replaced instead of failing the export:
+  the evidence is worth more than the character, and a failed export is a lost
+  step.
 - The tool stays in `scripts/` and `devtools/`: no production module depends on
   it and it adds no runtime dependency.

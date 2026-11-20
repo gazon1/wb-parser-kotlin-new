@@ -1738,3 +1738,41 @@ def test_a_media_type_with_a_numeric_subtype_is_not_a_media_type():
     assert redact.safe_content_type("application/123456") is None
     assert redact.safe_content_type("application/1") is None
     assert redact.safe_content_type("application/json") == "application/json"
+
+
+def test_a_url_the_parser_cannot_read_is_replaced_whole():
+    # The finding of the review: `urlsplit` refuses a URL with an unclosed
+    # IPv6 bracket, and the refusal reached the caller as an exception — the
+    # export of the whole step died on a value the redactor could not judge.
+    # Where the user information ends and the path begins is unknown in such a
+    # URL, and a URL that cannot be judged must not be guessed at.
+    assert redact.redact_url("https://[::1/api") == "<redacted:url>"
+
+
+def test_a_malformed_url_does_not_end_the_export():
+    # The same refusal, reached from every place a URL can come from: a note,
+    # a header value, a query value and a query name.
+    assert redact.redact_note("see https://[::1/api for details") == "see <redacted:url> for details"
+    headers = redact.redact_headers(
+        [{"name": "referer", "value": "https://[::1/api"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+    assert headers["referer"] == "<redacted:url>"
+    assert redact.redact_query_value("u", "https://[::1/api") == "<redacted:url>"
+    assert redact.safe_query_name("https://[::1/api") == "<redacted:query-name>"
+
+
+def test_a_capture_with_a_malformed_url_is_still_sanitized():
+    document = json.loads(json.dumps(HAR))
+    document["log"]["entries"][0]["request"]["url"] = "https://[::1/api"
+
+    capture = redact.sanitize(document, stem="capture")[0]
+
+    assert capture["request"]["url"] == "<redacted:url>"
+
+
+def test_a_character_no_file_can_hold_is_replaced():
+    # A capture can carry a lone surrogate: it is not evidence, and a file
+    # that cannot be written is a failed export.
+    assert redact.writable("a\ud800b") == "a?b"
+    assert "\ud800" not in redact.redact_url("https://www.wildberries.ru/a\ud800b")

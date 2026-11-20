@@ -555,7 +555,13 @@ The rules the redactor applies:
   numeric field — because a number cannot carry a name, a token or a sentence;
 - placeholders are stable (`<redacted:deviceid>`, `<redacted:opaque>`,
   `<redacted:error>`, `<redacted:account-id>`, `<redacted:id>`), so a diff shows
-  what changed, not that something was removed.
+  what changed, not that something was removed;
+- a URL the parser cannot read — an unclosed IPv6 bracket — is replaced whole
+  (`<redacted:url>`): where the user information ends and the path begins is
+  unknown there, and a URL that cannot be judged must not be guessed at. The
+  redactor never ends the export because of a value it could not judge. A
+  character that no UTF-8 file can hold (a lone surrogate) is replaced instead
+  of failing the write: the evidence is worth more than the character.
 
 ## Trust boundary
 

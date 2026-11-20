@@ -406,7 +406,9 @@ def write_har(path: Path, entries: list[dict]) -> None:
             "entries": entries,
         }
     }
-    path.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    path.write_text(
+        load_redactor().writable(json.dumps(document, indent=2, ensure_ascii=False) + "\n"), encoding="utf-8"
+    )
 
 
 def read_har(path: Path) -> list[dict]:
@@ -632,7 +634,9 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         "notes": notes,
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    report_path.write_text(
+        load_redactor().writable(json.dumps(report, indent=2, ensure_ascii=False) + "\n"), encoding="utf-8"
+    )
 
     exported = export_investigation(investigation)
 
