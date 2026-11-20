@@ -73,9 +73,9 @@ already there and only renames it.
 ### When the index carries a column that a migration adds
 
 `feedback_points` does not exist until `V16__scraped_items_feedback_points.sql` has been
-applied, so the read model's index cannot be built before that. Its rollout is three
-phases, not one — and the phases are about **who writes**, not only about the order of
-the SQL.
+applied, so the read model's index cannot be built before that. Its rollout is four
+phases, not one — and the phases are about **who writes** and **who serves**, not only
+about the order of the SQL.
 
 The change this index belongs to changes what the writer stores.
 `V17__scraped_items_cashback_is_a_percentage.sql` converts the cashback of every
@@ -90,24 +90,52 @@ So the order the phases enforce is this:
 > The writer that writes the new unit starts **after** the conversion has been applied,
 > and the conversion is applied while **no writer runs**.
 
-#### Phase 1 — apply V16, with the old writer still running
+And the second rule, which the release's own API makes necessary:
+
+> The API that answers about the new catalog is started **after** the new crawler has
+> filled it.
+
+The second rule is not about the data — it is about what the new API answers. The new
+release answers about the products that pay **review points**, and the rows that are in
+the table now pay none: they were crawled without the filter, so their `feedback_points`
+is `NULL`. A new API over those rows answers with an empty catalog, and it keeps
+answering with it until the new crawler has been around the circle — about seven hours
+for the whole catalog (`docs/RUNBOOK.md`, §9). The old API has no such condition, so it
+answers with the catalog it has always answered with. That is why the API is replaced
+**last**, and not in the first phase.
+
+#### Phase 1 — apply V16, without serving traffic
 
 `V16` adds a column: it touches no row and no index, so the release that is still
 running keeps writing the old unit, and the column is simply `NULL` for the rows it
 writes.
 
-The migration is applied by an instance of the new release whose writer is off
-(`CRAWLER_WORKER_ENABLED=false`), and Flyway is told where to stop:
+The migration is applied by an instance of the new release that neither serves nor
+crawls: the web server off, the worker off, and Flyway told where to stop. Build the
+new release first (`just app::build bootJar`), and run it on the machine that runs the
+crawler — that is where the jar is:
 
 ```bash
-SPRING_FLYWAY_TARGET=16 CRAWLER_WORKER_ENABLED=false \
+CRAWLER_WORKER_ENABLED=false SPRING_MAIN_WEB_APPLICATION_TYPE=none \
+  SPRING_FLYWAY_TARGET=16 \
   java -jar app/build/libs/app.jar
 ```
 
-The API instance on the VPS has its writer off by design, so it is the natural instance
-for this phase: there the setting is an environment variable of the container, and it is
-removed again for phase 3. The crawler on the workstation is the writer, and it keeps
-running the release it is running.
+Such an instance applies the migrations and exits — a Spring Boot application without a
+web server has nothing to keep it alive. It does not crawl, so it does not compete for
+the crawl lock, and it writes nothing to the catalog. `V16` is a metadata-only operation,
+and the lock it takes on the crawler's table is held for a moment.
+
+The API instance on the VPS is **not** touched in this phase: it keeps the release it
+has, and it keeps serving the catalog it serves. The crawler on the workstation is the
+writer, and it keeps running the release it is running.
+
+> The old release cannot be started again after this phase. Flyway compares the
+> migrations it finds in the database with the ones it carries, and `V16` is not among
+> them: the old instance refuses to start with "Detected applied migration not resolved
+> locally: 16". The running instance does not validate — it keeps serving — but a restart
+> of it needs `SPRING_FLYWAY_ENABLED=false`, because the migrations of this rollout are
+> applied deliberately, by the one-shot instance, and not by the server.
 
 #### Phase 2 — build the index concurrently, and prove that it is valid
 
@@ -138,10 +166,16 @@ valid — it raises, the deployment fails, and the index that works stays in pla
    keeps writing the old unit during the conversion leaves rows that were never
    converted, and a writer that writes the new unit during it leaves rows the
    conversion reads the wrong way round.
-2. **Apply V17 and V18** — start the new release with the writer still off and without
-   `SPRING_FLYWAY_TARGET` this time. V17 converts the rows; V18 finds the index built
-   in phase 2, drops the old one and renames the new one to the name the queries and
-   the docs use.
+2. **Apply V17 and V18** — the same one-shot instance as in phase 1, this time without
+   `SPRING_FLYWAY_TARGET`:
+
+   ```bash
+   CRAWLER_WORKER_ENABLED=false SPRING_MAIN_WEB_APPLICATION_TYPE=none \
+     java -jar app/build/libs/app.jar
+   ```
+
+   V17 converts the rows; V18 finds the index built in phase 2, drops the old one and
+   renames the new one to the name the queries and the docs use.
 3. **Start the new crawler** — the new release with the writer on. Every row it writes
    is in the new unit, and the conversion has already run.
 
@@ -153,6 +187,32 @@ of the old unit.
 Between the first and the third phase the old index is still the one in use. It does not
 carry `feedback_points`, so the read model visits the heap for every observation — the
 cost the new index is built to remove, and the reason the third phase is not optional.
+
+#### Phase 4 — fill the catalog, and cut the API over
+
+The new crawler writes observations that carry review points. The new API answers about
+the products whose *newest* observation carries them, so its catalog is not empty the
+moment the crawler starts: it holds the products the crawler has already reached, and it
+grows as the crawler goes around the circle.
+
+The number that says how far the crawler has come:
+
+```sql
+SELECT COUNT(*) FROM latest_product_observations WHERE feedback_points IS NOT NULL;
+```
+
+The cutover is when that number has stopped growing — the crawler has been around the
+circle, and every product that pays review points has a current observation that says
+so. The API instance on the VPS is then replaced by the new release:
+
+```bash
+just deploy <tag>
+```
+
+Before that moment the old API serves the old catalog; after it, the new API serves the
+catalog of the products that pay review points. There is no moment in between where the
+new API serves an empty catalog — unless the crawler has not been around the circle yet,
+and the count above is what says so.
 
 The extension has to exist first, and it is created by the migration — so create it by
 hand as well, before the indexes:

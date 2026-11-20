@@ -69,6 +69,23 @@ internal object CatalogReadModel {
     const val REVIEW_POINTS_OBSERVATION: String = "feedback_points IS NOT NULL"
 
     /**
+     * The condition that says an observation pays a wallet cashback.
+     *
+     * The catalog is made of the products that pay **review points**, and a product that
+     * pays review points usually pays no wallet cashback: the two never appear together
+     * on the same product. So a list that is *about* the cashback cannot be built from the
+     * catalog's membership — every product of the catalog would be a candidate, and the
+     * "best cashback deals" would be the products with no cashback at all, ordered last by
+     * `NULLS LAST` and shown as deals.
+     *
+     * The condition is what a candidate for the top-deals list has to satisfy: that list
+     * answers "where can this product be bought with the most cashback back", and a
+     * product that pays no cashback is not an answer to that question. The list is empty
+     * until the crawler asks WB for a cashback again, and it is empty rather than wrong.
+     */
+    const val CASHBACK_DEAL_OBSERVATION: String = "cashback_percent > 0"
+
+    /**
      * The condition that says an observation is the current one of its product, at the
      * grain of the read.
      *

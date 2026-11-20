@@ -40,6 +40,22 @@ class CatalogTopDealQueries(
     private val dataSource: CatalogDataSource,
 ) {
     /**
+     * The candidates of the list: the current observations that pay a wallet cashback.
+     *
+     * The catalog is made of the products that pay review points, and those are the
+     * products WB pays no wallet cashback for. A list built from the whole catalog would
+     * therefore list products with no cashback as the best cashback deals — an answer to a
+     * question nobody asked, sorted by a column that is empty for every row. So the
+     * candidates are the observations that pay a cashback, and the list is empty until the
+     * crawler asks WB for one.
+     */
+    private val cashbackCandidates =
+        CatalogFilters.Where(
+            listOf("s.${CatalogReadModel.CASHBACK_DEAL_OBSERVATION}"),
+            emptyList(),
+        )
+
+    /**
      * The highest cashback across all targets, one row per matched product.
      */
     fun listTopDeals(params: TopDealsQueryParams): Paged<ProductCard> {
@@ -56,7 +72,7 @@ class CatalogTopDealQueries(
                     .prepareStatement(
                         """
                         WITH current AS (
-                        ${CatalogReadModel.currentProductTargets(CatalogFilters.Where.EMPTY)}
+                        ${CatalogReadModel.currentProductTargets(cashbackCandidates)}
                         ),
                         best AS (
                               SELECT DISTINCT ON (c.match_id)

@@ -69,4 +69,19 @@ class CatalogTopDealQueriesTest :
 
             page.items.map { it.title } shouldBe listOf("Лучший", "Средний", "Худший")
         }
+
+        test("the products that pay no wallet cashback are left out") {
+            val target = fixture.seedTarget("Категория")
+            // The catalog is made of the products that pay review points, and those are
+            // the products WB pays no wallet cashback for. A list built from the whole
+            // catalog would show them as the best cashback deals.
+            fixture.seedItem(target, title = "Без кешбека", matchId = 1L, productId = 1L, cashbackPercent = null, cashback = null)
+            fixture.seedItem(target, title = "С нулевым кешбеком", matchId = 2L, productId = 2L, cashbackPercent = 0.0, cashback = 0.0)
+            fixture.seedItem(target, title = "С кешбеком", matchId = 3L, productId = 3L, cashbackPercent = 30.0)
+
+            val page = queries().listTopDeals(TopDealsQueryParams.parse(params()))
+
+            page.items.map { it.title } shouldBe listOf("С кешбеком")
+            page.totalCount shouldBe 1
+        }
     })

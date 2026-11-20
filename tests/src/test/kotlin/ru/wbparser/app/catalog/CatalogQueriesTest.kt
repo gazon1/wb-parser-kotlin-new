@@ -445,7 +445,9 @@ class CatalogQueriesTest :
                     target,
                     title = "Товар $index",
                     matchId = index.toLong(),
-                    cashbackPercent = index.toDouble(),
+                    // Every item pays a cashback: the list is about the cashback, and an
+                    // item that pays none is not a candidate for it.
+                    cashbackPercent = (index + 1).toDouble(),
                     productId = index.toLong(),
                 )
             }

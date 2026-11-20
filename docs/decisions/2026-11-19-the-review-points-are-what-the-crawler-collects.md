@@ -118,16 +118,28 @@ reported, dressed up as a fix.
   reads every row as the old writer wrote it and rewrites it in the new unit; a row
   written in the new unit before the conversion is read as an old one — 3 % of 2590 ₽ is
   stored as 77.70 ₽, the conversion reads that as 7770 %, and the row ends up carrying
-  201243 ₽. The rollout is three phases: apply `V16` with the old writer still running,
+  201243 ₽. The rollout is four phases: apply `V16` with the old writer still running,
   build the index concurrently and prove that it is valid, then stop the writer, apply
-  `V17` and `V18`, and only then start the new writer
+  `V17` and `V18`, start the new writer, and cut the API over last
   (`docs/operations/catalog-index-rollout.md`).
+- **Never** let the serving instance apply the migrations of a rollout, and **always** cut
+  the API over after the new crawler has filled the catalog. The new release answers about
+  the products that pay review points, and the rows in the table pay none until the new
+  crawler has been around the circle — about seven hours. An API cut over earlier answers
+  with an empty catalog for that whole time, and the migrations of the rollout are applied
+  by a one-shot instance that neither serves nor crawls, so the release that serves keeps
+  serving the catalog it has.
+- **Never** build the "best cashback" list from the catalog's membership. The catalog is
+  made of the products that pay review points, and those are the products WB pays no
+  wallet cashback for: the candidates of that list are the observations that pay a
+  cashback, and the list is empty until the crawler asks WB for one. A list built from
+  the whole catalog would answer with products that pay no cashback, ordered by a column
+  that is empty for every row.
 - **Never** rename an index that is not valid. A `CREATE INDEX CONCURRENTLY` that failed
   leaves one behind, and `CREATE INDEX IF NOT EXISTS` sees only the name: without a check
   the migration would drop the index that works and rename the one the planner ignores.
   `V18` refuses to run on such an index.
-- The catalog's cashback-based sort, its `minCashback` filter and its "best cashback" list
-  have nothing to sort by any more: no crawled product carries a wallet cashback, because the
-  request does not ask for one. They keep working — they just report empty and order by
-  recency. Sorting the catalog by review points is a separate decision, and this one does not
-  make it.
+- The catalog's cashback-based sort and its `minCashback` filter have nothing to sort by
+  any more: no crawled product carries a wallet cashback, because the request does not ask
+  for one. They keep working — they just report empty and order by recency. Sorting the
+  catalog by review points is a separate decision, and this one does not make it.
