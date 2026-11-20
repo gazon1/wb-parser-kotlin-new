@@ -75,6 +75,9 @@ history.
 - **Always** keep raw captures outside the repository; commit only sanitized
   evidence.
 - **Never** commit a response body, a cookie, a token or a profile identifier.
+- **Never** commit free text that a person typed — the value of a query, a
+  search or a text parameter: the query of an investigation belongs in the
+  record of the investigation, where the developer wrote it on purpose.
 - **Always** record the state of every claim: `observed`, `reproduced`,
   `validated`, `rejected` or `open`.
 - **Always** produce sanitized evidence with `scripts/wb-research/redact.py`

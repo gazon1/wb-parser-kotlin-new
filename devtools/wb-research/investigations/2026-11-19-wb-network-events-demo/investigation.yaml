@@ -1,0 +1,183 @@
+id: 2026-11-19-wb-network-events-demo
+title: The catalog page load and the next page, captured and correlated
+scenario: wb-network-events
+site: www.wildberries.ru
+status: concluded
+created: 2026-11-19T20:06:00+03:00
+updated: 2026-11-19T20:40:00+03:00
+raw_captures: ~/.cache/wb-research/2026-11-19-wb-network-events-demo/
+tools:
+  - name: chrome-use
+    version: 1.5.294
+  - name: scripts/wb-research/capture.py
+    version: local capture script, unpinned (issue 310)
+
+steps:
+  - action: open the catalog page for 131954 in a real Chrome session and record the network
+    expected: the storefront issues a catalog search request and the traffic around it
+    observed: >-
+      eight requests on the approved hosts, among them two searches against
+      /__internal/u-search/exactmatch/ru/common/v18/search — one for the catalog, one for the
+      filters. The catalog answer is served as text/plain and its body is a JSON object with
+      metadata, products and total
+    evidence: [initial-load-003, initial-load-005]
+  - action: scroll the same page to the bottom and record the network again
+    expected: the page asks for more products
+    observed: >-
+      nine requests on the approved hosts, among them three card lists against
+      /__internal/u-card/cards/v4/list and another catalog search. The analytics host
+      search-goods.wildberries.ru answered the query as a JSON array
+    evidence: [next-page-003, next-page-005, next-page-007]
+
+api_candidates:
+  - id: storefront-catalog-search
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      ab_testing: 'false'
+      appType: '1'
+      curr: rub
+      dest: '1259570991'
+      hide_vflags: '4294967296'
+      lang: ru
+      locale: ru
+      query: колонки
+      resultset: catalog
+      sort: popular
+      spp: '30'
+      suppressSpellcheck: 'false'
+    headers:
+      deviceid: <redacted:deviceid>
+      referer: https://www.wildberries.ru/catalog/0/search.aspx?search=колонки
+      sec-ch-ua: '"Chromium";v="155", "Not(A:Brand";v="24"'
+      sec-ch-ua-mobile: '0'
+      sec-ch-ua-platform: '"Linux"'
+      user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
+      x-queryid: <redacted:x-queryid>
+      x-requested-with: XMLHttpRequest
+      x-spa-version: 14.33.2
+      x-userid: <redacted:x-userid>
+    observed_status: 200
+    response_content_type: text/plain
+    response_body_bytes: 51593
+    response_schema:
+      top_level_keys: [metadata, products, total]
+  - id: storefront-filters-search
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      autoselectFilters: 'false'
+      resultset: filters
+      spp: '30'
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+      x-spa-version: 14.33.2
+    observed_status: 200
+    response_content_type: text/plain
+    response_body_bytes: 6149
+    response_schema:
+      top_level_keys: [data, metadata]
+  - id: storefront-card-list
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-card/cards/v4/list
+    query:
+      appType: '1'
+      curr: rub
+      dest: '1259570991'
+      lang: ru
+      spp: '30'
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+      x-spa-version: 14.33.2
+    observed_status: 200
+    response_content_type: application/json
+    response_body_bytes: 3349
+    response_schema:
+      top_level_keys: [products]
+  - id: analytics-search-goods
+    method: GET
+    endpoint: https://search-goods.wildberries.ru/search
+    query:
+      query: колонки
+    headers:
+      deviceid: <redacted:deviceid>
+      origin: https://www.wildberries.ru
+      x-requested-with: XMLHttpRequest
+    observed_status: 200
+    response_content_type: application/json
+    response_body_bytes: 3163
+    response_schema:
+      json_type: array
+
+evidence:
+  - id: initial-load
+    fixture: evidence/initial-load.json
+    kind: har
+    note: the network of the page load, filtered to the approved hosts
+    captures:
+      - initial-load-001
+      - initial-load-002
+      - initial-load-003
+      - initial-load-004
+      - initial-load-005
+      - initial-load-006
+      - initial-load-007
+      - initial-load-008
+  - id: next-page
+    fixture: evidence/next-page.json
+    kind: har
+    note: the network of the scroll that loads more products
+    captures:
+      - next-page-001
+      - next-page-002
+      - next-page-003
+      - next-page-004
+      - next-page-005
+      - next-page-006
+      - next-page-007
+      - next-page-008
+      - next-page-009
+
+validation:
+  - claim: the storefront reads the catalog with GET /__internal/u-search/exactmatch/ru/common/v18/search and resultset=catalog
+    state: reproduced
+    rationale: the request is in the page load and again in the scroll, with the same endpoint and the same query
+    evidence: [initial-load-003, next-page-007]
+  - claim: the catalog answer is a JSON object with metadata, products and total, even though the content type says text/plain
+    state: observed
+    rationale: >-
+      the body of the request was read and its top-level keys are metadata, products and total. The
+      earlier investigation could not say this — it saw the byte count and never the content
+    evidence: [initial-load-003, next-page-007]
+  - claim: loading more products asks the card list endpoint, not the search endpoint
+    state: observed
+    rationale: three requests to /__internal/u-card/cards/v4/list carry a products array, while the search request of the same step is the refresh of the search
+    evidence: [next-page-003, next-page-005, next-page-006]
+  - claim: the traffic of a WB page is dominated by hosts that carry no API
+    state: reproduced
+    rationale: >-
+      304 of the 312 recorded requests of the page load went to the static basket and to the
+      analytics host, and none of them is an API call
+    evidence: [initial-load-003]
+  - claim: the capture knows which requests are Wildberries API calls
+    state: open
+    rationale: >-
+      the filter keeps the requests of the approved hosts and fails loudly on an API call to a
+      host that is neither approved nor marked as noise, but the approved list is a human
+      decision and no one has checked it against the whole site
+    evidence: [initial-load-003, next-page-002]
+
+open_questions:
+  - whether the products of the card list and the products of the search answer are the same list
+  - what the search-goods array carries, and who reads it
+  - whether the antibot analytics calls matter for a crawler that is not a browser
+
+follow_up:
+  kotlin_adapter: not-needed
+  issue: 310
+  pr: null
+  note: >-
+    the capture is a research tool and changes nothing in the crawler. The header constants of the
+    crawler are a separate claim, tracked in issue 308

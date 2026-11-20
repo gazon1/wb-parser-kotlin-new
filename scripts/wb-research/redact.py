@@ -101,6 +101,13 @@ SENSITIVE_QUERY_PARAMS = {
     "userid",
     "user_id",
     "x-userid",
+    # The account the request was made from, under the other names the API
+    # spells it with. The value is a digit string, so it is short enough to
+    # pass the opaque-value rule.
+    "uid",
+    "account",
+    "accountid",
+    "account_id",
 }
 
 # A name that ends the way a credential name ends. The list above cannot hold
@@ -109,6 +116,26 @@ SENSITIVE_QUERY_PARAMS = {
 # The suffix is what a credential name ends with, whatever the service calls
 # the front of it.
 CREDENTIAL_NAME_SUFFIX = ("_token", "_secret", "_password", "_key", "_passwd")
+
+# Query parameters that carry free text — what somebody typed. The value is
+# the search history of the session, and it can be a person's name. It is not
+# evidence: the query an investigation asked is written in the record of the
+# investigation, on purpose, by the developer.
+#
+# The names are the ones the capture sources use for the same thing — the
+# search box of the site (`query`), the search of the redirect check
+# (`search`), and the short spellings another API would use (`q`, `term`).
+# A name that is not on the list is judged by its value instead.
+FREE_TEXT_QUERY_PARAMS = {
+    "keyword",
+    "keywords",
+    "phrase",
+    "q",
+    "query",
+    "search",
+    "term",
+    "text",
+}
 
 # The parts of a credential name. The name is what carries the rule; the value
 # beside it can be short, so the value itself cannot be recognized — only the
@@ -236,6 +263,20 @@ CREDENTIAL_PATH_COMPONENTS = {
 # `access_token`.
 CREDENTIAL_SEGMENT = re.compile(r"(?i)" + CREDENTIAL_NAME_PREFIX + CREDENTIAL_NAME)
 
+# A path segment that names an account. The segment after it is an account id
+# when it is a number, however short: the digit-run rule needs nine digits,
+# and an account id is not always that long.
+ACCOUNT_PATH_COMPONENTS = {
+    "account",
+    "accounts",
+    "customer",
+    "customers",
+    "profile",
+    "profiles",
+    "user",
+    "users",
+}
+
 # A value that looks like an opaque credential: long, no spaces, no URL
 # punctuation. This is what catches a profile identifier or a token that the
 # name-based rules did not. The dot is inside the character class because a JWT
@@ -268,6 +309,16 @@ MAX_VALUE_LENGTH = 200
 # a name is replaced: a slug of it would still be the address, spelled out.
 UNSAFE_IDENTIFIER = re.compile(r"[^A-Za-z0-9._-]+")
 LONG_DIGIT_RUN = re.compile(r"\d{9,}")
+
+# A run of digits in the value of a query parameter. The site asks with digit
+# runs of its own — `dest=1259570991` is the catalog the page is about,
+# `hide_vflags=4294967296` is a mask of flags, `nm=161886426` is a card — and
+# those runs are the evidence: they say what the request asked for. They are
+# ten digits at the longest, so a longer run is not one of them: the account
+# the request was made from is a run like that (`user_id=2285324551794928359`),
+# and it must not reach a committed file. A run of ten digits is kept, because
+# it cannot be told apart from the site's own constants.
+QUERY_DIGIT_RUN = re.compile(r"\d{11,}")
 EMAIL_ADDRESS = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 # A phone number, as people write it: ten or eleven digits in groups, with a
@@ -449,6 +500,7 @@ def safe_identifier(value: Any, fallback: str) -> str:
     text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
     text = UUID_VALUE.sub("opaque", text)
+    text = UUID_COMPACT.sub("opaque", text)
     text = redact_opaque_run(text)
     text = UNSAFE_IDENTIFIER.sub("-", text).strip("-")
     if not text or LONG_DIGIT_RUN.search(text):
@@ -459,6 +511,41 @@ def safe_identifier(value: Any, fallback: str) -> str:
 def is_number(value: Any) -> bool:
     """A number that is not a boolean — `True` is not a count of one."""
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def safe_key(key: Any) -> str:
+    """A key of a JSON answer that may be committed.
+
+    A key is a name the service chose, and a name can be a person's address or
+    an account id: `{"alice@example.com": ...}` is an answer whose key *is* the
+    address. A key that survives the rules unchanged is kept as it is — the
+    shape of the answer is the evidence — and a key that does not becomes one
+    placeholder, so the fact that there was a key stays and the value does not.
+
+    A key made of digits only is an identifier, not a name: an answer indexed
+    by account id carries the id in the key. The digit-run rule needs nine
+    digits and an account id is not always that long, so the key is judged by
+    its shape: digits only means it is an id.
+
+    A key that carries a space is a phrase, not the name of a field: it is
+    free text — a person's name, a sentence — that the answer happens to be
+    keyed by. A field name the service chose is one word.
+    """
+    text = str(key)
+    if text.isdigit():
+        return placeholder("key")
+    if any(character.isspace() for character in text):
+        return placeholder("key")
+    if redact_note(text) == text:
+        return text
+    return placeholder("key")
+
+
+def safe_keys(keys: Any) -> list[str] | None:
+    """The top-level keys of a JSON answer, safe to commit."""
+    if not isinstance(keys, list):
+        return None
+    return sorted(safe_key(key) for key in keys)
 
 
 def redact_measurements(probe: dict[str, Any]) -> dict[str, Any]:
@@ -586,7 +673,18 @@ def redact_query_value(name: str, value: str) -> str:
     name is: `access_token`, `accessToken` and `x-auth-token` are the same
     name. The name is recognized by the same rule the rest of the redactor
     uses, so that a new spelling of a name does not open a new hole.
+
+    A name that carries free text is redacted as well: what somebody typed is
+    the search history of the session, and it can be a person's name.
+
+    A run of digits is replaced when it is longer than the runs the site asks
+    with (`QUERY_DIGIT_RUN`): the account the request was made from is such a
+    run, and it is not evidence. A run of ten digits stays — it cannot be told
+    apart from the site's own constants (`dest=1259570991`), and those are
+    the evidence.
     """
+    if name.lower() in FREE_TEXT_QUERY_PARAMS:
+        return placeholder("query-param")
     if name.lower() in SENSITIVE_QUERY_PARAMS:
         return placeholder("query-param")
     if name.lower().endswith(CREDENTIAL_NAME_SUFFIX):
@@ -595,7 +693,10 @@ def redact_query_value(name: str, value: str) -> str:
         return placeholder("query-param")
     if URL_VALUE.match(value):
         return redact_url(value)
-    return redact_generic_value(value)
+    # The shape rules come first: a UUID is an identifier in either spelling,
+    # and its digits are part of it — the digit rule must not eat it.
+    text = redact_generic_value(value)
+    return QUERY_DIGIT_RUN.sub(placeholder("id"), text)
 
 
 def redact_error(value: Any) -> str | None:
@@ -612,6 +713,25 @@ def redact_error(value: Any) -> str | None:
     return match.group(0) if match else placeholder("error")
 
 
+def safe_query_name(name: str) -> str:
+    """The name of a query parameter, if it may be committed.
+
+    The name is part of the URL and part of the evidence, and an ordinary name
+    (`resultset`, `spp`, `dest`) stays as it is. A name that carries personal
+    data — an address, a phone number, an account id, an opaque token — is not
+    a name but a value that happens to stand on the left of the `=`, so it
+    becomes one placeholder. A name made of digits only is an identifier, the
+    way a key of digits is.
+
+    A name that carries a space is a phrase, not the name of a field: it is
+    free text — a person's name — that the request happens to be keyed by. A
+    name the service chose is one word.
+    """
+    if name.isdigit() or any(character.isspace() for character in name) or redact_note(name) != name:
+        return placeholder("query-name")
+    return name
+
+
 def redact_url(url: str) -> str:
     """Keep the URL's structure; drop the values that could identify a session.
 
@@ -623,17 +743,32 @@ def redact_url(url: str) -> str:
     parts = urlsplit(url)
     query = []
     for name, value in parse_qsl(parts.query, keep_blank_values=True):
-        query.append((name, redact_query_value(name, value)))
+        query.append((safe_query_name(name), redact_query_value(name, value)))
     return urlunsplit((parts.scheme, authority_without_userinfo(parts), redact_path(parts.path), urlencode(query), ""))
+
+
+def is_account_id(segment: str) -> bool:
+    """Whether a path segment is an account id.
+
+    The segment after a segment that names an account is an id, and an id is
+    not always nine digits long. It is judged by its shape: digits, a mix of
+    letters and digits, or a separator between them is an identifier. A plain
+    word is the name of a route the service chose — `user/check` is an
+    endpoint, not an account.
+    """
+    if not segment:
+        return False
+    return re.fullmatch(r"[A-Za-z]+", segment) is None
 
 
 def redact_path(path: str) -> str:
     """A URL path, without the values in it that could identify a session.
 
     The path is part of the URL, and it carries values as well: a reset link
-    (`/reset/<token>`), a profile (`/users/<address>`), a phone number. The
-    query values are judged by their value already; the path was kept as it
-    came, so anything in it reached the committed file as it was.
+    (`/reset/<token>`), a profile (`/users/<address>`), a phone number, an
+    account id. The query values are judged by their value already; the path
+    was kept as it came, so anything in it reached the committed file as it
+    was.
 
     The path is looked at decoded: a capture may spell an address as
     `alice%40example.com`, and the plain patterns would not see it. The path
@@ -647,9 +782,16 @@ def redact_path(path: str) -> str:
     kept = []
     previous = ""
     for segment in segments:
+        if previous.lower() in ACCOUNT_PATH_COMPONENTS and is_account_id(segment):
+            # The segment after a segment that names an account is an account id,
+            # and an account id is not always nine digits long.
+            kept.append(placeholder("account-id"))
+            previous = segment
+            continue
         text = EMAIL_ADDRESS.sub("email", segment)
         text = PHONE_NUMBER.sub("phone", text)
         text = OPAQUE_TOKEN.sub("opaque", text)
+        text = LONG_DIGIT_RUN.sub(placeholder("account-id"), text)
         text = redact_credentials(text, label="credential")
         if names_a_credential(previous) and text == segment and not text.startswith("<redacted:"):
             # The segment after a segment that names a credential is one, even
@@ -706,6 +848,13 @@ def redact_headers(headers: list[dict[str, Any]], safe: set[str]) -> dict[str, s
         name = str(header.get("name", "")).lower()
         if not name:
             continue
+        if not HEADER_NAME.fullmatch(name):
+            # The name is not a name: a header of a capture can be spelled
+            # anything, and the name itself would reach the committed file.
+            key = placeholder("header-name")
+            if key not in out:
+                out[key] = placeholder("header-name")
+            continue
         if name in safe:
             out[name] = redact_header_value(name, str(header.get("value", "")), safe)
         elif name not in out:
@@ -713,27 +862,260 @@ def redact_headers(headers: list[dict[str, Any]], safe: set[str]) -> dict[str, s
     return dict(sorted(out.items()))
 
 
+# The media type of a content type header: `type/subtype`, and nothing else.
+MEDIA_TYPE = re.compile(r"(?i)^[a-z0-9][a-z0-9!#$&^_.+-]*/[a-z0-9][a-z0-9!#$&^_.+-]*$")
+
+# The parameters of a content type header that may be kept. A charset is a
+# name and a number of characters; anything else can carry a value of its own.
+SAFE_CONTENT_TYPE_PARAMS = {"charset"}
+
+
+def safe_content_type(value: Any) -> str | None:
+    """The media type of a response, and the parameters that may be committed.
+
+    The content type comes from the server, and a server may answer with
+    anything: a media type and a list of parameters is what a content type
+    is, so only that is kept. The parameters that survive are named ones —
+    `charset` — and their value is a token of characters, not free text.
+    """
+    if not isinstance(value, str):
+        return None
+    parts = value.split(";")
+    media = parts[0].strip()
+    if not MEDIA_TYPE.match(media):
+        return None
+    kept = [media]
+    for part in parts[1:]:
+        name, separator, raw = part.partition("=")
+        if not separator:
+            continue
+        name = name.strip().lower()
+        raw = raw.strip()
+        if name not in SAFE_CONTENT_TYPE_PARAMS:
+            continue
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}", raw):
+            continue
+        kept.append(f"{name}={raw}")
+    return "; ".join(kept)
+
+
+# The method of a request: a token of letters and nothing else. The capture is
+# an input, so a field nobody looked at must not be able to carry a value.
+HTTP_METHOD = re.compile(r"[A-Za-z]{3,12}")
+
+
+def safe_method(value: Any) -> str | None:
+    """The method of a request, if it is one.
+
+    A method is a word of letters: `GET`, `POST`, `PROPFIND`. Anything else in
+    this field is not a method, and a value that rode in here would reach the
+    committed file as if it were the method.
+    """
+    if not isinstance(value, str) or not HTTP_METHOD.fullmatch(value):
+        return None
+    return value.upper()
+
+
+def safe_status(value: Any) -> int | None:
+    """The status of a response, if it is one.
+
+    An HTTP status is a number between 100 and 599. A status that was never
+    answered is `null` with a reason, not a zero and not a string.
+    """
+    if not is_number(value):
+        return None
+    status = int(value)
+    return status if 100 <= status <= 599 else None
+
+
+def safe_size(value: Any) -> int | None:
+    """The size of a body in bytes, if it is a size."""
+    if not is_number(value):
+        return None
+    size = int(value)
+    return size if size >= 0 else None
+
+
+# The moment a HAR entry was recorded: an ISO-8601 timestamp.
+ISO_TIMESTAMP = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})")
+
+
+def safe_timestamp(value: Any) -> str | None:
+    """When the request started, if the capture said when."""
+    if not isinstance(value, str) or not ISO_TIMESTAMP.fullmatch(value):
+        return None
+    return value
+
+
+# The credentials mode of a request. The browser knows three of them.
+CREDENTIALS_MODES = {"include", "omit", "same-origin"}
+
+
+def safe_credentials(value: Any) -> str | None:
+    """The credentials mode of a request, if it is one."""
+    if not isinstance(value, str):
+        return None
+    return value if value in CREDENTIALS_MODES else None
+
+
+# The name of a header: a token of the characters a name may carry.
+HEADER_NAME = re.compile(r"[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}")
+
+
+def safe_header_names(names: Any) -> list[str]:
+    """The names of the headers that were sent, if they are names.
+
+    A name that is not a token is not a name: it can be an address or a
+    credential. The fact that a header was there stays, the name does not.
+    """
+    if not isinstance(names, list):
+        return []
+    kept = []
+    for name in names:
+        text = str(name)
+        kept.append(text.lower() if HEADER_NAME.fullmatch(text) else placeholder("header-name"))
+    return sorted(kept)
+
+
+def safe_bool(value: Any) -> bool | None:
+    """A flag of the capture, if it is a flag."""
+    return value if isinstance(value, bool) else None
+
+
+# The phases a HAR records. Only a number is evidence of a phase; anything else
+# in a timing field is dropped, the way an unknown header value is dropped.
+HAR_TIMING_PHASES = ("blocked", "dns", "connect", "send", "wait", "receive", "ssl")
+
+
+def har_timing(entry: dict[str, Any]) -> dict[str, Any]:
+    """How long the request took. The HAR knows it; the browser does not.
+
+    The timing is an input like any other: the phases are taken by name and
+    only a number survives, so a capture cannot carry a value into the file
+    through a field nobody looked at.
+    """
+    timings = entry.get("timings")
+    kept: dict[str, Any] = {}
+    if isinstance(timings, dict):
+        for phase in HAR_TIMING_PHASES:
+            value = timings.get(phase)
+            if is_number(value):
+                kept[phase] = value
+    duration = entry.get("time")
+    return {"durationMs": duration if is_number(duration) else None, "timings": kept}
+
+
+# The fields of the capture annotation that may reach a committed file. The
+# annotation is written into the HAR by the capture, and the HAR is an input:
+# a field this sanitizer does not know may carry anything, so it is dropped
+# rather than copied.
+CAPTURE_ANNOTATION_FIELDS = ("available", "reason", "bodyBytes", "isJson", "jsonType", "topLevelKeys")
+
+# The reasons a body was not read. The annotation carries the code of the
+# reason, not its text: the browser's own error text is not a reason, it is the
+# text of a failure, and it may quote the URL or the request. The codes are
+# the bridge between the capture and this module, and the text of a reason
+# belongs to this module — the evidence format is written here.
+CAPTURE_REASONS = {
+    "ambiguous": "several requests looked the same, so no body was attributed to this one",
+    "browser-error": "the browser did not return the response body",
+    "no-body": "the request detail carried no body",
+    "not-read": "the response body was not read",
+}
+
+# The kinds of JSON body there are. Anything else is not a kind, and a kind
+# that is not one of these says nothing.
+JSON_TYPES = ("object", "array", "scalar")
+
+
+def safe_reason(value: Any) -> str:
+    """The reason a body was not read, if it is one of the reasons.
+
+    The annotation is an input, so a reason that is not one of the codes is
+    not kept: it may be the browser's own error text, which quotes the
+    request.
+    """
+    return CAPTURE_REASONS.get(str(value), placeholder("error"))
+
+
+def har_schema(entry: dict[str, Any]) -> dict[str, Any]:
+    """The shape of the response body, when the capture read it.
+
+    The capture that produced the HAR can read the body of a request one by one
+    and keep only its shape. It writes that shape into the entry as `_capture`.
+    An entry without it means the body was never read — which is not the same as
+    a body that was read and was empty.
+
+    The annotation is an input, not a trusted source: only the fields this
+    sanitizer knows are taken, and each of them only with the type it is
+    supposed to have. A capture cannot smuggle a value into the fixture
+    through a field nobody looked at.
+    """
+    annotation = entry.get("_capture")
+    if not isinstance(annotation, dict):
+        return {"available": False, "reason": "the capture did not read the response body"}
+    shape: dict[str, Any] = {}
+    for field in CAPTURE_ANNOTATION_FIELDS:
+        if field not in annotation:
+            continue
+        value = annotation[field]
+        if field in ("available", "isJson"):
+            shape[field] = safe_bool(value)
+        elif field == "reason":
+            shape[field] = safe_reason(value)
+        elif field == "bodyBytes":
+            shape[field] = safe_size(value)
+        elif field == "jsonType":
+            shape[field] = value if value in JSON_TYPES else None
+        else:
+            shape[field] = safe_keys(value)
+    return shape
+
+
+def har_response(response: dict[str, Any], pending: bool) -> dict[str, Any]:
+    """What came back.
+
+    A request that was still in flight when the capture stopped has no answer:
+    the browser reports a zero status and an empty content type, and those are
+    not HTTP values. They become null with a reason, so that a request without
+    an answer cannot be read as a request that was answered with nothing.
+    """
+    content = response.get("content", {}) or {}
+    if pending:
+        return {
+            "status": None,
+            "contentType": None,
+            "bodyBytes": None,
+            "headers": {},
+            "reason": "the capture recorded no status for this request",
+        }
+    return {
+        "status": safe_status(response.get("status")),
+        "contentType": safe_content_type(content.get("mimeType")),
+        "bodyBytes": safe_size(content.get("size")),
+        "headers": redact_headers(response.get("headers", []) or [], SAFE_RESPONSE_HEADERS),
+    }
+
+
 def capture_from_har_entry(entry: dict[str, Any], capture_id: str, source_file: str) -> dict[str, Any]:
     """One HAR entry as one capture."""
     request = entry.get("request", {})
     response = entry.get("response", {})
-    content = response.get("content", {}) or {}
+    annotation = entry.get("_capture") if isinstance(entry.get("_capture"), dict) else {}
+    pending = safe_bool(annotation.get("pending")) is True or not response.get("status")
     return {
         "id": capture_id,
         "source": "har",
         "sourceFile": safe_identifier(source_file, "capture"),
-        "started": entry.get("startedDateTime"),
+        "started": safe_timestamp(entry.get("startedDateTime")),
         "request": {
-            "method": request.get("method"),
+            "method": safe_method(request.get("method")),
             "url": redact_url(str(request.get("url", ""))),
             "headers": redact_headers(request.get("headers", []) or [], SAFE_REQUEST_HEADERS),
         },
-        "response": {
-            "status": response.get("status"),
-            "contentType": content.get("mimeType"),
-            "bodyBytes": content.get("size"),
-            "headers": redact_headers(response.get("headers", []) or [], SAFE_RESPONSE_HEADERS),
-        },
+        "response": har_response(response, pending),
+        "timing": har_timing(entry),
+        "schema": har_schema(entry),
         "body": {"included": False, "reason": "a response body may carry personal data"},
     }
 
@@ -749,22 +1131,22 @@ def capture_from_probe(probe: dict[str, Any], capture_id: str, source_file: str)
         "source": "probe",
         "sourceFile": safe_identifier(source_file, "capture"),
         "request": {
-            "method": probe.get("method"),
+            "method": safe_method(probe.get("method")),
             "url": redact_url(str(probe.get("url", ""))),
-            "credentials": probe.get("credentials"),
-            "headersSent": sorted(probe.get("headerNames", []) or []),
+            "credentials": safe_credentials(probe.get("credentials")),
+            "headersSent": safe_header_names(probe.get("headerNames")),
             "headerValuesCaptured": False,
         },
         "response": {
-            "status": probe.get("status"),
-            "contentType": probe.get("contentType"),
-            "bodyBytes": probe.get("bodyBytes"),
-            "isJson": probe.get("isJson"),
+            "status": safe_status(probe.get("status")),
+            "contentType": safe_content_type(probe.get("contentType")),
+            "bodyBytes": safe_size(probe.get("bodyBytes")),
+            "isJson": safe_bool(probe.get("isJson")),
             "error": redact_error(probe.get("error")),
         },
         "schema": {
-            "topLevelKeys": probe.get("topLevelKeys"),
-            "productCount": probe.get("productCount"),
+            "topLevelKeys": safe_keys(probe.get("topLevelKeys")),
+            "productCount": probe.get("productCount") if is_number(probe.get("productCount")) else None,
         },
         "measurements": redact_measurements(probe),
         "body": {"included": False, "reason": "a response body may carry personal data"},
@@ -782,22 +1164,22 @@ def capture_from_adapter(data: dict[str, Any], capture_id: str, source_file: str
         "source": "adapter",
         "sourceFile": safe_identifier(source_file, "capture"),
         "request": {
-            "method": request.get("method"),
+            "method": safe_method(request.get("method")),
             "url": redact_url(str(request.get("url", ""))),
-            "credentials": request.get("credentials"),
-            "headersSent": sorted(request.get("sentByBrowser", []) or []),
-            "headersDroppedByBrowser": sorted(request.get("droppedByBrowser", []) or []),
+            "credentials": safe_credentials(request.get("credentials")),
+            "headersSent": safe_header_names(request.get("sentByBrowser")),
+            "headersDroppedByBrowser": safe_header_names(request.get("droppedByBrowser")),
             "headerValuesCaptured": False,
         },
         "response": {
-            "status": response.get("status"),
-            "contentType": response.get("contentType"),
-            "bodyBytes": shape.get("bodyBytes"),
-            "isJson": shape.get("isJson"),
+            "status": safe_status(response.get("status")),
+            "contentType": safe_content_type(response.get("contentType")),
+            "bodyBytes": safe_size(shape.get("bodyBytes")),
+            "isJson": safe_bool(shape.get("isJson")),
         },
         "schema": {
-            "topLevelKeys": shape.get("topLevelKeys"),
-            "productCount": shape.get("productCount"),
+            "topLevelKeys": safe_keys(shape.get("topLevelKeys")),
+            "productCount": shape.get("productCount") if is_number(shape.get("productCount")) else None,
         },
         "body": {"included": False, "reason": "a response body may carry personal data"},
     }

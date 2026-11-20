@@ -495,7 +495,7 @@ def test_an_opaque_token_in_a_name_is_replaced():
 
 def test_a_personal_value_in_a_query_parameter_is_replaced():
     # The finding of the review: the parameter name was not the only carrier.
-    url = redact.redact_url("https://www.wildberries.ru/search?query=555-123-4567&mail=alice@example.com")
+    url = redact.redact_url("https://www.wildberries.ru/search?find=555-123-4567&mail=alice@example.com")
 
     assert "555-123-4567" not in url
     assert "alice" not in url
@@ -883,3 +883,553 @@ def test_a_glued_qualifier_is_only_a_known_word():
     assert redact.redact_query_value("authorship", "Alice") == "Alice"
     assert redact.redact_note("sidebar=abc123") == "sidebar=abc123"
     assert redact.redact_note("authors=Alice") == "authors=Alice"
+
+
+def test_a_content_type_that_carries_a_url_keeps_only_the_media_type():
+    # The finding of the review: the content type came from the server and was
+    # copied as it was, while the same value in the headers went through the
+    # rules. A server can answer with anything.
+    har = {
+        "log": {
+            "entries": [
+                {
+                    "request": {"method": "GET", "url": "https://www.wildberries.ru/a", "headers": []},
+                    "response": {
+                        "status": 200,
+                        "headers": [],
+                        "content": {
+                            "mimeType": "application/json; profile=https://example.com/?token=secret123",
+                            "size": 10,
+                        },
+                    },
+                }
+            ]
+        }
+    }
+
+    response = redact.sanitize(har, stem="capture")[0]["response"]
+
+    assert response["contentType"] == "application/json"
+    assert "secret123" not in json.dumps(response)
+
+
+def test_a_content_type_that_is_not_a_media_type_is_dropped():
+    assert redact.safe_content_type("not a type") is None
+    assert redact.safe_content_type(None) is None
+
+
+def test_a_credential_parameter_name_loses_its_value_whatever_the_separator():
+    # The finding of the review: the suffix rule knew only the underscore, so
+    # the same name written with a hyphen or a dot kept its value.
+    url = redact.redact_url("https://example.com/api?access-token=abc123&refresh.token=xyz789")
+
+    assert "abc123" not in url
+    assert "xyz789" not in url
+
+
+def test_a_credentials_mode_that_is_not_a_string_is_dropped():
+    # The finding of the review: the modes are a set, and a value that is not
+    # hashable raised instead of being dropped.
+    assert redact.safe_credentials([]) is None
+    assert redact.safe_credentials({}) is None
+
+
+def test_a_credentials_mode_that_is_not_one_is_dropped():
+    assert redact.safe_credentials("include") == "include"
+    assert redact.safe_credentials("alice@example.com") is None
+
+
+def test_a_duration_that_is_not_a_number_is_dropped():
+    timing = redact.har_timing({"time": "session_token=secret123", "timings": {}})
+
+    assert timing["durationMs"] is None
+    assert "secret123" not in json.dumps(timing)
+
+
+def test_a_field_of_the_capture_annotation_that_is_not_known_is_dropped():
+    # The finding of the review: the annotation was copied field by field, and a
+    # field nobody looked at could carry anything into the committed file.
+    shape = redact.har_schema({"_capture": {"available": True, "note": "session_token=secret123"}})
+
+    assert "note" not in shape
+    assert "secret123" not in json.dumps(shape)
+
+
+def test_a_flag_of_the_annotation_that_is_not_a_flag_is_dropped():
+    # The finding of the review: the flags were read with `bool()`, so a string
+    # "false" read as a flag that is set.
+    shape = redact.har_schema({"_capture": {"available": "false", "isJson": "no"}})
+
+    assert shape["available"] is None
+    assert shape["isJson"] is None
+
+
+def test_a_free_text_query_parameter_loses_its_value():
+    # The finding of the review: what somebody typed is free text, and it can
+    # be a person's name. The query of an investigation is written in the record
+    # of the investigation, on purpose; the machine fixture carries the names of
+    # the parameters only.
+    url = redact.redact_url("https://www.wildberries.ru/search?query=Ivan%20Petrov&resultset=catalog")
+
+    assert "Ivan" not in url
+    assert "Petrov" not in url
+    assert "query=%3Credacted%3Aquery-param%3E" in url
+    assert "resultset=catalog" in url
+
+
+def test_a_free_text_query_parameter_under_a_short_name_loses_its_value():
+    # The finding of the review: the free-text names were three words, and a
+    # service that spells the same thing `q` or `term` had its search text
+    # committed as it was.
+    url = redact.redact_url("https://www.wildberries.ru/search?q=Ivan%20Petrov&term=колонки")
+
+    assert "Ivan" not in url
+    assert "Petrov" not in url
+    assert "колонки" not in url
+    assert "q=%3Credacted%3Aquery-param%3E" in url
+    assert "term=%3Credacted%3Aquery-param%3E" in url
+
+
+def test_a_json_key_that_is_an_account_id_is_replaced():
+    shape = redact.har_schema({"_capture": {"available": True, "topLevelKeys": ["1234567890"]}})
+
+    assert shape["topLevelKeys"] == ["<redacted:key>"]
+    assert "1234567890" not in json.dumps(shape)
+
+
+def test_a_json_key_that_is_an_address_is_replaced():
+    # The finding of the review: the top-level keys were copied from the answer
+    # as they were, and a key can be the address itself.
+    shape = redact.har_schema({"_capture": {"available": True, "topLevelKeys": ["alice@example.com", "products"]}})
+
+    assert shape["topLevelKeys"] == ["<redacted:key>", "products"]
+    assert "alice" not in json.dumps(shape)
+
+
+def test_a_json_key_that_is_a_name_in_latin_is_replaced():
+    assert redact.safe_key("Ivan Petrov") == "<redacted:key>"
+
+
+def test_a_json_key_that_is_free_text_is_replaced():
+    # The finding of the review: a key that survives the pattern-based rules is
+    # not necessarily safe — a key that carries a space is a phrase, and a
+    # phrase can be a person's name.
+    shape = redact.har_schema({"_capture": {"available": True, "topLevelKeys": ["Иван Петров", "products"]}})
+
+    assert shape["topLevelKeys"] == ["<redacted:key>", "products"]
+    assert "Петров" not in json.dumps(shape)
+
+
+def test_a_json_kind_that_is_not_a_kind_is_not_kept():
+    shape = redact.har_schema({"_capture": {"available": True, "jsonType": "session_token=secret123"}})
+
+    assert shape["jsonType"] is None
+    assert "secret123" not in json.dumps(shape)
+
+
+def test_a_known_reason_of_the_annotation_keeps_its_code():
+    # The codes are the bridge between the capture and the redactor: a reason
+    # that is one of them is the reason the capture recorded.
+    shape = redact.har_schema({"_capture": {"available": False, "reason": "browser-error"}})
+
+    assert shape["reason"] == redact.CAPTURE_REASONS["browser-error"]
+
+
+def test_a_long_digit_run_in_a_query_value_is_replaced():
+    # The finding of the review: a digit run in an ordinary parameter was kept
+    # as it was, and the account the request was made from is a digit run
+    # (`user_id=2285324551794928359`).
+    url = redact.redact_url("https://www.wildberries.ru/api?dest=123456789012345")
+
+    assert "123456789012345" not in url
+    assert "dest=%3Credacted%3Aid%3E" in url
+
+
+def test_a_mixed_account_id_after_an_account_path_component_is_replaced():
+    url = redact.redact_url("https://www.wildberries.ru/accounts/ab-12345")
+
+    assert "ab-12345" not in url
+    assert "account-id" in url
+
+
+def test_an_account_id_after_an_account_path_component_is_replaced():
+    # The finding of the review: the digit-run rule needs nine digits, so a
+    # short account id in the path reached the committed file as it was.
+    url = redact.redact_url("https://www.wildberries.ru/users/12345")
+
+    assert "12345" not in url
+    assert "account-id" in url
+
+
+def test_an_account_id_after_an_account_path_component_is_replaced_when_it_is_long():
+    url = redact.redact_url("https://www.wildberries.ru/customer/987654321")
+
+    assert "987654321" not in url
+    assert "account-id" in url
+
+
+def test_an_account_id_in_a_query_parameter_stays_an_id():
+    # The rule is about a path segment: WB's own parameters carry long digit
+    # runs, and they are ids, not phone numbers.
+    url = redact.redact_url("https://www.wildberries.ru/search?dest=1259570991")
+
+    assert "dest=1259570991" in url
+
+
+def test_an_account_id_in_the_path_of_a_url_is_replaced():
+    # The finding of the review: the path went through the address, the phone
+    # number and the token rules, but not through the account-id rule — so a
+    # digit run in a path segment reached the committed file as it was.
+    url = redact.redact_url("https://www.wildberries.ru/users/1234567890")
+
+    assert "1234567890" not in url
+    assert "account-id" in url
+
+
+def test_an_account_id_under_a_short_name_is_replaced():
+    url = redact.redact_url("https://www.wildberries.ru/api?uid=2285324551794928359")
+
+    assert "2285324551794928359" not in url
+    assert "uid=%3Credacted%3Aquery-param%3E" in url
+
+
+def test_an_address_in_an_allowed_header_value_is_replaced():
+    # The finding of the review: the value of a header on the safe list went
+    # through the credential rules only, so an address in a user agent reached
+    # the committed file as it was.
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "Mozilla/5.0 alice@example.com"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert "alice@example.com" not in headers["user-agent"]
+    assert "email" in headers["user-agent"]
+
+
+def test_an_alphanumeric_account_id_after_an_account_path_component_is_replaced():
+    # The finding of the review: the rule asked for digits, so an account id
+    # that carries letters as well went into the committed file as it was.
+    url = redact.redact_url("https://www.wildberries.ru/users/user12345")
+
+    assert "user12345" not in url
+    assert "account-id" in url
+
+
+def test_a_negative_size_in_the_annotation_is_dropped():
+    # The finding of the review: the size was copied without the validator the
+    # other fields go through.
+    shape = redact.har_schema({"_capture": {"available": True, "bodyBytes": -10}})
+
+    assert shape["bodyBytes"] is None
+
+
+def test_an_encoded_account_id_in_the_path_of_a_url_is_replaced():
+    url = redact.redact_url("https://www.wildberries.ru/users/%31%32%33%34%35%36%37%38%39%30")
+
+    assert "1234567890" not in url
+
+
+def test_an_opaque_value_in_an_allowed_response_header_is_replaced():
+    headers = redact.redact_headers(
+        [{"name": "server", "value": "nginx-abcdef0123456789abcdef"}],
+        redact.SAFE_RESPONSE_HEADERS,
+    )
+
+    assert "abcdef0123456789abcdef" not in headers["server"]
+
+
+def test_an_ordinary_content_type_survives():
+    assert redact.safe_content_type("text/plain; charset=UTF-8") == "text/plain; charset=UTF-8"
+
+
+def test_an_ordinary_json_key_survives():
+    shape = redact.har_schema({"_capture": {"available": True, "topLevelKeys": ["metadata", "products"]}})
+
+    assert shape["topLevelKeys"] == ["metadata", "products"]
+
+
+def test_an_ordinary_number_after_an_ordinary_path_component_survives():
+    url = redact.redact_url("https://www.wildberries.ru/catalog/0/list.aspx")
+
+    assert url == "https://www.wildberries.ru/catalog/0/list.aspx"
+
+
+def test_an_ordinary_query_parameter_keeps_its_value_beside_a_free_text_one():
+    url = redact.redact_url("https://www.wildberries.ru/search?query=колонки&spp=30")
+
+    assert "spp=30" in url
+
+
+def test_an_ordinary_query_parameter_name_survives():
+    assert redact.safe_query_name("resultset") == "resultset"
+    assert redact.safe_query_name("x-queryid") == "x-queryid"
+
+
+def test_an_ordinary_query_parameter_name_survives_a_space_rule():
+    # The rule is about a name that carries a space, not about every name.
+    assert redact.safe_query_name("resultset") == "resultset"
+
+
+def test_an_ordinary_timing_survives():
+    timing = redact.har_timing({"time": 1139.99, "timings": {"wait": 445.8, "receive": 693.7}})
+
+    assert timing == {"durationMs": 1139.99, "timings": {"wait": 445.8, "receive": 693.7}}
+
+
+def test_an_ordinary_word_that_only_starts_like_a_credential_keeps_its_value():
+    url = redact.redact_url("https://example.com/api?keyboard=qwerty&monkey=abc")
+
+    assert "keyboard=qwerty" in url
+    assert "monkey=abc" in url
+
+
+def test_a_numeric_json_key_is_an_identifier():
+    # A key made of digits only is an identifier: an answer indexed by an
+    # account id carries the id in the key.
+    assert redact.safe_key("42") == "<redacted:key>"
+
+
+def test_a_pending_flag_that_is_not_a_flag_does_not_make_the_request_pending():
+    # The finding of the review: the flag was read with `bool()`, so the
+    # string "false" read as a request that was still in flight.
+    entry = {
+        "request": {"method": "GET", "url": "https://example.com/api"},
+        "response": {"status": 200, "headers": [], "content": {"mimeType": "text/plain", "size": 1}},
+        "_capture": {"pending": "false"},
+    }
+
+    capture = redact.capture_from_har_entry(entry, "c1", "step.har")
+
+    assert capture["response"]["status"] == 200
+
+
+def test_a_phone_number_in_an_allowed_header_value_is_replaced():
+    headers = redact.redact_headers(
+        [{"name": "x-cache-status", "value": "MISS +7 495 123 45 67"}],
+        redact.SAFE_RESPONSE_HEADERS,
+    )
+
+    assert "495 123 45 67" not in headers["x-cache-status"]
+
+
+def test_a_query_parameter_name_of_digits_only_is_replaced():
+    # The finding of the review: a name of digits only is an identifier, the
+    # way a key of digits is, and the digit rule needs nine digits to fire.
+    url = redact.redact_url("https://example.com/api?12345=1")
+
+    assert "12345" not in url
+    assert "%3Credacted%3Aquery-name%3E" in url
+
+
+def test_a_query_parameter_name_that_carries_a_space_is_replaced():
+    # The finding of the review: a name that carries a space is a phrase, not
+    # the name of a field — it is free text that the request is keyed by, and
+    # a person's name is such a phrase.
+    url = redact.redact_url("https://example.com/api?Alice Smith=1")
+
+    assert "Alice" not in url
+    assert "%3Credacted%3Aquery-name%3E" in url
+
+
+def test_a_query_parameter_name_that_is_an_account_id_is_replaced():
+    url = redact.redact_url("https://example.com/api?1234567890=1")
+
+    assert "1234567890" not in url
+
+
+def test_a_query_parameter_name_that_is_an_address_is_replaced():
+    # The finding of the review: the name of a parameter was copied as it was,
+    # and a name can be an address on the left of the `=`.
+    url = redact.redact_url("https://www.wildberries.ru/api?alice%40example.com=1")
+
+    assert "alice" not in url
+    assert "example.com" not in url
+
+
+def test_a_reason_of_the_annotation_that_is_not_a_code_is_replaced():
+    # The finding of the review: the reason was copied as free text, and the
+    # browser's own error text quotes the URL and the request.
+    shape = redact.har_schema({"_capture": {"available": False, "reason": "CDP error: https://example.com/api"}})
+
+    assert shape["reason"] == "<redacted:error>"
+    assert "example.com" not in json.dumps(shape)
+
+
+def test_a_route_after_an_account_path_component_survives():
+    # A plain word after a segment that names an account is the name of a route
+    # the service chose: `user/check` is an endpoint, not an account.
+    url = redact.redact_url("https://data-checker.wildberries.ru/data-checker/api/v1/user/check")
+
+    assert url == "https://data-checker.wildberries.ru/data-checker/api/v1/user/check"
+
+
+def test_a_search_parameter_loses_its_value():
+    url = redact.redact_url("https://www.wildberries.ru/search?search=колонки")
+
+    assert "колонки" not in url
+    assert "search=%3Credacted%3Aquery-param%3E" in url
+
+
+def test_a_short_numeric_json_key_is_replaced():
+    # The finding of the review: the digit-run rule needs nine digits, so a
+    # short account id used as a key of the answer reached the committed file
+    # as it was.
+    shape = redact.har_schema({"_capture": {"available": True, "topLevelKeys": ["123456"]}})
+
+    assert shape["topLevelKeys"] == ["<redacted:key>"]
+    assert "123456" not in json.dumps(shape)
+
+
+def test_a_status_that_is_not_an_http_status_is_dropped():
+    assert redact.safe_status(200) == 200
+    assert redact.safe_status(0) is None
+    assert redact.safe_status("200") is None
+
+
+def test_a_timestamp_that_is_not_a_timestamp_is_dropped():
+    assert redact.safe_timestamp("2026-11-19T20:15:56.800173056Z") == "2026-11-19T20:15:56.800173056Z"
+    assert redact.safe_timestamp("alice@example.com") is None
+
+
+def test_a_timing_phase_that_is_not_a_number_is_dropped():
+    # The finding of the review: the timings were copied as they were, and a
+    # field nobody looked at could carry anything into the committed file.
+    timing = redact.har_timing({"time": 1139.99, "timings": {"wait": "alice@example.com"}})
+
+    assert timing["timings"] == {}
+    assert "alice" not in json.dumps(timing)
+
+
+def test_a_timing_phase_that_is_not_known_is_dropped():
+    timing = redact.har_timing({"time": 1139.99, "timings": {"custom": 12, "wait": 445.8}})
+
+    assert timing["timings"] == {"wait": 445.8}
+
+
+def test_a_uuid_in_a_name_is_replaced():
+    # The finding of the review: a UUID is an identifier, and the opaque-value
+    # rule does not see it — the hyphens break the run of characters.
+    name = redact.safe_identifier("probe-550e8400-e29b-41d4-a716-44665544abcd", "probe")
+
+    assert name == "probe-opaque"
+    assert "550e8400" not in name
+
+
+def test_a_value_of_the_annotation_that_is_not_of_the_type_it_claims_is_dropped():
+    shape = redact.har_schema({"_capture": {"available": True, "bodyBytes": "session_token=secret123"}})
+
+    assert shape["bodyBytes"] is None
+    assert "secret123" not in json.dumps(shape)
+
+
+def test_every_code_of_the_reasons_is_a_reason_of_the_annotation():
+    # The codes and the text of a reason belong together: a code that the
+    # capture writes but the redactor does not know would read as an error.
+    for code in redact.CAPTURE_REASONS:
+        shape = redact.har_schema({"_capture": {"available": False, "reason": code}})
+
+        assert shape["reason"] == redact.CAPTURE_REASONS[code]
+
+
+def test_the_digit_run_of_the_catalog_the_page_is_about_stays():
+    # The site's own constants are ten digits at the longest, and they are the
+    # evidence: they say what the request asked for.
+    url = redact.redact_url("https://www.wildberries.ru/api?dest=1259570991&hide_vflags=4294967296")
+
+    assert "dest=1259570991" in url
+    assert "hide_vflags=4294967296" in url
+
+
+def test_the_fields_of_a_capture_are_validated_before_they_are_copied():
+    # The finding of the review: the metadata of a capture was copied as it
+    # came, and the capture is an input — a value could ride in a field nobody
+    # looked at.
+    har = {
+        "log": {
+            "entries": [
+                {
+                    "startedDateTime": "alice@example.com",
+                    "request": {
+                        "method": "session_token=secret123",
+                        "url": "https://example.com/api",
+                        "headers": [{"name": "alice@example.com", "value": "bob@example.com"}],
+                    },
+                    "response": {
+                        "status": "carol@example.com",
+                        "headers": [],
+                        "content": {"mimeType": "application/json", "size": "dan@example.com"},
+                    },
+                }
+            ]
+        }
+    }
+
+    capture = redact.sanitize(har, stem="capture")[0]
+
+    assert capture["started"] is None
+    assert capture["request"]["method"] is None
+    assert capture["response"]["status"] is None
+    assert capture["response"]["bodyBytes"] is None
+    assert "@" not in json.dumps(capture)
+
+
+def test_the_fields_of_an_adapter_result_are_validated_before_they_are_copied():
+    data = {
+        "data": {
+            "result": {
+                "request": {
+                    "method": "alice@example.com",
+                    "url": "https://example.com/api",
+                    "credentials": "bob@example.com",
+                    "sentByBrowser": ["alice@example.com"],
+                    "droppedByBrowser": ["carol@example.com"],
+                },
+                "response": {"status": "dan@example.com", "contentType": "application/json"},
+            }
+        }
+    }
+
+    capture = redact.capture_from_adapter(data, "adapter-001", "adapter")
+
+    assert capture["request"]["method"] is None
+    assert capture["request"]["credentials"] is None
+    assert capture["request"]["headersSent"] == ["<redacted:header-name>"]
+    assert capture["request"]["headersDroppedByBrowser"] == ["<redacted:header-name>"]
+    assert capture["response"]["status"] is None
+    assert "@" not in json.dumps(capture)
+
+
+def test_the_fields_of_a_probe_are_validated_before_they_are_copied():
+    probe = {
+        "method": "alice@example.com",
+        "url": "https://example.com/api",
+        "credentials": "bob@example.com",
+        "headerNames": ["alice@example.com", "content-type"],
+        "status": "carol@example.com",
+        "bodyBytes": "dan@example.com",
+        "productCount": "eve@example.com",
+        "contentType": "application/json",
+        "isJson": "yes",
+    }
+
+    capture = redact.capture_from_probe(probe, "probe-001", "probe")
+
+    assert capture["request"]["method"] is None
+    assert capture["request"]["credentials"] is None
+    assert capture["request"]["headersSent"] == ["<redacted:header-name>", "content-type"]
+    assert capture["response"]["status"] is None
+    assert capture["response"]["bodyBytes"] is None
+    assert capture["response"]["isJson"] is None
+    assert capture["schema"]["productCount"] is None
+    assert "@" not in json.dumps(capture)
+
+
+def test_the_method_of_a_request_survives():
+    assert redact.safe_method("get") == "GET"
+    assert redact.safe_method("PROPFIND") == "PROPFIND"
+
+
+def test_the_shape_of_a_capture_is_only_the_fields_that_are_known():
+    shape = redact.har_schema({"_capture": {"available": True, "isJson": True, "bodyBytes": 51715}})
+
+    assert shape == {"available": True, "isJson": True, "bodyBytes": 51715}

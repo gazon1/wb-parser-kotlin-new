@@ -1,0 +1,176 @@
+---
+title: "A network capture is one named step, and an unapproved API host is an error"
+date: 2026-11-19
+tags: [research, tooling]
+---
+
+## Context
+
+Issue #310 asks for the network events of the Wildberries site to be captured
+and correlated with the steps of an experiment. The site answers its catalog
+with a handful of XHR calls; everything else it loads is a static asset or an
+analytics beacon. A raw HAR of one page load holds hundreds of entries, and
+almost none of them is what the investigation is about.
+
+The browser tooling that is already here (chrome-use) records a HAR, but it
+does not know what a step is, it does not separate the Wildberries API from the
+traffic around it, and the capture it writes carries the cookies of the
+session. The format ADR (2026-11-19) says what a committed evidence file may
+contain, but nothing produced one.
+
+A filter that is too quiet is the failure mode that matters here: the research
+question is "which endpoint answers the catalog", and a filter that silently
+drops an unrecognised host turns an answer into a gap that nobody notices.
+
+## Idea
+
+1. Record the whole page load and filter it afterwards, by hand, every time.
+2. Teach the browser tooling itself to name steps and separate hosts.
+3. A narrow wrapper: it names the step, keeps the approved hosts, reports what
+   it dropped and hands the result to the existing redactor.
+
+## Decision
+
+`scripts/wb-research/capture.py` records one named step at a time:
+
+```
+capture.py step --investigation <id> --name <step> -- <chrome-use command>
+```
+
+It clears the request log, starts a chrome-use HAR recording, runs the page
+action, waits `--settle` seconds for the requests to be answered, stops the
+recording, filters the entries and exports the result through `redact.py`.
+
+The approved hosts live in one file, `devtools/wb-research/capture-config.json`:
+`allowedOrigins` (the Wildberries API hosts), `noiseHosts` (hosts whose traffic
+carries no API), `keptResourceTypes` (`Fetch` and `XHR` — a static asset is not
+an API call) and `maxBodyFetches`.
+
+An API-shaped request to a host that is neither approved nor marked as noise
+is **not** dropped: the capture writes everything it has, names the host and
+exits with code 2. The developer then approves the host with `--allow-host` or
+adds it to the config — a decision that is visible in the record.
+
+A request that was still in flight when the recording stopped has no status.
+It is written as `status: null` with a reason; a zero status is not an HTTP
+value.
+
+The response body is read only to learn its shape: the names of the top-level
+keys, the size, whether it was JSON. The body itself is never written, and the
+shape is carried to the redactor through a `_capture` annotation on the HAR
+entry.
+
+## Rationale
+
+The wrapper wins over hand-filtering because the separation is a decision that
+has to be reproducible: the same capture, filtered by the same config, gives
+the same evidence file, and the diff shows what the config changed rather than
+what the operator changed. It wins over changing the browser tooling because
+the tooling records what the browser did and the investigation needs a
+different question asked of it — a smaller, local wrapper is the smaller
+change, and it stays outside the production modules.
+
+Loudness wins over silence because the cost of a false negative is invisible
+and the cost of a false positive is one extra line in the output. A dropped
+host is counted with a reason, and a host nobody has classified stops the
+capture, so the gap is something the developer has to close on purpose.
+
+A shape wins over a body because the question is "what does this endpoint
+answer", and the answer to that is the set of field names and the size. The
+body of a logged-in session carries personal data; the shape does not.
+
+Null wins over zero because `status: 0` reads as an answer, and a request that
+was never answered is evidence of something different.
+
+## Consequences
+
+- **Always** record one named step per capture; a step is the unit an
+  investigation is written against.
+- **Never** drop an API-shaped request to an unclassified host in silence: fail
+  with exit code 2 and name the host.
+- **Always** judge what counts as an API call by one definition — the kinds of
+  request the config keeps. Two definitions would let a kind of request that
+  the config keeps slip past the unapproved-host check as ordinary traffic, and
+  the capture would not stop for the host.
+- **Always** classify a host as `allowedOrigins` or `noiseHosts` before it can
+  be dropped; the config is the only source of that decision.
+- **Never** write a response body into a capture; only its shape.
+- **Never** write a status for a request that has none: null with a reason.
+- **Always** wait for the in-flight requests before stopping a recording
+  (`--settle`).
+- **Never** keep a top-level key that carries a value: a key is a name the
+  service chose, and it can be an address or an account id — it goes through the
+  same rules as everything else.
+- **Always** take only the known fields of the `_capture` annotation, each with
+  the type it is supposed to have: the annotation is an input, not a trusted
+  source.
+- **Always** validate every field that is copied from a capture: the method, the
+  status, the size, the moment, the credentials mode, the header names and the
+  flags. A capture is an input, and a field nobody looked at must not be able
+  to carry a value into the committed file.
+- **Never** keep the value of a free-text query parameter (`query`, `search`,
+  `text`, and the short spellings of the same thing — `q`, `term`, `keyword`,
+  `keywords`, `phrase`): what somebody typed is the search history of the
+  session, and the query of an investigation belongs in the record of the
+  investigation.
+- **Never** keep a run of digits in the value of a query parameter that is
+  longer than the runs the site asks with: the account the request was made
+  from is such a run (`user_id=2285324551794928359`). The site's own constants
+  are ten digits at the longest (`dest=1259570991`, `hide_vflags=4294967296`)
+  and they stay — they say what the request asked for, and a ten-digit run
+  cannot be told apart from them.
+- **Never** keep an account id in a path segment that follows a segment naming
+  an account, whatever its length: the digit-run rule needs nine digits. The id
+  is judged by its shape — digits, a mix of letters and digits, or a separator
+  between them — while a plain word stays, because it is the name of a route
+  the service chose (`user/check` is an endpoint, not an account).
+- **Never** keep a JSON key that is made of digits only: such a key is an
+  identifier, and an answer indexed by an account id carries the id in it.
+- **Never** keep a JSON key that carries a space: such a key is a phrase, and a
+  phrase can be a person's name. The name of a field the service chose is one
+  word.
+- **Never** keep the value of a query parameter whose name is a credential
+  name, whatever separator the service wrote it with: `access_token`,
+  `access-token` and `access.token` are the same name, and the value beside it
+  can be too short for every length-based rule.
+- **Never** keep a query parameter name that carries personal data: a name is
+  part of the URL and part of the evidence, but a value that stands on the left
+  of the `=` is not a name.
+- **Never** keep a query parameter name that is made of digits only: such a name
+  is an identifier, the way a key of digits is, and the digit-run rule needs
+  nine digits.
+- **Never** keep a query parameter name that carries a space: such a name is a
+  phrase, and a phrase can be a person's name. The name of a parameter the
+  service chose is one word.
+- **Never** keep a UUID in an operator-chosen name: it is an identifier, and the
+  opaque-value rule does not see it — the hyphens break the run of characters.
+- **Never** keep a content type beyond its media type and the safe parameters:
+  the server writes it, and the same value in a header goes through the rules.
+- **Never** keep the value of an allowed header as it is: the name says what may
+  be shown, not that the value is safe. A user agent that carries an address and
+  a server header that carries an opaque value go through the same rules as the
+  query values and the notes.
+- **Always** take only the known timing phases, and only a number as a duration:
+  the timing is an input like any other.
+- **Never** attribute a response body to a request that cannot be told apart
+  from a twin — the same method and the same URL, in the recording or in the
+  request list: a mapping that cannot be verified is no mapping.
+- **Always** delete the recording of the previous run of a step before the new
+  one starts — the raw recording, the filtered file the export reads, the
+  report of the previous run and the fixture the repository holds — and
+  **never** read a capture the browser failed to save.
+- **Never** write the browser's own error text into a capture: it quotes the
+  URL and the request. The reason a body was not read is a code (`ambiguous`,
+  `browser-error`, `no-body`, `not-read`), and the text of a reason belongs to
+  the redactor, which turns the code into the sentence the evidence carries.
+- **Never** continue a capture whose request log could not be cleared: the
+  bodies are looked up in that log, and the join with the recording is
+  positional.
+- **Always** check that the fixture of the step that was just recorded is among
+  the exported ones: another step of the same investigation is not this one.
+- **Always** treat the investigation id as one name, not a path: it becomes a
+  directory in the raw cache and a directory in the repository.
+- The capture is read-only: it drives chrome-use, it never changes the page
+  state and it never touches the cart, the orders or the account.
+- The tool stays in `scripts/` and `devtools/`: no production module depends on
+  it and it adds no runtime dependency.
