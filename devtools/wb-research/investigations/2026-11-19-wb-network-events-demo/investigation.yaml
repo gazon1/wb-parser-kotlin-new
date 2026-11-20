@@ -158,9 +158,12 @@ validation:
   - claim: the traffic of a WB page is dominated by hosts that carry no API
     state: reproduced
     rationale: >-
-      304 of the 312 recorded requests of the page load went to the static basket and to the
-      analytics host, and none of them is an API call
-    evidence: [initial-load-003]
+      of the 312 recorded requests of the page load, 8 are kept as evidence and the fixture counts the
+      other 304: 280 noise-host (the static basket and the analytics hosts), 18 other-host and 6
+      type-not-kept (the approved hosts, with traffic that is not an API call) — none of them is an
+      API call. The hosts behind the counts are in the report of the capture, in the raw cache, which
+      is not committed
+    evidence: [initial-load]
   - claim: the capture knows which requests are Wildberries API calls
     state: open
     rationale: >-

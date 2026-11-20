@@ -80,6 +80,11 @@ history.
   record of the investigation, where the developer wrote it on purpose.
 - **Always** record the state of every claim: `observed`, `reproduced`,
   `validated`, `rejected` or `open`.
+- **Always** point a claim at the evidence that supports it: the numbers of a
+  claim are the numbers the committed record keeps, and a claim that says more
+  than the committed record can show is written down more weakly. The hosts
+  behind a dropped request live in the report of the capture, which is not
+  committed, so a claim about them names the counts the fixture carries.
 - **Always** produce sanitized evidence with `scripts/wb-research/redact.py`
   rather than by hand, so the rules are the same for every investigation.
 - **Always** judge a value by whether it is still a value: a replacement marker
