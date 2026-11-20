@@ -559,6 +559,16 @@ def is_integral_number(value: Any) -> bool:
     return isinstance(value, int) or float(value).is_integer()
 
 
+def is_count(value: Any) -> bool:
+    """A number that can be a count — whole and not below zero.
+
+    A count says how many there were, and there cannot be fewer than none of
+    them: a negative count or one with a fraction in it is a malformed
+    capture, and it is not evidence of what was seen.
+    """
+    return is_integral_number(value) and value >= 0
+
+
 def safe_key(key: Any) -> str:
     """A key of a JSON answer that may be committed.
 
@@ -609,7 +619,7 @@ def redact_measurements(probe: dict[str, Any]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for name in MEASUREMENT_COUNTS:
         value = probe.get(name)
-        if is_number(value):
+        if is_count(value):
             out[name] = value
     for name in MEASUREMENT_VALUES:
         values = probe.get(name)
@@ -706,7 +716,7 @@ def redact_generic_value(value: str) -> str:
     text = VALUE_DIGIT_RUN.sub(placeholder("id"), text)
     # The whole value may be one run of opaque characters — hyphens and all —
     # or a run may sit inside a value that carries other words.
-    text = opaque_parts(text) if OPAQUE_VALUE.match(text) else OPAQUE_RUN.sub(opaque_parts, text)
+    text = opaque_parts(text) if OPAQUE_VALUE.match(text) else OPAQUE_RUN.sub(lambda m: opaque_parts(m.group(0)), text)
     text = redact_credentials(text)
     text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
@@ -727,6 +737,13 @@ def redact_header_value(name: str, value: str, safe: set[str]) -> str:
     layers of escapes is the address all the same.
     """
     if name.lower() in safe:
+        if name.lower() == "content-type":
+            # A content type is judged by its own rule wherever it is read: the
+            # media type and the parameters that may be committed, nothing
+            # else. A server may answer with anything, and the same value in a
+            # header and in the field of a capture is one value.
+            content_type = safe_content_type(value)
+            return content_type if content_type is not None else placeholder(name.lower())
         if URL_VALUE.match(value):
             return redact_url(value)
         decoded = decode_layers(value)
@@ -1323,7 +1340,7 @@ def capture_from_probe(probe: dict[str, Any], capture_id: str, source_file: str)
         },
         "schema": {
             "topLevelKeys": safe_keys(probe.get("topLevelKeys")),
-            "productCount": probe.get("productCount") if is_number(probe.get("productCount")) else None,
+            "productCount": probe.get("productCount") if is_count(probe.get("productCount")) else None,
         },
         "measurements": redact_measurements(probe),
         "body": {"included": False, "reason": "a response body may carry personal data"},

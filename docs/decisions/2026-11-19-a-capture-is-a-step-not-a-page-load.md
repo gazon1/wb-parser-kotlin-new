@@ -177,6 +177,9 @@ was never answered is evidence of something different.
   opaque-value rule does not see it — the hyphens break the run of characters.
 - **Never** keep a content type beyond its media type and the safe parameters:
   the server writes it, and the same value in a header goes through the rules.
+  A content type in a header is judged by the same rule as the content type of
+  a capture: the media type and the safe parameters, nothing else — a
+  parameter of the server's own choosing (`boundary`) is not evidence.
   The value of a safe parameter is a value as well: a charset that carries a
   run of digits is an account id, and it is dropped. The media type is judged
   by its shape as well: a subtype that carries a UUID or an account id is a
@@ -204,7 +207,11 @@ was never answered is evidence of something different.
   repository.
 - **Always** remove the fixture of the step before the export judges it: a
   capture the export refuses must not leave the fixture of an earlier run
-  standing as if it were the result of this one.
+  standing as if it were the result of this one. **Never** go on with a step
+  whose fixture could not be removed: the export fails closed.
+- **Always** judge a count as a count: whole and not below zero. A negative
+  count and a count with a fraction in it are a malformed capture, and they
+  are not evidence of what was seen.
 - **Always** delete the recording of the previous run of a step before the new
   one starts — the raw recording, the filtered file the export reads, the
   report of the previous run and the fixture the repository holds — and

@@ -274,7 +274,8 @@ a step that did not finish.
 
 The export removes the fixture of the step before it judges it, so a capture the
 export refuses leaves no fixture of an earlier run standing as if it were the
-result of this one.
+result of this one. A fixture that cannot be removed stops that step: the
+export fails closed rather than leave the old one standing.
 
 The request log has to be cleared before the recording starts, and a browser
 that refused to clear it is an error too: the bodies are looked up in that
@@ -560,14 +561,18 @@ The rules the redactor applies:
 - a response body is never included;
 - the content type of a response keeps the media type and the safe parameters
   (`charset`) only: a server may answer with anything, and the same value in a
-  header goes through the rules. The media type is judged by its shape as
+  header goes through the rules — a `content-type` header is judged by the same
+  rule, so a parameter of the server's own choosing (`boundary`) does not
+  survive. The media type is judged by its shape as
   well: a subtype that carries a UUID or an account id is a value and not a
   media type, and a content type without a media type is not kept. A subtype
   made of digits only is an identifier whatever its length — no service names
   a media type that way;
 - the numbers a probe measured are kept — counts (`total`, `productCount`,
   `productsWithPoints`, `productsWithCashback`) and the distinct values of a
-  numeric field — because a number cannot carry a name, a token or a sentence;
+  numeric field — because a number cannot carry a name, a token or a sentence.
+  A count is a count: whole and not below zero, and a negative count or one
+  with a fraction in it is a malformed capture, not evidence;
 - placeholders are stable (`<redacted:deviceid>`, `<redacted:opaque>`,
   `<redacted:error>`, `<redacted:account-id>`, `<redacted:id>`), so a diff shows
   what changed, not that something was removed;

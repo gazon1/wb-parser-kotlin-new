@@ -1802,3 +1802,63 @@ def test_a_header_name_that_survives_the_rules_keeps_its_spelling():
     assert redact.safe_header_name("x%2duser") == "x%2duser"
     assert redact.safe_header_name("referer") == "referer"
     assert redact.safe_header_name("sec-ch-ua-platform-version") == "sec-ch-ua-platform-version"
+
+
+def test_a_value_with_a_long_run_inside_it_is_redacted_instead_of_raising():
+    # The finding of the review: the rule that judges a run of opaque
+    # characters inside a value was handed the match of the rule instead of
+    # the text of the run, so a value that carried one ended the redaction.
+    value = "Bearer abcdefghijklmnopqrstuvwxyz0123"
+
+    redacted = redact.redact_generic_value(value)
+
+    assert "abcdefghijklmnopqrstuvwxyz0123" not in redacted
+    assert "<redacted:opaque>" in redacted
+
+
+def test_a_header_value_with_a_long_run_inside_it_is_redacted():
+    headers = redact.redact_headers(
+        [{"name": "user-agent", "value": "agent abcdefghijklmnopqrstuvwxyz0123"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert "abcdefghijklmnopqrstuvwxyz0123" not in json.dumps(headers)
+
+
+def test_a_content_type_header_keeps_the_media_type_and_the_safe_parameters_only():
+    # The finding of the review: the content type of a header was judged by
+    # the generic rules, so a parameter of the server's own choosing survived
+    # in the committed file.
+    headers = redact.redact_headers(
+        [{"name": "content-type", "value": "multipart/form-data; boundary=abc123"}],
+        redact.SAFE_RESPONSE_HEADERS,
+    )
+
+    assert headers["content-type"] == "multipart/form-data"
+
+
+def test_a_content_type_header_of_a_request_is_judged_by_the_same_rule():
+    headers = redact.redact_headers(
+        [{"name": "content-type", "value": "application/json; charset=utf-8"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert headers["content-type"] == "application/json; charset=utf-8"
+
+
+def test_a_content_type_header_that_is_not_a_content_type_loses_its_value():
+    headers = redact.redact_headers(
+        [{"name": "content-type", "value": "not a type"}],
+        redact.SAFE_RESPONSE_HEADERS,
+    )
+
+    assert headers["content-type"] == "<redacted:content-type>"
+
+
+def test_a_count_that_cannot_be_a_count_is_not_kept():
+    # The finding of the review: a count was judged as a number, so a
+    # negative count and a count with a fraction in it were kept as evidence
+    # of what was seen.
+    measurements = redact.redact_measurements({"total": -1, "productCount": 2.7, "productsWithPoints": 0})
+
+    assert measurements == {"productsWithPoints": 0}

@@ -1009,3 +1009,37 @@ def test_a_body_with_a_character_no_file_can_hold_is_still_measured():
     assert shape["isJson"] is True
     assert shape["topLevelKeys"] == ["a"]
     assert shape["bodyBytes"] == 11
+
+
+def test_a_step_whose_fixture_cannot_be_removed_is_not_exported(tmp_path, monkeypatch):
+    # The finding of the review: a fixture that could not be removed was only
+    # reported, and the export went on — so the fixture of the previous run
+    # could stand as if it were the result of this one.
+    raw_dir = tmp_path / "demo"
+    raw_dir.mkdir()
+    har = {
+        "log": {
+            "entries": [
+                {
+                    "_resourceType": "Fetch",
+                    "request": {"method": "GET", "url": "https://www.wildberries.ru/a", "headers": []},
+                    "response": {"status": 200, "headers": [], "content": {"mimeType": "text/plain", "size": 1}},
+                }
+            ]
+        }
+    }
+    (raw_dir / "step.har").write_text(json.dumps(har), encoding="utf-8")
+    (raw_dir / "step.report.json").write_text(json.dumps({"notes": ["step: step"]}), encoding="utf-8")
+    evidence_dir = tmp_path / "investigations" / "demo" / "evidence"
+    evidence_dir.mkdir(parents=True)
+    stale = evidence_dir / "step.json"
+    stale.write_text("{}", encoding="utf-8")
+
+    def refuse_unlink(self, *args, **kwargs):
+        raise PermissionError("the file is locked")
+
+    monkeypatch.setattr(Path, "unlink", refuse_unlink)
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+
+    assert capture.export_investigation("demo") == []

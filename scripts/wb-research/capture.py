@@ -731,9 +731,15 @@ def export_investigation(investigation: str) -> list[str]:
             try:
                 out.unlink()
             except OSError as error:
+                # The fixture of the previous run could not be removed, so the
+                # step cannot be exported: a new fixture would stand next to
+                # the old one, and the old one would be read as the result of
+                # this run.
                 print(
                     f"  {step_har.stem}: the fixture of the previous run could not be removed: {error}", file=sys.stderr
                 )
+                failed_steps.append(step_har.stem)
+                continue
         report_path = raw_dir / f"{step_har.stem}.report.json"
         report = read_report(report_path)
         if report is None:
