@@ -6,7 +6,7 @@
 - Query parameters: `ab_testing`, `appType`, `curr`, `dest`, `hide_vflags`, `inheritFilters`, `lang`, `locale`, `query`, `resultset`, `sort`, `spp`, `suppressSpellcheck`
 - Headers named by the plan: `deviceid`, `x-requested-with`, `x-spa-version`, `x-userid`
 - Evidence: [`evidence/validation.json`](evidence/validation.json)
-- Generated: 2026-11-20T23:03:31+00:00
+- Generated: 2026-11-20T23:26:35+00:00
 - Baseline: `baseline` — reproduced
 
 The headers' values are not in `experiments.yaml` and never reach this report: the plan names the headers, and their values are read from a local file outside the repository.
@@ -26,18 +26,18 @@ The headers' values are not in `experiments.yaml` and never reach this report: t
 
 ### `baseline` — reproduced
 
-- run 1: 200 text/plain; charset=UTF-8, 148447 bytes, 100 products, total 113601, keys [metadata, products, total], order `fcce9832c315` — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 148447 bytes, 100 products, total 113601, keys [metadata, products, total], order `fcce9832c315` — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 148743 bytes, 100 products, total 113593, keys [metadata, products, total], order `82adaeae2e62` — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 148743 bytes, 100 products, total 113593, keys [metadata, products, total], order `82adaeae2e62` — **completed**
 
 ### `sort-priceup` — validated
 
-- run 1: 200 text/plain; charset=UTF-8, 129871 bytes, 100 products, total 113435, keys [metadata, products, total], order `35b9f4f2a3eb`; vs the baseline: changed (order, total) — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 129871 bytes, 100 products, total 113435, keys [metadata, products, total], order `35b9f4f2a3eb`; vs the baseline: changed (order, total) — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 129871 bytes, 100 products, total 113427, keys [metadata, products, total], order `35b9f4f2a3eb`; vs the baseline: changed (order, total) — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 129871 bytes, 100 products, total 113427, keys [metadata, products, total], order `35b9f4f2a3eb`; vs the baseline: changed (order, total) — **completed**
 
 ### `page-2` — validated
 
-- run 1: 200 text/plain; charset=UTF-8, 145987 bytes, 100 products, total 113601, keys [metadata, products, total], order `d28ecd9d4412`; vs the baseline: changed (order) — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 145987 bytes, 100 products, total 113601, keys [metadata, products, total], order `d28ecd9d4412`; vs the baseline: changed (order) — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 146413 bytes, 100 products, total 113593, keys [metadata, products, total], order `b6c74b83758d`; vs the baseline: changed (order) — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 146413 bytes, 100 products, total 113593, keys [metadata, products, total], order `b6c74b83758d`; vs the baseline: changed (order) — **completed**
 
 ### `page-0` — observed
 
@@ -45,8 +45,8 @@ The headers' values are not in `experiments.yaml` and never reach this report: t
 
 ### `after-reload` — validated
 
-- run 1: 200 text/plain; charset=UTF-8, 148447 bytes, 100 products, total 113601, keys [metadata, products, total], order `fcce9832c315`; vs the baseline: same (nothing) — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 148447 bytes, 100 products, total 113601, keys [metadata, products, total], order `fcce9832c315`; vs the baseline: same (nothing) — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 148743 bytes, 100 products, total 113593, keys [metadata, products, total], order `82adaeae2e62`; vs the baseline: same (nothing) — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 148743 bytes, 100 products, total 113593, keys [metadata, products, total], order `82adaeae2e62`; vs the baseline: same (nothing) — **completed**
 
 ### `without-cookies` — inconclusive
 

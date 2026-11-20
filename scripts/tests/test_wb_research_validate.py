@@ -48,14 +48,22 @@ def variant(name: str, **fields) -> dict:
     return {"name": name, "repeat": 2, **fields}
 
 
-def answer(status: int = 200, ids=(1, 2), total: int = 10, error: str | None = None, is_json: bool = True) -> dict:
+def answer(
+    status: int = 200,
+    ids=(1, 2),
+    total: int = 10,
+    error: str | None = None,
+    is_json: bool = True,
+    json_type: str | None = "object",
+) -> dict:
     """What the page script reports for one request."""
     return {
         "status": status,
         "contentType": "application/json" if status == 200 else "text/plain",
         "bodyBytes": 233 if status == 200 else 0,
         "isJson": status == 200 and is_json,
-        "topLevelKeys": ["products", "total"] if status == 200 and is_json else None,
+        "jsonType": json_type if status == 200 and is_json else None,
+        "topLevelKeys": ["products", "total"] if status == 200 and is_json and json_type == "object" else None,
         "productCount": len(ids) if status == 200 and is_json else None,
         "total": total if status == 200 and is_json else None,
         "productIds": list(ids) if status == 200 and is_json else [],
@@ -419,6 +427,7 @@ def test_the_probe_script_parses_a_text_plain_json_answer(monkeypatch):
 
     assert result["status"] == 200
     assert result["isJson"] is True
+    assert result["jsonType"] == "object"
     assert result["topLevelKeys"] == ["products", "total", "note"]
     assert result["productCount"] == 1
     assert result["productIds"] == [1]
@@ -487,6 +496,57 @@ def test_a_reload_is_a_reload_and_not_another_experiment(world, monkeypatch):
 
     assert validate.run(INVESTIGATION, None, False) == validate.EXIT_OK
     assert calls["reloads"] == 2
+
+
+def test_the_runs_of_a_variant_have_to_agree(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    # Both runs are "changed" against the baseline, but they disagree with each
+    # other: the behaviour itself is not reproduced.
+    fake_browser(monkeypatch, [answer(ids=(1, 2)), answer(ids=(1, 2)), answer(ids=(2, 1)), answer(ids=(3, 4))])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["state"] == validate.INCONCLUSIVE
+    assert "disagree" in summary["experiments"][1]["reason"]
+
+
+def test_a_json_root_type_change_is_a_schema_change(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="same", compare=["schema"])])
+    validate.approve(INVESTIGATION)
+    fake_browser(
+        monkeypatch,
+        [
+            answer(json_type="object"),
+            answer(json_type="object"),
+            answer(json_type="array", ids=()),
+            answer(json_type="array", ids=()),
+        ],
+    )
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+    summary = read_summary(place.directory)
+    assert "schema" in summary["experiments"][1]["comparisons"][0]["changedFields"]
+    assert summary["experiments"][1]["state"] == validate.REJECTED
+
+
+def test_reload_page_checks_where_the_session_landed(monkeypatch):
+    config = {"allowedPages": ["https://www.wildberries.ru/catalog/"], "allowedOrigins": []}
+    monkeypatch.setattr(validate, "chrome_use", lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "", ""))
+
+    monkeypatch.setattr(validate, "session_page", lambda session: "https://example.com/landing")
+    ok, reason = validate.reload_page(None, config)
+    assert ok is False
+    assert "does not approve" in reason
+
+    monkeypatch.setattr(validate, "session_page", lambda session: "https://www.wildberries.ru/catalog/0/search.aspx")
+    assert validate.reload_page(None, config) == (True, "")
+
+    monkeypatch.setattr(validate, "session_page", lambda session: "")
+    ok, reason = validate.reload_page(None, config)
+    assert ok is False
+    assert "did not say" in reason
 
 
 def test_a_reload_that_leaves_the_approved_pages_stops_the_run(world, monkeypatch):

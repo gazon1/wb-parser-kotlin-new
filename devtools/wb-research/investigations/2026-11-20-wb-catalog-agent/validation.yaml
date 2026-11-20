@@ -1,7 +1,7 @@
 schema: wb-research/validation/v1
 id: 2026-11-20-wb-catalog-agent
 candidate: storefront-catalog-search
-generated: '2026-11-20T23:03:31+00:00'
+generated: '2026-11-20T23:26:35+00:00'
 plan_scope: 692eeb104ed984954c81852464864e8c8ec541cac10f48d47a38cf67af7a710c
 page: https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E
 request:
@@ -63,19 +63,20 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 148447
+      bodyBytes: 148743
       isJson: true
       error: null
     schema:
+      jsonType: object
       topLevelKeys:
       - metadata
       - products
       - total
       productCount: 100
-      total: 113601
+      total: 113593
     outcome: completed
     ordering:
-      orderHash: fcce9832c3156aed1e4b2a52af11b6ead4fb672a94c6bc2da674d19780c656b8
+      orderHash: 82adaeae2e62fdb1f7fdd5dd49e7d519cea5be060e2460c7f1f85de5d0bc1d5c
   - id: baseline-2
     experiment: baseline
     run: 2
@@ -97,19 +98,20 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 148447
+      bodyBytes: 148743
       isJson: true
       error: null
     schema:
+      jsonType: object
       topLevelKeys:
       - metadata
       - products
       - total
       productCount: 100
-      total: 113601
+      total: 113593
     outcome: completed
     ordering:
-      orderHash: fcce9832c3156aed1e4b2a52af11b6ead4fb672a94c6bc2da674d19780c656b8
+      orderHash: 82adaeae2e62fdb1f7fdd5dd49e7d519cea5be060e2460c7f1f85de5d0bc1d5c
   comparisons:
   - status: same
     changedFields: []
@@ -158,12 +160,13 @@ experiments:
       isJson: true
       error: null
     schema:
+      jsonType: object
       topLevelKeys:
       - metadata
       - products
       - total
       productCount: 100
-      total: 113435
+      total: 113427
     outcome: completed
     ordering:
       orderHash: 35b9f4f2a3eb970f368aea8bef3f3c3f869fa8e254dc2b504122dafa57e3aa46
@@ -201,12 +204,13 @@ experiments:
       isJson: true
       error: null
     schema:
+      jsonType: object
       topLevelKeys:
       - metadata
       - products
       - total
       productCount: 100
-      total: 113435
+      total: 113427
     outcome: completed
     ordering:
       orderHash: 35b9f4f2a3eb970f368aea8bef3f3c3f869fa8e254dc2b504122dafa57e3aa46
@@ -273,19 +277,20 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 145987
+      bodyBytes: 146413
       isJson: true
       error: null
     schema:
+      jsonType: object
       topLevelKeys:
       - metadata
       - products
       - total
       productCount: 100
-      total: 113601
+      total: 113593
     outcome: completed
     ordering:
-      orderHash: d28ecd9d44121b64d37d39ac5ebd51b102e3ab9d051e3227e4017048f38bc32e
+      orderHash: b6c74b83758d9046123dc0482ae7fde3ec5932e3081d80b9e92df12d8acca79c
     comparison:
       status: changed
       changedFields:
@@ -315,19 +320,20 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 145987
+      bodyBytes: 146413
       isJson: true
       error: null
     schema:
+      jsonType: object
       topLevelKeys:
       - metadata
       - products
       - total
       productCount: 100
-      total: 113601
+      total: 113593
     outcome: completed
     ordering:
-      orderHash: d28ecd9d44121b64d37d39ac5ebd51b102e3ab9d051e3227e4017048f38bc32e
+      orderHash: b6c74b83758d9046123dc0482ae7fde3ec5932e3081d80b9e92df12d8acca79c
     comparison:
       status: changed
       changedFields:
@@ -389,6 +395,7 @@ experiments:
       isJson: true
       error: null
     schema:
+      jsonType: object
       topLevelKeys:
       - filters
       - name
@@ -462,19 +469,20 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 148447
+      bodyBytes: 148743
       isJson: true
       error: null
     schema:
+      jsonType: object
       topLevelKeys:
       - metadata
       - products
       - total
       productCount: 100
-      total: 113601
+      total: 113593
     outcome: completed
     ordering:
-      orderHash: fcce9832c3156aed1e4b2a52af11b6ead4fb672a94c6bc2da674d19780c656b8
+      orderHash: 82adaeae2e62fdb1f7fdd5dd49e7d519cea5be060e2460c7f1f85de5d0bc1d5c
     comparison:
       status: same
       changedFields: []
@@ -503,19 +511,20 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 148447
+      bodyBytes: 148743
       isJson: true
       error: null
     schema:
+      jsonType: object
       topLevelKeys:
       - metadata
       - products
       - total
       productCount: 100
-      total: 113601
+      total: 113593
     outcome: completed
     ordering:
-      orderHash: fcce9832c3156aed1e4b2a52af11b6ead4fb672a94c6bc2da674d19780c656b8
+      orderHash: 82adaeae2e62fdb1f7fdd5dd49e7d519cea5be060e2460c7f1f85de5d0bc1d5c
     comparison:
       status: same
       changedFields: []
@@ -576,6 +585,7 @@ experiments:
       isJson: false
       error: null
     schema:
+      jsonType: null
       topLevelKeys: null
       productCount: null
       total: null

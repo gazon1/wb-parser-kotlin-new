@@ -146,8 +146,10 @@ is the operator's question, not the tool's problem.
 - **Always** change one thing per experiment, and keep the first experiment as
   the reference. A plan that changes two things is refused, not interpreted.
 - **Always** compute the state from the observations: one sample is `observed`,
-  `validated` needs the reference reproduced and the variation repeated, and a
-  refusal, a failure or an unreadable answer is `inconclusive`.
+  `validated` needs the reference reproduced and the variation repeated with the
+  runs agreeing with each other, and a refusal, a failure or an unreadable
+  answer is `inconclusive`. Two "changed" answers that differ from each other
+  leave the behaviour unreproduced.
 - **Never** report a blocked, failed or inconclusive experiment as a validation,
   and **never** turn a refusal into a claim about what the site requires.
 - **Always** keep header values out of the plan, the summary, the report and the

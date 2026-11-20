@@ -228,6 +228,7 @@ async (spec) => {
     contentType: resp.headers.get('content-type') || '',
     bodyBytes: new TextEncoder().encode(text).length,
     isJson: false,
+    jsonType: null,
     topLevelKeys: null,
     productCount: null,
     total: null,
@@ -239,6 +240,7 @@ async (spec) => {
   try {
     const data = JSON.parse(text);
     out.isJson = true;
+    out.jsonType = Array.isArray(data) ? 'array' : (data !== null && typeof data === 'object') ? 'object' : 'scalar';
     if (data && typeof data === 'object' && !Array.isArray(data)) {
       out.topLevelKeys = Object.keys(data);
       const products = Array.isArray(data.products) ? data.products
@@ -889,6 +891,7 @@ def observation(experiment: dict, run: int, request: dict, result: dict) -> dict
             "error": error,
         },
         "schema": {
+            "jsonType": result.get("jsonType") if result.get("jsonType") in ("object", "array", "scalar") else None,
             "topLevelKeys": redact.safe_keys(result.get("topLevelKeys")),
             "productCount": count if redact.is_count(count) else None,
             "total": total if redact.is_count(total) else None,
@@ -910,7 +913,7 @@ def comparable(observation: dict) -> dict:
         "status": observation["response"]["status"],
         "contentType": observation["response"]["contentType"],
         "json": observation["response"]["isJson"],
-        "schema": observation["schema"]["topLevelKeys"],
+        "schema": (observation["schema"].get("jsonType"), observation["schema"]["topLevelKeys"]),
         "count": observation["schema"]["productCount"],
         "order": observation["ordering"]["productIds"],
         "total": observation["schema"]["total"],
@@ -978,14 +981,17 @@ def state_of(
                 "the replay is not the request that was approved"
             )
         return INCONCLUSIVE, "the response could not be read"
+    # The runs of the variant have to agree with each other before the
+    # expectation is judged: two different answers can both be "changed" and
+    # leave the behaviour itself unreproduced.
+    if len(observations) >= 2 and not all(
+        compare(observations[0], entry)["status"] == "same" for entry in observations[1:]
+    ):
+        return INCONCLUSIVE, "the runs of the experiment disagree"
     if experiment.get("expect") is None:
         # A variant without an expectation says what was seen, not whether it
         # was expected: two compatible runs are `reproduced`, and one is one.
-        if len(observations) >= 2:
-            if all(compare(observations[0], entry)["status"] == "same" for entry in observations[1:]):
-                return REPRODUCED, ""
-            return INCONCLUSIVE, "the runs of the experiment disagree"
-        return OBSERVED, ""
+        return (REPRODUCED, "") if len(observations) >= 2 else (OBSERVED, "")
     verdicts = [expectation_met(experiment, comparison) for comparison in comparisons]
     if not verdicts:
         return INCONCLUSIVE, "an expectation with no comparison to judge"

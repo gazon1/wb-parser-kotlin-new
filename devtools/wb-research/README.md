@@ -1024,9 +1024,9 @@ A refusal ends the run: after a blocked answer the remaining probes are marked
 
 The evidence keeps the request (method, redacted URL, credentials, the header
 names sent and the names the browser dropped), the response (status, media
-type, size in UTF-8 bytes, whether it was JSON), the shape of the answer
-(top-level keys, the number of products, the total) and the ordered product
-ids. The body, the
+type, size in UTF-8 bytes, whether it was JSON and the root JSON type), the
+shape of the answer (top-level keys, the number of products, the total) and the
+ordered product ids. The body, the
 cookies and the header values are never in it. The summary keeps the order as
 a hash; the ids stay in the evidence.
 
@@ -1041,6 +1041,10 @@ A state is not a label the operator chooses; the evidence decides it:
 | `validated` | a controlled variation repeated, its expectation held every time, and the reference itself was reproduced |
 | `rejected` | a stable answer contradicts the expectation |
 | `inconclusive` | the site refused, the request failed (a transport error, a 5xx or a redirect), the browser dropped a header the plan names, the answer could not be read, the runs disagree, or one sample is all there is |
+
+`validated` also needs the runs of the variation to agree with each other: two
+different answers that both count as "changed" leave the behaviour itself
+unreproduced, and the experiment is `inconclusive`.
 
 A refusal, a failure and a single sample are never reported as a validation:
 the report names them, and the run says so in its exit code.
