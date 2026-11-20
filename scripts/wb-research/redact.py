@@ -847,10 +847,11 @@ def redact_headers(headers: list[dict[str, Any]], safe: set[str]) -> dict[str, s
     """Map header names to their values, keeping only the allowed ones."""
     out: dict[str, str] = {}
     for header in headers:
-        name = str(header.get("name", "")).lower()
-        if not name:
+        raw = str(header.get("name", "")).lower()
+        if not raw:
             continue
-        if not HEADER_NAME.fullmatch(name):
+        name = safe_header_name(raw)
+        if name != raw:
             # The name is not a name: a header of a capture can be spelled
             # anything, and the name itself would reach the committed file.
             key = placeholder("header-name")
@@ -964,19 +965,48 @@ def safe_credentials(value: Any) -> str | None:
 HEADER_NAME = re.compile(r"[A-Za-z0-9!#$%&'*+.^_`|~-]{1,64}")
 
 
+def is_identifier_name(name: str) -> bool:
+    """Whether the name of a header is an identifier rather than a name.
+
+    A name is a token of characters, and a token can be an identifier: a
+    profile's UUID in either spelling, an account id, a hash of a session.
+    Such a name is a value that happens to stand where a name stands, and it
+    must not reach the committed file.
+
+    A name the service chose is made of words: a run that mixes letters with
+    digits is a token — the header of a JWT, a hash — and a name of digits
+    only is an id.
+    """
+    if name.isdigit():
+        return True
+    if UUID_VALUE.fullmatch(name) or UUID_COMPACT.fullmatch(name):
+        return True
+    return len(name) >= OPAQUE_MIXED_LENGTH and any(c.isdigit() for c in name) and any(c.isalpha() for c in name)
+
+
+def safe_header_name(name: Any) -> str:
+    """The name of a header, if it may be committed.
+
+    A name that is not a token is not a name: it can be an address or a
+    credential. A name that is an identifier is not a name either. The fact
+    that a header was there stays, the name does not.
+    """
+    text = str(name).lower()
+    if not HEADER_NAME.fullmatch(text) or is_identifier_name(text):
+        return placeholder("header-name")
+    return text
+
+
 def safe_header_names(names: Any) -> list[str]:
     """The names of the headers that were sent, if they are names.
 
     A name that is not a token is not a name: it can be an address or a
-    credential. The fact that a header was there stays, the name does not.
+    credential. A name that is an identifier is not a name either. The fact
+    that a header was there stays, the name does not.
     """
     if not isinstance(names, list):
         return []
-    kept = []
-    for name in names:
-        text = str(name)
-        kept.append(text.lower() if HEADER_NAME.fullmatch(text) else placeholder("header-name"))
-    return sorted(kept)
+    return sorted(safe_header_name(name) for name in names)
 
 
 def safe_bool(value: Any) -> bool | None:

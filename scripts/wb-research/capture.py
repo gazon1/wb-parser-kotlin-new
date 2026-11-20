@@ -17,8 +17,9 @@ three things:
 The raw capture stays in `~/.cache/wb-research/<investigation>/`, outside the
 repository. Only the sanitized fixture is committed.
 
-The capture is read-only: it drives chrome-use, it never changes the page state
-and it never touches the cart, the orders or the account.
+The capture changes nothing itself: it drives chrome-use to record and it writes
+the fixture. The page action is the operator's own command, so what the
+session sees is what that command does.
 
 Usage:
     capture.py step --investigation <id> --name <step> -- <chrome-use command...>

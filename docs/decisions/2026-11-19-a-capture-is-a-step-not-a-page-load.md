@@ -108,6 +108,11 @@ was never answered is evidence of something different.
   status, the size, the moment, the credentials mode, the header names and the
   flags. A capture is an input, and a field nobody looked at must not be able
   to carry a value into the committed file.
+- **Never** keep the **name** of a header that is an identifier: a name is a
+  token of characters, and a token can be a profile's UUID in either spelling,
+  an account id or a hash of a session. The fact that the header was there
+  stays, the name does not. A name the service chose is made of words, long
+  ones included, and it stays as it is.
 - **Never** keep the value of a free-text query parameter (`query`, `search`,
   `text`, and the short spellings of the same thing — `q`, `term`, `keyword`,
   `keywords`, `phrase`): what somebody typed is the search history of the
@@ -171,7 +176,9 @@ was never answered is evidence of something different.
   the exported ones: another step of the same investigation is not this one.
 - **Always** treat the investigation id as one name, not a path: it becomes a
   directory in the raw cache and a directory in the repository.
-- The capture is read-only: it drives chrome-use, it never changes the page
-  state and it never touches the cart, the orders or the account.
+- The capture itself changes nothing: it drives chrome-use to record and writes
+  the fixture. The page action is the operator's own command, so what the
+  session sees is what that command does — a page load leaves the cart, the
+  orders and the account alone, and a click on them does not.
 - The tool stays in `scripts/` and `devtools/`: no production module depends on
   it and it adds no runtime dependency.

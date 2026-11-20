@@ -1457,3 +1457,38 @@ def test_the_shape_of_a_capture_is_only_the_fields_that_are_known():
     shape = redact.har_schema({"_capture": {"available": True, "isJson": True, "bodyBytes": 51715}})
 
     assert shape == {"available": True, "isJson": True, "bodyBytes": 51715}
+
+
+def test_an_identifier_in_a_header_name_is_replaced():
+    # The finding of the review: a name is a token, and a token can be an
+    # identifier — a profile's UUID, an account id, a hash of a session.
+    headers = redact.redact_headers(
+        [
+            {"name": "550e8400-e29b-41d4-a716-446655440000", "value": "x"},
+            {"name": "2285324551794928359", "value": "y"},
+            {"name": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9", "value": "z"},
+        ],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert list(headers) == ["<redacted:header-name>"]
+    assert "550e8400" not in json.dumps(headers)
+    assert "2285324551794928359" not in json.dumps(headers)
+    assert "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9" not in json.dumps(headers)
+
+
+def test_an_identifier_among_the_headers_that_were_sent_is_replaced():
+    # The same name in the list of the headers the browser sent.
+    names = redact.safe_header_names(["550e8400-e29b-41d4-a716-446655440000", "content-type", "2285324551794928359"])
+
+    assert names == ["<redacted:header-name>", "<redacted:header-name>", "content-type"]
+
+
+def test_the_name_of_a_header_that_the_service_chose_survives():
+    # A name the service chose is made of words — long ones included.
+    headers = redact.redact_headers(
+        [{"name": "Sec-CH-UA-Platform-Version", "value": "x"}],
+        redact.SAFE_REQUEST_HEADERS,
+    )
+
+    assert headers["sec-ch-ua-platform-version"] == "<redacted:sec-ch-ua-platform-version>"

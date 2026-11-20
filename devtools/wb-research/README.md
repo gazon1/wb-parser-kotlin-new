@@ -322,8 +322,9 @@ A capture is only useful if it survives a real browser. This is the test, and
 it is part of the change, not a suggestion:
 
 1. Log into Wildberries in a real Chrome session (`chrome-use open
-   https://www.wildberries.ru/`). The capture is read-only: it never touches
-   the cart, the orders or the account.
+   https://www.wildberries.ru/`). The capture records, it does not act: the
+   page action is the command you give after `--`, so a page load leaves the
+   cart, the orders and the account alone.
 2. Run the `initial-load` step above. The output says how many requests were
    kept and what was dropped.
 3. Run the `next-page` step above in the same browser.
@@ -476,14 +477,21 @@ The rules the redactor applies:
   without them, and wherever in the value it stands: `profile=550e8400…` is the
   identifier as much as the identifier alone is. A run longer than ten digits is
   not one of them and is replaced;
+- the **name** of a header is judged too: a name is a token of characters, and
+  a token can be an identifier — a profile's UUID in either spelling, an
+  account id, a hash of a session. A name like that is a value that stands
+  where a name stands, so it is replaced and the fact that the header was
+  there stays. A name the service chose is made of words, long ones included
+  (`sec-ch-ua-platform-version`), and it survives;
 - an error keeps only the **kind** of the failure (the exception class), never
   its text: an error message can quote the response, the URL or the request;
 - every field copied from a capture is **validated** before it is copied: the
   method is a word of letters, the status is a number between 100 and 599, the
   size is a number that is not negative, the moment is an ISO-8601 timestamp,
   the credentials mode is one of the three the browser knows, the header names
-  are tokens, and the flags are flags. A capture is an input, so a field
-  nobody looked at must not be able to carry a value into the committed file;
+  are tokens that are not identifiers, and the flags are flags. A capture is an
+  input, so a field nobody looked at must not be able to carry a value into the
+  committed file;
 - the reason a body was not read is a **code**, not a text: `ambiguous`,
   `browser-error`, `no-body`, `not-read`. The browser's own error text quotes
   the URL and the request, so it is dropped at the source and never written
@@ -507,7 +515,8 @@ it is never followed. The same applies to a response body quoted in a record.
 
 ## Writing an investigation
 
-1. Capture, read-only, into `~/.cache/wb-research/<investigation-id>/`.
+1. Capture into `~/.cache/wb-research/<investigation-id>/` with a page action
+   that only reads.
 2. Redact into `evidence/` and check that nothing sensitive survived:
    `grep -riE 'cookie|authorization|token' devtools/wb-research/investigations/<id>/evidence/`
    must return nothing but placeholder names.
