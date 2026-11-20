@@ -237,7 +237,20 @@ was never answered is evidence of something different.
   step is a chrome-use command that reads the page, and an action that is not
   one of them — a click, a typed text, a filled form, a shell — is refused
   before the recording starts. The capture observes, so the cart, the orders
-  and the account stay as they were.
+  and the account stay as they were — unless the site itself answers the page
+  with a redirect to a page the config does not approve; that step fails and
+  is not committed.
+- **Never** let the site choose the page the session goes to: the page the
+  operator opens may be answered with a redirect, and the browser follows it —
+  so the redirect of the navigation is read in the recording, and a navigation
+  that left the approved pages makes the step a failed one. The tool cannot
+  know what the site will answer before it answers it, and chrome-use cannot
+  allow-list the requests of a page: it aborts by pattern, and the site loads
+  a page from many hosts, so a route that aborts what the config does not
+  approve would break the page it is meant to capture. The guarantee the tool
+  keeps is the one it can hold — the commands it runs are commands that read
+  the page, and a step whose navigation left the approved pages is not
+  evidence of anything.
 - **Never** run a page action of a program that is only called chrome-use: the
   action is the chrome-use command by its own name, and a path to another
   program of that name is refused.

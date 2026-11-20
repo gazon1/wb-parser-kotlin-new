@@ -21,6 +21,11 @@ The capture observes: the page action it drives is a chrome-use command that
 reads the page, and an action that could change the site — a click, a typed
 text, a shell — is refused before the recording starts.
 
+The site may answer the page the operator opens with another page. The browser
+follows it, so the tool reads the answer in the recording: a navigation that
+left the approved pages makes the step a failed one, and the capture of a
+failed step is not exported.
+
 Usage:
     capture.py step --investigation <id> --name <step> -- <read-only chrome-use command...>
     capture.py export --investigation <id>
@@ -37,7 +42,7 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
-from urllib.parse import SplitResult, unquote, urlsplit
+from urllib.parse import SplitResult, unquote, urljoin, urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -104,6 +109,11 @@ READ_ONLY_PAGE_ACTIONS = {
 # The page actions that navigate. A navigation is a request, and a request may
 # change what it is asked to change, so the host it opens has to be approved.
 NAVIGATION_PAGE_ACTIONS = {"open", "read"}
+
+# The answers that send the browser somewhere else. A page the site answers
+# with a redirect is the site choosing the page — and the page it chooses may
+# be an action endpoint the config does not approve.
+REDIRECT_STATUSES = {301, 302, 303, 307, 308}
 
 _REDACTOR = None
 
@@ -575,6 +585,65 @@ def check_read_only(
                 )
 
 
+def redirect_target(entry: dict) -> str | None:
+    """The page a redirect in the recording sends the browser to.
+
+    The location of a redirect is what the site answers with, not what the
+    operator asked for: the browser follows it, so it is a request of its own.
+    """
+    response = entry.get("response", {})
+    if response.get("status") not in REDIRECT_STATUSES:
+        return None
+    for header in response.get("headers", []) or []:
+        if str(header.get("name", "")).strip().lower() == "location":
+            location = str(header.get("value", "")).strip()
+            return location or None
+    return None
+
+
+def navigation_targets(entries: list[dict]) -> list[str]:
+    """The pages the navigation was redirected to.
+
+    Only a navigation is followed by the browser as a page: a redirect of an
+    API call is another API call, and the traffic filter judges it like any
+    other request. A redirect of the page the operator opened is the site
+    answering with another page — the one place where the site, and not the
+    operator, chooses where the session goes.
+    """
+    targets: list[str] = []
+    for entry in entries:
+        if entry.get("_resourceType") != "Document":
+            continue
+        target = redirect_target(entry)
+        if target is None:
+            continue
+        request_url = str(entry.get("request", {}).get("url", ""))
+        targets.append(urljoin(request_url, target))
+    return targets
+
+
+def approved_navigation(url: str, approved: list[str], pages: list[str], allowed_query: list[str]) -> bool:
+    """Whether the page a redirect sends the browser to is one the config approves.
+
+    The same three rules the page action is judged by: the host is approved,
+    the page is approved, and the query carries nothing the config does not
+    name. A redirect is a navigation the operator did not ask for, so it is
+    held to the same measure.
+    """
+    parts = url_parts(url)
+    if parts is None:
+        return False
+    if parts.scheme.lower() not in ("http", "https"):
+        return False
+    if not host_matches(host_of(url), approved):
+        return False
+    if hides_separator(parts.path):
+        return False
+    if not approved_page(url, pages):
+        return False
+    return all(name in allowed_query for name in query_names(url))
+
+
 def run_page_action(action: list[str]) -> int:
     """Run one page action of a step and return its exit code."""
     return subprocess.run(action, cwd=REPO_ROOT, check=False).returncode
@@ -689,6 +758,27 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     entries = read_har(raw_har)
     kept, dropped, dropped_hosts = filter_entries(entries, config)
 
+    # The site may answer the page the operator opened with another page. The
+    # browser follows it, so a redirect can carry the session to an action
+    # endpoint the config forbids — and the tool cannot know that before the
+    # site answers. What it can do is read the answer in the recording: a
+    # navigation that left the approved pages makes the step a failed one,
+    # and the capture of a failed step is not evidence of what the step shows.
+    redirect_problem = ""
+    left_pages = [
+        target
+        for target in navigation_targets(entries)
+        if not approved_navigation(
+            target,
+            config["allowedOrigins"],
+            config.get("allowedPages", []),
+            config.get("allowedQueryParams", []),
+        )
+    ]
+    if left_pages:
+        redirect_problem = "the navigation left the approved pages: " + "; ".join(left_pages[:3])
+        failed = failed or EXIT_FAILED
+
     listed = chrome_use_json("network", "requests").get("requests", [])
     request_ids = join_request_ids(entries, listed)
 
@@ -743,6 +833,8 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         notes.append("the response bodies were read and only their shape was kept")
     if action_failure:
         notes.append(action_failure)
+    elif redirect_problem:
+        notes.append(redirect_problem)
     elif failed:
         notes.append(f"the page action failed with exit code {failed}, so the capture is partial")
 
@@ -772,7 +864,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         )
 
     if failed:
-        print(action_failure or f"the command failed with exit code {failed}", file=sys.stderr)
+        print(action_failure or redirect_problem or f"the command failed with exit code {failed}", file=sys.stderr)
         return EXIT_FAILED
     if step not in exported:
         # The step that was just recorded is not among the exported fixtures.
