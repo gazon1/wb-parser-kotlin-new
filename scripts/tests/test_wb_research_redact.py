@@ -1501,3 +1501,13 @@ def test_a_number_that_is_not_finite_is_not_a_number():
     assert redact.safe_status(json.loads('{"status": NaN}')["status"]) is None
     assert redact.safe_size(51715) == 51715
     assert redact.safe_status(200) == 200
+
+
+def test_a_charset_that_carries_an_identifier_is_dropped():
+    # The finding of the review: the value of the parameter was copied as it
+    # was, and it can carry an account id.
+    content_type = redact.safe_content_type("application/json; charset=1234567890123456789")
+
+    assert content_type == "application/json"
+    assert "1234567890123456789" not in content_type
+    assert redact.safe_content_type("application/json; charset=utf-8") == "application/json; charset=utf-8"

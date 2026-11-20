@@ -646,11 +646,12 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** wait for the in-flight requests before stopping a recording (`--settle`). _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
 - **Never** attribute a response body to a request that cannot be told apart from a twin — the same method and the same URL, in the recording or in the request list: a mapping that cannot be verified is no mapping. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
 - **Never** continue a capture whose request log could not be cleared: the bodies are looked up in that log, and the join with the recording is positional. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
+- **Never** drive a page action that could change the site: the page action of a step is a chrome-use command that reads the page, and an action that is not one of them — a click, a typed text, a filled form, a shell — is refused before the recording starts. The capture observes, so the cart, the orders and the account stay as they were. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
 - **Never** drop an API-shaped request to an unclassified host in silence: fail with exit code 2 and name the host. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
 - **Never** keep a JSON key that carries a space: such a key is a phrase, and a phrase can be a person's name. The name of a field the service chose is one word. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
 - **Never** keep a JSON key that is made of digits only: such a key is an identifier, and an answer indexed by an account id carries the id in it. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
 - **Never** keep a UUID in an operator-chosen name: it is an identifier, and the opaque-value rule does not see it — the hyphens break the run of characters. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
-- **Never** keep a content type beyond its media type and the safe parameters: the server writes it, and the same value in a header goes through the rules. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
+- **Never** keep a content type beyond its media type and the safe parameters: the server writes it, and the same value in a header goes through the rules. The value of a safe parameter is a value as well: a charset that carries a run of digits is an account id, and it is dropped. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
 - **Never** keep a query parameter name that carries a space: such a name is a phrase, and a phrase can be a person's name. The name of a parameter the service chose is one word. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
 - **Never** keep a query parameter name that carries personal data: a name is part of the URL and part of the evidence, but a value that stands on the left of the `=` is not a name. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
 - **Never** keep a query parameter name that is made of digits only: such a name is an identifier, the way a key of digits is, and the digit-run rule needs nine digits. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)
@@ -1139,7 +1140,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 
 ### `research`
 
-- The capture itself changes nothing: it drives chrome-use to record and writes the fixture. The page action is the operator's own command, so what the session sees is what that command does — a page load leaves the cart, the orders and the account alone, and a click on them does not. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)_
 - The format is a development-only surface: no production module depends on it, and it adds no runtime dependency. _(from `2026-11-19-the-research-format-is-a-file-in-the-repository`)_
 - The tool stays in `scripts/` and `devtools/`: no production module depends on it and it adds no runtime dependency. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)_
 
@@ -1231,7 +1231,6 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 ### `tooling`
 
 - A YAML written by an older selector has no `root_category_name`; run `just catalog::fill-roots` before loading it. Pages missing from the menu tree are reported by name and left alone rather than guessed. _(from `2026-10-19-idempotent-target-load-and-root-categories`)_
-- The capture itself changes nothing: it drives chrome-use to record and writes the fixture. The page action is the operator's own command, so what the session sees is what that command does — a page load leaves the cart, the orders and the account alone, and a click on them does not. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)_
 - The format is a development-only surface: no production module depends on it, and it adds no runtime dependency. _(from `2026-11-19-the-research-format-is-a-file-in-the-repository`)_
 - The nightly run costs a full pipeline every day. It is the price of knowing that the repository is still healthy when nobody touches it. _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
 - The tool stays in `scripts/` and `devtools/`: no production module depends on it and it adds no runtime dependency. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)_

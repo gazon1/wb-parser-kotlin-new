@@ -906,6 +906,11 @@ def safe_content_type(value: Any) -> str | None:
             continue
         if not re.fullmatch(r"[A-Za-z0-9._-]{1,40}", raw):
             continue
+        if redact_generic_value(raw) != raw:
+            # The parameter is a name and a value, and the value is judged by
+            # its shape as well: a charset is a word (`utf-8`), and a run of
+            # digits in it is an account id.
+            continue
         kept.append(f"{name}={raw}")
     return "; ".join(kept)
 

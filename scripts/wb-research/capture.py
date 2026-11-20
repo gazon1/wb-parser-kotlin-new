@@ -17,12 +17,12 @@ three things:
 The raw capture stays in `~/.cache/wb-research/<investigation>/`, outside the
 repository. Only the sanitized fixture is committed.
 
-The capture changes nothing itself: it drives chrome-use to record and it writes
-the fixture. The page action is the operator's own command, so what the
-session sees is what that command does.
+The capture observes: the page action it drives is a chrome-use command that
+reads the page, and an action that could change the site — a click, a typed
+text, a shell — is refused before the recording starts.
 
 Usage:
-    capture.py step --investigation <id> --name <step> -- <chrome-use command...>
+    capture.py step --investigation <id> --name <step> -- <read-only chrome-use command...>
     capture.py export --investigation <id>
 """
 
@@ -59,6 +59,25 @@ EXIT_UNAPPROVED_API = 2
 # the repository, so it has to be one name and nothing else: a name that could
 # climb out of either directory is not an id.
 INVESTIGATION_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+# The page actions a capture may drive. The issue that asked for the tool says
+# read-only observation only: no cart, no purchase, no account. So the actions
+# that read the page are allowed, and the ones that change something on the
+# site — a click, a typed text, a filled form — are not.
+READ_ONLY_PAGE_ACTIONS = {
+    "canvas",
+    "expect",
+    "extract",
+    "focus",
+    "hover",
+    "open",
+    "read",
+    "screenshot",
+    "scroll",
+    "scrollintoview",
+    "snapshot",
+    "wait",
+}
 
 _REDACTOR = None
 
@@ -280,6 +299,47 @@ def read_har(path: Path) -> list[dict]:
     return document.get("log", {}).get("entries", []) or []
 
 
+def page_actions(command: list[str]) -> list[list[str]]:
+    """The page actions of a step: one command each, split by `--`."""
+    actions: list[list[str]] = []
+    current: list[str] = []
+    for word in command:
+        if word == "--":
+            if current:
+                actions.append(current)
+            current = []
+            continue
+        current.append(word)
+    if current:
+        actions.append(current)
+    return actions
+
+
+def check_read_only(actions: list[list[str]]) -> None:
+    """Refuse a page action that could change the site.
+
+    The tool observes. A page action is a chrome-use command that reads the
+    page, and nothing else: a shell, a click on the cart, a filled form are
+    refused before the recording starts, so a capture cannot change the
+    account it observes.
+    """
+    for action in actions:
+        program = Path(action[0]).name
+        if program != "chrome-use":
+            raise SystemExit(f"the page action must be a chrome-use command, not {action[0]!r}")
+        verb = action[1] if len(action) > 1 else ""
+        if verb not in READ_ONLY_PAGE_ACTIONS:
+            raise SystemExit(
+                f"{verb or 'a command'} is not a read-only page action — a capture observes. "
+                f"The actions that read the page: {', '.join(sorted(READ_ONLY_PAGE_ACTIONS))}"
+            )
+
+
+def run_page_action(action: list[str]) -> int:
+    """Run one page action of a step and return its exit code."""
+    return subprocess.run(action, cwd=REPO_ROOT, check=False).returncode
+
+
 def capture_step(args: argparse.Namespace, config: dict) -> int:
     """Record one step, keep the evidence, and export it."""
     redactor = load_redactor()
@@ -295,10 +355,14 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     command = list(args.command)
     if command and command[0] == "--":
         command = command[1:]
-    if not command:
+    actions = page_actions(command)
+    if not actions:
         # Checked before the recording starts: a capture that is started and
         # never stopped keeps recording into the next one.
         raise SystemExit("no command to run — put the page action after `--`")
+    # Checked before the recording starts too: an action that changes the site
+    # must never run inside a capture of a logged-in session.
+    check_read_only(actions)
 
     cleared = chrome_use("network", "requests", "--clear")
     if cleared.returncode != 0:
@@ -326,8 +390,12 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     if started.returncode != 0:
         raise SystemExit(f"chrome-use did not start recording: {(started.stderr or started.stdout).strip()[:400]}")
 
+    failed = 0
     try:
-        completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
+        for action in actions:
+            code = run_page_action(action)
+            if code:
+                failed = code
         if args.settle > 0:
             # The page action returns before the requests it started are
             # answered. A HAR that is stopped too early holds a request with no
@@ -422,8 +490,8 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
             f"  an API call went to {host}, which is neither approved nor marked as noise — approve it with --allow-host"
         )
 
-    if completed.returncode != 0:
-        print(f"the command failed with exit code {completed.returncode}", file=sys.stderr)
+    if failed:
+        print(f"the command failed with exit code {failed}", file=sys.stderr)
         return EXIT_FAILED
     if step not in exported:
         # The step that was just recorded is not among the exported fixtures.

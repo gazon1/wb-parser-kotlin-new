@@ -198,9 +198,13 @@ capture.py step --investigation <id> --name <step> -- <page action>
 capture.py export --investigation <id>
 ```
 
-The page action is any `chrome-use` command. The capture names the step, keeps
-the requests the config approves, reports what it dropped and hands the result
-to the redactor.
+The page action is a `chrome-use` command that **reads** the page: `open`,
+`read`, `wait`, `expect`, `extract`, `snapshot`, `screenshot`, `scroll`,
+`scrollintoview`, `hover`, `focus`, `canvas`. A capture observes, so an action
+that could change the site — a click, a typed text, a filled form, a shell —
+is refused before the recording starts. Several actions in one step are
+separated by `--`. The capture names the step, keeps the requests the config
+approves, reports what it dropped and hands the result to the redactor.
 
 ```bash
 # one step: open the catalog page and record what it asks for
@@ -208,10 +212,10 @@ uv run python scripts/wb-research/capture.py step \
   --investigation 2026-11-19-wb-network-events-demo --name initial-load --settle 8 \
   -- chrome-use open "https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки"
 
-# another step, in the same browser: scroll and record the requests it causes
+# another step, in the same browser: scroll twice and record the requests it causes
 uv run python scripts/wb-research/capture.py step \
   --investigation 2026-11-19-wb-network-events-demo --name next-page --settle 8 \
-  -- bash -c "chrome-use scroll down 20000 && chrome-use scroll down 20000"
+  -- chrome-use scroll down 20000 -- chrome-use scroll down 20000
 
 # redact every step of the investigation again, without recapturing
 uv run python scripts/wb-research/capture.py export \
@@ -322,9 +326,9 @@ A capture is only useful if it survives a real browser. This is the test, and
 it is part of the change, not a suggestion:
 
 1. Log into Wildberries in a real Chrome session (`chrome-use open
-   https://www.wildberries.ru/`). The capture records, it does not act: the
-   page action is the command you give after `--`, so a page load leaves the
-   cart, the orders and the account alone.
+   https://www.wildberries.ru/`). The capture observes: the page action it
+   drives only reads the page, so the cart, the orders and the account stay
+   as they were.
 2. Run the `initial-load` step above. The output says how many requests were
    kept and what was dropped.
 3. Run the `next-page` step above in the same browser.

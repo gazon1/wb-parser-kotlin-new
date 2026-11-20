@@ -152,6 +152,8 @@ was never answered is evidence of something different.
   opaque-value rule does not see it — the hyphens break the run of characters.
 - **Never** keep a content type beyond its media type and the safe parameters:
   the server writes it, and the same value in a header goes through the rules.
+  The value of a safe parameter is a value as well: a charset that carries a
+  run of digits is an account id, and it is dropped.
 - **Never** keep the value of an allowed header as it is: the name says what may
   be shown, not that the value is safe. A user agent that carries an address and
   a server header that carries an opaque value go through the same rules as the
@@ -176,9 +178,10 @@ was never answered is evidence of something different.
   the exported ones: another step of the same investigation is not this one.
 - **Always** treat the investigation id as one name, not a path: it becomes a
   directory in the raw cache and a directory in the repository.
-- The capture itself changes nothing: it drives chrome-use to record and writes
-  the fixture. The page action is the operator's own command, so what the
-  session sees is what that command does — a page load leaves the cart, the
-  orders and the account alone, and a click on them does not.
+- **Never** drive a page action that could change the site: the page action of a
+  step is a chrome-use command that reads the page, and an action that is not
+  one of them — a click, a typed text, a filled form, a shell — is refused
+  before the recording starts. The capture observes, so the cart, the orders
+  and the account stay as they were.
 - The tool stays in `scripts/` and `devtools/`: no production module depends on
   it and it adds no runtime dependency.
