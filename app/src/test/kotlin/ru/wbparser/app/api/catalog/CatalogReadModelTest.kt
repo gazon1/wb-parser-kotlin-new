@@ -1,6 +1,7 @@
 package ru.wbparser.app.api.catalog
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 
@@ -116,6 +117,33 @@ class CatalogReadModelTest :
             val sql = CatalogReadModel.currentProductTargets(CatalogFilters.Where.EMPTY)
 
             sql shouldContain "WHERE latest.feedback_points IS NOT NULL"
+        }
+
+        test("the membership of a read is named, not hard-wired") {
+            val sql =
+                CatalogReadModel.currentProductTargets(
+                    CatalogFilters.Where.EMPTY,
+                    membership = CatalogMembership.CASHBACK_DEAL,
+                )
+
+            // The finding of the review: the list of the best cashback deals was built
+            // from the catalog's membership — the review points — and the two
+            // populations never overlap, so the list was empty even while the table held
+            // observations that pay a cashback.
+            sql shouldContain "WHERE latest.cashback_percent > 0"
+            sql shouldNotContain "latest.feedback_points IS NOT NULL"
+        }
+
+        test("the detail read accepts either population") {
+            val condition = CatalogMembership.SHOWN.condition("s")
+
+            // The card of a cashback deal comes from the top-deals list, and its detail
+            // is asked by the id of that card: a detail read that accepted only one of
+            // the two populations would answer 404 about a card the other list showed.
+            // The cashback branch asks for a match id as well — that is the key the
+            // top-deals list groups by, so an observation without one is in no list.
+            condition shouldBe
+                "(s.feedback_points IS NOT NULL OR (s.cashback_percent > 0 AND s.match_id IS NOT NULL))"
         }
 
         test("the target grain keeps the targets apart") {

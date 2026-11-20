@@ -25,9 +25,11 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import ru.wbparser.app.WbParser
 import ru.wbparser.app.api.catalog.CatalogCache
 import ru.wbparser.app.api.catalog.CatalogReadiness
+import ru.wbparser.app.config.CatalogDataSource
 import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 import javax.sql.DataSource
 
 /**
@@ -99,6 +101,12 @@ class CatalogRoutesTest {
          */
         @JvmStatic
         val DATA_MOMENT: Instant = Instant.parse("2026-01-01T00:00:00Z")
+
+        /** How long the suite waits for the catalog pool to become readable. */
+        const val POOL_READY_TIMEOUT_SECONDS: Long = 30
+
+        /** How long the suite waits between two attempts to read through the pool. */
+        const val POOL_READY_POLL_MILLIS: Long = 100
     }
 
     @Autowired
@@ -115,6 +123,12 @@ class CatalogRoutesTest {
      */
     @Autowired
     lateinit var cache: CatalogCache
+
+    /**
+     * The catalog's own pool — the one that connects as the read-only role.
+     */
+    @Autowired
+    lateinit var catalogDataSource: CatalogDataSource
 
     private lateinit var target: UUID
     private lateinit var item: UUID
@@ -177,6 +191,44 @@ class CatalogRoutesTest {
         fixture.container = postgres
         fixture.writer = dataSource
         fixture.provisionCatalogRole()
+        waitUntilTheCatalogPoolCanRead()
+    }
+
+    /**
+     * The pool tries to connect before the role exists.
+     *
+     * The application starts with the catalog pool, and the pool opens its first
+     * connection while the role is still missing — the role can only be provisioned
+     * after Flyway has created the tables the script checks, and that is later. Those
+     * failed attempts are not free: the pool backs off after them, so the first request
+     * that arrives after the role exists can land in that backoff, wait out the pool's
+     * three-second timeout and come back as a 500 — a failed test for a reason that has
+     * nothing to do with what the test asks.
+     *
+     * So the suite waits until the pool can read, which is the wait a deployment makes
+     * before it opens the storefront. The wait is bounded: a pool that never becomes
+     * usable fails the suite with the reason instead of hanging.
+     */
+    private fun waitUntilTheCatalogPoolCanRead() {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(POOL_READY_TIMEOUT_SECONDS)
+        var failure: Exception? = null
+        while (System.nanoTime() < deadline) {
+            try {
+                catalogDataSource.read { connection ->
+                    connection.createStatement().use { statement ->
+                        statement.executeQuery("SELECT 1").use { it.next() }
+                    }
+                }
+                return
+            } catch (failure_: Exception) {
+                failure = failure_
+                Thread.sleep(POOL_READY_POLL_MILLIS)
+            }
+        }
+        throw IllegalStateException(
+            "the catalog pool did not become readable within $POOL_READY_TIMEOUT_SECONDS seconds",
+            failure,
+        )
     }
 
     @Test

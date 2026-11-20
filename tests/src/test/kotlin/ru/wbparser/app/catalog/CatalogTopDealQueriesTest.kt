@@ -84,4 +84,25 @@ class CatalogTopDealQueriesTest :
             page.items.map { it.title } shouldBe listOf("С кешбеком")
             page.totalCount shouldBe 1
         }
+
+        test("the products that pay a cashback are shown even when they pay no review points") {
+            // The finding of the review: the list was built from the catalog's
+            // membership — the review points — and the two populations never overlap, so
+            // the list was empty even while the table held observations that pay a
+            // cashback. The list names its own membership: the cashback.
+            val target = fixture.seedTarget("Категория")
+            fixture.seedItem(
+                target,
+                title = "С кешбеком, без баллов",
+                matchId = 1L,
+                productId = 1L,
+                cashbackPercent = 30.0,
+                feedbackPoints = null,
+            )
+
+            val page = queries().listTopDeals(TopDealsQueryParams.parse(params()))
+
+            page.items.map { it.title } shouldBe listOf("С кешбеком, без баллов")
+            page.totalCount shouldBe 1
+        }
     })

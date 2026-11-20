@@ -101,6 +101,14 @@ class CatalogItemQueries(
      * catalog, and a detail read that found it would answer about a product the
      * storefront cannot show.
      *
+     * The condition is the union of the populations the API shows: the review points
+     * the catalog is made of, and the wallet cashback the top-deals list is made of —
+     * the cashback branch with a match id, because that is the key the top-deals list
+     * groups by. The id of a card can come from either list, and a detail read that
+     * accepted only one of them would answer 404 about a card the other list had just
+     * shown; an observation outside both is in no list, and this read does not answer
+     * about it.
+     *
      * And it has to be the *current* observation of its product: the membership is
      * decided on the newest observation, so an older observation that paid points is
      * not a product of the catalog either — the product left it when the newer
@@ -127,7 +135,7 @@ class CatalogItemQueries(
                                 FROM scraped_items s
                                 JOIN crawl_targets t ON t.id = s.target_id
                                WHERE s.id = ?
-                                 AND s.${CatalogReadModel.REVIEW_POINTS_OBSERVATION}
+                                 AND ${CatalogMembership.SHOWN.condition("s")}
                                  AND ${CatalogReadModel.currentObservation(scope)}
                         )
                         SELECT ${CatalogCardProjection.columns("i")}

@@ -36,6 +36,11 @@ package ru.wbparser.app.api.catalog
  * pick the newest observation that pays points, and the product would stay in the catalog
  * with a price it does not have.
  *
+ * The condition itself is a named policy ([CatalogMembership]), and every read names the
+ * population it answers about. The table holds two populations that never overlap — the
+ * review points and the wallet cashback — so a read that hard-wired one of them would
+ * answer the other list with an empty result.
+ *
  * ## Why the filters are applied to the current observation
  *
  * The filters that name a product are applied to the row the model keeps — the current one
@@ -80,8 +85,9 @@ internal object CatalogReadModel {
      *
      * The condition is what a candidate for the top-deals list has to satisfy: that list
      * answers "where can this product be bought with the most cashback back", and a
-     * product that pays no cashback is not an answer to that question. The list is empty
-     * until the crawler asks WB for a cashback again, and it is empty rather than wrong.
+     * product that pays no cashback is not an answer to that question. It is a population
+     * of its own ([CatalogMembership.CASHBACK_DEAL]), and the observations that pay a
+     * cashback are in the table whether or not they pay review points.
      */
     const val CASHBACK_DEAL_OBSERVATION: String = "cashback_percent > 0"
 
@@ -160,11 +166,16 @@ internal object CatalogReadModel {
      * rather than its price — and it is applied to the row the model keeps, so that the
      * answer is about the product as it is now. The membership is decided outside the
      * model, because it is a question about the newest observation.
+     *
+     * @param membership the population the read answers about. The catalog's own reads
+     * ask for the review points; a read that is *about* the cashback asks for the
+     * cashback instead, because the two populations never overlap.
      */
     fun currentProducts(
         identity: CatalogFilters.Where,
         scope: CurrentScope,
-    ): String = model(identity.clauses + currentObservation(scope))
+        membership: CatalogMembership = CatalogMembership.REVIEW_POINTS,
+    ): String = model(identity.clauses + currentObservation(scope), membership)
 
     /**
      * The read model at the grain of the product and the target.
@@ -178,23 +189,31 @@ internal object CatalogReadModel {
      * list leaves them out — without a stable grouping key it would deduplicate
      * arbitrarily — while the target list keeps them, because a target holds the products
      * it holds whether they were matched or not.
+     *
+     * @param membership the population the read answers about. The top-deals list asks
+     * for the cashback: the products that pay a wallet cashback are in the table whether
+     * or not they pay review points, and the two sets never overlap.
      */
     fun currentProductTargets(
         where: CatalogFilters.Where,
         onlyMatched: Boolean = true,
+        membership: CatalogMembership = CatalogMembership.REVIEW_POINTS,
     ): String {
         val conditions = where.clauses.toMutableList()
         if (onlyMatched) {
             conditions += "s.match_id IS NOT NULL"
         }
-        return model(conditions + currentObservation(CurrentScope.TARGET))
+        return model(conditions + currentObservation(CurrentScope.TARGET), membership)
     }
 
     /**
      * The model itself: the current observation of every product, with the membership
      * applied to it.
      */
-    private fun model(conditions: List<String>): String =
+    private fun model(
+        conditions: List<String>,
+        membership: CatalogMembership,
+    ): String =
         """
         SELECT latest.*
           FROM (
@@ -203,6 +222,6 @@ internal object CatalogReadModel {
                   JOIN crawl_targets t ON t.id = s.target_id
                  WHERE ${conditions.joinToString(" AND ")}
                 ) latest
-         WHERE latest.$REVIEW_POINTS_OBSERVATION
+         WHERE ${membership.condition("latest")}
         """.trimIndent()
 }

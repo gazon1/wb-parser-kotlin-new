@@ -63,6 +63,13 @@ review points are stored as their own value, end to end, and never as a cashback
   applies it too: an observation outside the catalog is not found. And the detail read
   answers about the **current** observation of the product: an older observation is not
   found either, because the product left the catalog when the newer observation arrived.
+- Every read **names the population it answers about**. The table holds two populations that
+  never overlap — the review points and the wallet cashback — and a read that hard-wired the
+  catalog's membership would answer the cashback list with an empty result even while the
+  table held observations that pay a cashback. The catalog's own reads (the list, the
+  targets, the counters) ask for the review points; the top-deals list asks for the cashback;
+  the detail read accepts either, because the id of a card can come from either list — the
+  cashback branch with a match id, because that is the key the top-deals list groups by.
 
 ## Rationale
 
@@ -88,9 +95,15 @@ reported, dressed up as a fix.
 - **MUST** keep review points and cashback percentage in separate fields, columns and
   outputs. They are different units.
 - **Always** decide whether a product is in the catalog on its newest observation, and
-  apply the same condition to every read of the catalog — the list, the targets, the top
-  deals and the detail read. A read that answers about a product the list leaves out is
-  two answers about two catalogs.
+  apply the same condition to every read of the catalog — the list, the targets and the
+  counters read the catalog's membership, the top-deals list reads the cashback one, and
+  the detail read accepts either. A read that answers about a product the list leaves out
+  is two answers about two catalogs, so the detail read serves only what a list shows.
+- **Always** name the population a read answers about. The review points and the wallet
+  cashback are two populations that never appear on the same product, so a read that
+  hard-wired one of them would answer the other list with an empty result — the "best
+  cashback deals" list was empty even while the table held observations that pay a
+  cashback.
 - **Always** let the detail read answer about the current observation of the product. An
   old observation is a price the product does not have, and the id of it is not an id the
   storefront can show.
@@ -132,14 +145,16 @@ reported, dressed up as a fix.
 - **Never** build the "best cashback" list from the catalog's membership. The catalog is
   made of the products that pay review points, and those are the products WB pays no
   wallet cashback for: the candidates of that list are the observations that pay a
-  cashback, and the list is empty until the crawler asks WB for one. A list built from
-  the whole catalog would answer with products that pay no cashback, ordered by a column
-  that is empty for every row.
+  cashback — whether or not they pay review points — and the list is empty until the
+  table holds such an observation. A list built from the whole catalog would answer with
+  products that pay no cashback, ordered by a column that is empty for every row.
 - **Never** rename an index that is not valid. A `CREATE INDEX CONCURRENTLY` that failed
   leaves one behind, and `CREATE INDEX IF NOT EXISTS` sees only the name: without a check
   the migration would drop the index that works and rename the one the planner ignores.
   `V18` refuses to run on such an index.
 - The catalog's cashback-based sort and its `minCashback` filter have nothing to sort by
   any more: no crawled product carries a wallet cashback, because the request does not ask
-  for one. They keep working — they just report empty and order by recency. Sorting the
-  catalog by review points is a separate decision, and this one does not make it.
+  for one. They keep working — they just report empty and order by recency. The top-deals
+  list is the other way round: it answers about the cashback observations the table holds,
+  so it is empty only while no observation pays a cashback. Sorting the catalog by review
+  points is a separate decision, and this one does not make it.

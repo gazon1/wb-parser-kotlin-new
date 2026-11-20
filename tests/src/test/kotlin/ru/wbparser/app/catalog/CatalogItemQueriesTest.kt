@@ -135,4 +135,25 @@ class CatalogItemQueriesTest :
         test("a product that is not there is not found") {
             queries().getItem(UUID.randomUUID(), CurrentScope.TARGET).shouldBeNull()
         }
+
+        test("the detail of a cashback deal is found") {
+            // The card of a cashback deal comes from the top-deals list, which is made
+            // of the observations that pay a cashback — and those pay no review points.
+            // A detail read that accepted only the catalog's membership would answer
+            // 404 about a card the top-deals list had just shown.
+            val target = fixture.seedTarget("Категория")
+            val id =
+                fixture.seedItem(
+                    target,
+                    title = "С кешбеком",
+                    productId = 77L,
+                    cashbackPercent = 30.0,
+                    feedbackPoints = null,
+                )
+
+            val detail = queries().getItem(id, CurrentScope.TARGET)
+
+            detail.shouldNotBeNull()
+            detail.id shouldBe id
+        }
     })

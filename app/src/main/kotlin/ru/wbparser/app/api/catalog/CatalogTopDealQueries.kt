@@ -35,26 +35,18 @@ import ru.wbparser.app.config.CatalogDataSource
  * back". So the rows that are compared are the *current* observation of a product in
  * each target, and the winner is the target with the best cashback now. Comparing the
  * observations themselves would let a price from last week win a list about today.
+ *
+ * ## Why the list is not built from the catalog's membership
+ *
+ * The catalog is made of the products that pay review points, and those are the products
+ * WB pays no wallet cashback for. The two populations never overlap, so a list built
+ * from the catalog's membership would be empty even while the table holds observations
+ * that pay a cashback. The list therefore names its own membership — the cashback
+ * population — and answers about it.
  */
 class CatalogTopDealQueries(
     private val dataSource: CatalogDataSource,
 ) {
-    /**
-     * The candidates of the list: the current observations that pay a wallet cashback.
-     *
-     * The catalog is made of the products that pay review points, and those are the
-     * products WB pays no wallet cashback for. A list built from the whole catalog would
-     * therefore list products with no cashback as the best cashback deals — an answer to a
-     * question nobody asked, sorted by a column that is empty for every row. So the
-     * candidates are the observations that pay a cashback, and the list is empty until the
-     * crawler asks WB for one.
-     */
-    private val cashbackCandidates =
-        CatalogFilters.Where(
-            listOf("s.${CatalogReadModel.CASHBACK_DEAL_OBSERVATION}"),
-            emptyList(),
-        )
-
     /**
      * The highest cashback across all targets, one row per matched product.
      */
@@ -72,7 +64,10 @@ class CatalogTopDealQueries(
                     .prepareStatement(
                         """
                         WITH current AS (
-                        ${CatalogReadModel.currentProductTargets(cashbackCandidates)}
+                        ${CatalogReadModel.currentProductTargets(
+                            CatalogFilters.Where.EMPTY,
+                            membership = CatalogMembership.CASHBACK_DEAL,
+                        )}
                         ),
                         best AS (
                               SELECT DISTINCT ON (c.match_id)
