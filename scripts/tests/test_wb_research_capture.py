@@ -644,6 +644,67 @@ def test_a_page_action_may_not_open_a_host_by_an_upper_case_scheme(tmp_path, mon
     assert not any("start" in call for call in calls)
 
 
+def test_a_page_the_config_does_not_approve_is_refused_with_an_approved_query():
+    # The path is refused on its own: the query is approved, so the refusal
+    # can only be about the page. The root of the host approves the root page
+    # and not the paths under it.
+    actions = capture.page_actions(["chrome-use", "open", "https://www.wildberries.ru/basket/add?search=test"])
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+    assert "approved page" in str(refusal.value)
+
+
+def test_a_dot_segment_hidden_behind_two_layers_of_escapes_is_resolved():
+    # The finding of the review: `%252e%252e` is `..` to a server that decodes
+    # twice, and the check read it as an ordinary segment.
+    actions = capture.page_actions(["chrome-use", "open", "https://www.wildberries.ru/catalog/%252e%252e/basket/add"])
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+    assert "approved page" in str(refusal.value)
+
+
+def test_a_dot_segment_hidden_behind_three_layers_of_escapes_is_resolved():
+    actions = capture.page_actions(
+        ["chrome-use", "open", "https://www.wildberries.ru/catalog/%25252e%25252e/basket/add"]
+    )
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+    assert "approved page" in str(refusal.value)
+
+
+def test_a_separator_hidden_behind_two_layers_of_escapes_is_refused():
+    # `%252f` is `%2f` to a server that decodes twice, and the check cannot
+    # know how the path is routed.
+    for url in (
+        "https://www.wildberries.ru/catalog/%252f/basket/add",
+        "https://www.wildberries.ru/catalog/%255c/basket",
+    ):
+        actions = capture.page_actions(["chrome-use", "open", url])
+
+        with pytest.raises(SystemExit) as refusal:
+            capture.check_read_only(
+                actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"]
+            )
+
+        assert "separator" in str(refusal.value)
+
+
+def test_a_page_with_an_escaped_value_in_its_path_is_opened():
+    # The path of a page may carry an escape that is not a separator and not
+    # a dot segment — a percent sign, a word in another script.
+    actions = capture.page_actions(
+        ["chrome-use", "open", "https://www.wildberries.ru/catalog/100%25/%D0%BA%D0%BE%D0%BB%D0%BE%D0%BD%D0%BA%D0%B8"]
+    )
+
+    capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+
 def test_a_page_action_may_not_open_a_page_the_config_does_not_approve(tmp_path, monkeypatch):
     # The finding of the review: an approved host answers a GET that changes
     # the account as well, so the host alone is not enough — the page is what

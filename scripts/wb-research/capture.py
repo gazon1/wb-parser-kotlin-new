@@ -60,16 +60,17 @@ EXIT_UNAPPROVED_API = 2
 # climb out of either directory is not an id.
 INVESTIGATION_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
-# The dot segments of a path, however they are written: a browser resolves
-# `%2e%2e` as `..`, so a check that does not know that approves another page.
-DOT_SEGMENT = re.compile(r"\.|%2e", re.IGNORECASE)
-DOUBLE_DOT_SEGMENT = re.compile(r"(?:\.|%2e){2}", re.IGNORECASE)
-
 # A separator of a path, hidden behind an escape: `%2f` and `%5c`. A browser
 # sends them as they are written, but a server or a proxy may decode them, and
 # then the path is another path. The check cannot know how the page is routed,
 # so it refuses a path that carries one.
 ENCODED_SEPARATOR = re.compile(r"%2f|%5c", re.IGNORECASE)
+
+# How many layers of percent-escapes are read. The redactor judges a value the
+# same way, and the check has to be at least as deep as the redactor: a path
+# that hides a dot segment or a separator behind two layers of escapes
+# (`%252e%252e`, `%252f`) is another path to a server that decodes twice.
+DECODE_LAYERS = 3
 
 # The port a scheme answers on when the URL does not name one. The origin of a
 # URL is the scheme, the host and the port, so a page the config approves is
@@ -186,13 +187,51 @@ def host_matches(host: str, patterns: list[str]) -> bool:
     return False
 
 
+def decode_layers(text: str) -> str:
+    """The text as a server that decodes it again and again would read it.
+
+    A percent-escape may hide another percent-escape: `%252e` is `%2e` to a
+    server that decodes twice, and `..` to a server that decodes three times.
+    The redactor judges a value this way, and the check judges a path the same
+    way — a path the check reads one way and the server another is a path the
+    check cannot judge.
+    """
+    for _ in range(DECODE_LAYERS):
+        decoded = unquote(text)
+        if decoded == text:
+            break
+        text = decoded
+    return text
+
+
+def hides_separator(text: str) -> bool:
+    """Whether the text hides a separator of a path behind one or more escapes.
+
+    `%2f` and `%252f` are the same separator to a server that decodes once and
+    to a server that decodes twice, so the check reads the escapes layer by
+    layer: it cannot know how many times the path is decoded, and a path it
+    cannot read is a path it refuses.
+    """
+    for _ in range(DECODE_LAYERS):
+        if ENCODED_SEPARATOR.search(text):
+            return True
+        decoded = unquote(text)
+        if decoded == text:
+            break
+        text = decoded
+    return False
+
+
 def page_path(url: str) -> str:
     """The path of a URL, resolved: the dot segments are the segments they are.
 
     A browser resolves the segments of a path before it asks for the page, so
     a check that does not resolve them would approve a path that the browser
     reads as another one. A dot segment is a dot segment however it is
-    written: `.`, `%2e` and `..`, `%2e%2e`, `.%2e` are the same two segments.
+    written: `.`, `%2e` and `..`, `%2e%2e`, `.%2e` are the same two segments —
+    and behind the escapes as well: `%252e%252e` is `..` to a server that
+    decodes twice. The segment is judged as it is read layer by layer, and the
+    path keeps the spelling the browser sees.
     """
     parts = url_parts(url)
     if parts is None:
@@ -202,11 +241,12 @@ def page_path(url: str) -> str:
         return "/"
     segments: list[str] = []
     for segment in path.split("/"):
-        if DOUBLE_DOT_SEGMENT.fullmatch(segment):
+        decoded = decode_layers(segment)
+        if decoded == "..":
             if segments:
                 segments.pop()
             continue
-        if DOT_SEGMENT.fullmatch(segment):
+        if decoded == ".":
             continue
         segments.append(segment)
     resolved = "/".join(segments)
@@ -516,7 +556,7 @@ def check_read_only(
             raise SystemExit(f"the page action may only open an http page, not {url!r}")
         if not host_matches(host_of(url), approved):
             raise SystemExit(f"the page action may only open an approved host, not {host_of(url)}")
-        if ENCODED_SEPARATOR.search(parts.path):
+        if hides_separator(parts.path):
             # A separator behind an escape is another path to a server that
             # decodes it, and the check cannot know how the page is routed.
             raise SystemExit(

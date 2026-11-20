@@ -215,7 +215,9 @@ config names the pages (`allowedPages`), and a named page approves the origin
 it names — the scheme, the host and the port, because the same host on another
 port is another service — and the path it names and the paths under it, by path
 segment: `https://www.wildberries.ru/catalog/` approves
-`/catalog/131954/list.aspx` and not `/catalogue/x`. The path is resolved before
+`/catalog/131954/list.aspx` and not `/catalogue/x`. The root of a host approves
+the root page and not the paths under it: `https://www.wildberries.ru/` approves
+`/` and not `/basket/add`. The path is resolved before
 it is compared — the dot segments are the dot segments however they are
 written, `%2e%2e` is `..` — so a page cannot hide behind a relative
 segment. The URL is also read the way the browser reads it: a backslash in an
@@ -224,7 +226,10 @@ the host `a.example` to the browser and `b.example` to the check. Such a URL
 is refused rather than guessed, and the page that is opened is the page that
 was approved. A path that hides a separator behind an escape (`%2f`, `%5c`) is
 refused as well: the browser sends it as it is written, but a server or a proxy
-may decode it, and then it is another path. The query of the page is judged
+may decode it, and then it is another path. The path is read layer by layer,
+at most three, the way the redactor reads a value: an escape may hide another
+escape, so `%252e%252e` is `..` and `%252f` is a separator to a server that
+decodes twice. The query of the page is judged
 too: a navigation may only carry the query parameters the config names
 (`allowedQueryParams`), because a parameter can switch an action on just as a
 path can. Several actions in one step are separated by `--`. The capture names

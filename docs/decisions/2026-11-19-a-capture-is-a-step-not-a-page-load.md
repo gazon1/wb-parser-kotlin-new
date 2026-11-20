@@ -262,6 +262,12 @@ was never answered is evidence of something different.
   and then the path is another path. The check resolves the dot segments
   (`%2e%2e` is `..`), so it cannot read a path that hides a separator behind an
   escape — such a path is refused rather than guessed at.
+- **Never** read a path one layer of escapes deep: an escape may hide another
+  escape, so `%252e%252e` is `..` and `%252f` is a separator to a server that
+  decodes twice. The check reads the path layer by layer, at most three, the
+  way the redactor reads a value, and the path it judges is the path it opens:
+  the dot segments are resolved as the deepest reading resolves them, and a
+  separator behind any layer of escapes is refused.
 - **Never** let a value the redactor cannot judge end the run: a URL the parser
   refuses — an unclosed IPv6 bracket — is replaced whole (`<redacted:url>`),
   because where the user information ends and the path begins is unknown there,
