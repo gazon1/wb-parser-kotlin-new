@@ -37,7 +37,7 @@ import sys
 import time
 from collections import Counter
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import SplitResult, urlsplit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
@@ -69,6 +69,11 @@ DOUBLE_DOT_SEGMENT = re.compile(r"(?:\.|%2e){2}", re.IGNORECASE)
 # URL is the scheme, the host and the port, so a page the config approves is
 # the page on that port and not the same host on another one.
 DEFAULT_PORTS = {"http": 80, "https": 443}
+
+# A backslash in a URL. A browser reads it as a slash in an http(s) URL, so a
+# URL that carries one names another page than the parser here reads — and the
+# page that is executed must be the page that was judged.
+BACKSLASH = "\\"
 
 # The page actions a capture may drive. The issue that asked for the tool says
 # read-only observation only: no cart, no purchase, no account. So the actions
@@ -135,9 +140,28 @@ def load_config(path: Path, extra_hosts: list[str]) -> dict:
     return config
 
 
+def url_parts(url: str) -> SplitResult | None:
+    """The parts of a URL, or `None` when the URL cannot be read at all.
+
+    A URL with a broken host — an unclosed IPv6 bracket — is not a URL the
+    parser can read, and a URL that cannot be read names no host, so no page
+    of it can be approved.
+    """
+    try:
+        return urlsplit(url)
+    except ValueError:
+        return None
+
+
 def host_of(url: str) -> str:
     """The host of a URL, lowercased. An empty string for a URL without one."""
-    return (urlsplit(url).hostname or "").lower()
+    parts = url_parts(url)
+    if parts is None:
+        return ""
+    try:
+        return (parts.hostname or "").lower()
+    except ValueError:
+        return ""
 
 
 def host_matches(host: str, patterns: list[str]) -> bool:
@@ -163,7 +187,10 @@ def page_path(url: str) -> str:
     reads as another one. A dot segment is a dot segment however it is
     written: `.`, `%2e` and `..`, `%2e%2e`, `.%2e` are the same two segments.
     """
-    path = urlsplit(url).path
+    parts = url_parts(url)
+    if parts is None:
+        return "/"
+    path = parts.path
     if not path or path == "/":
         return "/"
     segments: list[str] = []
@@ -188,13 +215,15 @@ def origin_of(url: str) -> tuple[str, str, int] | None:
     service, and the page the config approves is not that one. `None` for a
     URL whose port is not a port.
     """
-    parts = urlsplit(url)
+    parts = url_parts(url)
+    if parts is None:
+        return None
     scheme = parts.scheme.lower()
     try:
         port = parts.port
+        host = (parts.hostname or "").lower()
     except ValueError:
         return None
-    host = (parts.hostname or "").lower()
     return scheme, host, port if port is not None else DEFAULT_PORTS.get(scheme, 0)
 
 
@@ -432,7 +461,15 @@ def check_read_only(actions: list[list[str]], approved: list[str], pages: list[s
             # The page action names no page: `read` without a URL reads the tab
             # that is open, and an option is not a page.
             continue
-        scheme = urlsplit(url).scheme.lower()
+        if BACKSLASH in url:
+            # The browser reads a backslash as a slash, so the page it would
+            # open is not the page this check reads. A URL we cannot read the
+            # way the browser reads it is a URL we refuse to judge.
+            raise SystemExit(f"the page action may only open a URL as the browser reads it, not {url!r}")
+        parts = url_parts(url)
+        if parts is None:
+            raise SystemExit(f"the page action may only open a page, not {url!r} — the URL cannot be read")
+        scheme = parts.scheme.lower()
         if scheme not in ("http", "https"):
             raise SystemExit(f"the page action may only open an http page, not {url!r}")
         if not host_matches(host_of(url), approved):

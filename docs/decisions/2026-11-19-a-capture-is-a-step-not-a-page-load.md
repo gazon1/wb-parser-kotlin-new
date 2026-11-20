@@ -208,5 +208,11 @@ was never answered is evidence of something different.
   however they are written, `%2e%2e` is `..`. A page cannot hide behind a
   relative segment, and a named page approves the path it names and the paths
   under it, by path segment.
+- **Never** open a URL the browser reads differently from the way it is judged: a
+  browser reads a backslash in an http(s) URL as a slash, so
+  `https://a.example\@b.example/` names the host `a.example` to the browser and
+  `b.example` to the parser here. The URL is refused rather than guessed, and
+  the page that is executed is the page that was judged. A URL whose host
+  cannot be read at all names no host, and no page of it is approved.
 - The tool stays in `scripts/` and `devtools/`: no production module depends on
   it and it adds no runtime dependency.

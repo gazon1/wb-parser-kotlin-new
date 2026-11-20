@@ -214,7 +214,11 @@ segment: `https://www.wildberries.ru/catalog/` approves
 `/catalog/131954/list.aspx` and not `/catalogue/x`. The path is resolved before
 it is compared — the dot segments are the dot segments however they are
 written, `%2e%2e` is `..` — so a page cannot hide behind a relative
-segment. Several actions in one step are separated by `--`. The capture names
+segment. The URL is also read the way the browser reads it: a backslash in an
+http(s) URL is a slash to the browser, so `https://a.example\@b.example/` names
+the host `a.example` to the browser and `b.example` to the check. Such a URL
+is refused rather than guessed, and the page that is opened is the page that
+was approved. Several actions in one step are separated by `--`. The capture names
 the step, keeps the requests the config approves, reports what it dropped and
 hands the result to the redactor.
 

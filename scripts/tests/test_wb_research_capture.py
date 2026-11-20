@@ -767,3 +767,52 @@ def test_a_page_action_may_not_open_another_port_of_an_approved_host(tmp_path, m
         capture.capture_step(args, CONFIG)
 
     assert not any("start" in call for call in calls)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example\\@www.wildberries.ru/catalog/",
+        "https://www.wildberries.ru/catalog\\..\\..\\evil",
+    ],
+)
+def test_a_page_action_may_not_hide_a_page_behind_a_backslash(url, tmp_path, monkeypatch):
+    # The finding of the review: a browser reads a backslash in an http(s) URL
+    # as a slash, so the page it opens is not the page this check reads.
+    calls = []
+
+    def fake_chrome_use(*args):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
+    args = argparse.Namespace(name="step", investigation="demo", command=["chrome-use", "open", url], settle=0.0)
+
+    with pytest.raises(SystemExit):
+        capture.capture_step(args, CONFIG)
+
+    assert not any("start" in call for call in calls)
+
+
+def test_a_url_whose_host_cannot_be_read_names_no_host(tmp_path, monkeypatch):
+    # A URL with a broken IPv6 host raises where a host is read; a capture
+    # refuses it instead of falling over.
+    calls = []
+
+    def fake_chrome_use(*args):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
+    args = argparse.Namespace(
+        name="step", investigation="demo", command=["chrome-use", "open", "https://[::1/catalog/"], settle=0.0
+    )
+
+    with pytest.raises(SystemExit):
+        capture.capture_step(args, CONFIG)
+
+    assert not any("start" in call for call in calls)
