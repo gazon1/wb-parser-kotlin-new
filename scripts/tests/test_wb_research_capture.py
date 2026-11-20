@@ -961,6 +961,44 @@ def test_a_report_that_cannot_be_read_leaves_the_capture_unexported(tmp_path, mo
     assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
 
 
+def test_the_fixture_of_a_step_the_export_refuses_does_not_survive(tmp_path, monkeypatch):
+    # The finding of the review: the export skipped a step whose capture is
+    # not evidence, but the fixture of an earlier run stayed in the
+    # repository as if it were the result of this one.
+    raw_dir = tmp_path / "demo"
+    raw_dir.mkdir()
+    (raw_dir / "step.har").write_text(json.dumps({"log": {"entries": []}}), encoding="utf-8")
+    evidence_dir = tmp_path / "investigations" / "demo" / "evidence"
+    evidence_dir.mkdir(parents=True)
+    stale = evidence_dir / "step.json"
+    stale.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+
+    assert capture.export_investigation("demo") == []
+
+    assert not stale.exists()
+
+
+def test_the_fixture_of_a_failed_step_does_not_survive_the_export(tmp_path, monkeypatch):
+    raw_dir = tmp_path / "demo"
+    raw_dir.mkdir()
+    (raw_dir / "step.har").write_text(json.dumps({"log": {"entries": []}}), encoding="utf-8")
+    (raw_dir / "step.report.json").write_text(
+        json.dumps({"notes": ["step: step"], "failedExitCode": 1}), encoding="utf-8"
+    )
+    evidence_dir = tmp_path / "investigations" / "demo" / "evidence"
+    evidence_dir.mkdir(parents=True)
+    stale = evidence_dir / "step.json"
+    stale.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+
+    assert capture.export_investigation("demo") == []
+
+    assert not stale.exists()
+
+
 def test_a_body_with_a_character_no_file_can_hold_is_still_measured():
     # The finding of the review: the size of the body was counted in the bytes
     # of strict UTF-8, so a lone surrogate ended the capture before the shape

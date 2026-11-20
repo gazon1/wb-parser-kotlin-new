@@ -272,6 +272,10 @@ run that died — the page action raised, or the step was interrupted. Such a
 capture is not exported either, and a report that cannot be read is treated as
 a step that did not finish.
 
+The export removes the fixture of the step before it judges it, so a capture the
+export refuses leaves no fixture of an earlier run standing as if it were the
+result of this one.
+
 The request log has to be cleared before the recording starts, and a browser
 that refused to clear it is an error too: the bodies are looked up in that
 log, and the join with the recording is positional.

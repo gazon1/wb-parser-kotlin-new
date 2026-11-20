@@ -723,6 +723,17 @@ def export_investigation(investigation: str) -> list[str]:
     failed_steps: list[str] = []
     unfinished_steps: list[str] = []
     for step_har in sorted(raw_dir.glob("*.har")):
+        out = evidence_dir / f"{step_har.stem}.json"
+        # The fixture of the previous export is removed before the step is
+        # judged: a capture that this export refuses must not leave the
+        # fixture of an earlier run standing as if it were the result of it.
+        if out.exists():
+            try:
+                out.unlink()
+            except OSError as error:
+                print(
+                    f"  {step_har.stem}: the fixture of the previous run could not be removed: {error}", file=sys.stderr
+                )
         report_path = raw_dir / f"{step_har.stem}.report.json"
         report = read_report(report_path)
         if report is None:
@@ -740,7 +751,6 @@ def export_investigation(investigation: str) -> list[str]:
             print(f"  {step_har.stem}: the step failed, so its partial capture is not exported", file=sys.stderr)
             failed_steps.append(step_har.stem)
             continue
-        out = evidence_dir / f"{step_har.stem}.json"
         command = [sys.executable, str(REDACTOR), str(step_har), "--out", str(out)]
         for note in notes:
             command += ["--note", note]

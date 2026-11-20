@@ -202,6 +202,9 @@ was never answered is evidence of something different.
   the action failed, and the export skips such a step — now and at every later
   export of the same investigation. A failed step leaves no fixture in the
   repository.
+- **Always** remove the fixture of the step before the export judges it: a
+  capture the export refuses must not leave the fixture of an earlier run
+  standing as if it were the result of this one.
 - **Always** delete the recording of the previous run of a step before the new
   one starts — the raw recording, the filtered file the export reads, the
   report of the previous run and the fixture the repository holds — and
