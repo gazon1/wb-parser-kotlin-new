@@ -1630,3 +1630,12 @@ def test_a_timestamp_that_is_not_a_moment_is_not_a_timestamp():
     assert redact.safe_timestamp("2025-02-29T00:00:00Z") is None
     assert redact.safe_timestamp("2026-11-19T13:00:00Z") == "2026-11-19T13:00:00Z"
     assert redact.safe_timestamp("2024-02-29T13:00:00.123+03:00") == "2024-02-29T13:00:00.123+03:00"
+
+
+def test_a_media_type_that_carries_an_identifier_is_not_a_media_type():
+    # The finding of the review: the media type was judged by its shape
+    # alone, so a UUID in the subtype reached the committed file.
+    assert redact.safe_content_type("application/550e8400-e29b-41d4-a716-446655440000") is None
+    assert redact.safe_content_type("application/123456789012345") is None
+    assert redact.safe_content_type("application/json") == "application/json"
+    assert redact.safe_content_type("text/html; charset=utf-8") == "text/html; charset=utf-8"

@@ -932,12 +932,18 @@ def safe_content_type(value: Any) -> str | None:
     anything: a media type and a list of parameters is what a content type
     is, so only that is kept. The parameters that survive are named ones —
     `charset` — and their value is a token of characters, not free text.
+
+    The media type is judged by its shape as well: the server chooses it, but
+    a subtype that carries a UUID or an account id is a value and not a media
+    type, and a content type without a media type is not a content type.
     """
     if not isinstance(value, str):
         return None
     parts = value.split(";")
     media = parts[0].strip()
     if not MEDIA_TYPE.match(media):
+        return None
+    if redact_generic_value(media) != media:
         return None
     kept = [media]
     for part in parts[1:]:

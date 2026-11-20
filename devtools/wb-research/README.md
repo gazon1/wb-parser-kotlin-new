@@ -529,7 +529,9 @@ The rules the redactor applies:
 - a response body is never included;
 - the content type of a response keeps the media type and the safe parameters
   (`charset`) only: a server may answer with anything, and the same value in a
-  header goes through the rules;
+  header goes through the rules. The media type is judged by its shape as
+  well: a subtype that carries a UUID or an account id is a value and not a
+  media type, and a content type without a media type is not kept;
 - the numbers a probe measured are kept — counts (`total`, `productCount`,
   `productsWithPoints`, `productsWithCashback`) and the distinct values of a
   numeric field — because a number cannot carry a name, a token or a sentence;

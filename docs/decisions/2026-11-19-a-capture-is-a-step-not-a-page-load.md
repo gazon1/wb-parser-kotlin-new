@@ -166,7 +166,10 @@ was never answered is evidence of something different.
 - **Never** keep a content type beyond its media type and the safe parameters:
   the server writes it, and the same value in a header goes through the rules.
   The value of a safe parameter is a value as well: a charset that carries a
-  run of digits is an account id, and it is dropped.
+  run of digits is an account id, and it is dropped. The media type is judged
+  by its shape as well: a subtype that carries a UUID or an account id is a
+  value and not a media type, and a content type without a media type is not
+  kept.
 - **Never** keep the value of an allowed header as it is: the name says what may
   be shown, not that the value is safe. A user agent that carries an address and
   a server header that carries an opaque value go through the same rules as the
