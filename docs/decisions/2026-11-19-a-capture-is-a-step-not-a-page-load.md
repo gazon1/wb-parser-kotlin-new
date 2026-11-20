@@ -255,6 +255,11 @@ was never answered is evidence of something different.
   `b.example` to the parser here. The URL is refused rather than guessed, and
   the page that is executed is the page that was judged. A URL whose host
   cannot be read at all names no host, and no page of it is approved.
+- **Never** open a page whose path hides a separator behind an escape: `%2f` and
+  `%5c` are sent as they are written, but a server or a proxy may decode them,
+  and then the path is another path. The check resolves the dot segments
+  (`%2e%2e` is `..`), so it cannot read a path that hides a separator behind an
+  escape — such a path is refused rather than guessed at.
 - **Never** let a value the redactor cannot judge end the run: a URL the parser
   refuses — an unclosed IPv6 bracket — is replaced whole (`<redacted:url>`),
   because where the user information ends and the path begins is unknown there,

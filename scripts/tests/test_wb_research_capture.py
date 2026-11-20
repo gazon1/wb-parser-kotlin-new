@@ -1079,3 +1079,45 @@ def test_a_step_whose_name_carries_a_long_run_of_digits_is_refused(tmp_path, mon
         capture.capture_step(args, CONFIG)
 
     assert "load12345678901234" in str(refusal.value)
+
+
+def test_a_page_whose_path_hides_a_separator_behind_an_escape_is_refused(tmp_path, monkeypatch):
+    # The finding of the review: the path of a page was resolved for the dot
+    # segments, but a separator behind an escape was not — so a path that
+    # resolves to another page was approved.
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/%2e%2e%2fbasket/add"],
+        settle=0.0,
+    )
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.capture_step(args, CONFIG)
+
+    assert "separator" in str(refusal.value)
+
+
+def test_a_page_whose_path_hides_a_backslash_behind_an_escape_is_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/%2e%2e%5cbasket/add"],
+        settle=0.0,
+    )
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.capture_step(args, CONFIG)
+
+    assert "separator" in str(refusal.value)
+
+
+def test_a_separator_behind_an_escape_in_a_query_is_not_a_path():
+    # The query is not a path: the page it asks for is the same page.
+    actions = capture.page_actions(["chrome-use", "open", "https://www.wildberries.ru/catalog/?search=a%2fb"])
+
+    capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"])

@@ -65,6 +65,12 @@ INVESTIGATION_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 DOT_SEGMENT = re.compile(r"\.|%2e", re.IGNORECASE)
 DOUBLE_DOT_SEGMENT = re.compile(r"(?:\.|%2e){2}", re.IGNORECASE)
 
+# A separator of a path, hidden behind an escape: `%2f` and `%5c`. A browser
+# sends them as they are written, but a server or a proxy may decode them, and
+# then the path is another path. The check cannot know how the page is routed,
+# so it refuses a path that carries one.
+ENCODED_SEPARATOR = re.compile(r"%2f|%5c", re.IGNORECASE)
+
 # The port a scheme answers on when the URL does not name one. The origin of a
 # URL is the scheme, the host and the port, so a page the config approves is
 # the page on that port and not the same host on another one.
@@ -480,6 +486,12 @@ def check_read_only(actions: list[list[str]], approved: list[str], pages: list[s
             raise SystemExit(f"the page action may only open an http page, not {url!r}")
         if not host_matches(host_of(url), approved):
             raise SystemExit(f"the page action may only open an approved host, not {host_of(url)}")
+        if ENCODED_SEPARATOR.search(parts.path):
+            # A separator behind an escape is another path to a server that
+            # decodes it, and the check cannot know how the page is routed.
+            raise SystemExit(
+                f"the page action may only open a page whose path does not hide a separator behind an escape, not {url!r}"
+            )
         if not approved_page(url, pages):
             raise SystemExit(
                 f"the page action may only open an approved page, not {url!r} — "

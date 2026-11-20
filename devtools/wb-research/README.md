@@ -222,7 +222,9 @@ segment. The URL is also read the way the browser reads it: a backslash in an
 http(s) URL is a slash to the browser, so `https://a.example\@b.example/` names
 the host `a.example` to the browser and `b.example` to the check. Such a URL
 is refused rather than guessed, and the page that is opened is the page that
-was approved. Several actions in one step are separated by `--`. The capture names
+was approved. A path that hides a separator behind an escape (`%2f`, `%5c`) is
+refused as well: the browser sends it as it is written, but a server or a proxy
+may decode it, and then it is another path. Several actions in one step are separated by `--`. The capture names
 the step, keeps the requests the config approves, reports what it dropped and
 hands the result to the redactor.
 
