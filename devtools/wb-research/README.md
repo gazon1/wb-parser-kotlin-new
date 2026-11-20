@@ -249,7 +249,11 @@ and the recording shows that navigation as a document of its own: a document of
 an approved host must be a page the config names, so such a step fails too. A
 document of another host is third-party traffic — the recording cannot tell a
 frame of another site from a navigation to it — and the filter keeps it out of
-the evidence.
+the evidence. The browser tells them apart: it names the page of the main
+frame of the tab, and the step reads it after its actions. A session on a host
+the config does not approve fails the step, and so does a browser that cannot
+say where the session is — a step whose evidence says nothing about where the
+session went shows nothing about what the step did.
 The tool cannot know what the site will answer before it answers it, so the
 guarantee it keeps is the one it can hold: the commands it runs are commands
 that read the page, and a step whose navigation left the approved pages is not

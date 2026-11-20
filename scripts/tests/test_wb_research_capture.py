@@ -873,8 +873,13 @@ def test_a_page_action_may_not_hide_a_page_behind_a_backslash(url, tmp_path, mon
     assert not any("start" in call for call in calls)
 
 
-def fake_browser(entries: list[dict] | None = None):
-    """A browser that answers the tool and saves a capture with the given entries."""
+def fake_browser(entries: list[dict] | None = None, session_url: str = "https://www.wildberries.ru/catalog/"):
+    """A browser that answers the tool and saves a capture with the given entries.
+
+    `session_url` is the page the browser says the session is on — the main
+    frame of the tab the step used. An empty string is a browser that cannot
+    say.
+    """
     recorded = entries if entries is not None else [entry("https://www.wildberries.ru/__internal/u-search")]
 
     def run(*args):
@@ -885,6 +890,9 @@ def fake_browser(entries: list[dict] | None = None):
             return subprocess.CompletedProcess(args, 0, "", "")
         if args[:3] == ("network", "requests", "--json"):
             payload = json.dumps({"success": True, "data": {"requests": []}})
+            return subprocess.CompletedProcess(args, 0, payload, "")
+        if args[:2] == ("get", "url"):
+            payload = json.dumps({"success": True, "data": {"url": session_url}})
             return subprocess.CompletedProcess(args, 0, payload, "")
         return subprocess.CompletedProcess(args, 0, "", "")
 
@@ -1463,3 +1471,68 @@ def test_a_document_of_another_host_is_not_a_navigation(tmp_path, monkeypatch):
     assert capture.capture_step(args, CONFIG) == capture.EXIT_OK
 
     assert (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+
+
+def test_a_session_that_left_the_approved_hosts_fails_the_step(tmp_path, monkeypatch):
+    # The finding of the review: the recording cannot tell the main frame of
+    # the tab from a frame of another site — both are documents in it, and a
+    # document of another host is third-party traffic. The browser tells them
+    # apart: the main frame of the tab is the page the session is on. A session
+    # that left the approved hosts observes something else, so the step fails.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(entries, session_url="https://frames.example.test/widget"),
+    )
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("the session left the approved hosts" in note for note in report["notes"])
+
+
+def test_a_browser_that_cannot_say_where_the_session_is_fails_the_step(tmp_path, monkeypatch):
+    # A step whose evidence says nothing about where the session went shows
+    # nothing about what the step did, so it is not a successful one.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries, session_url=""))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("the browser did not tell which page the session is on" in note for note in report["notes"])
+
+
+def test_a_session_behind_a_backslash_is_not_an_approved_session():
+    # The browser reads a backslash as a slash, so the page the session would
+    # be on is not the page this check reads: `https://a.example\@b.example/` is
+    # the host `b.example` to the parser and the host `a.example` to the
+    # browser. A session the check cannot read the way the browser reads it is
+    # not a session it can approve.
+    assert capture.approved_session("https://www.wildberries.ru\\@evil.example/", ["www.wildberries.ru"]) is False
+    assert capture.approved_session("https://www.wildberries.ru/catalog/", ["www.wildberries.ru"]) is True

@@ -628,6 +628,27 @@ def navigation_targets(entries: list[dict]) -> list[str]:
     return targets
 
 
+def session_page() -> str:
+    """The page the browser is on now: the main frame of the tab the step used.
+
+    The recording cannot tell a frame of another site from a navigation to it —
+    both are a document in it. The browser knows: the main frame of the tab is
+    one page, and a frame of another site is not it. An empty string is a
+    browser that could not answer.
+    """
+    proc = chrome_use("get", "url", "--json")
+    text = (proc.stdout or "") + (proc.stderr or "")
+    start = text.find("{")
+    if proc.returncode != 0 or start < 0:
+        return ""
+    try:
+        payload = json.loads(text[start:])
+    except json.JSONDecodeError:
+        return ""
+    data = payload.get("data") or {}
+    return str(data.get("url", ""))
+
+
 def document_urls(entries: list[dict]) -> list[str]:
     """The pages the browser opened, as the recording shows them.
 
@@ -674,6 +695,20 @@ def approved_navigation(url: str, approved: list[str], pages: list[str], allowed
     if not approved_page(url, pages):
         return False
     return all(name in allowed_query for name in query_names(url))
+
+
+def approved_session(url: str, approved: list[str]) -> bool:
+    """Whether the session is on a host the config approves.
+
+    The host is what is judged, and not the page: the site may add query
+    parameters to the page it keeps the session on, and the page itself is
+    judged by the recording. A URL the browser reads differently than the
+    parser reads it — a backslash — is not a URL this check can read, so it is
+    not approved.
+    """
+    if BACKSLASH in url:
+        return False
+    return host_matches(host_of(url), approved)
 
 
 def run_page_action(action: list[str]) -> int:
@@ -831,6 +866,24 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         redirect_problem = "the navigation left the approved pages: " + "; ".join(left[:3])
         failed = failed or EXIT_FAILED
 
+    # The recording cannot tell the main frame of the tab from a frame of
+    # another site: both are documents in it, and a document of another host is
+    # third-party traffic. The browser can tell them apart — the main frame of
+    # the tab is the page the session is on. A session that left the approved
+    # hosts observes something else, so the step fails: the capture of a failed
+    # step is not evidence of what the step shows.
+    session_url = session_page()
+    session_problem = ""
+    if not session_url:
+        # The browser could not say where the session is. A step whose evidence
+        # says nothing about where the session went shows nothing about what
+        # the step did, so it is not a successful one.
+        session_problem = "the browser did not tell which page the session is on"
+    elif not approved_session(session_url, config["allowedOrigins"]):
+        session_problem = f"the session left the approved hosts: {session_url}"
+    if session_problem:
+        failed = failed or EXIT_FAILED
+
     listed = chrome_use_json("network", "requests").get("requests", [])
     request_ids = join_request_ids(entries, listed)
 
@@ -885,10 +938,12 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         notes.append("the response bodies were read and only their shape was kept")
     if action_failure:
         notes.append(action_failure)
-    elif redirect_problem:
-        notes.append(redirect_problem)
-    elif failed:
-        notes.append(f"the page action failed with exit code {failed}, so the capture is partial")
+    else:
+        for problem in (redirect_problem, session_problem):
+            if problem:
+                notes.append(problem)
+        if not (redirect_problem or session_problem) and failed:
+            notes.append(f"the page action failed with exit code {failed}, so the capture is partial")
 
     report = {
         "step": step,
@@ -916,7 +971,10 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         )
 
     if failed:
-        print(action_failure or redirect_problem or f"the command failed with exit code {failed}", file=sys.stderr)
+        print(
+            action_failure or redirect_problem or session_problem or f"the command failed with exit code {failed}",
+            file=sys.stderr,
+        )
         return EXIT_FAILED
     if step not in exported:
         # The step that was just recorded is not among the exported fixtures.
