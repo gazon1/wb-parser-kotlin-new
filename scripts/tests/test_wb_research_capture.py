@@ -52,6 +52,19 @@ def entry(url: str, resource_type: str = "Fetch") -> dict:
     }
 
 
+def redirect(url: str, location: str, resource_type: str = "Document") -> dict:
+    """A request the site answered with a redirect to another page."""
+    return {
+        "_resourceType": resource_type,
+        "request": {"method": "GET", "url": url},
+        "response": {
+            "status": 302,
+            "headers": [{"name": "Location", "value": location}],
+            "content": {"mimeType": "text/html", "size": 0},
+        },
+    }
+
+
 def test_an_api_call_on_an_approved_host_is_evidence():
     kept, dropped, _hosts = capture.filter_entries(
         [entry("https://www.wildberries.ru/__internal/u-search?resultset=catalog")], CONFIG
@@ -944,6 +957,101 @@ def test_a_step_that_worked_is_exported(tmp_path, monkeypatch):
     assert capture.capture_step(args, CONFIG) == capture.EXIT_OK
 
     assert (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+
+
+def test_a_navigation_that_left_the_approved_pages_fails_the_step(tmp_path, monkeypatch):
+    # The finding of the review: the site may answer the approved page with
+    # another page — an action endpoint the config forbids — and the browser
+    # follows it. The tool reads the answer in the recording.
+    entries = [
+        redirect("https://www.wildberries.ru/catalog/", "https://www.wildberries.ru/basket/add"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    fixture = tmp_path / "investigations" / "demo" / "evidence" / "step.json"
+    assert not fixture.exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("left the approved pages" in note for note in report["notes"])
+
+
+def test_a_redirect_to_another_host_fails_the_step(tmp_path, monkeypatch):
+    entries = [
+        redirect("https://www.wildberries.ru/catalog/", "https://login.example.test/basket/add"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+
+
+def test_a_redirect_within_the_approved_pages_leaves_the_step_alone(tmp_path, monkeypatch):
+    # A redirect inside the approved pages is ordinary: the site answers with
+    # another page of the catalog.
+    entries = [
+        redirect("https://www.wildberries.ru/catalog/", "https://www.wildberries.ru/catalog/131954/list.aspx"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_OK
+
+    assert (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+
+
+def test_a_redirect_of_an_api_call_is_not_a_navigation(tmp_path, monkeypatch):
+    # A redirect of an API call is another API call: it is judged by the
+    # traffic filter, like any other request.
+    entries = [
+        redirect("https://www.wildberries.ru/api/v1/user/check", "https://www.wildberries.ru/basket/add", "Fetch"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_OK
+
+
+def test_a_relative_redirect_is_read_against_the_page_it_came_from():
+    # A location may be relative: it is read the way the browser reads it.
+    entries = [redirect("https://www.wildberries.ru/catalog/", "/basket/add")]
+
+    assert capture.navigation_targets(entries) == ["https://www.wildberries.ru/basket/add"]
 
 
 def test_a_url_whose_host_cannot_be_read_names_no_host(tmp_path, monkeypatch):

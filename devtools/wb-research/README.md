@@ -232,7 +232,14 @@ escape, so `%252e%252e` is `..` and `%252f` is a separator to a server that
 decodes twice. The query of the page is judged
 too: a navigation may only carry the query parameters the config names
 (`allowedQueryParams`), because a parameter can switch an action on just as a
-path can. Several actions in one step are separated by `--`. The capture names
+path can. The site may answer the page the operator opens with another page:
+the browser follows the redirect, so the redirect of the navigation is read in
+the recording, and a navigation that left the approved pages makes the step a
+failed one — its capture is not exported, and the reason is in the report.
+The tool cannot know what the site will answer before it answers it, so the
+guarantee it keeps is the one it can hold: the commands it runs are commands
+that read the page, and a step whose navigation left the approved pages is not
+committed. Several actions in one step are separated by `--`. The capture names
 the step, keeps the requests the config approves, reports what it dropped and
 hands the result to the redactor.
 
