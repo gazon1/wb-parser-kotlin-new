@@ -281,13 +281,17 @@ Each step writes `evidence/<step>.json` and returns:
 
 | Exit | Means |
 |---|---|
-| `0` | the step is recorded and every API call went to an approved host |
+| `0` | the step is recorded and every API call went to an approved origin |
 | `1` | the page action failed, or the fixture of this step was not written |
-| `2` | an API call went to a host that is neither approved nor marked as noise |
+| `2` | an API call went to an origin that is neither approved nor marked as noise |
 
 Exit `2` is the point of the tool: a relevant call is never dropped in silence.
-The host is named in the output; approve it for one run with `--allow-host
-<host>` or add it to `allowedOrigins` in the config, and say so in the record.
+The origin is named in the output; approve it for one run with `--allow-host
+<origin>` or add it to `allowedOrigins` in the config, and say so in the record.
+
+The order is the one of the table: a failed step answers `1` even when a call
+went to an unapproved origin as well — a step that failed has no evidence, and
+the origin is named in the output and in the report either way.
 
 The fixture of the step that was just recorded has to be among the exported
 ones: another step of the same investigation being exported is not this one.
@@ -350,10 +354,18 @@ hosts.
 }
 ```
 
-- `allowedOrigins` — hosts whose Fetch and XHR requests are evidence. A `*.`
-  prefix covers the subdomains of a host, not the host itself.
+- `allowedOrigins` — the origins whose Fetch and XHR requests are evidence. A
+  pattern that names a host approves the origin that host serves: `https` on
+  the default port. The same host on another port is another service, and a
+  request of it is not traffic of the approved one — so it is counted as
+  `origin-not-approved` and the tool stops for it. A pattern that names an
+  origin in full (`https://api.example.ru:8443`) approves that origin and
+  nothing else. A `*.` prefix covers the subdomains of a host, not the host
+  itself.
 - `noiseHosts` — hosts whose traffic is known to carry no API. A request to
-  them is dropped and counted, not an error.
+  them is dropped and counted, not an error. The host is what the statement is
+  about, so the host is what is matched: a service of that host on another port
+  is traffic of that host as well.
 - `keptResourceTypes` — the request types that count as an API call. The
   static assets of a page load are not evidence. It is the one definition of
   what an API call is: a kind that is on the list is an API call on an approved
@@ -372,7 +384,8 @@ hosts.
 
 Everything else that is recorded is dropped and **counted** in
 `~/.cache/wb-research/<id>/<step>.report.json`, with the reason:
-`host-not-approved`, `noise-host`, `other-host` or `type-not-kept`.
+`host-not-approved`, `origin-not-approved`, `noise-host`, `other-host` or
+`type-not-kept`.
 
 ### What a capture keeps
 

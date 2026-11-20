@@ -1501,7 +1501,7 @@ def test_a_session_that_left_the_approved_hosts_fails_the_step(tmp_path, monkeyp
 
     assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
     report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
-    assert any("the session left the approved hosts" in note for note in report["notes"])
+    assert any("the session left the approved origins" in note for note in report["notes"])
 
 
 def test_a_browser_that_cannot_say_where_the_session_is_fails_the_step(tmp_path, monkeypatch):
@@ -1536,3 +1536,118 @@ def test_a_session_behind_a_backslash_is_not_an_approved_session():
     # not a session it can approve.
     assert capture.approved_session("https://www.wildberries.ru\\@evil.example/", ["www.wildberries.ru"]) is False
     assert capture.approved_session("https://www.wildberries.ru/catalog/", ["www.wildberries.ru"]) is True
+
+
+def test_an_approved_host_on_another_port_is_not_approved_traffic(tmp_path, monkeypatch):
+    # The finding of the review: the allowlist of the API hosts compared the
+    # host alone, so a request of another service on another port of the same
+    # host was kept as traffic of the approved one. An approval is of an
+    # origin: the same host on another port is another service.
+    entries = [
+        entry("https://www.wildberries.ru/__internal/u-search"),
+        entry("https://www.wildberries.ru:8443/private-api"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_UNAPPROVED_API
+
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert report["unapprovedApiHosts"] == ["https://www.wildberries.ru:8443"]
+    assert report["droppedHosts"]["origin-not-approved"] == ["https://www.wildberries.ru:8443"]
+
+
+def test_an_approved_host_over_plain_http_is_not_approved_traffic(tmp_path, monkeypatch):
+    # The plain-http origin of an https host is another origin as well.
+    entries = [
+        entry("https://www.wildberries.ru/__internal/u-search"),
+        entry("http://www.wildberries.ru/private-api"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_UNAPPROVED_API
+
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert report["unapprovedApiHosts"] == ["http://www.wildberries.ru:80"]
+
+
+def test_the_approved_host_on_its_own_origin_is_approved_traffic(tmp_path, monkeypatch):
+    # The rule must not close the ordinary case: the approved host on the
+    # origin it serves is approved traffic.
+    entries = [
+        entry("https://www.wildberries.ru/__internal/u-search"),
+        entry("https://www.wildberries.ru/__internal/u-search/details"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_OK
+
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert report["unapprovedApiHosts"] == []
+
+
+def test_an_origin_named_in_full_is_approved_as_it_is_named():
+    # The operator can approve a service on a port of its own, and only that
+    # one: the origin in full is the origin that is approved.
+    approved = ["https://api.example.ru:8443"]
+    assert capture.approved_origin("https://api.example.ru:8443/x", approved) is True
+    assert capture.approved_origin("https://api.example.ru/x", approved) is False
+    assert capture.approved_origin("http://api.example.ru:8443/x", approved) is False
+
+
+def test_a_noise_host_is_matched_by_its_host():
+    # The noise list is the operator's statement about a host: the traffic of
+    # that host carries no API. The host is what the statement is about, so
+    # the host is what is matched.
+    assert capture.classify(
+        {"_resourceType": "XHR", "request": {"url": "https://a.wb.ru/collect"}},
+        CONFIG,
+    ) == ("noise-host", "a.wb.ru")
+
+
+def test_a_failed_step_answers_the_failure_even_with_an_unapproved_origin(tmp_path, monkeypatch):
+    # The finding of the review: the exit codes have a precedence, and it was
+    # not written down. A step that failed has no evidence, so the failure is
+    # what it answers — and the origin is named in the report either way.
+    entries = [
+        entry("https://www.wildberries.ru/__internal/u-search"),
+        entry("https://www.wildberries.ru:8443/private-api"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    monkeypatch.setattr(capture, "run_page_action", lambda action: 1)
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert report["unapprovedApiHosts"] == ["https://www.wildberries.ru:8443"]
