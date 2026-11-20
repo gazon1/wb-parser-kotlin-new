@@ -16,6 +16,7 @@ description: 'Step-by-step incident diagnosis for production issues — log retr
 ### Step 1 — Gather context
 
 Ask or determine:
+
 1. Which profile was affected (Profile A, Profile B, all profiles)
 2. When did the issue first appear (timestamp or version)
 3. Is the issue reproducible (yes/no/sometimes)
@@ -43,6 +44,7 @@ grep "traceId=abc123" /tmp/incident-log.txt | sort
 ### Step 4 — Identify the failure point
 
 Look for:
+
 - `ERROR` level entries — these are the actual failures
 - `WARN` entries before the error — these are the root cause or contributing factors
 - State dumps at ERROR — often show the variable values that caused the failure
@@ -67,6 +69,7 @@ that has never existed. Both were aspirational notes that read as instructions.
 ### Step 6 — Reproduce if possible
 
 If the issue is reproducible:
+
 1. Enable DEBUG logging: Settings → Developer → Log level → DEBUG
 2. Reproduce the exact steps
 3. Pull logs and filter by traceId
@@ -188,7 +191,7 @@ answer down while it is fresh.
 
 ---
 
-# Debugging a failing test
+## Debugging a failing test
 
 The section above assumes a production incident. This one is for "the test is red
 and I do not know why" — where there are no logs, because the failure is inside
@@ -196,7 +199,7 @@ the test JVM. The protocol below is ordered by cost: each step either resolves
 the class of failure or rules it out, so a hang is diagnosed in ~3 steps instead
 of by trial and error.
 
-## Step 0 — classify: fail, hang, or flaky
+### Step 0 — classify: fail, hang, or flaky
 
 - **Red with an assertion message** → go to step 1.
 - **Gradle never returns; you kill it by timeout** → it is a HANG, go to step 4.
@@ -205,7 +208,7 @@ of by trial and error.
   the test JVM itself is stuck — get a thread dump before touching any code.
 - **Passes alone, fails in the suite** → shared state; step 6.
 
-## Step 1 — read the assertion, then the diagnostics bundle
+### Step 1 — read the assertion, then the diagnostics bundle
 
 Compose failures are precise once you have the node list: "found '2' nodes that
 satisfy…" means an ambiguity, "could not find any node" means the selector or the
@@ -218,7 +221,7 @@ The desktop harness already bundles diagnostics on every failure into
 where the agenda should be answers in one glance what a source review takes an
 hour to find.
 
-## Step 2 — dump the tree; never guess a selector
+### Step 2 — dump the tree; never guess a selector
 
 Guessed selectors are the single largest source of wasted turns. Every desktop
 flow honours `-Dsingularity.ui.dumpTree=true`; the tree lands in
@@ -227,7 +230,7 @@ flow honours `-Dsingularity.ui.dumpTree=true`; the tree lands in
 repository and ViewModel tracing lives. Anything you "know" is on screen from
 reading source is a guess.
 
-## Step 3 — bisect across the layer boundary, headlessly
+### Step 3 — bisect across the layer boundary, headlessly
 
 When the UI disagrees with the data, FIRST split "did not happen" from "did not
 render" — in a plain test, without Compose:
@@ -249,7 +252,7 @@ wrong" are different investigations, and this one probe decides between them.
 It also survives when the UI path hangs — the failure class that resists every
 UI-level tool.
 
-## Step 4 — hangs: thread dump, then freeze the clock
+### Step 4 — hangs: thread dump, then freeze the clock
 
 While the run is stuck, `jstack <worker-pid>` the Gradle test worker. The two
 signatures that covered every hang seen so far:
@@ -275,7 +278,7 @@ Two rules that cost real time to learn:
   instantly while real workers are still moving. Wrap real-time waits in
   `withContext(Dispatchers.Default)`.
 
-## Step 5 — silent coroutine death: coroutines.txt
+### Step 5 — silent coroutine death: coroutines.txt
 
 Symptom: a VM/slot stays on its initial state, emits NO events, throws nothing
 observable, and the headless probe (step 3) reproduces it. A coroutine that dies
@@ -289,6 +292,7 @@ creation stack trace, and last observed stack trace. Read it before adding manua
 `DebugProbes` calls.
 
 Common patterns in the dump:
+
 - `state=SUSPENDED` + `lastObservedStackTrace` pointing at a blocking call —
   the coroutine is waiting; check if the wait is bounded.
 - `state=RUNNING` on a `DefaultDispatcher` thread at a `delay()` call —
@@ -307,7 +311,7 @@ init block saw null, the coroutine died with `NullPointerException: parameter f8
 is null`. Rule: **a property read from `init` must be declared before it** (see
 `singularity-todo-testable-vm`).
 
-## Step 6 — shared state and the remaining traps
+### Step 6 — shared state and the remaining traps
 
 - **Passes alone, fails in the suite** — process-global mutation before selector
   review; find what mutates it (`user.home`, statics, Kermit writers).

@@ -8,6 +8,7 @@ description: Security review checklist for security-sensitive changes — creden
 ## When to use
 
 Use this skill when reviewing a PR that touches:
+
 - Credential storage (`SecureStoragePort`, `EncryptedSharedPreferences`)
 - Auth flows (OAuth, token refresh, session management)
 - Data export or backup file format

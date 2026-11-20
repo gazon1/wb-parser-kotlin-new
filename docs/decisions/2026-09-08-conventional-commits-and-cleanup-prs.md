@@ -34,6 +34,7 @@ Formalise the commit convention:
 `PR <N>` in the subject marks a logical cleanup/feature series. Multiple commits with the same `PR <N>` belong to the same logical unit. `N` is a simple integer starting from 1, sequential — no need for GitHub PR numbers (there is no remote).
 
 Examples from current history:
+
 - `chore: PR 2 dead code purge — remove ~700 lines of unused code`
 - `refactor: PR 3 pure-domain cleanup — idGen and nullable delayMs`
 - `fix: A3 Retry backoff consistency, A4 save error logging, ...` (cluster prefix `A*` comes from the tech-debt plan; `PR N` is preferred)

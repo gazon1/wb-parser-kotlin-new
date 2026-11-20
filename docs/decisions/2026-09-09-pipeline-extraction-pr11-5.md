@@ -42,6 +42,7 @@ private sealed class StageDecision<out O> {
 ```
 
 **Not extracted** (deliberately):
+
 - Pagination loop — tightly coupled to `pending`/`stopped`/`lastPageWasEmpty` state;
   extracting would require passing 4 mutable refs, adding complexity without benefit.
 

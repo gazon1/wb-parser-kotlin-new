@@ -15,6 +15,7 @@ Additionally, `stageWithRetry` is not referentially transparent because of the i
 Move the retry loop entirely out of `stageWithRetry` and into the coordinator level (`Pipeline.run()`). The `stageWithRetry` becomes a pure one-shot function that returns `null` on success/failure or a `Wait` signal on retryable condition. The coordinator handles all back-off delays sequentially, outside any `async {}` block.
 
 Alternatives considered:
+
 - **Pass `delayFn` as parameter to `stageWithRetry`**: still calls suspending `delayFn` inside `async {}`, problem unchanged.
 - **`Step.Wait` at stage level**: adds `Wait` to the public `Step` sealed interface, which is meant to describe stage output, not coordinator decisions.
 
@@ -25,6 +26,7 @@ Alternatives considered:
 2. Replace `stageWithRetry` with `attemptStageOnce(input, stage): Step<I,O>?` — pure, non-suspend, returns `null` when the stage returned `Retry` (meaning "retryable, please retry"). The null serves as the "retry needed" signal.
 
 3. Rewrite `runDownloadStage` and `runParseStage` to use a **coordinator-level retry loop**:
+
    ```
    var attempt = 0
    while (true) {

@@ -387,12 +387,12 @@ generator, or broad redesign rather than a few specific badge/image edits.
 
 ## Docs
 
-- Full docs: https://shieldcn.dev/docs
-- API reference: https://shieldcn.dev/docs/api-reference
-- Badge builder: https://shieldcn.dev
-- README Studio: https://shieldcn.dev/studio
-- Studio docs: https://shieldcn.dev/docs/studio
-- Charts docs: https://shieldcn.dev/docs/charts
-- Headers docs: https://shieldcn.dev/docs/headers
-- Sponsors docs: https://shieldcn.dev/docs/sponsors
-- Contributors docs: https://shieldcn.dev/docs/contributors
+- Full docs: <https://shieldcn.dev/docs>
+- API reference: <https://shieldcn.dev/docs/api-reference>
+- Badge builder: <https://shieldcn.dev>
+- README Studio: <https://shieldcn.dev/studio>
+- Studio docs: <https://shieldcn.dev/docs/studio>
+- Charts docs: <https://shieldcn.dev/docs/charts>
+- Headers docs: <https://shieldcn.dev/docs/headers>
+- Sponsors docs: <https://shieldcn.dev/docs/sponsors>
+- Contributors docs: <https://shieldcn.dev/docs/contributors>

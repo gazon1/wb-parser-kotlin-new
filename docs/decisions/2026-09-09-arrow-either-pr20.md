@@ -12,6 +12,7 @@ Initial plan classified this as an anti-pattern warranting PR 20.
 ## Analysis
 
 Arrow `onRight` has signature:
+
 ```kotlin
 fun <L, R> Either<L, R>.onRight(action: (R) -> Unit): Either<L, R>
 ```
@@ -21,6 +22,7 @@ It **preserves the original Either type** — it only performs a side effect wit
 Using `onRight` alone cannot achieve this — we'd still have `Pair<Crawled, List<Side>>`.
 
 The `map { side-effect; transformedValue }` pattern is **not** an anti-pattern when:
+
 1. A side effect is performed (interpretAll)
 2. AND the Right value is transformed into a different type (Pair → Crawled)
 
@@ -33,6 +35,7 @@ The lambda's last expression (`crawled`) is the transformed value — not `Unit`
 Updated `PipelineRunner.kt` KDoc with an explicit note explaining why `map` is used here (not an anti-pattern).
 
 Updated `arrow-either-anti-patterns` skill with a section clarifying:
+
 - `onRight { side-effect }` — when the last expression is `Unit` (pure side effect, no type change)
 - `map { side-effect; value }` — **correct** when the last expression is a transformed value
 

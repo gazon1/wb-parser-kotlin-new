@@ -54,6 +54,7 @@ data class Database(
 ### `Pipeline.saveOne` — retry loop
 
 `saveOne` now mirrors `stageWithRetry`:
+
 - Loops while the save stage emits `Retry`
 - Applies `retryDelayMs` back-off between attempts
 - Returns `0` (item not saved) when retries are exhausted, after emitting `Side.Log(ERROR)`

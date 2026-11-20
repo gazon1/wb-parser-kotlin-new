@@ -19,6 +19,7 @@ The `run` method was hard to unit-test in isolation for deduplication edge cases
 Extract a `Coordinator` class that owns the deduplication fingerprint set and the task-attempt map. `Pipeline.run` becomes a thin orchestrator that delegates to `Coordinator.tryClaim`, `Coordinator.scheduleRetry`, and `Coordinator.attemptCount`.
 
 Alternatives considered:
+
 - Keep everything in `Pipeline` — the mix of concerns was the original problem
 - Pass the set/map as parameters to `run` — callers shouldn't need to know these internals
 

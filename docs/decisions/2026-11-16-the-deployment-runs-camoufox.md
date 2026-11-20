@@ -20,7 +20,8 @@ supersedes: 2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-n
 
 ## Context
 
-#271 — последний шаг umbrella #266. #268 дал контракт сессии, #269 реализовал
+## 271 — последний шаг umbrella #266. #268 дал контракт сессии, #269 реализовал
+
 локальный Camoufox, #270 привёл в порядок состояние профиля и политику отказов.
 Но production entry points всё ещё собирали `BrowserPool` с `AdsPowerAutomation`:
 пул строил CDP-адаптер по умолчанию, `BrowserConfig` создавал `AdsPowerApi`,
@@ -28,13 +29,13 @@ supersedes: 2026-10-22-a-browser-that-may-be-running-is-stopped-when-it-is-not-n
 сверял браузеры на старте, а `EgressProbe` сверял объявленный прокси с ответом
 Local API. Offline-инструменты замера тоже водили Chrome через AdsPower.
 
-## Idea
+### Idea
 
 - (1) Оставить два рантайма и переключать их свойством `crawler.spider.runtime`.
 - (2) Заменить default на Camoufox, оставив AdsPower как совместимый путь.
 - (3) Удалить AdsPower целиком: пул строит Camoufox, внешнего рантайма нет.
 
-## Decision
+### Decision
 
 **Номер (3).**
 
@@ -72,7 +73,7 @@ endpoint probe и CDP-адаптер удалены. Каталог профил
 `measure_catalog_length.py`) удалены вместе с рантаймом. Текущий инструмент
 замера — `scripts/camoufox_bench.py`; блок-раннер протокола вернётся в #274.
 
-## Rationale
+### Rationale
 
 Два рантайма — это две конфигурации, два пути отказа и два набора тестов,
 которые обязаны совпадать. Свойство-переключатель не делает ни один из них
@@ -84,7 +85,7 @@ endpoint probe и CDP-адаптер удалены. Каталог профил
 `ApplicationStartupTest` и catalog-only профиль существуют именно для того,
 чтобы приложение поднималось без браузера.
 
-## Consequences
+### Consequences
 
 - **Always** строить `BrowserAutomation` профиля из Camoufox в `BrowserPool`; шов для фейков — только тестовый.
 - **Never** добавлять второй browser runtime, второй process manager или второй profile claim.

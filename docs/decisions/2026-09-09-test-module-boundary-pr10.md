@@ -9,6 +9,7 @@ tags: [testing, architecture]
 After PR 9 dead-code purge, 7 pure-Kotlin test classes lived in `tests/src/test/kotlin/ru/wbparser/domain/`. The ADR `2026-09-08-domain-coverage-pr4` already mandated that "New code in `domain/pipeline/**` **MUST** include a unit test in `domain/src/test/kotlin/`" — but this rule was never actioned: all domain tests were in the `tests/` module, which has Spring Boot + Ktor transitive dependencies.
 
 Running domain tests through the `tests/` module means:
+
 - Tests that only test pure domain logic require a full Spring context or Ktor stack to compile
 - Domain module is tested only through integration tests (expensive, slow)
 - The ADR PR 4 rule is violated in practice
@@ -30,6 +31,7 @@ Running domain tests through the `tests/` module means:
 **Extracted `fixedClockOf`** from `tests/src/test/kotlin/ru/wbparser/testing/InMemoryAdapters.kt` to `domain/src/test/kotlin/ru/wbparser/testing/TestClock.kt` — domain tests need this utility but cannot import from `tests/` module.
 
 **Added dedup changes** (PR 10 scope):
+
 - `ResultSet.toSavedItem` — removed private duplicate in `SavedItemQueries.kt:81-117` (now imports `ru.wbparser.infra.catalog.toSavedItem`)
 - `RetryPolicy` defaults — removed from `crawl.kt:61-65` and `PipelineFactory.kt:45-49`, uses `RetryPolicy()` companion defaults
 

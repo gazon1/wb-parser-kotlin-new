@@ -93,6 +93,7 @@ Camoufox, путей к исполняемым файлам или полей Ad
 
 **Правило проверяется машиной.** `app/src/test/kotlin/ru/wbparser/architecture/RepositoryArchitectureTest.kt`
 (в обычном жизненном цикле тестов, `:app:test`):
+
 - контрактный модуль не называет `ru.wbparser.browser.camoufox` и
   `ru.wbparser.browser.playwright` — «контракт не знает рантайм»;
 - приложение называет их только в composition root (`app/config`) — «рантайм

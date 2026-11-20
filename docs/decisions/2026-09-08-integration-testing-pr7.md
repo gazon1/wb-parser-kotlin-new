@@ -31,6 +31,7 @@ Built three integration tests in `tests/src/test/kotlin/ru/wbparser/infra/integr
 | `WbParserRetryTest.kt` | HTTP 500 → retry → success, `server.requestCount("/catalog") == 2` |
 
 Supporting infrastructure in `tests/src/test/kotlin/ru/wbparser/testing/`:
+
 - `WbFixtureServer` — `com.sun.net.httpserver.HttpServer` with `route(path, status, body)` and `routeSequence(path, responses)`
 - `SqliteTestHandle` — wraps `SQLiteDataSource(url = "jdbc:sqlite:file::memory:?cache=shared")`, applies `V1__sqlite_init.sql` migration
 

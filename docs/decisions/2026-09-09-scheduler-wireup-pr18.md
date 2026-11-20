@@ -15,21 +15,25 @@ The `crawler.worker.enabled` YAML flag existed but had no Kotlin code reading it
 Replace `installCrawler` with two Spring-native components:
 
 **`ScheduledCrawler`** — a `@Component` that:
+
 - Runs on a cron schedule via `@Scheduled(cron = "\${crawler.schedule.cron:...}")`
 - Is activated only when `crawler.worker.enabled = true` via `@ConditionalOnProperty`
 - Delegates to `CrawlRunner` (injected by Spring)
 - Has no `runBlocking` — uses `suspend fun run()` directly
 
 **`CrawlerConfig`** — a `@Configuration` that:
+
 - Exposes `CrawlRunner` as a `@Bean`, wiring all dependencies from Spring context
 - Creates `KtorDownloader` as a `@Bean`
 - Reads `Spider.concurrency`, `Spider.maxDepth`, `Spider.maxPagesPerCatalog` from `CrawlProperties`
 - Reads `Clock` from a `@Bean` method
 
 **`CrawlProperties.Worker`** — new data class:
+
 ```kotlin
 data class Worker(val enabled: Boolean = false)
 ```
+
 Binds to `crawler.worker.enabled` in YAML, enabling `@ConditionalOnProperty`.
 
 **`application.yml`** — replaces `crawler.schedule.interval-ms` (ignored) with `crawler.schedule.cron` (used by `@Scheduled`).

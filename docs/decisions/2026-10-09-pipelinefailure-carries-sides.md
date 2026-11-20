@@ -33,15 +33,19 @@ had done before the failure occurred.
 `Either.Left` carries `Pair<DomainError, List<Side>>` instead of bare `DomainError`.
 
 `Pipeline.run` return type changed from:
+
 ```kotlin
 Either<DomainError, Pair<Crawled, List<Side>>>
 ```
+
 to:
+
 ```kotlin
 Either<Pair<DomainError, List<Side>>, Pair<Crawled, List<Side>>>
 ```
 
 `PipelineRunner.run` replaced `.map { ... }` with `.fold`:
+
 ```kotlin
 .fold(
     ifLeft = { (error, sides) ->

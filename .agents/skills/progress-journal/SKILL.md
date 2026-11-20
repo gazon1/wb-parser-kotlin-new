@@ -73,6 +73,7 @@ Add final retro section.
 ## Retro section content
 
 Each retro answers:
+
 1. **What was done** — brief summary
 2. **What went well** — bullets
 3. **What didn't go well** — bullets

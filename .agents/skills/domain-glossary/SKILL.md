@@ -57,6 +57,7 @@ Brief definition (1-3 sentences). Explain what it is, not how it's implemented.
 **Term:** `Profile`
 **Decision:** YES — used in multi-profile isolation across features
 **Definition:**
+
 ```markdown
 ## Profile
 
@@ -72,6 +73,7 @@ Room database, DataStore, and SecureStorage.
 **Alias to deprecate:** `TagCategory`
 **Decision:** YES — TagCategory is informal, TagGroup is the entity name
 **Definition:**
+
 ```markdown
 ## TagGroup
 

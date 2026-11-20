@@ -118,6 +118,7 @@ All comments resolved → Phase 3 (Approved)
 ### Step 2 — Phase 1: Read and advise (do not block)
 
 If the PR is in Draft phase:
+
 1. Read the PR description and diff
 2. Provide high-level feedback only
 3. Do NOT block on style, naming, or minor issues
@@ -128,6 +129,7 @@ If the PR is in Draft phase:
 ### Step 3 — Phase 2: Full review
 
 If the PR is marked Ready:
+
 1. Run `just tcheck` locally on the branch (or trust CI)
 2. Read every changed file
 3. Check:
@@ -143,6 +145,7 @@ If the PR is marked Ready:
 ### Step 4 — Phase 3: Approve or confirm
 
 Once all comments are resolved:
+
 1. Re-read the diff — verify the resolution is correct
 2. If satisfied: approve
 3. If not satisfied: leave a comment explaining why
@@ -151,6 +154,7 @@ Once all comments are resolved:
 ### Step 5 — Post-merge
 
 If you merged the PR (author role):
+
 1. Verify CI is green on main
 2. Update PROGRESS.md if this is part of an epic
 3. File retro ADR if significant findings during review
