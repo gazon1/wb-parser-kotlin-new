@@ -1366,3 +1366,50 @@ def test_the_fixture_of_the_previous_run_is_removed_before_the_raw_artifacts(tmp
 
     assert "previous run" in str(refusal.value)
     assert not fixture.exists()
+
+
+def test_a_read_without_a_page_is_refused():
+    # The finding of the review: `read` without a URL reads the tab that is
+    # open, and that page is one the config never approved — the check of the
+    # host, of the page and of the query was skipped for it.
+    actions = capture.page_actions(["chrome-use", "read"])
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+    assert "page" in str(refusal.value)
+
+
+def test_a_page_behind_an_option_is_refused():
+    # The page is not where the check reads it: the option stands where the
+    # URL is expected, and the URL further along the command is never read.
+    actions = capture.page_actions(["chrome-use", "open", "--new-tab", "https://www.wildberries.ru/catalog/"])
+
+    with pytest.raises(SystemExit) as refusal:
+        capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"], CONFIG["allowedQueryParams"])
+
+    assert "page" in str(refusal.value)
+
+
+def test_a_redirect_to_a_page_that_hides_a_host_behind_a_backslash_fails_the_step(tmp_path, monkeypatch):
+    # The finding of the review: the browser reads a backslash as a slash, so
+    # the page it opens is the host before the backslash, while the parser
+    # reads the host after it — and the page the browser opened was never
+    # approved.
+    entries = [
+        redirect("https://www.wildberries.ru/catalog/", "https://evil.example\\@www.wildberries.ru/catalog/"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()

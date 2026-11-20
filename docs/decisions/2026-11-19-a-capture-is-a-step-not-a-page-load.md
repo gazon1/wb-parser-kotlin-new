@@ -270,6 +270,18 @@ was never answered is evidence of something different.
   `b.example` to the parser here. The URL is refused rather than guessed, and
   the page that is executed is the page that was judged. A URL whose host
   cannot be read at all names no host, and no page of it is approved.
+- **Never** read a redirect the browser reads differently from the way it is
+  judged: the site chooses the page of a redirect, and the browser reads a
+  backslash in it as a slash — so a redirect to `https://a.example\@b.example/`
+  names the host `b.example` to the parser and the host `a.example` to the
+  browser. Such a redirect is not an approved navigation, and the step that
+  followed it fails and is not committed.
+- **Never** let a navigation name a page the tool does not read: a navigation
+  (`open`, `read`) names the page right after the verb, and a command that
+  names no page is refused — `read` without a URL reads the tab that is open,
+  and that page is one the config never approved. An option where the URL
+  belongs is refused as well, because the page further along the command is
+  never read. A page the tool cannot read is a page it cannot approve.
 - **Never** open a page whose path hides a separator behind an escape: `%2f` and
   `%5c` are sent as they are written, but a server or a proxy may decode them,
   and then the path is another path. The check resolves the dot segments

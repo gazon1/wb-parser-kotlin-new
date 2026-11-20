@@ -207,9 +207,13 @@ The page action is a `chrome-use` command that **reads** the page: `open`,
 `scrollintoview`, `hover`, `focus`, `canvas`. A capture observes, so an action
 that could change the site — a click, a typed text, a filled form, a shell —
 is refused before the recording starts. The program is `chrome-use` itself, by
-its own name: a path to another program of that name is refused as well. An
-action that opens a page may only open a host **and a page** the config
-approves: a navigation is a request, and a request may change what it is asked
+its own name: a path to another program of that name is refused as well. A
+navigation — `open` or `read` — names the page right after the verb, and a
+navigation that names no page is refused: `read` without a URL reads the tab
+that is open, and that page is one the config never approved. An option where
+the URL belongs is refused as well, because the page further along the command
+is never read. An action that opens a page may only open a host **and a page**
+the config approves: a navigation is a request, and a request may change what it is asked
 to change — an approved host answers a GET that adds to the cart as well. The
 config names the pages (`allowedPages`), and a named page approves the origin
 it names — the scheme, the host and the port, because the same host on another
@@ -235,7 +239,11 @@ too: a navigation may only carry the query parameters the config names
 path can. The site may answer the page the operator opens with another page:
 the browser follows the redirect, so the redirect of the navigation is read in
 the recording, and a navigation that left the approved pages makes the step a
-failed one — its capture is not exported, and the reason is in the report.
+failed one — its capture is not exported, and the reason is in the report. A
+redirect is judged the way the browser reads it: the browser reads a backslash
+as a slash, so a redirect to `https://a.example\@b.example/` names the host
+`b.example` to the parser and the host `a.example` to the browser — such a
+redirect is not an approved navigation, and the step fails.
 The tool cannot know what the site will answer before it answers it, so the
 guarantee it keeps is the one it can hold: the commands it runs are commands
 that read the page, and a step whose navigation left the approved pages is not

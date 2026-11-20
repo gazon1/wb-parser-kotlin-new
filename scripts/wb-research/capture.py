@@ -550,9 +550,15 @@ def check_read_only(
             continue
         url = action[2] if len(action) > 2 else ""
         if not url or url.startswith("-"):
-            # The page action names no page: `read` without a URL reads the tab
-            # that is open, and an option is not a page.
-            continue
+            # The action names no page: `read` without a URL reads the tab that
+            # is open, and that page is one the tool never approved. An option
+            # in that place is the same case: the page is further along the
+            # command, where the tool does not read it — and a page it does
+            # not read is a page it cannot approve.
+            raise SystemExit(
+                f"the page action must name the page it opens: {verb} takes the URL right after it, "
+                f"and a page the tool cannot read is a page it cannot approve"
+            )
         if BACKSLASH in url:
             # The browser reads a backslash as a slash, so the page it would
             # open is not the page this check reads. A URL we cannot read the
@@ -630,6 +636,13 @@ def approved_navigation(url: str, approved: list[str], pages: list[str], allowed
     name. A redirect is a navigation the operator did not ask for, so it is
     held to the same measure.
     """
+    if BACKSLASH in url:
+        # The browser reads a backslash as a slash, so the page it would open
+        # is not the page this check reads: `https://a.example\@b.example/` is
+        # the host `b.example` to the parser and the host `a.example` to the
+        # browser. A page the tool cannot read the way the browser reads it is
+        # a page it cannot approve.
+        return False
     parts = url_parts(url)
     if parts is None:
         return False
