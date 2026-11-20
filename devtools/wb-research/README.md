@@ -900,7 +900,137 @@ carries a separator or a `..`, the same rule the capture follows. The name of
 a step is checked the same way: it is the name of a file, so a name the rules
 would reduce is refused rather than quietly changed.
 
-## The agent workflow
+## Validating a candidate
+
+A capture says that a request appeared and what it looked like. It does not say
+whether a parameter is honoured, what a sort order does to the answer, or where
+a page boundary is. `scripts/wb-research/validate.py` answers that: it replays
+one candidate request in the same browser context, varies one thing at a time,
+and writes down what happened.
+
+The plan is `experiments.yaml`, next to the record, and it is approved before
+the run the same way `plan.yaml` is:
+
+```yaml
+schema: wb-research/validation-plan/v1
+id: 2026-11-20-wb-catalog-agent
+candidate: storefront-catalog-search   # an id in investigation.yaml
+page: https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки
+request:
+  query:
+    query: колонки                     # overrides the candidate's query
+    sort: popular
+  headers: [deviceid, x-requested-with, x-spa-version, x-userid]
+  credentials: include
+min_interval_seconds: 2
+experiments:
+  - name: baseline                     # the reference: it varies nothing
+    kind: replay
+    repeat: 2
+  - name: sort-priceup
+    vary: {sort: priceup}              # exactly one thing
+    expect: changed
+    compare: [order]
+    repeat: 2
+  - name: page-2
+    vary: {page: '2'}
+    expect: changed
+    compare: [order]
+    repeat: 2
+  - name: page-0
+    vary: {page: '0'}                  # no expectation: it says what was seen
+    repeat: 1
+  - name: after-reload
+    kind: reload                       # the page is reloaded before the probe
+    expect: same
+    repeat: 2
+  - name: without-cookies
+    credentials: omit                  # the optional authenticated/unauthenticated check
+    repeat: 1
+```
+
+The candidate contributes its method, endpoint, query and header names; the
+plan overrides the query. The request is a `fetch` from the page's own context,
+with the browser's cookies unless the plan says otherwise.
+
+**One experiment, one variation.** An experiment changes exactly one of: one
+query parameter (`vary`), one removal (`remove`), the credentials mode
+(`credentials`), or a page reload (`kind: reload`). Two differences at once
+prove nothing about either, so the tool refuses such a plan. The first
+experiment is the reference and cannot vary anything.
+
+**Header values are not committed.** The plan names the headers; the values come
+from a local file outside the repository —
+`~/.cache/wb-research/<id>/request.json`, or the path in `request_file`:
+
+```json
+{
+  "headers": {"deviceid": "…", "x-requested-with": "XMLHttpRequest"},
+  "query": {"query": "the free text the record redacted"}
+}
+```
+
+A path inside the repository is refused, and a header the plan names and the
+file does not carry stops the run: a request replayed without the header it was
+seen with is a different request. A query value the record wrote as
+`<redacted:…>` is resolved from the same file.
+
+```bash
+uv run python scripts/wb-research/validate.py approve --investigation <id>
+uv run python scripts/wb-research/validate.py run --investigation <id> --session <name>
+uv run python scripts/wb-research/validate.py run --investigation <id> --dry-run
+```
+
+`approve` writes the fingerprint of the plan into it — the page, the endpoint,
+the query as the plan writes it, the header names, the credentials mode, the
+experiments and the pause — and the run refuses a plan whose scope changed.
+The header **values** are not in the fingerprint: they are the session's.
+`--dry-run` prints the requests and opens nothing.
+
+A refusal ends the run: after a blocked answer the remaining probes are marked
+"not run", because hammering a refusal is not evidence. The run pauses
+`min_interval_seconds` between requests.
+
+### What the run writes
+
+| File | What it is |
+|---|---|
+| `validation.yaml` | the machine-readable summary: every experiment, every observation, the comparison with the reference, the state and the reason |
+| `validation-report.md` | the report a human reads: the table, the observations, what was not established |
+| `evidence/validation.json` | the sanitized observations, one per run — the thing a claim points at |
+
+The evidence keeps the request (method, redacted URL, credentials, the header
+names sent and the names the browser dropped), the response (status, media
+type, size, whether it was JSON), the shape of the answer (top-level keys, the
+number of products, the total) and the ordered product ids. The body, the
+cookies and the header values are never in it. The summary keeps the order as
+a hash; the ids stay in the evidence.
+
+### States, earned
+
+A state is not a label the operator chooses; the evidence decides it:
+
+| State | Earned when |
+|---|---|
+| `observed` | the request was answered once, or an expectation held once |
+| `reproduced` | the same answer came back from independent runs |
+| `validated` | a controlled variation repeated, its expectation held every time, and the reference itself was reproduced |
+| `rejected` | a stable answer contradicts the expectation |
+| `inconclusive` | the site refused, the request failed, the answer could not be read, the runs disagree, or one sample is all there is |
+
+A refusal, a failure and a single sample are never reported as a validation:
+the report names them, and the run says so in its exit code.
+
+| Exit | Means |
+|---|---|
+| `0` | every experiment was answered and every expectation was established |
+| `1` | an expectation was not established, or a request failed |
+| `2` | the site refused a request — a person decides what to do with that |
+
+The tool is not part of the mandatory CI: it needs a real browser and a live
+site, and the issue that asked for it says no live dependency may enter CI. Its
+own tests replace the browser with a function that returns the answer the test
+asks for.
 
 `.agents/skills/wb-research/SKILL.md` is the same workflow written for an AI
 agent: the plan, the approval, the run, the correlation of every action with

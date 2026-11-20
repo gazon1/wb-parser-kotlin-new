@@ -236,6 +236,24 @@ evidence:
       - next-page-007
       - next-page-008
       - next-page-009
+  - id: validation
+    fixture: evidence/validation.json
+    kind: validation
+    note: >-
+      one sanitized observation per experiment run of experiments.yaml, with the status, the media
+      type, the shape of the answer and the ordered product ids; the summary is validation.yaml and
+      the report is validation-report.md
+    captures:
+      - baseline-1
+      - baseline-2
+      - sort-priceup-1
+      - sort-priceup-2
+      - page-2-1
+      - page-2-2
+      - page-0-1
+      - after-reload-1
+      - after-reload-2
+      - without-cookies-1
 
 validation:
   - claim: the storefront reads the seller catalog with GET /__internal/u-search/exactmatch/ru/common/v18/search and resultset=catalog
@@ -286,9 +304,49 @@ validation:
       the page load asks for the settings of the frontend and the scroll posts the analytics of the
       page four times
     evidence: [initial-load-001, next-page-001, next-page-002, next-page-007, next-page-009]
+  - claim: the catalog request repeats byte for byte when it is replayed from the same page with the same parameters
+    state: reproduced
+    rationale: >-
+      two replays answered 200 with the same body size, the same three top-level keys, the same
+      100 products, the same total and the same order of the ids
+    evidence: [baseline-1, baseline-2]
+  - claim: the parameter sort changes the order of the catalog answer
+    state: validated
+    rationale: >-
+      sort=priceup answered a different order and a different total twice, and no id of it was in the
+      baseline page. The answer changed when the parameter changed and held the change when the run
+      repeated — this is a claim about the order, not about which price the first product has
+    evidence: [baseline-1, sort-priceup-1, sort-priceup-2]
+  - claim: the parameter page changes the page of the catalog answer
+    state: validated
+    rationale: >-
+      page=2 answered a different order twice with no id shared with the baseline page, while the
+      total stayed the same — the same catalog, another window of it
+    evidence: [baseline-1, page-2-1, page-2-2]
+  - claim: page=0 is answered with the search_result envelope and no products
+    state: observed
+    rationale: >-
+      one run answered 200 application/json with 210 bytes and the keys filters, name, normQuery,
+      query, rmi, rs, search_result, shardKey, and no products under any name. One sample says what
+      the boundary answers once, not what it always does
+    evidence: [page-0-1]
+  - claim: a page reload does not change the answer
+    state: validated
+    rationale: >-
+      after a reload the same request answered the same order and total twice
+    evidence: [after-reload-1, after-reload-2]
+  - claim: the catalog endpoint answers without the browser cookies
+    state: inconclusive
+    rationale: >-
+      a replay with credentials: omit answered 498, the antibot answer. A refusal is not a success and
+      not a proof that the cookie is what the endpoint needs — the evidence does not settle which
+      input was refused
+    evidence: [without-cookies-1]
 
 open_questions:
   - how the sort order of the storefront is changed at all, given that the parameter of the URL is ignored
+  - what page=0 orders the endpoint to do — the search_result envelope is a different answer shape, not an empty page
+  - whether the 498 of a replay without cookies is the endpoint refusing the session or the antibot refusing the replay
   - whether the products of the card list and the products of the search answer are the same list
   - what splitter.wb.ru/v2/result answers, and why the page needs it — it answers 204 with no body
   - whether the crawler sends the sort order the storefront sends, and which of the two is the source of truth

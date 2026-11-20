@@ -15,7 +15,9 @@ the format is the deliverable.
 The tools are already there. `scripts/wb-research/capture.py` records one named
 step as evidence and refuses the actions that could change the site;
 `scripts/wb-research/redact.py` is the only thing that writes a sanitized
-fixture; `scripts/wb-research/plan.py` runs an approved plan step by step.
+fixture; `scripts/wb-research/plan.py` runs an approved plan step by step;
+`scripts/wb-research/validate.py` replays a candidate and varies one thing at a
+time (see [Validating a candidate](#validating-a-candidate)).
 
 ## The workflow
 
@@ -121,6 +123,34 @@ The workflow pauses and resumes; it never works around a blockage.
 - Everything the run has done stays on disk: the plan holds the state, the raw
   captures are in `~/.cache/wb-research/<id>/`, the sanitized evidence is in
   `evidence/`.
+
+## Validating a candidate
+
+A capture answers "what did the site send"; it does not answer "what does this
+parameter do". When the question is whether a candidate tolerates a parameter,
+what a sort order changes, or where a page boundary is, validate it instead of
+guessing.
+
+1. Write `experiments.yaml` next to the record. It names the candidate, the page
+   the probe runs in, the base query and the header **names** to send. The first
+   experiment is the reference; every other one changes exactly one thing.
+2. Approve it: `uv run python scripts/wb-research/validate.py approve
+   --investigation <id>`. The approval covers the endpoint, the parameter names,
+   the page and the experiments; a plan that was widened afterwards does not run.
+3. Put the header values in `~/.cache/wb-research/<id>/request.json` — never in
+   the plan, never in the repository. A value the plan does not name is not sent,
+   and a named value that is missing stops the run.
+4. Run it: `validate.py run --investigation <id> --session <name>`. It opens the
+   page once, replays each experiment in that context, pauses between requests
+   and stops after a refusal.
+5. Read `validation-report.md` and put what it earned in the record's
+   `validation` section, with the evidence id. `validation.yaml` is the
+   machine-readable version of the same thing.
+
+The states are the evidence's, not yours: one sample is `observed`, a repeated
+controlled experiment can be `validated`, a stable contradiction is `rejected`,
+and a refusal, a failure or an unreadable answer is `inconclusive`. Never write
+a blocked experiment as a validated parameter.
 
 ## The first scenario: the seller catalog
 
