@@ -1,0 +1,25 @@
+{
+  "allowedOrigins": [
+    "www.wildberries.ru",
+    "api.wildberries.ru",
+    "search-goods.wildberries.ru",
+    "ug-bt.wildberries.ru",
+    "data-checker.wildberries.ru",
+    "chat-prod.wildberries.ru"
+  ],
+  "allowedPages": [
+    "https://www.wildberries.ru/",
+    "https://www.wildberries.ru/catalog/"
+  ],
+  "allowedQueryParams": ["search"],
+  "noiseHosts": [
+    "a.wb.ru",
+    "nel.wb.ru",
+    "marketplace-sentry.wb.ru",
+    "ads-media.wildberries.ru",
+    "*.wbbasket.ru",
+    "*.wbcontent.net"
+  ],
+  "keptResourceTypes": ["Fetch", "XHR"],
+  "maxBodyFetches": 50
+}

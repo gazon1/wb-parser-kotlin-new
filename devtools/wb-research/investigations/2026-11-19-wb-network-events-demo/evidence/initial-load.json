@@ -1,0 +1,579 @@
+{
+  "schema": "wb-research/evidence/v1",
+  "notes": [
+    "step: initial-load",
+    "kept 8 of 312 recorded requests",
+    "dropped 304: 280 noise-host, 18 other-host, 6 type-not-kept",
+    "the response bodies were read and only their shape was kept"
+  ],
+  "captures": [
+    {
+      "id": "initial-load-001",
+      "source": "har",
+      "sourceFile": "initial-load",
+      "started": "2026-11-19T20:15:56.800173056Z",
+      "request": {
+        "method": "POST",
+        "url": "https://www.wildberries.ru/__internal/antibot/api/v1/find-frontend-settings",
+        "headers": {
+          "content-type": "application/json",
+          "referer": "https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "x-wb-antibot-key": "<redacted:x-wb-antibot-key>",
+          "x-wb-antibot-sdk-version": "<redacted:x-wb-antibot-sdk-version>"
+        },
+        "body": {
+          "recorded": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/json",
+        "bodyBytes": 1253,
+        "headers": {
+          "access-control-allow-origin": "<redacted:access-control-allow-origin>",
+          "alt-svc": "<redacted:alt-svc>",
+          "content-length": "276",
+          "content-security-policy-report-only": "<redacted:content-security-policy-report-only>",
+          "content-type": "application/json",
+          "date": "<redacted:date>",
+          "nel": "<redacted:nel>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>"
+        }
+      },
+      "timing": {
+        "durationMs": 166.40100002325886,
+        "timings": {
+          "blocked": 0.348,
+          "send": 1.714,
+          "wait": 163.69,
+          "receive": 0.64900002325885
+        }
+      },
+      "schema": {
+        "available": true,
+        "bodyBytes": 276,
+        "isJson": true,
+        "jsonType": "object",
+        "topLevelKeys": [
+          "analytics",
+          "solverConfig",
+          "solverPath"
+        ]
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "initial-load-002",
+      "source": "har",
+      "sourceFile": "initial-load",
+      "started": "2026-11-19T20:15:57.35444992Z",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/webapi/check-redirect/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E",
+        "headers": {
+          "deviceid": "<redacted:deviceid>",
+          "referer": "https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "x-requested-with": "XMLHttpRequest",
+          "x-spa-version": "14.33.2"
+        },
+        "body": {
+          "recorded": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/json",
+        "bodyBytes": 1241,
+        "headers": {
+          "alt-svc": "<redacted:alt-svc>",
+          "cache-control": "<redacted:cache-control>",
+          "content-length": "120",
+          "content-security-policy": "<redacted:content-security-policy>",
+          "content-security-policy-report-only": "<redacted:content-security-policy-report-only>",
+          "content-type": "application/json; charset=utf-8",
+          "date": "<redacted:date>",
+          "expires": "<redacted:expires>",
+          "nel": "<redacted:nel>",
+          "pragma": "<redacted:pragma>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "x-cache-status": "MISS",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>",
+          "x-xss-protection": "<redacted:x-xss-protection>"
+        }
+      },
+      "timing": {
+        "durationMs": 172.34399999089726,
+        "timings": {
+          "blocked": 1.06,
+          "send": 0.3639999999999999,
+          "wait": 166.369,
+          "receive": 4.550999990897253
+        }
+      },
+      "schema": {
+        "available": true,
+        "bodyBytes": 120,
+        "isJson": true,
+        "jsonType": "object",
+        "topLevelKeys": [
+          "resultState",
+          "value"
+        ]
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "initial-load-003",
+      "source": "har",
+      "sourceFile": "initial-load",
+      "started": "2026-11-19T20:15:58.363136Z",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false",
+        "headers": {
+          "deviceid": "<redacted:deviceid>",
+          "referer": "https://www.wildberries.ru/catalog/0/search.aspx?search=%3Credacted%3Aquery-param%3E",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "x-queryid": "<redacted:x-queryid>",
+          "x-requested-with": "XMLHttpRequest",
+          "x-spa-version": "14.33.2",
+          "x-userid": "<redacted:x-userid>"
+        },
+        "body": {
+          "recorded": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain",
+        "bodyBytes": 51593,
+        "headers": {
+          "access-control-allow-credentials": "<redacted:access-control-allow-credentials>",
+          "access-control-allow-headers": "<redacted:access-control-allow-headers>",
+          "access-control-allow-methods": "<redacted:access-control-allow-methods>",
+          "access-control-expose-headers": "<redacted:access-control-expose-headers>",
+          "alt-svc": "<redacted:alt-svc>",
+          "content-encoding": "br",
+          "content-security-policy-report-only": "<redacted:content-security-policy-report-only>",
+          "content-type": "text/plain; charset=UTF-8",
+          "date": "<redacted:date>",
+          "nel": "<redacted:nel>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "statuscode": "200",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "vary": "<redacted:vary>",
+          "x-cache-status": "MISS",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>"
+        }
+      },
+      "timing": {
+        "durationMs": 600.1349999847523,
+        "timings": {
+          "blocked": 0.612,
+          "send": 1.44,
+          "wait": 453.35499999999996,
+          "receive": 144.7279999847524
+        }
+      },
+      "schema": {
+        "available": true,
+        "bodyBytes": 148226,
+        "isJson": true,
+        "jsonType": "object",
+        "topLevelKeys": [
+          "metadata",
+          "products",
+          "total"
+        ]
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "initial-load-004",
+      "source": "har",
+      "sourceFile": "initial-load",
+      "started": "2026-11-19T20:16:00.0086528Z",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search-tags/search-tags/api/v3/query?query=%3Credacted%3Aquery-param%3E&lang=ru&appType=1&curr=rub&dest=1259570991&spp=30&hide_vflags=4294967296&locale=ru&total=100&scale=5&rmi=1&ab_testing=false",
+        "headers": {
+          "deviceid": "<redacted:deviceid>",
+          "referer": "https://www.wildberries.ru/catalog/0/search.aspx?search=%3Credacted%3Aquery-param%3E",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "x-queryid": "<redacted:x-queryid>",
+          "x-requested-with": "XMLHttpRequest",
+          "x-spa-version": "14.33.2",
+          "x-userid": "<redacted:x-userid>"
+        },
+        "body": {
+          "recorded": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/json",
+        "bodyBytes": 1588,
+        "headers": {
+          "access-control-allow-credentials": "<redacted:access-control-allow-credentials>",
+          "access-control-allow-headers": "<redacted:access-control-allow-headers>",
+          "access-control-allow-methods": "<redacted:access-control-allow-methods>",
+          "access-control-expose-headers": "<redacted:access-control-expose-headers>",
+          "alt-svc": "<redacted:alt-svc>",
+          "content-encoding": "br",
+          "content-security-policy-report-only": "<redacted:content-security-policy-report-only>",
+          "content-type": "application/json; charset=UTF-8",
+          "date": "<redacted:date>",
+          "nel": "<redacted:nel>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "vary": "<redacted:vary>",
+          "x-cache-status": "MISS",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>"
+        }
+      },
+      "timing": {
+        "durationMs": 169.2900000094138,
+        "timings": {
+          "blocked": 0.469,
+          "send": 5.164,
+          "wait": 157.07399999999998,
+          "receive": 6.583000009413809
+        }
+      },
+      "schema": {
+        "available": true,
+        "bodyBytes": 1079,
+        "isJson": true,
+        "jsonType": "array",
+        "topLevelKeys": null
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "initial-load-005",
+      "source": "har",
+      "sourceFile": "initial-load",
+      "started": "2026-11-19T20:16:00.016016128Z",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&autoselectFilters=false&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&query=%3Credacted%3Aquery-param%3E&resultset=filters&scale=5&spp=30&suppressSpellcheck=false",
+        "headers": {
+          "deviceid": "<redacted:deviceid>",
+          "referer": "https://www.wildberries.ru/catalog/0/search.aspx?search=%3Credacted%3Aquery-param%3E",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "x-queryid": "<redacted:x-queryid>",
+          "x-requested-with": "XMLHttpRequest",
+          "x-spa-version": "14.33.2",
+          "x-userid": "<redacted:x-userid>"
+        },
+        "body": {
+          "recorded": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain",
+        "bodyBytes": 6149,
+        "headers": {
+          "access-control-allow-credentials": "<redacted:access-control-allow-credentials>",
+          "access-control-allow-headers": "<redacted:access-control-allow-headers>",
+          "access-control-allow-methods": "<redacted:access-control-allow-methods>",
+          "access-control-expose-headers": "<redacted:access-control-expose-headers>",
+          "alt-svc": "<redacted:alt-svc>",
+          "content-encoding": "br",
+          "content-security-policy-report-only": "<redacted:content-security-policy-report-only>",
+          "content-type": "text/plain; charset=UTF-8",
+          "date": "<redacted:date>",
+          "nel": "<redacted:nel>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "statuscode": "200",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "vary": "<redacted:vary>",
+          "x-cache-status": "MISS",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>"
+        }
+      },
+      "timing": {
+        "durationMs": 331.53000001316144,
+        "timings": {
+          "blocked": 1.914,
+          "send": 0.29900000000000015,
+          "wait": 326.78499999999997,
+          "receive": 2.5320000131614506
+        }
+      },
+      "schema": {
+        "available": true,
+        "bodyBytes": 13061,
+        "isJson": true,
+        "jsonType": "object",
+        "topLevelKeys": [
+          "data",
+          "metadata"
+        ]
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "initial-load-006",
+      "source": "har",
+      "sourceFile": "initial-load",
+      "started": "2026-11-19T20:16:00.589798912Z",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/banners/shelfs/search?appType=1&curr=rub&dest=1259570991&spp=30&hide_vflags=4294967296&locale=ru&gender=common&ab_testing=false&lang=ru&scale=5&query=%3Credacted%3Aquery-param%3E&minquantity=13&limit=26",
+        "headers": {
+          "deviceid": "<redacted:deviceid>",
+          "referer": "https://www.wildberries.ru/catalog/0/search.aspx?search=%3Credacted%3Aquery-param%3E",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "x-requested-with": "XMLHttpRequest",
+          "x-spa-version": "14.33.2"
+        },
+        "body": {
+          "recorded": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/json",
+        "bodyBytes": 12754,
+        "headers": {
+          "access-control-allow-credentials": "<redacted:access-control-allow-credentials>",
+          "access-control-allow-headers": "<redacted:access-control-allow-headers>",
+          "access-control-allow-methods": "<redacted:access-control-allow-methods>",
+          "access-control-expose-headers": "<redacted:access-control-expose-headers>",
+          "alt-svc": "<redacted:alt-svc>",
+          "content-encoding": "br",
+          "content-security-policy-report-only": "<redacted:content-security-policy-report-only>",
+          "content-type": "application/json",
+          "date": "<redacted:date>",
+          "nel": "<redacted:nel>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "vary": "<redacted:vary>",
+          "x-cache-status": "MISS",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>"
+        }
+      },
+      "timing": {
+        "durationMs": 183.36399998758174,
+        "timings": {
+          "blocked": 0.643,
+          "send": 1.188,
+          "wait": 180.667,
+          "receive": 0.8659999875817448
+        }
+      },
+      "schema": {
+        "available": true,
+        "bodyBytes": 37931,
+        "isJson": true,
+        "jsonType": "object",
+        "topLevelKeys": [
+          "data",
+          "metadata"
+        ]
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "initial-load-007",
+      "source": "har",
+      "sourceFile": "initial-load",
+      "started": "2026-11-19T20:16:03.336383232Z",
+      "request": {
+        "method": "GET",
+        "url": "https://data-checker.wildberries.ru/data-checker/api/v1/user/check",
+        "headers": {
+          "referer": "https://www.wildberries.ru/catalog/0/search.aspx?search=%3Credacted%3Aquery-param%3E",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "site-locale": "<redacted:site-locale>",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "wb-applanguage": "<redacted:wb-applanguage>",
+          "wb-apptype": "<redacted:wb-apptype>",
+          "wb-appversion": "<redacted:wb-appversion>",
+          "x-address-locale": "<redacted:x-address-locale>",
+          "xcheck": "<redacted:xcheck>",
+          "xposition": "<redacted:xposition>"
+        },
+        "body": {
+          "recorded": false
+        }
+      },
+      "response": {
+        "status": 204,
+        "contentType": "application/octet-stream",
+        "bodyBytes": 569,
+        "headers": {
+          "access-control-allow-credentials": "<redacted:access-control-allow-credentials>",
+          "access-control-allow-origin": "<redacted:access-control-allow-origin>",
+          "date": "<redacted:date>",
+          "nel": "<redacted:nel>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "vary": "<redacted:vary>",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>",
+          "x-service-version": "<redacted:x-service-version>"
+        }
+      },
+      "timing": {
+        "durationMs": 1617.3570000026095,
+        "timings": {
+          "blocked": 0.273,
+          "connect": 606.624,
+          "send": 0.9959999999999809,
+          "wait": 954.887,
+          "receive": 54.577000002609566,
+          "ssl": 318.82500000000005
+        }
+      },
+      "schema": {
+        "available": false,
+        "reason": "the browser did not return the response body"
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "initial-load-008",
+      "source": "har",
+      "sourceFile": "initial-load",
+      "started": "2026-11-19T20:16:04.423175936Z",
+      "request": {
+        "method": "GET",
+        "url": "https://chat-prod.wildberries.ru/api/support/v1/unauth/unread",
+        "headers": {
+          "basketuid": "<redacted:basketuid>",
+          "locale": "<redacted:locale>",
+          "referer": "https://www.wildberries.ru/catalog/0/search.aspx?search=%3Credacted%3Aquery-param%3E",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36"
+        },
+        "body": {
+          "recorded": false
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "application/json",
+        "bodyBytes": 618,
+        "headers": {
+          "access-control-allow-credentials": "<redacted:access-control-allow-credentials>",
+          "access-control-allow-origin": "<redacted:access-control-allow-origin>",
+          "access-control-expose-headers": "<redacted:access-control-expose-headers>",
+          "content-length": "12",
+          "content-type": "application/json; charset=utf-8",
+          "date": "<redacted:date>",
+          "nel": "<redacted:nel>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "vary": "<redacted:vary>",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>"
+        }
+      },
+      "timing": {
+        "durationMs": 798.7979999976735,
+        "timings": {
+          "blocked": 1.009,
+          "connect": 481.16499999999996,
+          "send": 0.31100000000003547,
+          "wait": 314.53599999999994,
+          "receive": 1.7769999976735562,
+          "ssl": 160.478
+        }
+      },
+      "schema": {
+        "available": true,
+        "bodyBytes": 12,
+        "isJson": true,
+        "jsonType": "object",
+        "topLevelKeys": [
+          "count"
+        ]
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    }
+  ]
+}

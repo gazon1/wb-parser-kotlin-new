@@ -1,0 +1,463 @@
+---
+title: "A network capture is one named step, and an unapproved API host is an error"
+date: 2026-11-19
+tags: [research, tooling]
+---
+
+## Context
+
+Issue #310 asks for the network events of the Wildberries site to be captured
+and correlated with the steps of an experiment. The site answers its catalog
+with a handful of XHR calls; everything else it loads is a static asset or an
+analytics beacon. A raw HAR of one page load holds hundreds of entries, and
+almost none of them is what the investigation is about.
+
+The browser tooling that is already here (chrome-use) records a HAR, but it
+does not know what a step is, it does not separate the Wildberries API from the
+traffic around it, and the capture it writes carries the cookies of the
+session. The format ADR (2026-11-19) says what a committed evidence file may
+contain, but nothing produced one.
+
+A filter that is too quiet is the failure mode that matters here: the research
+question is "which endpoint answers the catalog", and a filter that silently
+drops an unrecognised host turns an answer into a gap that nobody notices.
+
+## Idea
+
+1. Record the whole page load and filter it afterwards, by hand, every time.
+2. Teach the browser tooling itself to name steps and separate hosts.
+3. A narrow wrapper: it names the step, keeps the approved hosts, reports what
+   it dropped and hands the result to the existing redactor.
+
+## Decision
+
+`scripts/wb-research/capture.py` records one named step at a time:
+
+```
+capture.py step --investigation <id> --name <step> -- <chrome-use command>
+```
+
+It clears the request log, starts a chrome-use HAR recording, runs the page
+action, waits `--settle` seconds for the requests to be answered, stops the
+recording, filters the entries and exports the result through `redact.py`.
+
+The approved origins live in one file, `devtools/wb-research/capture-config.json`:
+`allowedOrigins` (the origins of the Wildberries API), `noiseHosts` (hosts whose
+traffic carries no API), `keptResourceTypes` (`Fetch` and `XHR` — a static asset
+is not an API call) and `maxBodyFetches`. The pages a capture may open are named
+in the same file: `allowedPages` and the query parameters a navigation may carry
+(`allowedQueryParams`).
+
+After its actions the step asks the browser two questions: where the session is
+(the page of the main frame of the tab) and which frames the page has (the tab
+itself and the frames inside it). The first says whether the session is on a
+page the config approves. The second tells a frame of another site from a page
+the session went to — the recording cannot tell them apart, both are documents
+in it, and a page the session visited and left is a page the capture is not
+evidence of.
+
+The frames are judged by the host they are on. A frame of another site is
+third-party traffic and is exempt: its document request goes to a host of its
+own, so it cannot reach an endpoint of the site the capture observes. A frame
+of an approved host is a request of the site itself, and an approved host
+answers a GET that adds to the cart as well — so such a frame is held to the
+same measure as any other navigation, the page and the query, and a frame the
+config does not approve fails the step.
+
+The session is judged by the origin, the page and the query. A query parameter
+can switch an action on just as a path can, and the site can put one on the
+page it keeps the session on without asking: `history.pushState` changes the
+address of the page without a request of its own, and the address is what the
+session is judged by. A parameter the config does not name fails the step, and
+the operator names it in `allowedQueryParams` if the site needs it.
+
+An approval is of an origin, and not of a host: the same host on another port is
+another service. A navigation is judged by that same measure the API traffic is
+judged by, so an origin the config names in full (`https://api.example.ru:8443`)
+passes a navigation as it passes API traffic.
+
+An API-shaped request to an origin that is neither approved nor marked as noise
+is **not** dropped: the capture writes everything it has, names the origin and
+exits with code 2. The developer then approves the origin with `--allow-host` or
+adds it to the config — a decision that is visible in the record.
+
+A request that was still in flight when the recording stopped has no status.
+It is written as `status: null` with a reason; a zero status is not an HTTP
+value.
+
+The response body is read only to learn its shape: the names of the top-level
+keys, the size, whether it was JSON. The body itself is never written, and the
+shape is carried to the redactor through a `_capture` annotation on the HAR
+entry.
+
+The body of a **request** is in the recording already, so there is nothing to
+read and nothing to fetch: the redactor takes its shape out of the recording —
+the media type, the size, the names of the fields at the top level — and
+leaves the values behind. A recording that does not carry the body of a
+request says so with `recorded: false`, because a body that is not in the
+recording is a body that was not recorded and not a request that sent nothing.
+
+## Rationale
+
+The wrapper wins over hand-filtering because the separation is a decision that
+has to be reproducible: the same capture, filtered by the same config, gives
+the same evidence file, and the diff shows what the config changed rather than
+what the operator changed. It wins over changing the browser tooling because
+the tooling records what the browser did and the investigation needs a
+different question asked of it — a smaller, local wrapper is the smaller
+change, and it stays outside the production modules.
+
+Loudness wins over silence because the cost of a false negative is invisible
+and the cost of a false positive is one extra line in the output. A dropped
+host is counted with a reason, and a host nobody has classified stops the
+capture, so the gap is something the developer has to close on purpose.
+
+A shape wins over a body because the question is "what does this endpoint
+answer", and the answer to that is the set of field names and the size. The
+body of a logged-in session carries personal data; the shape does not.
+
+Null wins over zero because `status: 0` reads as an answer, and a request that
+was never answered is evidence of something different.
+
+## Consequences
+
+- **Always** record one named step per capture; a step is the unit an
+  investigation is written against.
+- **Never** drop an API-shaped request to an unclassified host in silence: fail
+  with exit code 2 and name the host.
+- **Always** judge what counts as an API call by one definition — the kinds of
+  request the config keeps. Two definitions would let a kind of request that
+  the config keeps slip past the unapproved-host check as ordinary traffic, and
+  the capture would not stop for the host.
+- **Always** classify a request before it can be dropped: an origin of
+  `allowedOrigins` is approved, a host of `noiseHosts` is noise, and the config
+  is the only source of that decision.
+- **Never** write a response body into a capture; only its shape.
+- **Never** write the values of a request body into a capture; only its shape —
+  the media type, the size and the names of the fields at the top level. A body
+  of a request says what the session did, and a name the service chose is as
+  much as may be kept.
+- **Never** read the absence of a request body as a request that sent nothing:
+  the browser does not write the body of every request it sees, so a body that
+  is not in the recording is a body that was not recorded, and the capture says
+  so with `recorded: false`.
+- **Never** write a status for a request that has none: null with a reason.
+- **Always** wait for the in-flight requests before stopping a recording
+  (`--settle`).
+- **Never** accept a settling time that is not a number of seconds to wait: a
+  negative time skips the wait and an infinite one never ends it, and both
+  pass silently as a number. A step that says it waits eight seconds has to
+  wait eight seconds, so both are refused at the door.
+- **Never** keep a top-level key that carries a value: a key is a name the
+  service chose, and it can be an address or an account id — it goes through the
+  same rules as everything else.
+- **Always** take only the known fields of the `_capture` annotation, each with
+  the type it is supposed to have: the annotation is an input, not a trusted
+  source.
+- **Always** validate every field that is copied from a capture: the method, the
+  status, the size, the moment, the credentials mode, the header names and the
+  flags. A capture is an input, and a field nobody looked at must not be able
+  to carry a value into the committed file.
+- **Never** round a count that was measured: the status and the size are whole
+  numbers, and a number with a fraction in it was never measured. Truncating it
+  would put a value in the file that nobody saw.
+- **Never** keep a timestamp of a moment that did not happen: the shape of a
+  timestamp is not a date — a month of ninety-nine days is not a month — so the
+  moment is checked against the calendar as well as against the format.
+- **Never** keep the **name** of a header that is an identifier: a name is a
+  token of characters, and a token can be a profile's UUID in either spelling,
+  an account id or a hash of a session. The fact that the header was there
+  stays, the name does not. A name the service chose is made of words, long
+  ones included, and it stays as it is. A name that carries no letters at all
+  is an id: a number written with a separator between its parts
+  (`123456789-01`) is an account id in the shape the site writes ids in, and a
+  name the service chose always carries a word.
+- **Never** let a frame the browser names badly pass unnoticed: a frame entry
+  that is malformed, or that names no URL, means the browser cannot say which
+  frames the page has — and a check that judges half of the frames judges
+  nothing. The list is refused, not shortened, and the step fails.
+- **Never** keep a value that carries a space: a phrase is free text — a
+  person's name — and a value the service chose is one word. It is the rule a
+  key of a JSON answer and the name of a query parameter go through, and it
+  holds for a query value and for a path segment alike.
+- **Never** keep the value of a parameter that names a person: `username`,
+  `full_name`, `first_name`, `last_name`, `address`. The value is personal data
+  whatever it looks like, and a single word is as personal as a phrase. The
+  parameter `name` is not among them: it carries the name the operator chose
+  for a capture, and that name is evidence.
+- **Never** keep the value of a free-text query parameter (`query`, `search`,
+  `text`, and the short spellings of the same thing — `q`, `term`, `keyword`,
+  `keywords`, `phrase`): what somebody typed is the search history of the
+  session, and the query of an investigation belongs in the record of the
+  investigation.
+- **Never** keep a run of digits in a value whose name says nothing about it —
+  the value of a query parameter, the value of an allowlisted header — when it
+  is longer than the runs the site asks with: the account the request was made
+  from is such a run (`user_id=2285324551794928359`). The site's own constants
+  are ten digits at the longest (`dest=1259570991`, `hide_vflags=4294967296`)
+  and they stay — they say what the request asked for, and a ten-digit run
+  cannot be told apart from them.
+- **Never** keep an account id in a path segment that follows a segment naming
+  an account, whatever its length: the digit-run rule needs nine digits. The id
+  is judged by its shape — digits, a mix of letters and digits, or a separator
+  between them — while a plain word stays, because it is the name of a route
+  the service chose (`user/check` is an endpoint, not an account).
+- **Never** keep a JSON key that is made of digits only: such a key is an
+  identifier, and an answer indexed by an account id carries the id in it.
+- **Never** keep a JSON key that carries a space: such a key is a phrase, and a
+  phrase can be a person's name. The name of a field the service chose is one
+  word.
+- **Never** keep the value of a query parameter whose name is a credential
+  name, whatever separator the service wrote it with: `access_token`,
+  `access-token` and `access.token` are the same name, and the value beside it
+  can be too short for every length-based rule.
+- **Never** keep a query parameter name that carries personal data: a name is
+  part of the URL and part of the evidence, but a value that stands on the left
+  of the `=` is not a name.
+- **Never** keep a query parameter name that is made of digits only: such a name
+  is an identifier, the way a key of digits is, and the digit-run rule needs
+  nine digits.
+- **Never** keep a query parameter name that carries a space: such a name is a
+  phrase, and a phrase can be a person's name. The name of a parameter the
+  service chose is one word.
+- **Never** keep a value that hides behind percent-escapes: the name of a query
+  parameter, the value of a query parameter, the value of an allowed header, the
+  name of a header, the key of a JSON answer, a note and an operator-chosen name
+  are judged as the
+  server reads them — decoded layer by layer, at most three — because the server
+  resolves every layer and an address behind two of them
+  (`alice%2540example.com`) is the address all the same. A value that survives
+  the rules unchanged keeps the spelling it came with.
+- **Never** rewrite the spelling of a path segment the rules did not change: each
+  segment of a path is judged on its own, decoded, and a segment that was not
+  changed keeps the spelling it came with. A change in one place must not
+  change another — `%2F` is not a separator to a browser, so a path that says
+  `a/b` where the capture said `a%2Fb` names another endpoint. A segment that
+  *was* changed is written back without the separator among its safe
+  characters: a `/` inside it was written `%2F`, and writing it back as `/`
+  would turn one segment into two and name another endpoint.
+- **Never** keep a UUID in an operator-chosen name: it is an identifier, and the
+  opaque-value rule does not see it — the hyphens break the run of characters.
+- **Never** keep a content type beyond its media type and the safe parameters:
+  the server writes it, and the same value in a header goes through the rules.
+  A content type in a header is judged by the same rule as the content type of
+  a capture: the media type and the safe parameters, nothing else — a
+  parameter of the server's own choosing (`boundary`) is not evidence.
+  The value of a safe parameter is a value as well: a charset that carries a
+  run of digits is an account id, and it is dropped. The media type is judged
+  by its shape as well: a subtype that carries a UUID or an account id is a
+  value and not a media type, and a content type without a media type is not
+  kept. A subtype made of digits only is an identifier whatever its length:
+  no service names a media type that way.
+- **Never** keep the value of an allowed header as it is: the name says what may
+  be shown, not that the value is safe. A user agent that carries an address and
+  a server header that carries an opaque value go through the same rules as the
+  query values and the notes.
+- **Always** take only the known timing phases, and only a number as a duration:
+  the timing is an input like any other.
+- **Never** write a phase that was not measured: the recording writes `-1` for a
+  phase it did not measure, and a negative duration is not a measurement.
+- **Never** attribute a response body to a request that cannot be told apart
+  from a twin — the same method and the same URL, in the recording or in the
+  request list: a mapping that cannot be verified is no mapping.
+- **Never** run the actions of a step after one of them failed: the step did not
+  reach the state it was supposed to reach, and the requests of the later
+  actions would be recorded as if the step had completed.
+- **Never** export the capture of a failed step: it is a partial capture, and
+  it is not evidence of what the step shows. The report of the step says that
+  the action failed, and the export skips such a step — now and at every later
+  export of the same investigation. A failed step leaves no fixture in the
+  repository.
+- **Always** remove the fixture of the step before the export judges it: a
+  capture the export refuses must not leave the fixture of an earlier run
+  standing as if it were the result of this one. **Never** go on with a step
+  whose fixture could not be removed: the export fails closed.
+- **Always** judge a count as a count: whole and not below zero. A negative
+  count and a count with a fraction in it are a malformed capture, and they
+  are not evidence of what was seen.
+- **Always** delete the recording of the previous run of a step before the new
+  one starts — the raw recording, the filtered file the export reads, the
+  report of the previous run and the fixture the repository holds — and
+  **never** read a capture the browser failed to save.
+- **Never** write the browser's own error text into a capture: it quotes the
+  URL and the request. The reason a body was not read is a code (`ambiguous`,
+  `browser-error`, `no-body`, `not-read`), and the text of a reason belongs to
+  the redactor, which turns the code into the sentence the evidence carries.
+- **Never** continue a capture whose request log could not be cleared: the
+  bodies are looked up in that log, and the join with the recording is
+  positional.
+- **Always** check that the fixture of the step that was just recorded is among
+  the exported ones: another step of the same investigation is not this one.
+- **Always** treat the investigation id as one name, not a path: it becomes a
+  directory in the raw cache and a directory in the repository.
+- **Always** treat the name of a step as one name too: it is the name of the
+  file it produces, and a name the rules would reduce is refused. Two names can
+  reduce to one (`load/page` and `load-page`), and the second step would
+  delete the evidence of the first one.
+- **Never** drive a page action that could change the site: the page action of a
+  step is a chrome-use command that reads the page, and an action that is not
+  one of them — a click, a typed text, a filled form, a shell — is refused
+  before the recording starts. The capture observes, so the cart, the orders
+  and the account stay as they were — unless the site itself answers the page
+  with a redirect to a page the config does not approve; that step fails and
+  is not committed.
+- **Never** let the site choose the page the session goes to: the page the
+  operator opens may be answered with a redirect, and the browser follows it —
+  so the step reads where the session ended up, and a session on a page the
+  config does not name makes the step a failed one. The tool cannot know what
+  the site will answer before it answers it, and chrome-use cannot allow-list
+  the requests of a page: it aborts by pattern, and the site loads a page from
+  many hosts, so a route that aborts what the config does not approve would
+  break the page it is meant to capture. The guarantee the tool keeps is the one
+  it can hold — the commands it runs are commands that read the page, and a
+  step whose session left the approved pages is not evidence of anything.
+- **Never** run a page action of a program that is only called chrome-use: the
+  action is the chrome-use command by its own name, and a path to another
+  program of that name is refused.
+- **Never** open a host the config does not approve: a navigation is a request,
+  and a request may change what it is asked to change.
+- **Never** open a page the config does not name: an approved host answers a GET
+  that adds to the cart as well, so the page is what the config approves. The
+  origin of the page is compared — the scheme, the host and the port, because
+  the same host on another port is another service — and the path of the page
+  is resolved before it is compared: the dot segments are the dot segments
+  however they are written, `%2e%2e` is `..`. A page cannot hide behind a
+  relative segment, and a named page approves the path it names and the paths
+  under it, by path segment.
+- **Never** open a URL the browser reads differently from the way it is judged: a
+  browser reads a backslash in an http(s) URL as a slash, so
+  `https://a.example\@b.example/` names the host `a.example` to the browser and
+  `b.example` to the parser here. The URL is refused rather than guessed, and
+  the page that is executed is the page that was judged. A URL whose host
+  cannot be read at all names no host, and no page of it is approved.
+- **Never** read a session the browser reads differently from the way it is
+  judged: the browser reads a backslash in an http(s) URL as a slash, so a
+  session on `https://a.example\@b.example/` names the host `b.example` to the
+  parser and the host `a.example` to the browser. Such a session is not
+  approved, and the step fails and is not committed.
+- **Never** judge a session on a path that hides a separator behind an escape:
+  the browser sends the path as it is written, but a server or a proxy may
+  decode it, and then it is another path — the path the check reads is not the
+  path the server routes. `%2f` and `%5c` are refused, read layer by layer, and
+  a session on such a path fails the step and is not committed.
+- **Never** let the session go to a page the config does not name, whoever
+  sends it there: a redirect is one way, and the page itself may navigate the
+  session — a script that replaces the location. The browser says where the
+  session is, and a session on a page the config does not name fails the step
+  and is not committed. A document of another host is third-party traffic: the
+  recording cannot tell a frame of another site from a navigation to it, and
+  such traffic is kept out of the evidence.
+- **Always** approve an origin, and not a host: the same host on another port is
+  another service, and the plain-http origin of an https host is another
+  origin, so a request of it is not traffic of the approved one. A pattern that
+  names a host approves the origin that host serves — https on the default
+  port — and a pattern that names an origin in full approves that origin and
+  nothing else, so the operator can approve a service on a port of its own.
+  A request of an approved host on an unapproved origin is not dropped in
+  silence: it is counted as `origin-not-approved` and the tool stops for it,
+  naming the origin — the operator approves an origin, not the host it
+  belongs to. The noise list is the other case: it is the operator's statement
+  about a host — the traffic of that host carries no API — so the host is what
+  is matched there.
+- **Always** judge a navigation by the same measure the API traffic is judged by:
+  an origin, and not a host. The same host on another port is another service,
+  so a page action and a navigation are approved by the origin they open — and
+  an origin the config names in full (`https://api.example.ru:8443`) passes a
+  navigation as it passes API traffic.
+- **Always** answer a failed step with the failure, even when a call went to
+  an unapproved origin as well: a step that failed has no evidence, and the
+  origin is named in the output and in the report either way.
+- **Never** trust the recording to say where the session went: it cannot tell the
+  main frame of the tab from a frame of another site — both are documents in it.
+  The browser tells them apart: it names the page of the main frame of the tab.
+  The step reads that page after its actions, and a session on an origin the
+  config does not approve fails the step — as does a browser that cannot say
+  where the session is, because a step whose evidence says nothing about where
+  the session went shows nothing about what the step did. The origin, the page
+  and the query are what is judged: a query parameter can switch an action on
+  just as a path can, and the site can put one on the page it keeps the session
+  on without asking — `history.pushState` changes the address of the page
+  without a request of its own, and the address is what the session is judged
+  by. So a parameter the config does not name fails the step, and the operator
+  names it in `allowedQueryParams` if the site needs it.
+- **Never** read a document of the recording as a navigation of the session
+  without asking the browser: the main frame of the tab and a frame of another
+  site are both documents in it, so the recording alone cannot tell them apart.
+  The browser tells them apart — it names the frame of the tab and the frames
+  inside it. A frame inside the page that is still there is a frame and not a
+  place the session went, and it does not fail the step. The frame of the tab
+  is the session itself: a document of it is a navigation of the session, and
+  it is held to the same measure as any other navigation — the origin, the page
+  and the query. A document of the recording that is neither a frame inside the
+  page nor a navigation the config approves is a page the session visited and
+  left: the step fails, and the pages are named in the report. A browser that
+  cannot name the frames of the page fails the step as well — a step that
+  cannot tell a frame from the session cannot say where the session went.
+- **Never** exempt a frame of the site itself from the measure of a navigation:
+  a frame of an approved host is a request of the site, and an approved host
+  answers a GET that adds to the cart as well — so such a frame is held to the
+  same measure as any other navigation, the page and the query, and a frame the
+  config does not approve fails the step. A frame of another site is exempt:
+  its document request goes to a host of its own, so it cannot reach an
+  endpoint of the site the capture observes, and the filter keeps it out of the
+  evidence. The frames are told apart by the host, and the frame that is
+  judged is the one the browser names, not the one the recording shows.
+- **Never** let a navigation carry a query the config does not name, whoever
+  makes it: a navigation is a request, and a request may change what it is
+  asked to change — a parameter can switch an action on just as a path can.
+  The site may add a parameter to the page it keeps the session on, and the
+  query of the page the session rests on is not a navigation of its own; but a
+  document of the tab that carries such a parameter is a navigation, and it
+  fails the step.
+- **Always** measure a request body by the bytes it was sent as: a body the
+  recording holds encoded is measured by its decoded bytes, and a text that is
+  not the encoding it claims has no size the tool can say — the length of
+  such a text is the length of something else.
+- **Never** let a navigation name a page the tool does not read: a navigation
+  (`open`, `read`) names the page right after the verb, and a command that
+  names no page is refused — `read` without a URL reads the tab that is open,
+  and that page is one the config never approved. An option where the URL
+  belongs is refused as well, because the page further along the command is
+  never read. A page the tool cannot read is a page it cannot approve.
+- **Never** open a page whose path hides a separator behind an escape: `%2f` and
+  `%5c` are sent as they are written, but a server or a proxy may decode them,
+  and then the path is another path. The check resolves the dot segments
+  (`%2e%2e` is `..`), so it cannot read a path that hides a separator behind an
+  escape — such a path is refused rather than guessed at.
+- **Never** read a path one layer of escapes deep: an escape may hide another
+  escape, so `%252e%252e` is `..` and `%252f` is a separator to a server that
+  decodes twice. The check reads the path layer by layer, at most three, the
+  way the redactor reads a value, and the path it judges is the path it opens:
+  the dot segments are resolved as the deepest reading resolves them, and a
+  separator behind any layer of escapes is refused.
+- **Never** let a value the redactor cannot judge end the run: a URL the parser
+  refuses — an unclosed IPv6 bracket — is replaced whole (`<redacted:url>`),
+  because where the user information ends and the path begins is unknown there,
+  and a URL that cannot be judged must not be guessed at. A character no UTF-8
+  file can hold (a lone surrogate) is replaced instead of failing the export:
+  the evidence is worth more than the character, and a failed export is a lost
+  step. The size of a body is counted in the encoding it would be written in,
+  so counting it cannot end the capture either.
+- **Never** export a capture of a step that did not finish: a step that ran to the end always
+  leaves a report behind, and a capture without one is the remains of a run that died — the
+  page action raised, or the step was interrupted. Such a capture is not evidence of what
+  the step shows, and a report that cannot be read is a step that did not finish.
+- **Never** let a page action that cannot be run at all be something else than a failed
+  step: the command is not there, or it cannot be executed, and the step did not reach the
+  state it was supposed to reach. Its report says so, and the export skips it — now and at
+  every later export.
+- **Never** open a page whose query the config does not name: the query of a
+  page is a request as well, and a parameter can switch an action on — so the
+  config names the query parameters a navigation may carry
+  (`allowedQueryParams`), and a parameter it does not name is refused. The
+  name is read the way the server reads it (the server decodes once, so
+  `%73earch` is `search` and `%2573earch` is not it); the value of a named
+  parameter is free text, and the redactor keeps it out of the committed
+  evidence either way.
+- **Never** let a previous run of a step stand as if it were this one: the
+  exported fixture is removed first — it is the artifact the repository holds,
+  and a stale fixture is read as the result of the current run — and an
+  artifact that cannot be removed stops the step instead of leaving it
+  standing.
+- The tool stays in `scripts/` and `devtools/`: no production module depends on
+  it and it adds no runtime dependency.
