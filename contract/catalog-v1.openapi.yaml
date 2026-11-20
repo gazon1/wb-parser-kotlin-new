@@ -30,6 +30,11 @@
 # («Баллы ВБ за отзыв») — neither a percentage nor money. `minPrice`/`maxPrice`
 # query parameters are **rubles**; the API
 # converts them to kopecks exactly once, when it builds the query.
+#
+# A points **share** is not a field of a card: it is a sort order
+# (`FeedbackPointsShare*`) and names the points as a part of the price the product
+# is sold at. WB spends a point as a ruble, so the share is
+# `feedbackPoints / price` — the same units, one divided by the other.
 # ==============================================================================
 
 openapi: 3.1.0
@@ -216,12 +221,32 @@ paths:
           description: Only items currently in stock.
           schema:
             type: boolean
+        - name: scrapedAfter
+          in: query
+          required: false
+          description: |
+            Only products whose **current** observation was made at or after this
+            moment. An ISO-8601 timestamp with an offset (`2026-11-20T00:00:00Z`).
+
+            The bound is on the observation the list shows, not on the history
+            behind it: a product observed today is in the answer even when it was
+            also observed last week, and a product last observed last week is out
+            even when it was observed before that.
+          schema:
+            type: string
+            format: date-time
         - name: sort
           in: query
           required: false
           description: |
             Sort order. Every order is total: rows with equal sort keys are
             ordered by their id, so a page boundary never repeats or drops a row.
+
+            The `FeedbackPoints*` orders sort by the points as a count, and the
+            `FeedbackPointsShare*` orders sort by the points as a share of the
+            price the product is sold at (`COALESCE(salePrice, price)`). Products
+            without points, or without a price to compare against, are ordered
+            last.
           schema:
             type: string
             enum:
@@ -231,6 +256,10 @@ paths:
               - PriceDesc
               - CashbackPercentDesc
               - CashbackPercentAsc
+              - FeedbackPointsDesc
+              - FeedbackPointsAsc
+              - FeedbackPointsShareDesc
+              - FeedbackPointsShareAsc
               - TitleAsc
               - TitleDesc
             default: DateDesc

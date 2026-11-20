@@ -60,6 +60,14 @@ internal object CatalogFilters {
             value += "model.in_stock = true"
         }
 
+        // The moment of the observation the model keeps — not of the history behind it.
+        // The bound says "products observed since then", and a product whose newest
+        // observation is older is out of the answer even when it has older ones too.
+        params.scrapedAfter?.let {
+            value += "model.scraped_at >= ?"
+            valueValues += it
+        }
+
         return Split(
             identity = Where(identity, identityValues),
             value = Where(value, valueValues),

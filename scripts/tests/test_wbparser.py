@@ -703,6 +703,7 @@ def test_the_items_pane_sends_the_filters_it_read(monkeypatch) -> None:
                     "page": 0,
                     "page_size": 20,
                     "sort": "PriceAsc",
+                    "scraped_after": None,
                 }
             ], "the filters the user typed are the filters the request carries"
 
@@ -774,6 +775,47 @@ def test_the_items_pane_draws_the_page_it_fetched(monkeypatch) -> None:
             assert "1 total" in pane.query_one("#items-info", mod.Static).content
 
     asyncio.run(scenario())
+
+
+def test_the_points_share_is_the_points_over_the_paid_price() -> None:
+    """WB spends a point as a ruble, so the share is the points divided by the price."""
+    mod = _load_wbparser()
+    card = _items_page(mod).items[0].model_copy(update={"feedback_points": 300})
+
+    # 300 ₽ of points on the 159.20 ₽ the product is sold at.
+    assert mod._points_share(card) == "188.4%"
+    # Without a sale price the card shows the regular one.
+    assert mod._points_share(card.model_copy(update={"sale_price_kopecks": None})) == "150.8%"
+    assert mod._points_share(card.model_copy(update={"feedback_points": None})) == "—"
+    assert mod._points_share(card.model_copy(update={"price_kopecks": None, "sale_price_kopecks": None})) == "—"
+
+
+def test_a_period_names_its_lower_bound() -> None:
+    """`today` is local midnight, `last run` is when the newest crawl started, `all` is nothing."""
+    mod = _load_wbparser()
+
+    class FakeApi:
+        async def get(self, path, model=None, *, role="public", **params):
+            assert (path, role, params) == ("/api/admin/jobs", "admin", {"limit": 1})
+            return [
+                mod.Job.model_validate(
+                    {
+                        "id": "11111111-1111-1111-1111-111111111111",
+                        "status": "Completed",
+                        "startedAt": "2026-11-20T09:00:00Z",
+                        "completedAt": "2026-11-20T09:05:00Z",
+                    }
+                )
+            ]
+
+    api = FakeApi()
+    assert asyncio.run(mod._since(api, mod.Period.all)) is None
+    assert asyncio.run(mod._since(api, mod.Period.last_run)) == datetime(2026, 11, 20, 9, 0, tzinfo=UTC)
+
+    today = asyncio.run(mod._since(api, mod.Period.today))
+    assert today is not None
+    assert (today.hour, today.minute, today.second, today.microsecond) == (0, 0, 0, 0)
+    assert today.utcoffset() == datetime.now().astimezone().utcoffset(), "midnight of the operator's own day"
 
 
 def _fake_tabs(monkeypatch, mod, calls: list[str]) -> None:

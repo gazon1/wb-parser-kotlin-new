@@ -2,6 +2,7 @@ package ru.wbparser.app.api.catalog
 
 import java.math.BigDecimal
 import java.math.RoundingMode
+import java.time.OffsetDateTime
 import java.util.UUID
 
 /**
@@ -30,6 +31,7 @@ data class CatalogQueryParams(
     val maxPriceKopecks: Long?,
     val minCashbackPercent: BigDecimal?,
     val inStockOnly: Boolean,
+    val scrapedAfter: OffsetDateTime?,
     val sort: CatalogSort,
     val paging: Paging,
 ) {
@@ -83,6 +85,7 @@ data class CatalogQueryParams(
                 maxPriceKopecks = priceRubles(parameters.decimal("maxPrice")),
                 minCashbackPercent = parameters.decimal("minCashback"),
                 inStockOnly = parameters.flag("inStock"),
+                scrapedAfter = parameters.instant("scrapedAfter"),
                 sort = parseSort(parameters.text("sort")),
                 paging = Paging.of(parameters.integer("page"), parameters.integer("pageSize")),
             )

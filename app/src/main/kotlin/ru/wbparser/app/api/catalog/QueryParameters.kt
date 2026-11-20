@@ -1,6 +1,8 @@
 package ru.wbparser.app.api.catalog
 
 import java.math.BigDecimal
+import java.time.OffsetDateTime
+import java.time.format.DateTimeParseException
 import java.util.UUID
 
 /**
@@ -110,6 +112,25 @@ class QueryParameters private constructor(
                 UUID.fromString(it)
             } catch (e: IllegalArgumentException) {
                 throw CatalogBadRequestException("$name is not a UUID", e)
+            }
+        }
+
+    /**
+     * A timestamp parameter, or `null` when the caller did not send one.
+     *
+     * The value has to carry an offset (`2026-11-20T00:00:00Z` or
+     * `2026-11-20T03:00:00+03:00`). A local time without one is refused rather than read
+     * as the server's zone: the same URL would then mean different moments in different
+     * deployments.
+     *
+     * @throws CatalogBadRequestException when the value is not an ISO-8601 timestamp.
+     */
+    fun instant(name: String): OffsetDateTime? =
+        text(name)?.let {
+            try {
+                OffsetDateTime.parse(it)
+            } catch (e: DateTimeParseException) {
+                throw CatalogBadRequestException("$name is not an ISO-8601 timestamp", e)
             }
         }
 

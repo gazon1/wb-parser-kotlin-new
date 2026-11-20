@@ -90,6 +90,94 @@ class CatalogItemQueriesTest :
             (first.items.map { it.id } intersect second.items.map { it.id }.toSet()) shouldHaveSize 0
         }
 
+        test("the points order sorts by the count, not by the share") {
+            val target = fixture.seedTarget("Категория")
+            fixture.seedItem(target, title = "Дорогой", productId = 1L, priceKopecks = 100_000L, feedbackPoints = 400)
+            fixture.seedItem(target, title = "Дешёвый", productId = 2L, priceKopecks = 10_000L, feedbackPoints = 100)
+
+            val page = queries().listItems(CatalogQueryParams.parse(params("sort" to "FeedbackPointsDesc")))
+
+            // 400 points on 1000 ₽ is 40 %, 100 points on 100 ₽ is 100 %: the count order
+            // puts the first one first, the share order below puts the second.
+            page.items.map { it.feedbackPoints } shouldBe listOf(400, 100)
+        }
+
+        test("the share order divides the points by the price the card shows") {
+            val target = fixture.seedTarget("Категория")
+            fixture.seedItem(target, title = "Дорогой", productId = 1L, priceKopecks = 100_000L, feedbackPoints = 400)
+            fixture.seedItem(target, title = "Дешёвый", productId = 2L, priceKopecks = 10_000L, feedbackPoints = 100)
+
+            val page = queries().listItems(CatalogQueryParams.parse(params("sort" to "FeedbackPointsShareDesc")))
+
+            page.items.map { it.feedbackPoints } shouldBe listOf(100, 400)
+        }
+
+        test("the share reads the sale price the card shows") {
+            val target = fixture.seedTarget("Категория")
+            // 100 points on a 100 ₽ sale of a 200 ₽ product is 100 %, not 50 %.
+            fixture.seedItem(
+                target,
+                title = "Со скидкой",
+                productId = 1L,
+                priceKopecks = 20_000L,
+                salePriceKopecks = 10_000L,
+                feedbackPoints = 100,
+            )
+            fixture.seedItem(target, title = "С 400", productId = 2L, priceKopecks = 100_000L, feedbackPoints = 400)
+
+            val page = queries().listItems(CatalogQueryParams.parse(params("sort" to "FeedbackPointsShareDesc")))
+
+            page.items.map { it.title } shouldBe listOf("Со скидкой", "С 400")
+        }
+
+        test("a product without a price has no share and sorts last") {
+            val target = fixture.seedTarget("Категория")
+            fixture.seedItem(target, title = "Без цены", productId = 1L, priceKopecks = null, feedbackPoints = 400)
+            fixture.seedItem(target, title = "С ценой", productId = 2L, priceKopecks = 10_000L, feedbackPoints = 100)
+
+            val page = queries().listItems(CatalogQueryParams.parse(params("sort" to "FeedbackPointsShareDesc")))
+
+            page.items.map { it.title } shouldBe listOf("С ценой", "Без цены")
+        }
+
+        test("the scraped-after bound keeps the products observed since it") {
+            val target = fixture.seedTarget("Категория")
+            fixture.seedItem(target, title = "Старый", productId = 1L, scrapedAt = Instant.parse("2026-01-01T00:00:00Z"))
+            fixture.seedItem(target, title = "Новый", productId = 2L, scrapedAt = Instant.parse("2026-01-02T00:00:00Z"))
+
+            val page = queries().listItems(CatalogQueryParams.parse(params("scrapedAfter" to "2026-01-01T12:00:00Z")))
+
+            page.items.map { it.title } shouldBe listOf("Новый")
+            page.totalCount shouldBe 1
+        }
+
+        test("the scraped-after bound reads the current observation and not the history") {
+            val target = fixture.seedTarget("Категория")
+            // The product was seen last week and again today: it is in the answer, with
+            // the price it has now.
+            fixture.seedItem(
+                target,
+                title = "Товар",
+                productId = 900L,
+                priceKopecks = 10000L,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            fixture.seedItem(
+                target,
+                title = "Товар",
+                productId = 900L,
+                priceKopecks = 12000L,
+                scrapedAt = Instant.parse("2026-01-03T00:00:00Z"),
+            )
+            // This one was seen once, last week, and is out.
+            fixture.seedItem(target, title = "Старый", productId = 901L, scrapedAt = Instant.parse("2026-01-02T00:00:00Z"))
+
+            val page = queries().listItems(CatalogQueryParams.parse(params("scrapedAfter" to "2026-01-02T12:00:00Z")))
+
+            page.items.map { it.title } shouldBe listOf("Товар")
+            page.items.first().priceKopecks shouldBe 12000L
+        }
+
         test("the price history of a product comes from its own target") {
             val first = fixture.seedTarget("Первая")
             val second = fixture.seedTarget("Вторая")
