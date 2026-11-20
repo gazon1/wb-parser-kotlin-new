@@ -1,0 +1,159 @@
+{
+  "schema": "wb-research/evidence/v1",
+  "notes": [
+    "Requests the Wildberries storefront itself issued while the catalog page was open."
+  ],
+  "captures": [
+    {
+      "id": "wb-catalog-9467-150",
+      "source": "har",
+      "sourceFile": "wb-catalog-9467",
+      "started": "2026-11-19T13:00:47.027645952Z",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false",
+        "headers": {
+          "deviceid": "<redacted:deviceid>",
+          "referer": "https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/karty-pamyati",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "x-queryid": "<redacted:x-queryid>",
+          "x-requested-with": "XMLHttpRequest",
+          "x-spa-version": "14.33.1",
+          "x-userid": "<redacted:x-userid>"
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain",
+        "bodyBytes": 44265,
+        "headers": {
+          "access-control-allow-credentials": "<redacted:access-control-allow-credentials>",
+          "access-control-allow-headers": "<redacted:access-control-allow-headers>",
+          "access-control-allow-methods": "<redacted:access-control-allow-methods>",
+          "access-control-expose-headers": "<redacted:access-control-expose-headers>",
+          "alt-svc": "<redacted:alt-svc>",
+          "content-encoding": "br",
+          "content-security-policy-report-only": "<redacted:content-security-policy-report-only>",
+          "content-type": "text/plain; charset=UTF-8",
+          "date": "<redacted:date>",
+          "nel": "<redacted:nel>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "statuscode": "200",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "vary": "<redacted:vary>",
+          "x-cache-status": "MISS",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>"
+        }
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "wb-catalog-9467-209",
+      "source": "har",
+      "sourceFile": "wb-catalog-9467",
+      "started": "2026-11-19T13:00:48.487687168Z",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&autoselectFilters=false&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=filters&spp=30&suppressSpellcheck=false",
+        "headers": {
+          "deviceid": "<redacted:deviceid>",
+          "referer": "https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/karty-pamyati",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "x-queryid": "<redacted:x-queryid>",
+          "x-requested-with": "XMLHttpRequest",
+          "x-spa-version": "14.33.1",
+          "x-userid": "<redacted:x-userid>"
+        }
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain",
+        "bodyBytes": 3773,
+        "headers": {
+          "access-control-allow-credentials": "<redacted:access-control-allow-credentials>",
+          "access-control-allow-headers": "<redacted:access-control-allow-headers>",
+          "access-control-allow-methods": "<redacted:access-control-allow-methods>",
+          "access-control-expose-headers": "<redacted:access-control-expose-headers>",
+          "alt-svc": "<redacted:alt-svc>",
+          "content-encoding": "br",
+          "content-security-policy-report-only": "<redacted:content-security-policy-report-only>",
+          "content-type": "text/plain; charset=UTF-8",
+          "date": "<redacted:date>",
+          "nel": "<redacted:nel>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "statuscode": "200",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "vary": "<redacted:vary>",
+          "x-cache-status": "MISS",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>"
+        }
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "wb-catalog-9467-262",
+      "source": "har",
+      "sourceFile": "wb-catalog-9467",
+      "started": "2026-11-19T13:00:50.639389952Z",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&page=1&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&resultset=catalog&sort=popular&spp=30",
+        "headers": {
+          "referer": "https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/karty-pamyati",
+          "sec-ch-ua": "\"Chromium\";v=\"155\", \"Not(A:Brand\";v=\"24\"",
+          "sec-ch-ua-mobile": "?0",
+          "sec-ch-ua-platform": "\"Linux\"",
+          "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
+          "x-requested-with": "XMLHttpRequest",
+          "x-userid": "<redacted:x-userid>"
+        }
+      },
+      "response": {
+        "status": 403,
+        "contentType": "text/plain",
+        "bodyBytes": 1002,
+        "headers": {
+          "access-control-allow-headers": "<redacted:access-control-allow-headers>",
+          "access-control-allow-methods": "<redacted:access-control-allow-methods>",
+          "alt-svc": "<redacted:alt-svc>",
+          "content-length": "0",
+          "content-security-policy-report-only": "<redacted:content-security-policy-report-only>",
+          "content-type": "text/plain",
+          "date": "<redacted:date>",
+          "nel": "<redacted:nel>",
+          "report-to": "<redacted:report-to>",
+          "server": "wbaas",
+          "status-no-id": "<redacted:status-no-id>",
+          "strict-transport-security": "<redacted:strict-transport-security>",
+          "x-content-type-options": "<redacted:x-content-type-options>",
+          "x-frame-options": "<redacted:x-frame-options>",
+          "x-request-id": "<redacted:x-request-id>"
+        }
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    }
+  ]
+}

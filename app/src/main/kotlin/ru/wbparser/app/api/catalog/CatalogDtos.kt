@@ -55,6 +55,13 @@ data class ProductCard(
     val seller: String?,
     val cashbackPercent: BigDecimal?,
     val cashbackRubles: BigDecimal?,
+    /**
+     * The WB points the product pays for a review — «Баллы ВБ за отзыв».
+     *
+     * A count of points, not a percentage and not money: WB pays it for a review of the
+     * product. Null when the product carries no points.
+     */
+    val feedbackPoints: Int?,
     val inStock: Boolean?,
     val imageUrl: String?,
     val productUrl: String,
@@ -93,6 +100,8 @@ data class ProductDetail(
     val seller: String?,
     val cashbackPercent: BigDecimal?,
     val cashbackRubles: BigDecimal?,
+    /** The WB points the product pays for a review — «Баллы ВБ за отзыв». */
+    val feedbackPoints: Int?,
     val inStock: Boolean?,
     val imageUrl: String?,
     val productUrl: String,
@@ -208,6 +217,9 @@ data class TargetsResponse(
  *
  * [withCashback] counts observations and [productsWithCashback] counts products, for the
  * same reason: both numbers exist, and they are not the same number.
+ *
+ * The counters name the population they count: [totalProducts] counts every product of
+ * the table, and [productsWithCashback] counts the products that pay a wallet cashback.
  */
 data class SiteStats(
     val totalItems: Int,

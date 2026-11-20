@@ -69,12 +69,12 @@ class WbCatalogDtoTest :
             item(name = "  ").toParsedItem().getOrNull()!!.name shouldBe "Товар 832714552"
         }
 
-        test("the cashback percentage is derived from the price, because WB sends money") {
-            val parsed = item(cashback = 27200).toParsedItem().getOrNull()!!
+        test("the cashback field is a percentage, and the money amount follows from the price") {
+            val parsed = item(cashback = 10).toParsedItem().getOrNull()!!
 
-            parsed.cashbackKopecks shouldBe 27200
-            // 27200 / 272000 = 10 %
             parsed.cashbackPercent shouldBe 10.0
+            // 10 % of the price paid (54200 kopecks).
+            parsed.cashbackKopecks shouldBe 5420L
         }
 
         test("a product without cashback has no cashback percentage") {
@@ -82,6 +82,13 @@ class WbCatalogDtoTest :
 
             parsed.cashbackKopecks shouldBe null
             parsed.cashbackPercent shouldBe null
+        }
+
+        test("the points for a review are decoded from the product object") {
+            val decoded = json.decodeFromString<WbItemDto>("""{"id": 1, "name": "x", "feedbackPoints": 250}""")
+
+            decoded.feedbackPoints shouldBe 250
+            decoded.toParsedItem().getOrNull()!!.feedbackPoints shouldBe 250
         }
 
         test("a product without a sale price has none, rather than a zero that looks like a price") {

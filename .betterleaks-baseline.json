@@ -134,8 +134,8 @@
  {
   "RuleID": "generic-password",
   "Description": "Detected a potential hardcoded password literal, which may expose account credentials.",
-  "StartLine": 54,
-  "EndLine": 54,
+  "StartLine": 56,
+  "EndLine": 56,
   "StartColumn": 9,
   "EndColumn": 42,
   "Match": "PASSWORD=\"rollback-drill-password\"",
@@ -146,7 +146,7 @@
    "resource": "fs.content"
   },
   "Tags": [],
-  "Fingerprint": "scripts/rollback-drill.sh:generic-password:54",
+  "Fingerprint": "scripts/rollback-drill.sh:generic-password:56",
   "File": "scripts/rollback-drill.sh",
   "SymlinkFile": "",
   "Commit": "",

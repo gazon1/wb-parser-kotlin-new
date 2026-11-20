@@ -32,6 +32,7 @@ internal object CatalogCardProjection {
             "seller",
             "cashback_percent",
             "cashback",
+            "feedback_points",
             "in_stock",
             "image_url",
             "product_url",

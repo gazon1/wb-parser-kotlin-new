@@ -174,6 +174,10 @@ docker exec "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -v "catalog_password=$CATALO
 
 echo "→ filling the table with $ROWS observations"
 docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d wbparser >/dev/null <<SQL
+-- The table holds the cashback as a percentage, and the database refuses a write that
+-- does not declare the unit it writes in (V19).
+SET crawler.cashback_unit = 'percent';
+
 INSERT INTO crawl_targets (id, name, start_url, max_depth, is_active, root_category_name, created_at, updated_at)
 VALUES ('11111111-1111-1111-1111-111111111111', 'Нагрузка', 'https://example.invalid/c', 1, true, 'Нагрузка', now(), now());
 
@@ -181,7 +185,7 @@ INSERT INTO scraped_items (
     id, target_id, catalog_url, product_url, brand, seller,
     price_kopecks, title, product_id, cashback, cashback_percent,
     data, content_hash, scraped_at, match_id, catalog_name,
-    sale_price_kopecks, in_stock, image_url
+    sale_price_kopecks, in_stock, image_url, feedback_points
 )
 SELECT
     gen_random_uuid(),
@@ -202,7 +206,10 @@ SELECT
     'Нагрузка',
     1000 + (n % 70000),
     (n % 4) <> 0,
-    'https://images.example.invalid/' || (n % 1000) || '.jpg'
+    'https://images.example.invalid/' || (n % 1000) || '.jpg',
+    -- Review points: the catalog's membership is the points, so a table without them
+    -- is a table the list does not show — the load would measure an empty catalog.
+    100 + (n % 900)
 FROM generate_series(1, $ROWS) AS n;
 
 ANALYZE scraped_items;

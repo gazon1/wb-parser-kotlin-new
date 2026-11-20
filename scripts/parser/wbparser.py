@@ -518,6 +518,11 @@ def _cashback(item: ProductCard) -> str:
     return f"{item.cashback_percent}%" if item.cashback_percent is not None else "—"
 
 
+def _points(item: ProductCard) -> str:
+    """The WB points paid for a review — «Баллы ВБ за отзыв», as WB writes them."""
+    return f"{item.feedback_points} Б" if item.feedback_points is not None else "—"
+
+
 def _duration(job: Job) -> str:
     """How long the run took — or that it is still going, which is not a duration."""
     if job.completed_at is None:
@@ -610,13 +615,14 @@ def items_section(page: ItemsPage) -> Section:
     """The products of one page, as rows a renderer turns into a table."""
     return Section(
         f"products — page {page.page + 1}/{max(1, page.total_pages)}, {page.total_count} total",
-        ["target", "title", "price", "cashback", "scraped"],
+        ["target", "title", "price", "cashback", "points", "scraped"],
         [
             [
                 item.target_name,
                 item.title,
                 _price(item),
                 _cashback(item),
+                _points(item),
                 _age(item.scraped_at),
             ]
             for item in page.items

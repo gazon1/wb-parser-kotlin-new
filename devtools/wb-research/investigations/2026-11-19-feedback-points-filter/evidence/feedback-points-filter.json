@@ -1,0 +1,271 @@
+{
+  "schema": "wb-research/evidence/v1",
+  "notes": [
+    "A/B of the two WB filters for «Баллы ВБ за отзыв»: the same catalog query with and without each filter.",
+    "The cashback unit: the same `fcashback=1` products measured next to their prices — cashback 1..3 against prices of 850..10000 ₽, so the number is a percentage, not an amount in kopecks."
+  ],
+  "captures": [
+    {
+      "id": "probe-points-filter-no-filter",
+      "source": "probe",
+      "sourceFile": "probe-points-filter",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&sort=popular&spp=30&suppressSpellcheck=false&resultset=catalog&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&page=1",
+        "credentials": null,
+        "headersSent": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain; charset=UTF-8",
+        "bodyBytes": null,
+        "isJson": true,
+        "error": null
+      },
+      "schema": {
+        "topLevelKeys": [
+          "metadata",
+          "products",
+          "total"
+        ],
+        "productCount": 100
+      },
+      "measurements": {
+        "total": 50241,
+        "productCount": 100,
+        "productsWithPoints": 2,
+        "productsWithCashback": 0,
+        "feedbackPointsValues": [
+          250
+        ],
+        "cashbackValues": [
+          0
+        ]
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "probe-points-filter-ffeedbackpoints-1",
+      "source": "probe",
+      "sourceFile": "probe-points-filter",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&sort=popular&spp=30&suppressSpellcheck=false&resultset=catalog&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&page=1&ffeedbackpoints=1",
+        "credentials": null,
+        "headersSent": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain; charset=UTF-8",
+        "bodyBytes": null,
+        "isJson": true,
+        "error": null
+      },
+      "schema": {
+        "topLevelKeys": [
+          "metadata",
+          "products",
+          "total"
+        ],
+        "productCount": 19
+      },
+      "measurements": {
+        "total": 19,
+        "productCount": 19,
+        "productsWithPoints": 19,
+        "productsWithCashback": 0,
+        "feedbackPointsValues": [
+          80,
+          120,
+          200,
+          250,
+          300,
+          400,
+          450
+        ],
+        "cashbackValues": [
+          0
+        ]
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "probe-cashback-filter-fcashback-1",
+      "source": "probe",
+      "sourceFile": "probe-cashback-filter",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&sort=popular&spp=30&suppressSpellcheck=false&resultset=catalog&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&page=1&fcashback=1",
+        "credentials": null,
+        "headersSent": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain; charset=UTF-8",
+        "bodyBytes": null,
+        "isJson": true,
+        "error": null
+      },
+      "schema": {
+        "topLevelKeys": [
+          "metadata",
+          "products",
+          "total"
+        ],
+        "productCount": 15
+      },
+      "measurements": {
+        "total": 15,
+        "productCount": 15,
+        "productsWithPoints": 0,
+        "productsWithCashback": 15,
+        "cashbackValues": [
+          1,
+          2,
+          3
+        ]
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    },
+    {
+      "id": "probe-cashback-pairs-fcashback-1",
+      "source": "probe",
+      "sourceFile": "probe-cashback-pairs",
+      "request": {
+        "method": "GET",
+        "url": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&lang=ru&locale=ru&sort=popular&spp=30&suppressSpellcheck=false&resultset=catalog&query=menu_v3_9467+%D0%BA%D0%B0%D1%80%D1%82%D1%8B+%D0%BF%D0%B0%D0%BC%D1%8F%D1%82%D0%B8&page=1&fcashback=1",
+        "credentials": null,
+        "headersSent": [],
+        "headerValuesCaptured": false
+      },
+      "response": {
+        "status": 200,
+        "contentType": "text/plain; charset=UTF-8",
+        "bodyBytes": null,
+        "isJson": true,
+        "error": null
+      },
+      "schema": {
+        "topLevelKeys": [
+          "metadata",
+          "products",
+          "total"
+        ],
+        "productCount": 14
+      },
+      "measurements": {
+        "total": 14,
+        "productCount": 14,
+        "productsWithPoints": 0,
+        "productsWithCashback": 14,
+        "cashbackValues": [
+          1,
+          2,
+          3
+        ],
+        "cashbackPricePairs": [
+          {
+            "id": 727988295,
+            "priceKopecks": 240000,
+            "salePriceKopecks": 77000,
+            "cashback": 3
+          },
+          {
+            "id": 270151391,
+            "priceKopecks": 206000,
+            "salePriceKopecks": 75200,
+            "cashback": 2
+          },
+          {
+            "id": 238846075,
+            "priceKopecks": 269000,
+            "salePriceKopecks": 200900,
+            "cashback": 3
+          },
+          {
+            "id": 238846071,
+            "priceKopecks": 189900,
+            "salePriceKopecks": 141800,
+            "cashback": 3
+          },
+          {
+            "id": 170568039,
+            "priceKopecks": 89000,
+            "salePriceKopecks": 73800,
+            "cashback": 1
+          },
+          {
+            "id": 238846072,
+            "priceKopecks": 430000,
+            "salePriceKopecks": 174800,
+            "cashback": 3
+          },
+          {
+            "id": 170568072,
+            "priceKopecks": 85000,
+            "salePriceKopecks": 70500,
+            "cashback": 1
+          },
+          {
+            "id": 170568052,
+            "priceKopecks": 129000,
+            "salePriceKopecks": 107000,
+            "cashback": 1
+          },
+          {
+            "id": 1261879916,
+            "priceKopecks": 550000,
+            "salePriceKopecks": 205400,
+            "cashback": 3
+          },
+          {
+            "id": 170568079,
+            "priceKopecks": 109000,
+            "salePriceKopecks": 90400,
+            "cashback": 1
+          },
+          {
+            "id": 170568060,
+            "priceKopecks": 219000,
+            "salePriceKopecks": 181700,
+            "cashback": 1
+          },
+          {
+            "id": 1261879927,
+            "priceKopecks": 403400,
+            "salePriceKopecks": 150600,
+            "cashback": 3
+          },
+          {
+            "id": 1261879924,
+            "priceKopecks": 525600,
+            "salePriceKopecks": 196300,
+            "cashback": 3
+          },
+          {
+            "id": 1261879919,
+            "priceKopecks": 1000000,
+            "salePriceKopecks": 373500,
+            "cashback": 3
+          }
+        ]
+      },
+      "body": {
+        "included": false,
+        "reason": "a response body may carry personal data"
+      }
+    }
+  ]
+}

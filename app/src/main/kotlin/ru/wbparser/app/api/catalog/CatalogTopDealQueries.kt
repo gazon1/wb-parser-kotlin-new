@@ -35,6 +35,14 @@ import ru.wbparser.app.config.CatalogDataSource
  * back". So the rows that are compared are the *current* observation of a product in
  * each target, and the winner is the target with the best cashback now. Comparing the
  * observations themselves would let a price from last week win a list about today.
+ *
+ * ## Why the list is not built from the catalog's membership
+ *
+ * The catalog is made of the products that pay review points, and those are the products
+ * WB pays no wallet cashback for. The two populations never overlap, so a list built
+ * from the catalog's membership would be empty even while the table holds observations
+ * that pay a cashback. The list therefore names its own membership — the cashback
+ * population — and answers about it.
  */
 class CatalogTopDealQueries(
     private val dataSource: CatalogDataSource,
@@ -56,7 +64,10 @@ class CatalogTopDealQueries(
                     .prepareStatement(
                         """
                         WITH current AS (
-                        ${CatalogReadModel.currentProductTargets(CatalogFilters.Where.EMPTY)}
+                        ${CatalogReadModel.currentProductTargets(
+                            CatalogFilters.Where.EMPTY,
+                            membership = CatalogMembership.CASHBACK_DEAL,
+                        )}
                         ),
                         best AS (
                               SELECT DISTINCT ON (c.match_id)

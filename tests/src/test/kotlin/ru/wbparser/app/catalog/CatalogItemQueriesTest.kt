@@ -7,6 +7,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import ru.wbparser.app.api.catalog.CatalogItemQueries
 import ru.wbparser.app.api.catalog.CatalogQueryParams
+import ru.wbparser.app.api.catalog.CurrentScope
 import ru.wbparser.app.api.catalog.QueryParameters
 import java.time.Instant
 import java.util.UUID
@@ -92,18 +93,67 @@ class CatalogItemQueriesTest :
         test("the price history of a product comes from its own target") {
             val first = fixture.seedTarget("Первая")
             val second = fixture.seedTarget("Вторая")
-            val item = fixture.seedItem(first, title = "Товар", productId = 555L, priceKopecks = 10000L)
-            fixture.seedItem(first, title = "Товар", productId = 555L, priceKopecks = 11000L)
-            fixture.seedItem(second, title = "Товар", productId = 555L, priceKopecks = 13000L)
+            fixture.seedItem(
+                first,
+                title = "Товар",
+                productId = 555L,
+                priceKopecks = 10000L,
+                scrapedAt = Instant.parse("2026-01-01T00:00:00Z"),
+            )
+            fixture.seedItem(
+                first,
+                title = "Товар",
+                productId = 555L,
+                priceKopecks = 11000L,
+                scrapedAt = Instant.parse("2026-01-02T00:00:00Z"),
+            )
+            fixture.seedItem(
+                second,
+                title = "Товар",
+                productId = 555L,
+                priceKopecks = 13000L,
+                scrapedAt = Instant.parse("2026-01-03T00:00:00Z"),
+            )
+            // The detail answers about the current observation of the product, so the
+            // newest row of the first target is the one that is asked for.
+            val current =
+                fixture.seedItem(
+                    first,
+                    title = "Товар",
+                    productId = 555L,
+                    priceKopecks = 14000L,
+                    scrapedAt = Instant.parse("2026-01-04T00:00:00Z"),
+                )
 
-            val detail = queries().getItem(item)
+            val detail = queries().getItem(current, CurrentScope.TARGET)
 
             detail.shouldNotBeNull()
             // Three observations in its own target, and not the one of the other target.
-            detail.history shouldHaveSize 2
+            detail.history shouldHaveSize 3
         }
 
         test("a product that is not there is not found") {
-            queries().getItem(UUID.randomUUID()).shouldBeNull()
+            queries().getItem(UUID.randomUUID(), CurrentScope.TARGET).shouldBeNull()
+        }
+
+        test("the detail of a cashback deal is found") {
+            // The card of a cashback deal comes from the top-deals list, which is made
+            // of the observations that pay a cashback — and those pay no review points.
+            // A detail read that accepted only the catalog's membership would answer
+            // 404 about a card the top-deals list had just shown.
+            val target = fixture.seedTarget("Категория")
+            val id =
+                fixture.seedItem(
+                    target,
+                    title = "С кешбеком",
+                    productId = 77L,
+                    cashbackPercent = 30.0,
+                    feedbackPoints = null,
+                )
+
+            val detail = queries().getItem(id, CurrentScope.TARGET)
+
+            detail.shouldNotBeNull()
+            detail.id shouldBe id
         }
     })

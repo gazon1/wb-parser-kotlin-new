@@ -1,6 +1,7 @@
 package ru.wbparser.app.api.catalog
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 
@@ -16,37 +17,154 @@ import io.kotest.matchers.string.shouldNotContain
  * share a timestamp.
  *
  * So the clauses the model depends on are pinned down here, where they can be read: the
- * grain (`DISTINCT ON`), the order that keeps the newest observation, and the id that
- * breaks the tie.
+ * rule that keeps the newest observation, the id that breaks the tie, and the grain the
+ * rule is decided at.
  */
 class CatalogReadModelTest :
     FunSpec({
-        test("the model keeps one row per product, the newest one") {
-            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY)
+        test("the model keeps the current observation of every product") {
+            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY, CurrentScope.PRODUCT)
 
-            sql shouldContain "SELECT DISTINCT ON (s.product_id)"
-            sql shouldContain "ORDER BY s.product_id, s.scraped_at DESC, s.id DESC"
+            // The comparison is on (scraped_at, id): two observations of one product can
+            // share a timestamp, and the id is what makes the winner the same one twice.
+            sql shouldContain "(newer.scraped_at, newer.id) > (s.scraped_at, s.id)"
+        }
+
+        test("the model does not deduplicate before it filters") {
+            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY, CurrentScope.PRODUCT)
+
+            // The finding of the review: the model picked the newest observation that
+            // matched the filter, so a search answered with a row that was not in the
+            // catalog any more — and the detail of that row answered 404.
+            sql shouldNotContain "DISTINCT ON"
         }
 
         test("the model's identity filter is inside the model") {
             val identity = CatalogFilters.Where(listOf("s.target_id = ?"), listOf("target"))
 
-            val sql = CatalogReadModel.currentProducts(identity)
+            val sql = CatalogReadModel.currentProducts(identity, CurrentScope.PRODUCT)
 
             sql shouldContain "WHERE s.target_id = ?"
         }
 
-        test("the model without a filter has no WHERE at all") {
-            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY)
+        test("the model without a filter has no filter of its own") {
+            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY, CurrentScope.PRODUCT)
 
-            sql shouldNotContain "WHERE"
+            // The model itself filters nothing: the condition that says what the
+            // catalog is made of is applied to the model, not inside it.
+            sql shouldNotContain "s.target_id = ?"
+        }
+
+        test("the catalog is made of the observations that carry the review points") {
+            // A product that pays no review points is not one of the products the crawler
+            // collects, and an observation of one is not part of the catalog.
+            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY, CurrentScope.PRODUCT)
+
+            sql shouldContain "WHERE latest.feedback_points IS NOT NULL"
+        }
+
+        test("the membership is decided on the newest observation") {
+            // The finding of the review: the condition was inside the model, so the
+            // model picked the newest observation that pays points — and a product whose
+            // newest observation pays none stayed in the catalog with a stale price.
+            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY, CurrentScope.PRODUCT)
+
+            sql shouldNotContain "s.feedback_points IS NOT NULL"
+        }
+
+        test("the product grain compares the product across the targets") {
+            val sql = CatalogReadModel.currentObservation(CurrentScope.PRODUCT)
+
+            // The grain is the product: a newer observation of it in another target makes
+            // this one old.
+            sql shouldNotContain "newer.target_id = s.target_id"
+            sql shouldContain "newer.product_id = s.product_id"
+        }
+
+        test("the target grain compares the product inside its own target") {
+            val sql = CatalogReadModel.currentObservation(CurrentScope.TARGET)
+
+            // The grain is the product and the catalog: a newer observation of it in
+            // another target is another product of another catalog.
+            sql shouldContain "newer.target_id = s.target_id"
+            sql shouldContain "newer.product_id = s.product_id"
+        }
+
+        test("the rows without a product id are not a product at the product grain") {
+            val product = CatalogReadModel.currentObservation(CurrentScope.PRODUCT)
+            val target = CatalogReadModel.currentObservation(CurrentScope.TARGET)
+
+            // The finding of the review: the read model and the view
+            // `latest_product_observations` disagreed about the rows without a product
+            // id — the model kept the newest of them as a product, the view left them
+            // out, and the storefront reads both.
+            product shouldContain "s.product_id IS NOT NULL"
+            product shouldNotContain "newer.product_id IS NULL AND s.product_id IS NULL"
+        }
+
+        test("the target grain keeps every observation without a product id") {
+            val target = CatalogReadModel.currentObservation(CurrentScope.TARGET)
+
+            // The finding of the review: the target's grain compared the rows without a
+            // product id with each other, so the newest of them won and the older ones
+            // left the list — and their detail answered 404. Two rows that only share
+            // the absence of an id are not two observations of one product.
+            target shouldNotContain "newer.product_id IS NULL AND s.product_id IS NULL"
+            target shouldContain "newer.product_id = s.product_id"
+        }
+
+        test("the target grain is made of the same observations") {
+            val sql = CatalogReadModel.currentProductTargets(CatalogFilters.Where.EMPTY)
+
+            sql shouldContain "WHERE latest.feedback_points IS NOT NULL"
+        }
+
+        test("the membership of a read is named, not hard-wired") {
+            val sql =
+                CatalogReadModel.currentProductTargets(
+                    CatalogFilters.Where.EMPTY,
+                    membership = CatalogMembership.CASHBACK_DEAL,
+                )
+
+            // The finding of the review: the list of the best cashback deals was built
+            // from the catalog's membership — the review points — and the two
+            // populations never overlap, so the list was empty even while the table held
+            // observations that pay a cashback.
+            sql shouldContain "WHERE latest.cashback_percent > 0"
+            sql shouldNotContain "latest.feedback_points IS NOT NULL"
+        }
+
+        test("the detail read accepts either population") {
+            val condition = CatalogMembership.SHOWN.condition("s")
+
+            // The card of a cashback deal comes from the top-deals list, and its detail
+            // is asked by the id of that card: a detail read that accepted only one of
+            // the two populations would answer 404 about a card the other list showed.
+            // The cashback branch asks for a match id as well — that is the key the
+            // top-deals list groups by, so an observation without one is in no list.
+            condition shouldBe
+                "(s.feedback_points IS NOT NULL OR (s.cashback_percent > 0 AND s.match_id IS NOT NULL))"
+        }
+
+        test("the counters read the whole table") {
+            val sql =
+                CatalogReadModel.currentProducts(
+                    CatalogFilters.Where.EMPTY,
+                    CurrentScope.PRODUCT,
+                    CatalogMembership.ALL,
+                )
+
+            // The counters describe the catalog, not one of its two populations: a
+            // counter that took the review points by default would answer "how many
+            // products are there" with a number about the review-points list.
+            sql shouldContain "WHERE TRUE"
+            sql shouldNotContain "feedback_points IS NOT NULL"
         }
 
         test("the target grain keeps the targets apart") {
             val sql = CatalogReadModel.currentProductTargets(CatalogFilters.Where.EMPTY)
 
-            sql shouldContain "SELECT DISTINCT ON (s.product_id, s.target_id)"
-            sql shouldContain "ORDER BY s.product_id, s.target_id, s.scraped_at DESC, s.id DESC"
+            sql shouldContain "newer.target_id = s.target_id"
         }
 
         test("the target grain leaves the rows without a match id out") {
@@ -62,9 +180,14 @@ class CatalogReadModelTest :
         }
 
         test("the model reads the same columns as the card's projection") {
-            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY)
+            val sql = CatalogReadModel.currentProducts(CatalogFilters.Where.EMPTY, CurrentScope.PRODUCT)
 
-            sql shouldContain "s.id, s.target_id, t.name AS target_name, s.title, s.price_kopecks,"
-            sql shouldContain "s.scraped_at, s.product_id, s.match_id"
+            // Every column the card is made of is read by the model — the list is the
+            // card's, so a column added to one and forgotten in the other fails here
+            // instead of answering with one field less.
+            CatalogCardProjection.CARD_FIELDS.forEach { field ->
+                val column = if (field == "target_name") "t.name AS target_name" else "s.$field"
+                sql shouldContain column
+            }
         }
     })

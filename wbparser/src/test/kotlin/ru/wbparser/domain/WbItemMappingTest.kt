@@ -38,6 +38,7 @@ class WbItemMappingTest :
             basic: Long? = null,
             product: Long? = null,
             cashback: Long? = null,
+            feedbackPoints: Int? = null,
             sizes: List<WbSizeDto>? = null,
         ) = WbItemDto(
             id = id,
@@ -46,6 +47,7 @@ class WbItemMappingTest :
             supplierId = 435021,
             subjectId = 381,
             sizes = sizes,
+            feedbackPoints = feedbackPoints,
         )
 
         fun parse(d: WbItemDto) = d.toParsedItem().getOrElse { throw AssertionError("expected a ParsedItem: $it") }
@@ -62,7 +64,7 @@ class WbItemMappingTest :
                                             basic = 259000,
                                             product = 103600,
                                             logistics = 0,
-                                            cashback = 15540,
+                                            cashback = 6,
                                         ),
                                 ),
                             ),
@@ -72,9 +74,21 @@ class WbItemMappingTest :
             // Kopecks — the endpoint sends numbers, not "2590.00".
             parsed.priceKopecks shouldBe 259000L
             parsed.salePriceKopecks shouldBe 103600L
-            // Cashback is a money amount on this endpoint, not a percentage.
-            parsed.cashbackKopecks shouldBe 15540L
+            // The cashback field is a percentage, not money: 6 means 6 %.
             parsed.cashbackPercent shouldBe 6.0
+            // 6 % of the price paid (103600 kopecks).
+            parsed.cashbackKopecks shouldBe 6216L
+        }
+
+        test("the points WB pays for a review are carried through — and a product without them has none") {
+            val withPoints = parse(dto(feedbackPoints = 300))
+
+            withPoints.feedbackPoints shouldBe 300
+
+            // WB sends the field only for the products that carry points — absent means
+            // "no points", not "unknown".
+            parse(dto()).feedbackPoints shouldBe null
+            parse(dto(feedbackPoints = 0)).feedbackPoints shouldBe null
         }
 
         test("item with no price keeps a zero price rather than inventing one") {

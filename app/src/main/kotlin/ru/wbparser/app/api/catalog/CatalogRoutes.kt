@@ -86,7 +86,9 @@ class CatalogRoutes(
             } catch (e: IllegalArgumentException) {
                 throw CatalogBadRequestException("id is not a UUID", e)
             }
-        return queries.getItem(parsed) ?: throw CatalogNotFoundException("no such product")
+        // The id names an observation of a catalog, so the detail answers about that
+        // catalog: the current observation of the product inside its own target.
+        return queries.getItem(parsed, CurrentScope.TARGET) ?: throw CatalogNotFoundException("no such product")
     }
 
     /**

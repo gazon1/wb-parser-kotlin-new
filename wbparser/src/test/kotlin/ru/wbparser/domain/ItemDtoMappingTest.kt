@@ -72,11 +72,11 @@ class ItemDtoMappingTest :
             parsed.salePriceKopecks shouldBe 54200L
         }
 
-        test("cashback is a money amount and the percentage is derived from it") {
-            // 5000 kopecks of cashback on a 100000 kopeck price is 5%.
-            val parsed = item(basic = 100000, product = 100000, cashback = 5000).toParsedItem().getOrNull()!!
-            parsed.cashbackKopecks shouldBe 5000L
-            parsed.cashbackPercent shouldBe 5.0
+        test("the cashback field is a percentage, and the money amount follows from the price") {
+            // 3 means 3 %, not 3 kopecks.
+            val parsed = item(basic = 100000, product = 100000, cashback = 3).toParsedItem().getOrNull()!!
+            parsed.cashbackPercent shouldBe 3.0
+            parsed.cashbackKopecks shouldBe 3000L
         }
 
         test("no cashback means no percentage — not a fabricated zero") {

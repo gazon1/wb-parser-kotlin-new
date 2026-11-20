@@ -405,6 +405,95 @@ class TargetRunQueriesTest :
             run.sessionRequests shouldBe 0
         }
 
+        test("a run records the unit its writer wrote in") {
+            val (targetId, jobId, group) = world()
+
+            db.ds.recordTargetRun(
+                jobId = jobId,
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = targetId,
+                        egressGroup = group,
+                        egressIp = null,
+                        outcome = RunOutcome.Ok,
+                        pages = 1,
+                        items = 1,
+                        startedAt = Instant.now(),
+                    ),
+                finishedAt = Instant.now(),
+            )
+
+            // The row says which writer made it. The release that writes the old unit
+            // has never heard of the declaration (`V19`), so its runs say nothing —
+            // and the cutover gate can tell the two apart without asking the
+            // operator when a crawler started.
+            db.row("SELECT writer_unit FROM crawl_target_runs")["writer_unit"] shouldBe "percent"
+        }
+
+        test("the cutover gate counts only the runs the new writer made") {
+            val (targetId, jobId, group) = world()
+            val otherTargetId =
+                db.ds.insertTarget(
+                    ru.wbparser.infra.db.repositories.TargetDraft(
+                        name = "other-catalog",
+                        startUrl = "https://www.wildberries.ru/catalog/2/list.aspx",
+                    ),
+                )
+
+            // The old writer's run: the release before `V19` does not mention the
+            // column, so it leaves it empty.
+            db.ds.connection.use { conn ->
+                conn
+                    .prepareStatement(
+                        "INSERT INTO crawl_target_runs (id, job_id, target_id, outcome, pages, " +
+                            "items, started_at, finished_at) VALUES (?, ?, ?, 'ok', 1, 1, now(), now())",
+                    ).use { ps ->
+                        ps.setObject(1, UUID.randomUUID())
+                        ps.setObject(2, jobId)
+                        ps.setObject(3, targetId)
+                        ps.executeUpdate()
+                    }
+            }
+
+            // The new writer's run, of the other target.
+            db.ds.recordTargetRun(
+                jobId = jobId,
+                run =
+                    ru.wbparser.infra.db.repositories.TargetRun(
+                        targetId = otherTargetId,
+                        egressGroup = group,
+                        egressIp = null,
+                        outcome = RunOutcome.Ok,
+                        pages = 1,
+                        items = 1,
+                        startedAt = Instant.now(),
+                    ),
+                finishedAt = Instant.now(),
+            )
+
+            // The gate of the rollout runbook, with a freshness bound old enough to
+            // accept both runs: the writer is the only thing left that can tell them
+            // apart, and a moment typed too early must not let the old crawler's run
+            // satisfy the check.
+            val gate =
+                """
+                SELECT t.id, t.name
+                  FROM crawl_targets t
+                 WHERE t.is_active
+                   AND NOT EXISTS (
+                       SELECT 1
+                         FROM crawl_target_runs r
+                        WHERE r.target_id = t.id
+                          AND r.outcome = 'ok'
+                          AND r.writer_unit = 'percent'
+                          AND r.finished_at >= TIMESTAMPTZ '2020-01-01 00:00:00+00')
+                """.trimIndent()
+
+            // The target the old writer read is still not covered: the new writer
+            // never went there.
+            db.rows(gate).map { it["name"] } shouldBe listOf("catalog")
+        }
+
         /**
          * The moment as the database can hold it.
          *

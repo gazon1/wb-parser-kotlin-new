@@ -30,9 +30,16 @@ class CatalogItemQueries(
 ) {
     /**
      * One filtered, sorted, paginated page of product cards.
+     *
+     * The grain of the list follows the request: a request that names a target asks for
+     * the products *of that target*, so the list is built at the target's grain — the
+     * newest observation of every product inside it. A request that names no target asks
+     * for the catalog as a whole, so the list is built at the product's grain — the newest
+     * observation of every product, wherever it was made.
      */
     fun listItems(params: CatalogQueryParams): Paged<ProductCard> {
         val filters = CatalogFilters.from(params)
+        val scope = if (params.targetId == null) CurrentScope.PRODUCT else CurrentScope.TARGET
         var totalCount = 0
         val rows =
             dataSource.read { connection ->
@@ -40,7 +47,7 @@ class CatalogItemQueries(
                     .prepareStatement(
                         """
                         WITH model AS (
-                        ${CatalogReadModel.currentProducts(filters.identity)}
+                        ${CatalogReadModel.currentProducts(filters.identity, scope)}
                         ),
                         counted AS (
                               SELECT ${CatalogCardProjection.columns("model")},
@@ -88,8 +95,36 @@ class CatalogItemQueries(
      *
      * A product whose `product_id` is null has no history. It is rendered with the price
      * it has, rather than with a series that does not exist.
+     *
+     * The observation has to be part of the catalog — the same condition the list
+     * applies. An observation that pays no review points is not a product of the
+     * catalog, and a detail read that found it would answer about a product the
+     * storefront cannot show.
+     *
+     * The condition is the union of the populations the API shows: the review points
+     * the catalog is made of, and the wallet cashback the top-deals list is made of —
+     * the cashback branch with a match id, because that is the key the top-deals list
+     * groups by. The id of a card can come from either list, and a detail read that
+     * accepted only one of them would answer 404 about a card the other list had just
+     * shown; an observation outside both is in no list, and this read does not answer
+     * about it.
+     *
+     * And it has to be the *current* observation of its product: the membership is
+     * decided on the newest observation, so an older observation that paid points is
+     * not a product of the catalog either — the product left it when the newer
+     * observation arrived.
+     *
+     * The [scope] says at which grain "current" is decided, and it is the caller's to
+     * name. The route asks for the target's grain: the id names an observation of a
+     * catalog, and the detail answers about that catalog — so every row a list shows is a
+     * row this read accepts, whether the list was built at the product's grain or at the
+     * target's. A caller that means "the newest observation of this product, in any
+     * target" asks for [CurrentScope.PRODUCT] and says so.
      */
-    fun getItem(id: UUID): ProductDetail? =
+    fun getItem(
+        id: UUID,
+        scope: CurrentScope,
+    ): ProductDetail? =
         dataSource.read { connection ->
             val card =
                 connection
@@ -100,6 +135,8 @@ class CatalogItemQueries(
                                 FROM scraped_items s
                                 JOIN crawl_targets t ON t.id = s.target_id
                                WHERE s.id = ?
+                                 AND ${CatalogMembership.SHOWN.condition("s")}
+                                 AND ${CatalogReadModel.currentObservation(scope)}
                         )
                         SELECT ${CatalogCardProjection.columns("i")}
                           FROM i
@@ -152,6 +189,7 @@ class CatalogItemQueries(
                 seller = card.seller,
                 cashbackPercent = card.cashbackPercent,
                 cashbackRubles = card.cashbackRubles,
+                feedbackPoints = card.feedbackPoints,
                 inStock = card.inStock,
                 imageUrl = card.imageUrl,
                 productUrl = card.productUrl,

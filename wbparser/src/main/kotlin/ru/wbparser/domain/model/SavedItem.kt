@@ -45,6 +45,8 @@ data class SavedItem(
     val supplierId: Long? = null,
     val seller: String? = null,
     val inStock: Boolean,
+    /** The WB points the product pays for a review — «Баллы ВБ за отзыв». */
+    val feedbackPoints: Int? = null,
     val contentHash: String,
     val createdAt: String,
     val updatedAt: String,
@@ -80,6 +82,7 @@ data class SavedItem(
                 supplierId = item.supplierId,
                 seller = item.seller,
                 inStock = item.inStock,
+                feedbackPoints = item.feedbackPoints,
                 contentHash = contentHashFor(targetId, item.productId.value, item.priceKopecks),
                 createdAt = now.toString(),
                 updatedAt = now.toString(),

@@ -39,6 +39,11 @@ class ProductCard(BaseModel):
         alias="cashbackRubles",
         description="Cashback in **rubles**. The crawler stores it in rubles already —\nit converts kopecks to rubles before writing — so the value passes\nthrough unchanged. Dividing it by 100 again would be wrong.\n",
     )
+    feedback_points: int | None = Field(
+        None,
+        alias="feedbackPoints",
+        description="The WB points the product pays for a review — «Баллы ВБ за отзыв».\nA count of points, not a percentage and not money. Null when the\nproduct carries no points.\n",
+    )
     in_stock: bool | None = Field(None, alias="inStock")
     image_url: AnyUrl | None = Field(None, alias="imageUrl")
     product_url: AnyUrl = Field(..., alias="productUrl")
@@ -150,4 +155,4 @@ class ProductDetail(ProductCard):
     )
 
 
-# source-sha256: 9daf590c466f63b85328265c51ea4be15f7a33dd928ce41522592315e00a9e0a
+# source-sha256: 83192fad6eea745546c453d712346ef7febe02988725ed54d2b4469694e27fe7

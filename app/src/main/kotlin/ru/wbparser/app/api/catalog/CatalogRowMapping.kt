@@ -53,6 +53,7 @@ internal fun toCard(row: ResultSet): ProductCard {
         seller = row.getString("seller"),
         cashbackPercent = row.getBigDecimal("cashback_percent"),
         cashbackRubles = row.getBigDecimal("cashback"),
+        feedbackPoints = row.getIntOrNull("feedback_points"),
         inStock = row.getBooleanOrNull("in_stock"),
         imageUrl = row.getString("image_url"),
         productUrl = row.getString("product_url") ?: "",
@@ -89,6 +90,14 @@ internal fun toPricePoint(row: ResultSet): PricePoint =
  */
 internal fun ResultSet.getLongOrNull(column: String): Long? {
     val value = getLong(column)
+    return if (wasNull()) null else value
+}
+
+/**
+ * An `INTEGER`, or `null` when the column is null.
+ */
+internal fun ResultSet.getIntOrNull(column: String): Int? {
+    val value = getInt(column)
     return if (wasNull()) null else value
 }
 

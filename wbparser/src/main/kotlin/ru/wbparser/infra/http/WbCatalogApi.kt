@@ -37,6 +37,25 @@ internal object WbCatalogApi {
      * `resultset=catalog` — the one the storefront itself calls for a catalog page. The
      * category is selected through [searchQuery]; without it WB answers with its rotating
      * popular list, which is what made every catalog look alike.
+     *
+     * ## `ffeedbackpoints=1` — the filter this crawler is for
+     *
+     * «Баллы ВБ за отзыв» are the points WB pays for a review. They travel in the product
+     * object as `feedbackPoints` (observed 80..450), and WB has a filter for them: it
+     * appears in the `resultset=filters` answer as «Баллы ВБ за отзыв» → «Да», under the
+     * name `ffeedbackpoints`.
+     *
+     * Without the filter the points are almost absent: a plain catalog query for
+     * `menu_v3_9467 карты памяти` answered with 100 products, and only **2** of them
+     * carried a `feedbackPoints` field. With `ffeedbackpoints=1` the same catalog
+     * answered with 19 products, and **all 19** carried points (80..450). The filter is
+     * what turns the answer into "the products that pay for a review" — which is the
+     * catalog this crawler exists to collect.
+     *
+     * The wallet cashback (`sizes[0].price.cashback`) is a different thing, and asking for
+     * it instead would collect the wrong products: `fcashback=1` answers with 15 products
+     * for the same catalog, all of them with a wallet cashback of 1 %..3 % and **zero**
+     * points. The two filters do not describe the same set of goods.
      */
     fun buildWbApiUrl(
         page: Int,
@@ -50,6 +69,8 @@ internal object WbCatalogApi {
                 "curr" to "rub",
                 "dest" to dest,
                 "spp" to "30",
+                // The «Баллы ВБ за отзыв» filter. See the KDoc above.
+                "ffeedbackpoints" to "1",
                 "hide_vflags" to "4294967296",
                 "lang" to "ru",
                 "locale" to "ru",

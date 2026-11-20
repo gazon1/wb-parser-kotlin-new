@@ -18,7 +18,9 @@ wb-parser-kotlin/
 │                     Repo interfaces, Ktor client, Exposed, роутер egress. Чистая
 │                     логика без Spring.
 ├── app/            — Spring Boot 3.4.1: REST-контроллеры, Scheduler, Flyway migrations
-└── tests/          — integration tests (Testcontainers, реальная БД) + гейт старта приложения
+├── tests/          — integration tests (Testcontainers, реальная БД) + гейт старта приложения
+└── devtools/       — development-only: формат исследований WB (см. devtools/wb-research/README.md),
+                      в рантайме не участвует
 ```
 
 Границы явные, и их проверяет сборка, а не соглашение:

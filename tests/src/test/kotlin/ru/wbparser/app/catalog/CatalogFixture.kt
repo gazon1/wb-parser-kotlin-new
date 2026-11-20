@@ -124,6 +124,35 @@ class CatalogFixture {
         }
 
     /**
+     * The columns the read model's index carries.
+     *
+     * The model reads `feedback_points`, and an index that does not carry a column the
+     * model reads is not covering: the model visits the heap for every observation.
+     */
+    fun readModelIndexColumns(): List<String> =
+        writer.connection.use { connection ->
+            connection
+                .prepareStatement(
+                    """
+                    SELECT a.attname
+                      FROM pg_index i
+                      JOIN pg_class c ON c.oid = i.indexrelid
+                      JOIN pg_attribute a ON a.attrelid = c.oid
+                     WHERE c.relname = 'ix_scraped_items_product_latest_covering'
+                       AND a.attnum > 0
+                    """.trimIndent(),
+                ).use { statement ->
+                    statement.executeQuery().use { resultSet ->
+                        buildList {
+                            while (resultSet.next()) {
+                                add(resultSet.getString("attname"))
+                            }
+                        }
+                    }
+                }
+        }
+
+    /**
      * A connection with the catalog role's own credentials and nothing else.
      *
      * Deliberately without the session settings the pool applies: the point of this
@@ -227,6 +256,9 @@ class CatalogFixture {
 
     /**
      * A scraped item.
+     *
+     * The item pays review points by default: the catalog is made of the products that
+     * pay them, so an item without points has to be seeded explicitly.
      */
     fun seedItem(
         targetId: UUID,
@@ -237,6 +269,7 @@ class CatalogFixture {
         seller: String? = "Продавец",
         cashbackPercent: Double? = 5.0,
         cashback: Double? = 24.95,
+        feedbackPoints: Int? = 300,
         inStock: Boolean? = true,
         imageUrl: String? = "https://images.example.invalid/p.jpg",
         matchId: Long? = 42,
@@ -252,8 +285,8 @@ class CatalogFixture {
                         id, target_id, catalog_url, product_url, brand, seller,
                         price_kopecks, title, product_id, cashback, cashback_percent,
                         data, content_hash, scraped_at, match_id, catalog_name,
-                        sale_price_kopecks, in_stock, image_url
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?)
+                        sale_price_kopecks, in_stock, image_url, feedback_points
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?, ?, ?, ?, ?)
                     """.trimIndent(),
                 ).use { statement ->
                     statement.setObject(1, id)
@@ -275,6 +308,7 @@ class CatalogFixture {
                     statement.setObject(17, salePriceKopecks)
                     statement.setObject(18, inStock)
                     statement.setString(19, imageUrl)
+                    statement.setObject(20, feedbackPoints)
                     statement.executeUpdate()
                 }
         }

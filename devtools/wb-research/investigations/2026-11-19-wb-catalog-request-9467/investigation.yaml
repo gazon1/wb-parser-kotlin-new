@@ -1,0 +1,237 @@
+id: 2026-11-19-wb-catalog-request-9467
+title: The catalog endpoint answers 403 when the request carries no deviceid
+scenario: wb-catalog-request
+site: www.wildberries.ru
+status: concluded
+created: 2026-11-19T16:05:00+03:00
+updated: 2026-11-19T17:50:00+03:00
+raw_captures: ~/.cache/wb-research/2026-11-19-wb-catalog-request-9467/
+tools:
+  - name: chrome-use
+    version: 1.5.294
+  - name: wildberries/catalog-request
+    version: local site adapter, unpinned (issue 308)
+
+steps:
+  - action: open the catalog page for 9467 in a real Chrome session and record the network
+    expected: the storefront issues a catalog search request
+    observed: >-
+      the document itself answered 498, WB's anti-bot answer, but the page still issued two
+      requests to the search endpoint — the catalog one and the filters one — and both
+      answered 200
+    evidence: [wb-catalog-9467-150, wb-catalog-9467-209]
+  - action: fetch the same endpoint from page JavaScript, credentials included, with only x-requested-with and x-userid
+    expected: the same answer the storefront gets
+    observed: 403 with a zero-length body
+    evidence: [attempt-00-baseline, wb-catalog-9467-262]
+  - action: repeat with x-spa-version added
+    expected: 200 if the storefront's version header is what the endpoint checks
+    observed: 403 with a zero-length body, so the version header alone is not enough
+    evidence: [attempt-02-spa-version]
+  - action: repeat with deviceid added
+    expected: 200 if the profile identifier is what the endpoint checks
+    observed: 200, 133632 bytes
+    evidence: [attempt-01-deviceid]
+  - action: repeat the deviceid-only request twice more
+    expected: the same answer, so the result is not a one-off
+    observed: 200, 133632 bytes both times
+    evidence: [attempt-04-deviceid-repeat-1, attempt-05-deviceid-repeat-2]
+  - action: repeat with the crawler's own header values — deviceid site_a39361daf4ec45f2a68c5c6ca73c8adf and x-spa-version 14.28.3
+    expected: 200, because the crawler sends exactly these
+    observed: 200, 133632 bytes
+    evidence: [attempt-06-crawler-header-values]
+  - action: probe the endpoint from page JavaScript with the browser's own deviceid, once with the storefront's URL and once with the crawler's URL
+    expected: the catalog — a product list
+    observed: >-
+      200 with a 233-byte JSON envelope — name, query, normQuery, shardKey, filters, rs, rmi,
+      search_result — and no products under any name
+    evidence: [probe-page-fetch-storefront, probe-page-fetch-withPage]
+
+api_candidates:
+  - id: storefront-catalog-search
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      ab_testing: 'false'
+      appType: '1'
+      curr: rub
+      dest: '1259570991'
+      hide_vflags: '4294967296'
+      lang: ru
+      locale: ru
+      query: menu_v3_9467 карты памяти
+      resultset: catalog
+      sort: popular
+      spp: '30'
+      suppressSpellcheck: 'false'
+    headers:
+      deviceid: <redacted:deviceid>
+      referer: https://www.wildberries.ru/catalog/elektronika/smartfony-i-telefony/karty-pamyati
+      sec-ch-ua: '"Chromium";v="155", "Not(A:Brand";v="24"'
+      sec-ch-ua-mobile: '?0'
+      sec-ch-ua-platform: '"Linux"'
+      user-agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36
+      x-queryid: <redacted:x-queryid>
+      x-requested-with: XMLHttpRequest
+      x-spa-version: 14.33.1
+      x-userid: '0'
+    observed_status: 200
+    response_content_type: text/plain; charset=UTF-8
+    response_body_bytes: 44265
+  - id: storefront-catalog-filters
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      autoselectFilters: 'false'
+      query: menu_v3_9467 карты памяти
+      resultset: filters
+      spp: '30'
+      suppressSpellcheck: 'false'
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+      x-spa-version: 14.33.1
+    observed_status: 200
+    response_content_type: text/plain; charset=UTF-8
+    response_body_bytes: 3773
+  - id: page-fetch-without-deviceid
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      page: '1'
+      query: menu_v3_9467 карты памяти
+      resultset: catalog
+      spp: '30'
+    headers:
+      x-requested-with: XMLHttpRequest
+      x-userid: '0'
+    observed_status: 403
+    response_content_type: text/plain
+    response_body_bytes: 0
+  - id: page-fetch-with-deviceid
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      page: '1'
+      query: menu_v3_9467 карты памяти
+      resultset: catalog
+      spp: '30'
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+      x-userid: '0'
+    observed_status: 200
+    response_content_type: text/plain; charset=UTF-8
+    response_body_bytes: 133632
+  - id: page-fetch-with-deviceid-schema
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      page: '1'
+      query: menu_v3_9467 карты памяти
+      resultset: catalog
+      sort: popular
+      spp: '30'
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+      x-userid: '0'
+    observed_status: 200
+    response_content_type: application/json
+    response_body_bytes: 233
+    response_schema:
+      top_level_keys: [name, query, normQuery, shardKey, filters, rs, rmi, search_result]
+      products: none
+
+evidence:
+  - id: catalog-endpoint-requests
+    fixture: evidence/catalog-endpoint-requests.json
+    kind: har
+    note: >-
+      the three requests to the search endpoint seen while the catalog page was open — the
+      storefront's catalog and filters requests, and the adapter's own page-JavaScript fetch
+    captures: [wb-catalog-9467-150, wb-catalog-9467-209, wb-catalog-9467-262]
+  - id: adapter-attempts
+    fixture: evidence/adapter-attempts.json
+    kind: adapter-json
+    note: one capture per page-JavaScript attempt, each with a different header set
+    captures:
+      - attempt-00-baseline
+      - attempt-01-deviceid
+      - attempt-02-spa-version
+      - attempt-03-deviceid-and-spa
+      - attempt-04-deviceid-repeat-1
+      - attempt-05-deviceid-repeat-2
+      - attempt-06-crawler-header-values
+  - id: page-fetch-probes
+    fixture: evidence/page-fetch-probes.json
+    kind: probe
+    note: two page-JavaScript fetches with the browser's own deviceid, recorded as a shape
+    captures: [probe-page-fetch-storefront, probe-page-fetch-withPage]
+
+validation:
+  - claim: the storefront reads a catalog through GET /__internal/u-search/exactmatch/ru/common/v18/search with resultset=catalog
+    state: observed
+    rationale: one capture of the storefront's own request; the filters request uses the same endpoint with resultset=filters
+    evidence: [wb-catalog-9467-150, wb-catalog-9467-209]
+  - claim: the storefront's catalog request carries deviceid, x-queryid, x-requested-with, x-spa-version and x-userid, and carries no x-clientinfo and no type
+    state: observed
+    rationale: the recorded request headers of the storefront's own request
+    evidence: [wb-catalog-9467-150]
+  - claim: a request to the endpoint without a deviceid is answered with 403 and a zero-length body
+    state: reproduced
+    rationale: three independent attempts without deviceid — the baseline, the x-spa-version-only attempt and the recorded HAR request — all answered 403 with no body
+    evidence: [attempt-00-baseline, attempt-02-spa-version, wb-catalog-9467-262]
+  - claim: adding deviceid changes the answer from 403 to 200, and x-spa-version alone does not
+    state: reproduced
+    rationale: >-
+      deviceid alone answered 200 and repeated twice; x-spa-version alone answered 403. This is a
+      claim about the status, not about the body — the next claim is the one the same evidence
+      does not settle
+    evidence: [attempt-01-deviceid, attempt-02-spa-version, attempt-03-deviceid-and-spa, attempt-04-deviceid-repeat-1, attempt-05-deviceid-repeat-2]
+  - claim: a 200 from a page-JavaScript fetch carries the catalog
+    state: open
+    rationale: >-
+      in this session it did not. The adapter's 200 answered 133632 bytes that are not JSON, and
+      the later probes answered a 233-byte JSON envelope with no products, while the storefront's
+      own request answered 44265 bytes whose content was never captured. The status is not the
+      question, and the evidence does not answer it
+    evidence: [attempt-01-deviceid, probe-page-fetch-storefront, probe-page-fetch-withPage, wb-catalog-9467-150]
+  - claim: WB answers a menu-token query with a search_result envelope rather than a product list
+    state: observed
+    rationale: >-
+      both probes answered 200 with the same 233-byte envelope — name, query, normQuery, shardKey,
+      filters, rs, rmi, search_result — and no products under any name
+    evidence: [probe-page-fetch-storefront, probe-page-fetch-withPage]
+  - claim: the deviceid value the crawler is configured with is not rejected by the endpoint
+    state: validated
+    rationale: >-
+      the value in WbCatalogApi.buildWbHeaders() was sent verbatim and answered 200 with the same
+      133632 bytes as the browser's own deviceid
+    evidence: [attempt-06-crawler-header-values]
+  - claim: the crawler's header constants describe what the storefront sends
+    state: rejected
+    rationale: >-
+      the storefront sends no x-clientinfo and no type, its user agent is Chrome 155 where the
+      crawler claims 143, its x-spa-version is 14.33.1 where the crawler claims 14.28.3, and its
+      referer is the catalog page URL where the crawler sends /catalog/<id>/list.aspx
+    evidence: [wb-catalog-9467-150]
+
+open_questions:
+  - why the catalog document answered 498 while the page's own catalog request answered 200 from the same session
+  - why the storefront's request answered 44265 bytes and a page-JavaScript fetch answered a 233-byte envelope
+  - >-
+    what the search_result envelope asks the client to do — the crawler's parser looks for
+    products under data, payload and the top level, and would report this answer as a changed
+    answer shape
+  - whether the endpoint accepts any deviceid value or only the one bound to the browser profile
+
+follow_up:
+  kotlin_adapter: not-needed
+  issue: 308
+  pr: null
+  note: >-
+    the crawler already sends a deviceid that the endpoint does not reject, so the request itself
+    needs no adapter change; the stale header constants and the referer shape are tracked in
+    issue 308, and the search_result envelope is worth watching — an answer in that shape would
+    fail the crawler's parser as a changed answer shape

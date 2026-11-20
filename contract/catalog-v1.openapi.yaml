@@ -26,7 +26,9 @@
 # the database stores and what the crawler writes. `cashbackRubles` is rubles —
 # the crawler's writer already converts kopecks to rubles before storing them,
 # so the API passes the stored value through unchanged. `cashbackPercent` is a
-# percent. `minPrice`/`maxPrice` query parameters are **rubles**; the API
+# percent. `feedbackPoints` is a **count of WB points** paid for a review
+# («Баллы ВБ за отзыв») — neither a percentage nor money. `minPrice`/`maxPrice`
+# query parameters are **rubles**; the API
 # converts them to kopecks exactly once, when it builds the query.
 # ==============================================================================
 
@@ -638,6 +640,12 @@ components:
             Cashback in **rubles**. The crawler stores it in rubles already —
             it converts kopecks to rubles before writing — so the value passes
             through unchanged. Dividing it by 100 again would be wrong.
+        feedbackPoints:
+          type: [integer, "null"]
+          description: |
+            The WB points the product pays for a review — «Баллы ВБ за отзыв».
+            A count of points, not a percentage and not money. Null when the
+            product carries no points.
         inStock:
           type: [boolean, "null"]
         imageUrl:
