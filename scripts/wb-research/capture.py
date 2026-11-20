@@ -542,6 +542,11 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
             code = run_page_action(action)
             if code:
                 failed = code
+                # The actions after the failure are not run: the step did not
+                # reach the state it was supposed to reach, and the requests
+                # of the later actions would be recorded as if the step had
+                # completed.
+                break
         if args.settle > 0:
             # The page action returns before the requests it started are
             # answered. A HAR that is stopped too early holds a request with no
@@ -613,6 +618,8 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         notes.append("the response bodies were not read: " + "; ".join(body_problems))
     else:
         notes.append("the response bodies were read and only their shape was kept")
+    if failed:
+        notes.append(f"the page action failed with exit code {failed}, so the capture is partial")
 
     report = {
         "step": step,
@@ -621,6 +628,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         "dropped": dict(dropped),
         "droppedHosts": {reason: sorted(hosts) for reason, hosts in dropped_hosts.items()},
         "unapprovedApiHosts": unapproved,
+        "failedExitCode": failed,
         "notes": notes,
     }
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -675,11 +683,22 @@ def export_investigation(investigation: str) -> list[str]:
     raw_dir = RAW_ROOT / investigation
     evidence_dir = EVIDENCE_ROOT / investigation / "evidence"
     exported: list[str] = []
+    failed_steps: list[str] = []
     for step_har in sorted(raw_dir.glob("*.har")):
         report_path = raw_dir / f"{step_har.stem}.report.json"
         notes = []
+        failed = False
         if report_path.exists():
-            notes = json.loads(report_path.read_text(encoding="utf-8")).get("notes", [])
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            notes = report.get("notes", [])
+            failed = bool(report.get("failedExitCode"))
+        if failed:
+            # A step whose action failed is a partial capture. It is not
+            # evidence of what the step shows, so it does not become a fixture
+            # of the repository — neither now nor at a later export.
+            print(f"  {step_har.stem}: the step failed, so its partial capture is not exported", file=sys.stderr)
+            failed_steps.append(step_har.stem)
+            continue
         out = evidence_dir / f"{step_har.stem}.json"
         command = [sys.executable, str(REDACTOR), str(step_har), "--out", str(out)]
         for note in notes:
@@ -693,7 +712,13 @@ def export_investigation(investigation: str) -> list[str]:
         print(f"  {show_path(out)}: {proc.stdout.strip()}")
         exported.append(step_har.stem)
     if not exported:
-        print(f"no capture to export for {investigation} — run the step verb first", file=sys.stderr)
+        if failed_steps:
+            print(
+                f"no capture to export for {investigation} — every step failed: {', '.join(failed_steps)}",
+                file=sys.stderr,
+            )
+        else:
+            print(f"no capture to export for {investigation} — run the step verb first", file=sys.stderr)
     return exported
 
 

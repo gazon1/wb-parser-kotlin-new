@@ -259,6 +259,11 @@ browser that failed to save the capture is an error: the file of an earlier
 run must not be read as the capture of this one, and neither must the fixture
 of an earlier run stand as the evidence of this one.
 
+A page action that fails ends the step: the actions after it are not run, and
+the capture of the step is partial, so it is not exported — neither now nor at
+a later `export` of the same investigation. A failed step leaves no fixture in
+the repository: a partial capture is not evidence of what the step shows.
+
 The request log has to be cleared before the recording starts, and a browser
 that refused to clear it is an error too: the bodies are looked up in that
 log, and the join with the recording is positional.

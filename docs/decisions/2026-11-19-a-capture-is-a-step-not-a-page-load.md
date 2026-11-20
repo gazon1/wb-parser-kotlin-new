@@ -193,6 +193,14 @@ was never answered is evidence of something different.
 - **Never** attribute a response body to a request that cannot be told apart
   from a twin — the same method and the same URL, in the recording or in the
   request list: a mapping that cannot be verified is no mapping.
+- **Never** run the actions of a step after one of them failed: the step did not
+  reach the state it was supposed to reach, and the requests of the later
+  actions would be recorded as if the step had completed.
+- **Never** export the capture of a failed step: it is a partial capture, and
+  it is not evidence of what the step shows. The report of the step says that
+  the action failed, and the export skips such a step — now and at every later
+  export of the same investigation. A failed step leaves no fixture in the
+  repository.
 - **Always** delete the recording of the previous run of a step before the new
   one starts — the raw recording, the filtered file the export reads, the
   report of the previous run and the fixture the repository holds — and

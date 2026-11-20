@@ -796,6 +796,92 @@ def test_a_page_action_may_not_hide_a_page_behind_a_backslash(url, tmp_path, mon
     assert not any("start" in call for call in calls)
 
 
+def fake_browser(entries: list[dict] | None = None):
+    """A browser that answers the tool and saves a capture with the given entries."""
+    recorded = entries if entries is not None else [entry("https://www.wildberries.ru/__internal/u-search")]
+
+    def run(*args):
+        if args[:3] == ("network", "har", "stop"):
+            path = Path(args[3])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"log": {"entries": recorded}}), encoding="utf-8")
+            return subprocess.CompletedProcess(args, 0, "", "")
+        if args[:3] == ("network", "requests", "--json"):
+            payload = json.dumps({"success": True, "data": {"requests": []}})
+            return subprocess.CompletedProcess(args, 0, payload, "")
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    return run
+
+
+def test_a_page_action_that_failed_stops_the_step(tmp_path, monkeypatch):
+    # The finding of the review: the actions after a failed one were run anyway,
+    # so the requests they caused were recorded as if the step had finished.
+    run_actions = []
+
+    def fake_action(action):
+        run_actions.append(action)
+        return 1
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser())
+    monkeypatch.setattr(capture, "run_page_action", fake_action)
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=[
+            "chrome-use",
+            "open",
+            "https://www.wildberries.ru/",
+            "--",
+            "chrome-use",
+            "scroll",
+            "down",
+            "20000",
+        ],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert len(run_actions) == 1
+
+
+def test_a_failed_step_leaves_no_fixture_in_the_repository(tmp_path, monkeypatch):
+    # The finding of the review: the fixture of a step whose action failed was
+    # exported as if the step had completed.
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser())
+    monkeypatch.setattr(capture, "run_page_action", lambda action: 1)
+    args = argparse.Namespace(
+        name="step", investigation="demo", command=["chrome-use", "open", "https://www.wildberries.ru/"], settle=0.0
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    fixture = tmp_path / "investigations" / "demo" / "evidence" / "step.json"
+    assert not fixture.exists()
+    # A later export of the same investigation does not turn it into one
+    # either: the capture of a failed step is a partial one.
+    assert capture.export_investigation("demo") == []
+    assert not fixture.exists()
+
+
+def test_a_step_that_worked_is_exported(tmp_path, monkeypatch):
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser())
+    args = argparse.Namespace(
+        name="step", investigation="demo", command=["chrome-use", "open", "https://www.wildberries.ru/"], settle=0.0
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_OK
+
+    assert (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+
+
 def test_a_url_whose_host_cannot_be_read_names_no_host(tmp_path, monkeypatch):
     # A URL with a broken IPv6 host raises where a host is read; a capture
     # refuses it instead of falling over.
