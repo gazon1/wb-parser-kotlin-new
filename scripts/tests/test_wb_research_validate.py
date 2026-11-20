@@ -104,7 +104,7 @@ def world(tmp_path, monkeypatch):
             "candidate": "storefront-catalog-search",
             "page": PAGE,
             "request": {"query": query or {}, "headers": HEADERS, "credentials": "include", **(request or {})},
-            "min_interval_seconds": 0,
+            "min_interval_seconds": 1,
             "experiments": experiments or [baseline()],
         }
         (directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
@@ -179,6 +179,43 @@ def test_an_unknown_field_to_compare_is_refused(world, monkeypatch):
 
     with pytest.raises(SystemExit, match="unknown fields"):
         validate.approve(INVESTIGATION)
+
+
+def test_a_plan_without_a_pause_is_refused(world, monkeypatch):
+    place = world([baseline()])
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["min_interval_seconds"] = 0
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="always pauses"):
+        validate.approve(INVESTIGATION)
+
+
+def test_a_plan_that_asks_for_too_many_requests_is_refused(world, monkeypatch):
+    world([baseline()] + [variant(f"sorted-{index}", vary={"sort": f"v{index}"}) for index in range(30)])
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="limited to"):
+        validate.approve(INVESTIGATION)
+
+
+def test_a_repeated_query_parameter_is_refused(world, monkeypatch):
+    place = world([baseline()])
+    record = yaml.safe_load((place.directory / "investigation.yaml").read_text(encoding="utf-8"))
+    record["api_candidates"][0]["endpoint"] = ENDPOINT + "?filter=a&filter=b"
+    (place.directory / "investigation.yaml").write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="repeats the query parameter"):
+        validate.approve(INVESTIGATION)
+
+
+def test_the_suggested_plan_uses_the_field_the_tool_reads():
+    # A suggested plan that spells the field another way is a plan that silently
+    # compares everything, because YAML accepts the unknown key.
+    assert "compare: [order]" in validate.SUGGESTED_PLAN
+    assert "on:" not in validate.SUGGESTED_PLAN
 
 
 def test_an_unapproved_plan_does_not_run(world, monkeypatch):

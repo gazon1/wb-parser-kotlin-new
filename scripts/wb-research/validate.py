@@ -92,7 +92,7 @@ experiments:
   - name: <a variant>
     vary:
       <param>: <value>
-    on: [order]
+    compare: [order]
     expect: changed
     repeat: 2
 """
@@ -145,6 +145,12 @@ MAX_PRODUCT_IDS = 200
 
 MAX_REPEAT = 5
 MAX_INTERVAL = 60.0
+
+# The plan cannot ask for a burst. A validation is a handful of requests against
+# a live site, and the issue asks for the site's rate limits to be respected: so
+# there is always a pause between requests, and the whole run is bounded.
+MIN_INTERVAL = 1.0
+MAX_REQUESTS = 40
 
 # A value in the committed plan that stands for a value the operator did not
 # write down: `<redacted:query-param>`. It is resolved from the local file, or
@@ -459,8 +465,15 @@ def check_plan(plan: dict, investigation: str) -> tuple[dict, dict, list[dict]]:
     if redactor().safe_credentials(credentials) is None:
         raise SystemExit(f"the credentials mode of the request is malformed: {credentials!r}")
     interval = plan.get("min_interval_seconds", 2)
-    if isinstance(interval, bool) or not isinstance(interval, (int, float)) or not 0 <= interval <= MAX_INTERVAL:
-        raise SystemExit(f"min_interval_seconds is malformed: {interval!r}")
+    if (
+        isinstance(interval, bool)
+        or not isinstance(interval, (int, float))
+        or not MIN_INTERVAL <= interval <= MAX_INTERVAL
+    ):
+        raise SystemExit(
+            f"min_interval_seconds must be between {MIN_INTERVAL:g} and {MAX_INTERVAL:g}: {interval!r} — "
+            "a validation always pauses between requests"
+        )
 
     experiments = plan.get("experiments")
     if not isinstance(experiments, list) or not experiments:
@@ -473,6 +486,12 @@ def check_plan(plan: dict, investigation: str) -> tuple[dict, dict, list[dict]]:
         if name in seen:
             raise SystemExit(f"two experiments are named {name}")
         seen.add(name)
+    planned = sum(experiment.get("repeat", 1) for experiment in experiments if isinstance(experiment, dict))
+    if planned > MAX_REQUESTS:
+        raise SystemExit(
+            f"the plan asks for {planned} requests and the run is limited to {MAX_REQUESTS} — "
+            "split the experiment into another investigation"
+        )
     return plan, request, experiments
 
 
@@ -521,7 +540,15 @@ def declared_request(plan: dict, request: dict, record: dict) -> dict:
     if not isinstance(url, str) or capture().url_parts(url) is None:
         raise SystemExit(f"the request has no readable URL: {url!r}")
     parts = urlsplit(url)
-    query: dict[str, str] = dict(parse_qsl(parts.query, keep_blank_values=True))
+    pairs = parse_qsl(parts.query, keep_blank_values=True)
+    names = [name for name, _ in pairs]
+    repeated = sorted({name for name in names if names.count(name) > 1})
+    if repeated:
+        raise SystemExit(
+            f"the URL repeats the query parameter(s) {', '.join(repeated)} — "
+            "a variation cannot be told which value it changed"
+        )
+    query: dict[str, str] = dict(pairs)
     for source in (candidate.get("query") or {}, request.get("query") or {}):
         if not isinstance(source, dict):
             raise SystemExit("a query of the request is not a mapping")

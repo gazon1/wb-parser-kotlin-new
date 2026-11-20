@@ -40,7 +40,10 @@ to `plan.yaml` and `investigation.yaml`, approved by the operator and run by
 `scripts/wb-research/validate.py`.
 
 The plan names one candidate from the record, the page whose context the probe
-runs in, the base query and the **names** of the headers to send. The candidate
+runs in, the base query and the **names** of the headers to send. The run is
+bounded: a pause of at least one second between requests, at most forty
+requests, and no repeated query parameter in the base URL — a variation cannot
+say which of two values with the same name it changed. The candidate
 contributes its method, endpoint and query; the plan overrides what it needs.
 
 One experiment changes exactly one thing: one query parameter replaced, one
@@ -148,6 +151,9 @@ is the operator's question, not the tool's problem.
   local file inside the repository is refused.
 - **Always** stop probing after a refusal and mark the rest "not run": a burst of
   requests against a site that said no is not evidence.
+- **Always** keep the run bounded: at least one second between requests, at most
+  forty requests per run, and no repeated query parameter — the tool respects
+  the site's rate limits by construction, not by the operator's restraint.
 - **Always** compare one variation with the reference on the status, the media
   type, whether the body is JSON, the shape, the counts and the order — a byte
   count is not evidence of a change, and a body is never committed. A response

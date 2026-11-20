@@ -963,6 +963,12 @@ query parameter (`vary`), one removal (`remove`), the credentials mode
 prove nothing about either, so the tool refuses such a plan. The first
 experiment is the reference and cannot vary anything.
 
+**The run cannot be a burst.** The plan's pause is at least one second and at
+most sixty, and the whole run is at most forty requests: a validation is a
+handful of requests against a live site, and the issue asks for the site's rate
+limits to be respected. A plan that asks for more is refused before the browser
+opens.
+
 **Header values are not committed.** The plan names the headers; the values come
 from a local file outside the repository —
 `~/.cache/wb-research/<id>/request.json`, or the path in `request_file`:
@@ -984,7 +990,9 @@ request the plan described.
 The **query** is part of the plan and part of the approval, so a value the
 record wrote as `<redacted:…>` has to be written in the plan. A query value the
 local file supplied would change what the run asks without changing the
-fingerprint the operator approved; the run refuses it and says so.
+fingerprint the operator approved; the run refuses it and says so. A URL that
+repeats a query parameter is refused as well: a variation cannot say which of
+the two values it changed.
 
 ```bash
 uv run python scripts/wb-research/validate.py approve --investigation <id>
