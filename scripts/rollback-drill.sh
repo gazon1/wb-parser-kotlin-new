@@ -15,7 +15,9 @@
 #      catalog to become ready;
 #   2. asks the catalog for a page of products and checks the answer is a page;
 #   3. swaps the running container to the OLD image — the same command the
-#      production rollback runs;
+#      production rollback runs, with Flyway and the crawler worker off, because
+#      the old release does not recognise the applied migrations and its writer
+#      writes the old unit;
 #   4. waits for the catalog to become ready again;
 #   5. asks for a page again and checks the answer is a page;
 #   6. reports what happened and leaves the containers in the state it found
@@ -120,8 +122,17 @@ API="http://127.0.0.1:${API_PORT}/api/catalog/v1"
 
 # Start the crawler with a given image. This is the command the production
 # rollback runs as well: a container replaced by another one.
+#
+# The old image is started with Flyway off and with the worker off, because that is
+# what the runbook prescribes for a restart of the old release: the old release does
+# not recognise the migrations applied after it, so Flyway's validation would refuse
+# to start it, and its worker writes the old unit, which the database refuses (`V19`).
+# What a rollback gives back is the old *reader* — a catalog it serves and does not
+# fill. The new image keeps both on: it migrates the database and it fills it.
 start_crawler() {
     local image="$1"
+    local flyway_enabled="${2:-true}"
+    local worker_enabled="${3:-true}"
     docker rm -f "$CRAWLER_CONTAINER" >/dev/null 2>&1 || true
     docker run -d --rm \
         --name "$CRAWLER_CONTAINER" \
@@ -138,6 +149,8 @@ start_crawler() {
         -e CATALOG_DB_USER="$DEMO_ROLE" \
         -e CATALOG_DB_PASSWORD="$CATALOG_PASSWORD" \
         -e CATALOG_RATE_LIMIT_ENABLED=false \
+        -e SPRING_FLYWAY_ENABLED="$flyway_enabled" \
+        -e CRAWLER_WORKER_ENABLED="$worker_enabled" \
         "$image" >/dev/null
 }
 
@@ -227,7 +240,7 @@ INSERT INTO scraped_items (
     id, target_id, catalog_url, product_url, brand, seller,
     price_kopecks, title, product_id, cashback, cashback_percent,
     data, content_hash, scraped_at, match_id,
-    sale_price_kopecks, in_stock, image_url
+    sale_price_kopecks, in_stock, image_url, feedback_points
 )
 SELECT
     gen_random_uuid(),
@@ -246,7 +259,11 @@ SELECT
     n,
     900 + n,
     (n % 4) <> 0,
-    'https://images.example.invalid/' || n || '.jpg'
+    'https://images.example.invalid/' || n || '.jpg',
+    -- Review points: the catalog's own membership is the points, so a row without
+    -- them is a row the list does not show, and the drill would ask for a page and
+    -- get nothing.
+    100 + n
 FROM generate_series(1, 12) AS n;
 SQL
 
@@ -263,9 +280,16 @@ if ! ask_for_a_page; then
 fi
 
 echo "→ rolling back to the old image ($OLD_IMAGE)"
-start_crawler "$OLD_IMAGE"
+start_crawler "$OLD_IMAGE" false false
 
+# The old image has to come up on its own. The wait is bounded: a container that
+# never answers must fail the drill, not hang it.
+old_deadline=$(( $(date +%s) + 180 ))
 until curl -fsS -m 2 "http://127.0.0.1:${API_PORT}/api/health/live" >/dev/null 2>&1; do
+    if [ "$(date +%s)" -ge "$old_deadline" ]; then
+        echo "❌ the old image never came up — the rollback does not work" >&2
+        exit 1
+    fi
     sleep 1
 done
 

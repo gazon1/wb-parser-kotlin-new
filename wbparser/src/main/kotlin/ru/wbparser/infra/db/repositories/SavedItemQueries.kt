@@ -8,6 +8,7 @@ import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.slf4j.LoggerFactory
 import ru.wbparser.domain.model.SavedItem
+import ru.wbparser.infra.db.CASHBACK_UNIT
 import ru.wbparser.infra.db.CategoryMappingsTable
 import ru.wbparser.infra.db.ScrapedItemsTable
 import ru.wbparser.infra.db.exposedOnce
@@ -64,7 +65,7 @@ fun DataSource.upsertSavedItems(
         // holds the cashback as a percentage, and the database refuses a write that
         // does not say so — so a writer that writes the old unit cannot write at all.
         // See `V19__the_writer_declares_the_unit_it_writes.sql`.
-        TransactionManager.current().exec("SET LOCAL crawler.cashback_unit = 'percent'")
+        TransactionManager.current().exec("SET LOCAL crawler.cashback_unit = '$CASHBACK_UNIT'")
         for (item in items) {
             upsertOneItem(item, targetUuid, subjectNames)
         }

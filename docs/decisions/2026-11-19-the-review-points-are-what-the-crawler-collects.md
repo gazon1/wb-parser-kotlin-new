@@ -154,7 +154,9 @@ reported, dressed up as a fix.
   coverage of the targets instead: every active target must have been read by the new
   crawler, successfully, since it was started. A crawler that has stopped leaves the count
   exactly where it was, and a catalog that was never filled is a mistake a visitor sees
-  (`docs/operations/catalog-index-rollout.md`).
+  (`docs/operations/catalog-index-rollout.md`). The check reads the crawler's runs, which
+  say which writer made them, so the check does not depend on the operator's memory of
+  when a crawler started (see `2026-11-19-the-run-says-which-writer-made-it.md`).
 - **Never** let the serving instance apply the migrations of a rollout, and **always** cut
   the API over after the new crawler has filled the catalog. The new release answers about
   the products that pay review points, and the rows in the table pay none until the new
@@ -172,6 +174,11 @@ reported, dressed up as a fix.
   leaves one behind, and `CREATE INDEX IF NOT EXISTS` sees only the name: without a check
   the migration would drop the index that works and rename the one the planner ignores.
   `V18` refuses to run on such an index.
+- **Always** fill the review points in the synthetic data: the seed, the load script and the
+  rollback drill write rows the catalog reads, and a row without points is a row the list does
+  not show. A demo catalog whose rows pay nothing answers every query with an empty result, and
+  the drill that asks for a page gets nothing back — a failure that looks like a broken API
+  rather than a broken fixture.
 - The catalog's cashback-based sort and its `minCashback` filter have nothing to sort by
   any more: no crawled product carries a wallet cashback, because the request does not ask
   for one. They keep working — they just report empty and order by recency. The top-deals

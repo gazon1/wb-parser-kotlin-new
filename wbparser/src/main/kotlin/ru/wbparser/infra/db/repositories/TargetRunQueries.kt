@@ -6,6 +6,7 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import ru.wbparser.domain.scheduling.RunOutcome
 import ru.wbparser.domain.scheduling.TargetBackoff
+import ru.wbparser.infra.db.CASHBACK_UNIT
 import ru.wbparser.infra.db.CrawlTargetsTable
 import ru.wbparser.infra.db.exposedOnce
 import java.sql.ResultSet
@@ -65,6 +66,11 @@ data class TargetRun(
  * The session's counters come from the session itself: the run is told how many
  * requests that session had sent, because that is the number that says whether the
  * refusal was the session's or the address's.
+ *
+ * The run carries the unit its writer wrote in (`writer_unit`). That is the writer's
+ * identity in the row itself: the release that writes the old unit does not know about
+ * the declaration (`V19`) and leaves the column empty, so the cutover gate can tell
+ * which crawler produced a run without asking the operator when a crawler started.
  */
 fun DataSource.recordTargetRun(
     jobId: UUID,
@@ -77,8 +83,8 @@ fun DataSource.recordTargetRun(
                 """
                 INSERT INTO crawl_target_runs
                     (id, job_id, target_id, egress_group, egress_ip, session_id, session_requests,
-                     session_refusals, outcome, pages, items, wb_total, started_at, finished_at)
-                VALUES (?, ?, ?, ?, (SELECT egress_ip FROM crawl_egress_groups WHERE group_id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     session_refusals, outcome, pages, items, wb_total, started_at, finished_at, writer_unit)
+                VALUES (?, ?, ?, ?, (SELECT egress_ip FROM crawl_egress_groups WHERE group_id = ?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """.trimIndent(),
             ).use { ps ->
                 ps.setObject(1, UUID.randomUUID())
@@ -95,6 +101,7 @@ fun DataSource.recordTargetRun(
                 if (run.wbTotal == null) ps.setNull(12, java.sql.Types.INTEGER) else ps.setInt(12, run.wbTotal)
                 ps.setObject(13, run.startedAt.atOffset(ZoneOffset.UTC))
                 ps.setObject(14, finishedAt.atOffset(ZoneOffset.UTC))
+                ps.setString(15, CASHBACK_UNIT)
                 ps.executeUpdate()
             }
     }

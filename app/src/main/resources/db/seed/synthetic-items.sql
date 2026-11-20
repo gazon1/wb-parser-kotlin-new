@@ -25,7 +25,10 @@
 --      those targets, which is what lets a consumer check that a price history does not
 --      cross the boundary between targets.
 --   5. Rows without a match id, without a title, without a price, without a cashback,
---      without a picture, and out of stock.
+--      without a picture, out of stock, and without review points. The catalog's own
+--      membership is the review points, so a row without them is a product the list
+--      does not show — the storefront has to render that, and the detail endpoint has
+--      to answer "not found" for it.
 --   6. Prices are whole kopecks. The cashback in rubles never exceeds the price, and a
 --      sale price is always strictly below the price.
 -- ==============================================================================
@@ -92,7 +95,7 @@ INSERT INTO scraped_items (
     price_kopecks, title, product_id, cashback, cashback_percent,
     data, content_hash, scraped_at,
     subject_id, subject_parent_id, match_id, supplier_id, catalog_name,
-    sale_price_kopecks, in_stock, image_url
+    sale_price_kopecks, in_stock, image_url, feedback_points
 )
 SELECT
     (md5('demo:item:' || slug || ':' || n))::uuid,
@@ -126,7 +129,12 @@ SELECT
     -- A sale price is strictly below the price, and only on two rows out of three.
     CASE WHEN price_kopecks IS NOT NULL AND n % 3 = 0 THEN price_kopecks * 80 / 100 ELSE NULL END,
     CASE WHEN n % 29 = 0 THEN NULL WHEN n % 19 = 0 THEN false ELSE true END,
-    CASE WHEN n % 7 = 0 THEN NULL ELSE 'https://images.example.invalid/' || slug || '/' || n || '.jpg' END
+    CASE WHEN n % 7 = 0 THEN NULL ELSE 'https://images.example.invalid/' || slug || '/' || n || '.jpg' END,
+    -- Review points: the catalog's own membership is the points, so a row without them
+    -- is a row the list does not show. Every forty-first observation pays none — the
+    -- storefront has to render a product that pays nothing, and the detail endpoint
+    -- has to answer "not found" for it.
+    CASE WHEN n % 41 = 0 THEN NULL ELSE 100 + (n % 900) END
   FROM priced;
 
 -- ── A price history ──────────────────────────────────────────────────────────
@@ -141,7 +149,7 @@ INSERT INTO scraped_items (
     price_kopecks, title, product_id, cashback, cashback_percent,
     data, content_hash, scraped_at,
     subject_id, subject_parent_id, match_id, supplier_id, catalog_name,
-    sale_price_kopecks, in_stock, image_url
+    sale_price_kopecks, in_stock, image_url, feedback_points
 )
 VALUES
     ((md5('demo:history:electronics:1'))::uuid, (md5('demo:target:electronics'))::uuid,
@@ -150,14 +158,14 @@ VALUES
      '{"demo": true, "kind": "history"}', md5('demo:history:electronics:1'),
      TIMESTAMPTZ '2026-01-01 00:00:00+00' + make_interval(hours => 1),
      2000001, 3000001, 700001, 4000001, 'Электроника', 15920, true,
-     'https://images.example.invalid/electronics/1.jpg'),
+     'https://images.example.invalid/electronics/1.jpg', 300),
     ((md5('demo:history:electronics:2'))::uuid, (md5('demo:target:electronics'))::uuid,
      'https://example.invalid/catalog/electronics', 'https://example.invalid/product/electronics/1',
      'Бренд 1', 'Продавец 1', 18900, 'Товар 1 — Электроника', 1000001, 13.66, 5.00,
      '{"demo": true, "kind": "history"}', md5('demo:history:electronics:2'),
      TIMESTAMPTZ '2026-01-01 00:00:00+00' + make_interval(hours => 2),
      2000001, 3000001, 700001, 4000001, 'Электроника', 15120, true,
-     'https://images.example.invalid/electronics/1.jpg'),
+     'https://images.example.invalid/electronics/1.jpg', 300),
     ((md5('demo:history:electronics:3'))::uuid, (md5('demo:target:electronics'))::uuid,
      'https://example.invalid/catalog/electronics', 'https://example.invalid/product/electronics/1',
      'Бренд 1', 'Продавец 1', 17900, 'Товар 1 — Электроника', 1000001, 12.92, 5.00,
@@ -165,7 +173,7 @@ VALUES
      -- The same instant as the next row: the tiebreaker's reason to exist.
      TIMESTAMPTZ '2026-01-01 00:00:00+00' + make_interval(hours => 3),
      2000001, 3000001, 700001, 4000001, 'Электроника', 14320, true,
-     'https://images.example.invalid/electronics/1.jpg'),
+     'https://images.example.invalid/electronics/1.jpg', 300),
     ((md5('demo:history:electronics:4'))::uuid, (md5('demo:target:electronics'))::uuid,
      'https://example.invalid/catalog/electronics', 'https://example.invalid/product/electronics/1',
      'Бренд 1', 'Продавец 1', 17900, 'Товар 1 — Электроника', 1000001, 12.92, 5.00,
@@ -174,14 +182,14 @@ VALUES
      -- apart. The `DISTINCT ON` winner has to be the same one on every run.
      TIMESTAMPTZ '2026-01-01 00:00:00+00' + make_interval(hours => 3),
      2000001, 3000001, 700001, 4000001, 'Электроника', 14320, true,
-     'https://images.example.invalid/electronics/1.jpg'),
+     'https://images.example.invalid/electronics/1.jpg', 300),
     ((md5('demo:history:electronics:5'))::uuid, (md5('demo:target:electronics'))::uuid,
      'https://example.invalid/catalog/electronics', 'https://example.invalid/product/electronics/1',
      'Бренд 1', 'Продавец 1', 16900, 'Товар 1 — Электроника', 1000001, 12.20, 5.00,
      '{"demo": true, "kind": "history"}', md5('demo:history:electronics:5'),
      TIMESTAMPTZ '2026-01-01 00:00:00+00' + make_interval(hours => 4),
      2000001, 3000001, 700001, 4000001, 'Электроника', 13520, true,
-     'https://images.example.invalid/electronics/1.jpg');
+     'https://images.example.invalid/electronics/1.jpg', 300);
 
 -- ── One product in three targets ─────────────────────────────────────────────
 -- Product 777, match id 777777, present in every populated target with a different
@@ -197,7 +205,7 @@ INSERT INTO scraped_items (
     price_kopecks, title, product_id, cashback, cashback_percent,
     data, content_hash, scraped_at,
     subject_id, subject_parent_id, match_id, supplier_id, catalog_name,
-    sale_price_kopecks, in_stock, image_url
+    sale_price_kopecks, in_stock, image_url, feedback_points
 )
 VALUES
     ((md5('demo:shared:electronics'))::uuid, (md5('demo:target:electronics'))::uuid,
@@ -205,22 +213,22 @@ VALUES
      'Общий бренд', 'Продавец 0', 29900, 'Общий товар 777', 777, 43.55, 14.50,
      '{"demo": true, "kind": "shared"}', md5('demo:shared:electronics'),
      TIMESTAMPTZ '2026-01-02 00:00:00+00', 2777, 3777, 777777, 4777, 'Электроника',
-     23920, true, 'https://images.example.invalid/shared/777.jpg'),
+     23920, true, 'https://images.example.invalid/shared/777.jpg', 500),
     ((md5('demo:shared:electronics:2'))::uuid, (md5('demo:target:electronics'))::uuid,
      'https://example.invalid/catalog/electronics', 'https://example.invalid/product/shared/777',
      'Общий бренд', 'Продавец 0', 27900, 'Общий товар 777', 777, 33.48, 12.00,
      '{"demo": true, "kind": "shared"}', md5('demo:shared:electronics:2'),
      TIMESTAMPTZ '2026-01-02 03:00:00+00', 2778, 3777, 777777, 4777, 'Электроника',
-     22320, true, 'https://images.example.invalid/shared/777.jpg'),
+     22320, true, 'https://images.example.invalid/shared/777.jpg', 500),
     ((md5('demo:shared:home'))::uuid, (md5('demo:target:home'))::uuid,
      'https://example.invalid/catalog/home', 'https://example.invalid/product/shared/777',
      'Общий бренд', 'Продавец 0', 24900, 'Общий товар 777', 777, 36.27, 14.50,
      '{"demo": true, "kind": "shared"}', md5('demo:shared:home'),
      TIMESTAMPTZ '2026-01-02 01:00:00+00', 2777, 3777, 777777, 4777, 'Дом и сад',
-     19920, true, 'https://images.example.invalid/shared/777.jpg'),
+     19920, true, 'https://images.example.invalid/shared/777.jpg', 500),
     ((md5('demo:shared:clothes'))::uuid, (md5('demo:target:clothes'))::uuid,
      'https://example.invalid/catalog/clothes', 'https://example.invalid/product/shared/777',
      'Общий бренд', 'Продавец 0', 19900, 'Общий товар 777', 777, 28.86, 14.50,
      '{"demo": true, "kind": "shared"}', md5('demo:shared:clothes'),
      TIMESTAMPTZ '2026-01-02 02:00:00+00', 2777, 3777, 777777, 4777, 'Одежда',
-     15920, false, NULL);
+     15920, false, NULL, 500);

@@ -177,13 +177,13 @@ DROP INDEX CONCURRENTLY ix_scraped_items_product_latest_covering_v2;
 This is a prerequisite, not a suggestion: `V18` refuses to run on an index that is not
 valid — it raises, the deployment fails, and the index that works stays in place.
 
-#### Phase 3 — apply V17, V18 and V19, then let the new writer run
+#### Phase 3 — apply V17, V18, V19 and V20, then let the new writer run
 
 1. **Stop the crawler.** The conversion reads every row and rewrites it. A writer that
    keeps writing the old unit during the conversion leaves rows that were never
    converted, and a writer that writes the new unit during it leaves rows the
    conversion reads the wrong way round.
-2. **Apply V17, V18 and V19** — the same one-shot instance as in phase 1, this time without
+2. **Apply V17, V18, V19 and V20** — the same one-shot instance as in phase 1, this time without
    `SPRING_FLYWAY_TARGET`:
 
    ```bash
@@ -193,7 +193,9 @@ valid — it raises, the deployment fails, and the index that works stays in pla
 
    V17 converts the rows; V18 finds the index built in phase 2, drops the old one and
    renames the new one to the name the queries and the docs use; V19 makes the database
-   refuse a write that does not declare the unit it writes in.
+   refuse a write that does not declare the unit it writes in; V20 gives the crawler's
+   runs the column that says which writer made them — the column the cutover gate reads
+   in phase 4.
 3. **Start the new crawler** — the new release with the writer on. Every row it writes
    is in the new unit, and the conversion has already run.
 
@@ -253,24 +255,8 @@ also what a crawler that has stopped looks like — a crawler that failed on its
 target, or whose process died, leaves the number exactly where it was — and cutting the
 API over to a catalog that was never filled is a mistake that a visitor sees. The gate
 is the **coverage of the targets**, checked against the crawler's own record of what it
-did: every active target must have been read by the *new* crawler.
-
-```sql
-SELECT t.id, t.name, t.last_crawled_at
-  FROM crawl_targets t
- WHERE t.is_active
-   AND (t.last_crawled_at IS NULL
-        OR t.last_crawled_at < TIMESTAMPTZ '2026-11-19 12:00:00+00');
-```
-
-An empty result is the answer we want: the crawler has been around the circle, and every
-target has been read since the switch. The timestamp is the moment the new crawler was
-started — the operator knows it, and it is the only thing in the check that is not in the
-database. `last_crawled_at` moves only for a target that was actually read, so a target
-that failed stays in the list and the cutover waits for it.
-
-The same check in terms of the crawler's runs, for a target whose read is recorded as a
-run rather than as a timestamp:
+did: every active target must have been read by the *new* crawler — and "the new
+crawler" is a fact in the row, not a moment in the operator's head.
 
 ```sql
 SELECT t.id, t.name
@@ -281,8 +267,35 @@ SELECT t.id, t.name
          FROM crawl_target_runs r
         WHERE r.target_id = t.id
           AND r.outcome = 'ok'
+          AND r.writer_unit = 'percent'
           AND r.finished_at >= TIMESTAMPTZ '2026-11-19 12:00:00+00');
 ```
+
+An empty result is the answer we want: the crawler has been around the circle, and every
+target has been read since the switch.
+
+Two things in that check, and they do different jobs. `r.writer_unit` says **which
+writer** made the run: the release that writes the old unit does not know about the
+declaration (`V19__the_writer_declares_the_unit_it_writes.sql`) and leaves the column
+empty, so its runs cannot stand in for the new crawler's — no matter what moment the
+operator types. The timestamp is the **freshness** bound: the moment the new crawler
+was started, and a run older than that does not count. The operator still supplies it,
+and a moment typed too early no longer lets the old crawler's runs satisfy the check.
+
+The same coverage in terms of the target's own timestamp — how far the crawler has come,
+without the crawler's runs:
+
+```sql
+SELECT t.id, t.name, t.last_crawled_at
+  FROM crawl_targets t
+ WHERE t.is_active
+   AND (t.last_crawled_at IS NULL
+        OR t.last_crawled_at < TIMESTAMPTZ '2026-11-19 12:00:00+00');
+```
+
+This one is the display, not the gate: `last_crawled_at` moves for a target that *any*
+crawler read, so it cannot tell the new crawler from the old one. The run-based check
+above is the gate, because a run says who made it.
 
 A target that can never be read — a category WB does not answer for, an address that is
 blocked — keeps the check non-empty forever. Then the cutover is the operator's

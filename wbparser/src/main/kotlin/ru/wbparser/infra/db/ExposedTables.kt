@@ -262,6 +262,15 @@ object CrawlTargetRunsTable : Table("crawl_target_runs") {
     val startedAt: Column<OffsetDateTime> = timestampWithTimeZone("started_at")
     val finishedAt: Column<OffsetDateTime> = timestampWithTimeZone("finished_at")
 
+    /**
+     * The unit the writer of this run wrote the cashback in.
+     *
+     * Nullable on purpose: the release that writes the old unit has never heard of the
+     * declaration, so its runs say nothing about their writer — and the cutover gate
+     * can tell the two apart because of it.
+     */
+    val writerUnit: Column<String?> = varchar("writer_unit", 32).nullable()
+
     override val primaryKey = PrimaryKey(id)
 }
 

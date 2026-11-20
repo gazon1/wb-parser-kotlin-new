@@ -233,6 +233,22 @@ class DemoSeedGuardTest :
             itemCount() shouldBe 1209
             targetCount() shouldBe 4
         }
+
+        test("the seeded rows pay review points, so the catalog is not empty") {
+            runner().run(DefaultApplicationArguments())
+
+            // The catalog's own membership is the review points: a row without them is
+            // a row the list does not show. A seed that left the column empty would
+            // produce a database that answers every query with nothing.
+            val withPoints =
+                postgres
+                    .rows("SELECT COUNT(*) AS c FROM scraped_items WHERE feedback_points IS NOT NULL")
+                    .single()["c"] as Long
+
+            // 1209 rows in all; the 27 observations that pay no points (every
+            // forty-first of the 1200) are the rows the list does not show.
+            withPoints shouldBe 1182L
+        }
     })
 
 private const val SEED_ROLE = "wb_demo_seed"
