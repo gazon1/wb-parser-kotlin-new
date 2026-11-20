@@ -196,9 +196,11 @@ was never answered is evidence of something different.
   and a request may change what it is asked to change.
 - **Never** open a page the config does not name: an approved host answers a GET
   that adds to the cart as well, so the page is what the config approves. The
-  path of the page is resolved before it is compared — the dot segments are the
-  dot segments however they are written, `%2e%2e` is `..` — so a page cannot
-  hide behind a relative segment, and a named page approves the path it names
-  and the paths under it, by path segment.
+  origin of the page is compared — the scheme, the host and the port, because
+  the same host on another port is another service — and the path of the page
+  is resolved before it is compared: the dot segments are the dot segments
+  however they are written, `%2e%2e` is `..`. A page cannot hide behind a
+  relative segment, and a named page approves the path it names and the paths
+  under it, by path segment.
 - The tool stays in `scripts/` and `devtools/`: no production module depends on
   it and it adds no runtime dependency.

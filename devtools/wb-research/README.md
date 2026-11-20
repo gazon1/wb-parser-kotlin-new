@@ -207,11 +207,13 @@ its own name: a path to another program of that name is refused as well. An
 action that opens a page may only open a host **and a page** the config
 approves: a navigation is a request, and a request may change what it is asked
 to change — an approved host answers a GET that adds to the cart as well. The
-config names the pages (`allowedPages`), and a named page approves the path it
-names and the paths under it, by path segment: `https://www.wildberries.ru/catalog/`
-approves `/catalog/131954/list.aspx` and not `/catalogue/x`. The path is
-resolved before it is compared — the dot segments are the dot segments however
-they are written, `%2e%2e` is `..` — so a page cannot hide behind a relative
+config names the pages (`allowedPages`), and a named page approves the origin
+it names — the scheme, the host and the port, because the same host on another
+port is another service — and the path it names and the paths under it, by path
+segment: `https://www.wildberries.ru/catalog/` approves
+`/catalog/131954/list.aspx` and not `/catalogue/x`. The path is resolved before
+it is compared — the dot segments are the dot segments however they are
+written, `%2e%2e` is `..` — so a page cannot hide behind a relative
 segment. Several actions in one step are separated by `--`. The capture names
 the step, keeps the requests the config approves, reports what it dropped and
 hands the result to the redactor.

@@ -742,3 +742,28 @@ def test_a_page_action_may_not_hide_a_page_behind_an_encoded_dot_segment(url, tm
         capture.capture_step(args, CONFIG)
 
     assert not any("start" in call for call in calls)
+
+
+def test_a_page_action_may_not_open_another_port_of_an_approved_host(tmp_path, monkeypatch):
+    # The finding of the review: the origin of a URL is the scheme, the host
+    # and the port — the same host on another port is another service.
+    calls = []
+
+    def fake_chrome_use(*args):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru:8443/catalog/131954/list.aspx"],
+        settle=0.0,
+    )
+
+    with pytest.raises(SystemExit):
+        capture.capture_step(args, CONFIG)
+
+    assert not any("start" in call for call in calls)

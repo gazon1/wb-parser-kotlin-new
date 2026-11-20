@@ -65,6 +65,11 @@ INVESTIGATION_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 DOT_SEGMENT = re.compile(r"\.|%2e", re.IGNORECASE)
 DOUBLE_DOT_SEGMENT = re.compile(r"(?:\.|%2e){2}", re.IGNORECASE)
 
+# The port a scheme answers on when the URL does not name one. The origin of a
+# URL is the scheme, the host and the port, so a page the config approves is
+# the page on that port and not the same host on another one.
+DEFAULT_PORTS = {"http": 80, "https": 443}
+
 # The page actions a capture may drive. The issue that asked for the tool says
 # read-only observation only: no cart, no purchase, no account. So the actions
 # that read the page are allowed, and the ones that change something on the
@@ -176,6 +181,23 @@ def page_path(url: str) -> str:
     return resolved.rstrip("/") or "/"
 
 
+def origin_of(url: str) -> tuple[str, str, int] | None:
+    """The origin of a URL: the scheme, the host and the port it answers on.
+
+    A port is part of the origin: the same host on another port is another
+    service, and the page the config approves is not that one. `None` for a
+    URL whose port is not a port.
+    """
+    parts = urlsplit(url)
+    scheme = parts.scheme.lower()
+    try:
+        port = parts.port
+    except ValueError:
+        return None
+    host = (parts.hostname or "").lower()
+    return scheme, host, port if port is not None else DEFAULT_PORTS.get(scheme, 0)
+
+
 def approved_page(url: str, pages: list[str]) -> bool:
     """Whether the page a navigation opens is one the config approves.
 
@@ -184,17 +206,19 @@ def approved_page(url: str, pages: list[str]) -> bool:
     names the pages a capture may open, and a page that is not under one of
     them is refused.
 
-    A named page approves the path it names and the paths under it, by path
-    segment: `https://example.ru/catalog/` approves `/catalog/131954/list.aspx`
-    and not `/catalogue/x`.
+    A named page approves the origin it names — the scheme, the host and the
+    port — and the path it names and the paths under it, by path segment:
+    `https://example.ru/catalog/` approves `/catalog/131954/list.aspx` and not
+    `/catalogue/x`.
     """
+    origin = origin_of(url)
+    if origin is None:
+        return False
     for page in pages:
-        page_parts = urlsplit(page)
-        if page_parts.scheme.lower() not in ("http", "https"):
+        page_origin = origin_of(page)
+        if page_origin is None or page_origin[0] not in ("http", "https"):
             continue
-        if page_parts.scheme.lower() != urlsplit(url).scheme.lower():
-            continue
-        if host_of(page) != host_of(url):
+        if page_origin != origin:
             continue
         prefix = page_path(page)
         path = page_path(url)
