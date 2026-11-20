@@ -94,6 +94,11 @@ run, compares the scope of the approval with the scope of that copy, and hands
 the copy to every step. The scope that is checked and the scope that is run
 are the same file.
 
+The wait of a step belongs to the scope of the step. It is part of what the
+step observes — a step that stops listening earlier may miss the request that
+carries the answer — so it is read from the plan, it is approved with the
+step, and the run cannot shorten it: the runner has no override for it.
+
 A pause is a state, not an improvisation. A CAPTCHA, a login, an ambiguous page
 or an origin the config does not approve stops the run, is named in the plan
 and is answered by the operator. The runner never works around a blockage and
@@ -146,6 +151,9 @@ every other run.
   config at the start of the run, checks the approval against that copy and
   hands the copy to every step, so a config that is widened mid-run reaches no
   step of that run.
+- **Always** approve the wait of a step with the step: `settle` is part of the
+  scope, it comes from the plan, and the runner has no override for it — a
+  shorter wait is a different observation, not the same one faster.
 - **Always** cover every setting of the capture config that decides what the
   capture refuses to stop at: the origins, the pages, the query parameters, the
   noise hosts and the kept request types. A setting that is left out of the

@@ -74,7 +74,7 @@ def fake_capture(monkeypatch, states: list[int]):
     """A capture that returns the given exit codes, one per step."""
     calls: list[list[str]] = []
 
-    def run_step(investigation, step, settle, config_path):
+    def run_step(investigation, step, config_path):
         calls.append(step["command"])
         code = states[len(calls) - 1]
         if code == plan.EXIT_OK:
@@ -96,7 +96,7 @@ def test_an_unapproved_plan_does_not_run(investigation, monkeypatch):
     calls = fake_capture(monkeypatch, [plan.EXIT_OK])
 
     with pytest.raises(SystemExit, match="not approved"):
-        plan.run(name, 8.0)
+        plan.run(name)
 
     assert calls == []
 
@@ -105,7 +105,7 @@ def test_a_step_is_captured_and_marked_done(investigation, tmp_path, monkeypatch
     name = investigation([step("initial-load")])
     calls = fake_capture(monkeypatch, [plan.EXIT_OK])
 
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
     assert calls == ['chrome-use open "https://www.wildberries.ru/"']
 
     written = read_plan(tmp_path, name)
@@ -117,7 +117,7 @@ def test_a_failing_step_stops_the_run(investigation, tmp_path, monkeypatch):
     name = investigation([step("initial-load"), step("next-page")])
     calls = fake_capture(monkeypatch, [plan.EXIT_FAILED, plan.EXIT_OK])
 
-    assert plan.run(name, 8.0) == plan.EXIT_FAILED
+    assert plan.run(name) == plan.EXIT_FAILED
     assert calls == ['chrome-use open "https://www.wildberries.ru/"']
 
     written = read_plan(tmp_path, name)
@@ -129,7 +129,7 @@ def test_an_unapproved_origin_needs_a_human(investigation, tmp_path, monkeypatch
     name = investigation([step("initial-load")])
     fake_capture(monkeypatch, [plan.EXIT_UNAPPROVED_API])
 
-    assert plan.run(name, 8.0) == plan.EXIT_FAILED
+    assert plan.run(name) == plan.EXIT_FAILED
 
     written = read_plan(tmp_path, name)
     assert written["steps"][0]["state"] == plan.NEEDS_HUMAN
@@ -139,12 +139,12 @@ def test_a_done_step_is_not_run_again(investigation, tmp_path, monkeypatch):
     name = investigation([step("initial-load"), step("next-page")])
     calls = fake_capture(monkeypatch, [plan.EXIT_OK, plan.EXIT_OK])
 
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
     assert len(calls) == 2
 
     # The second run resumes: the step that is done is skipped.
     calls.clear()
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
     assert calls == []
 
 
@@ -152,10 +152,10 @@ def test_a_stopped_step_stops_a_later_run_until_it_is_released(investigation, tm
     name = investigation([step("initial-load"), step("next-page")])
     fake_capture(monkeypatch, [plan.EXIT_FAILED, plan.EXIT_OK])
 
-    assert plan.run(name, 8.0) == plan.EXIT_FAILED
+    assert plan.run(name) == plan.EXIT_FAILED
 
     calls = fake_capture(monkeypatch, [plan.EXIT_OK])
-    assert plan.run(name, 8.0) == plan.EXIT_FAILED
+    assert plan.run(name) == plan.EXIT_FAILED
     assert calls == []
 
     # The human releases the step: it is planned again and the run continues.
@@ -164,7 +164,7 @@ def test_a_stopped_step_stops_a_later_run_until_it_is_released(investigation, tm
     (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
 
     calls = fake_capture(monkeypatch, [plan.EXIT_OK, plan.EXIT_OK])
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
     assert len(calls) == 2
 
 
@@ -172,7 +172,7 @@ def test_a_plan_without_steps_is_refused(investigation):
     name = investigation([], status="draft")
 
     with pytest.raises(SystemExit, match="no steps"):
-        plan.run(name, 8.0)
+        plan.run(name)
 
 
 def test_a_plan_of_another_investigation_is_refused(investigation, tmp_path):
@@ -183,7 +183,60 @@ def test_a_plan_of_another_investigation_is_refused(investigation, tmp_path):
     path.write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
 
     with pytest.raises(SystemExit, match="another investigation"):
-        plan.run(name, 8.0)
+        plan.run(name)
+
+
+def test_a_changed_settle_needs_a_new_approval(investigation, tmp_path, monkeypatch):
+    """The wait of a step is part of what the step observes."""
+    name = investigation([{**step("initial-load"), "settle": 8}])
+    fake_capture(monkeypatch, [plan.EXIT_OK])
+    assert plan.run(name) == plan.EXIT_OK
+
+    written = read_plan(tmp_path, name)
+    written["steps"][0]["settle"] = 1
+    (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    with pytest.raises(SystemExit, match="approve it again"):
+        plan.run(name)
+
+    assert calls == []
+
+
+@pytest.mark.parametrize("settle", ["soon", -1])
+def test_a_malformed_settle_is_refused(investigation, settle):
+    """The wait of a step is a number of seconds."""
+    with pytest.raises(SystemExit, match="malformed settle"):
+        investigation([{**step("initial-load"), "settle": settle}])
+
+
+def test_the_capture_waits_as_long_as_the_step_says(monkeypatch):
+    """The wait of the step reaches the capture."""
+    seen: list[list[str]] = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(argv, **kwargs):
+        seen.append(argv)
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    plan.run_step(
+        "2026-11-20-wb-catalog-agent",
+        {
+            "name": "initial-load",
+            "command": 'chrome-use open "https://www.wildberries.ru/"',
+            "settle": 12,
+        },
+        Path("/tmp/approved-config.json"),
+    )
+
+    assert seen[0][seen[0].index("--settle") + 1] == "12.0"
 
 
 def test_the_capture_is_run_with_the_command_of_the_step(monkeypatch):
@@ -204,7 +257,6 @@ def test_the_capture_is_run_with_the_command_of_the_step(monkeypatch):
     state, _ = plan.run_step(
         "2026-11-20-wb-catalog-agent",
         {"name": "initial-load", "command": 'chrome-use open "https://www.wildberries.ru/"'},
-        8.0,
         Path("/tmp/approved-config.json"),
     )
 
@@ -236,7 +288,6 @@ def test_an_approved_origin_reaches_the_capture(monkeypatch):
             "command": 'chrome-use open "https://www.wildberries.ru/"',
             "allow_hosts": ["splitter.wb.ru"],
         },
-        8.0,
         Path("/tmp/approved-config.json"),
     )
 
@@ -262,7 +313,6 @@ def test_the_capture_works_under_the_config_of_the_run(monkeypatch):
     plan.run_step(
         "2026-11-20-wb-catalog-agent",
         {"name": "initial-load", "command": 'chrome-use open "https://www.wildberries.ru/"'},
-        8.0,
         Path("/tmp/approved-config.json"),
     )
 
@@ -282,7 +332,7 @@ def test_an_id_that_is_a_path_is_refused(investigation, tmp_path, monkeypatch):
     calls = fake_capture(monkeypatch, [plan.EXIT_OK])
 
     with pytest.raises(SystemExit, match="single name"):
-        plan.run("../../outside", 8.0)
+        plan.run("../../outside")
 
     assert calls == []
     assert plan_file.read_text(encoding="utf-8") == before
@@ -292,7 +342,7 @@ def test_a_changed_scope_needs_a_new_approval(investigation, tmp_path, monkeypat
     """The scope that was approved is the scope that runs."""
     name = investigation([step("initial-load")])
     fake_capture(monkeypatch, [plan.EXIT_OK])
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
 
     # The plan is running. Somebody widens it while nobody watches.
     written = read_plan(tmp_path, name)
@@ -302,7 +352,7 @@ def test_a_changed_scope_needs_a_new_approval(investigation, tmp_path, monkeypat
     calls = fake_capture(monkeypatch, [plan.EXIT_OK])
 
     with pytest.raises(SystemExit, match="approve it again"):
-        plan.run(name, 8.0)
+        plan.run(name)
 
     assert calls == []
 
@@ -311,7 +361,7 @@ def test_a_new_approval_covers_the_new_scope(investigation, tmp_path, monkeypatc
     """The operator approves the widened plan: then it runs."""
     name = investigation([step("initial-load")])
     fake_capture(monkeypatch, [plan.EXIT_OK])
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
 
     written = read_plan(tmp_path, name)
     written["steps"][0]["command"] = 'chrome-use open "https://www.wildberries.ru/other"'
@@ -320,13 +370,13 @@ def test_a_new_approval_covers_the_new_scope(investigation, tmp_path, monkeypatc
     calls = fake_capture(monkeypatch, [plan.EXIT_OK, plan.EXIT_OK])
 
     with pytest.raises(SystemExit, match="approve it again"):
-        plan.run(name, 8.0)
+        plan.run(name)
     assert calls == []
 
     # The operator approves the changed plan: the scope is approved again.
     plan.approve(name)
 
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
     assert len(calls) == 1
 
 
@@ -334,7 +384,7 @@ def test_a_changed_step_is_planned_again_by_the_approval(investigation, tmp_path
     """A state that belongs to another command says nothing about this one."""
     name = investigation([step("initial-load")])
     calls = fake_capture(monkeypatch, [plan.EXIT_OK])
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
     assert calls == ['chrome-use open "https://www.wildberries.ru/"']
 
     written = read_plan(tmp_path, name)
@@ -348,7 +398,7 @@ def test_a_changed_step_is_planned_again_by_the_approval(investigation, tmp_path
 
     # The step runs again: the plan may not claim a command it never ran.
     calls = fake_capture(monkeypatch, [plan.EXIT_OK])
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
     assert calls == ['chrome-use open "https://www.wildberries.ru/other"']
 
 
@@ -356,7 +406,7 @@ def test_an_unchanged_step_keeps_its_state_when_the_plan_is_approved_again(inves
     """The approval of the same plan does not throw the work away."""
     name = investigation([step("initial-load")])
     fake_capture(monkeypatch, [plan.EXIT_OK])
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
 
     plan.approve(name)
 
@@ -364,7 +414,7 @@ def test_an_unchanged_step_keeps_its_state_when_the_plan_is_approved_again(inves
     assert approved["steps"][0]["state"] == plan.DONE
 
     calls = fake_capture(monkeypatch, [plan.EXIT_OK])
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
     assert calls == []
 
 
@@ -394,7 +444,7 @@ def test_the_config_is_frozen_for_the_run(investigation, tmp_path, monkeypatch):
     name = investigation([step("initial-load"), step("next-page")])
     approved = plan.config_scope()
 
-    def run_step(investigation, step, settle, config_path):
+    def run_step(investigation, step, config_path):
         # Somebody widens the shared config while the first step is running.
         config.write_text(
             json.dumps(
@@ -410,7 +460,7 @@ def test_the_config_is_frozen_for_the_run(investigation, tmp_path, monkeypatch):
 
     monkeypatch.setattr(plan, "run_step", run_step)
 
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
 
     written = read_plan(tmp_path, name)
     for step_written in written["steps"]:
@@ -433,7 +483,7 @@ def test_a_changed_config_plans_the_steps_again(investigation, tmp_path, monkeyp
 
     name = investigation([step("initial-load")])
     fake_capture(monkeypatch, [plan.EXIT_OK])
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
 
     config.write_text(
         json.dumps(
@@ -465,7 +515,7 @@ def test_a_plan_changed_after_the_approval_does_not_run(investigation, tmp_path,
     calls = fake_capture(monkeypatch, [plan.EXIT_OK])
 
     with pytest.raises(SystemExit, match="approve it again"):
-        plan.run(name, 8.0)
+        plan.run(name)
 
     assert calls == []
 
@@ -481,7 +531,7 @@ def test_a_plan_without_an_approval_record_does_not_run(investigation, tmp_path,
     calls = fake_capture(monkeypatch, [plan.EXIT_OK])
 
     with pytest.raises(SystemExit, match="was not approved"):
-        plan.run(name, 8.0)
+        plan.run(name)
 
     assert calls == []
 
@@ -520,7 +570,7 @@ def test_a_changed_config_needs_a_new_approval(investigation, tmp_path, monkeypa
     )
 
     with pytest.raises(SystemExit, match="approve it again"):
-        plan.run(name, 8.0)
+        plan.run(name)
 
     assert calls == []
 
@@ -568,7 +618,7 @@ def test_a_changed_reachability_setting_needs_a_new_approval(
     )
 
     with pytest.raises(SystemExit, match="approve it again"):
-        plan.run(name, 8.0)
+        plan.run(name)
 
     assert calls == []
 
@@ -604,7 +654,7 @@ def test_the_noise_hosts_are_normalized_in_the_scope(investigation, tmp_path, mo
         encoding="utf-8",
     )
 
-    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert plan.run(name) == plan.EXIT_OK
     assert len(calls) == 1
 
 
@@ -613,7 +663,7 @@ def test_a_malformed_allow_hosts_is_refused(investigation):
     name = investigation([{**step("initial-load"), "allow_hosts": "splitter.wb.ru"}], status="draft")
 
     with pytest.raises(SystemExit, match="malformed allow_hosts"):
-        plan.run(name, 8.0)
+        plan.run(name)
 
 
 def test_a_step_name_that_is_a_path_is_refused(investigation):
@@ -621,4 +671,4 @@ def test_a_step_name_that_is_a_path_is_refused(investigation):
     name = investigation([step("../../other/step")], status="draft")
 
     with pytest.raises(SystemExit, match="one name"):
-        plan.run(name, 8.0)
+        plan.run(name)

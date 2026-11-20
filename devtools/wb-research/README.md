@@ -878,6 +878,11 @@ the approval is compared with the scope of the copy — not with the scope of th
 shared file, which may change while the run is going. A config that is widened
 mid-run therefore reaches no step of that run.
 
+`settle` — how long a step waits for the answers — is part of the scope as
+well, and it is read from the plan alone: the run cannot shorten it. A step
+that stops listening earlier may miss the request that carries the answer, so
+its evidence is not the evidence of the same step with a longer wait.
+
 The id of the investigation is a name, not a path: the runner refuses an id that
 carries a separator or a `..`, the same rule the capture follows. The name of
 a step is checked the same way: it is the name of a file, so a name the rules

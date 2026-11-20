@@ -73,6 +73,9 @@ The run freezes the config it runs under: every step of a run works under the
 copy of the capture config that the run made, so a config that is widened while
 the run is going reaches no step of that run.
 
+`settle` — how long a step waits for the answers — is part of the scope too,
+and it comes from the plan: the run cannot shorten it behind the approval.
+
 ## Boundaries
 
 Never, and the tools already refuse most of it:

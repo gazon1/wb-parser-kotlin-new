@@ -17,7 +17,7 @@ where it must stop.
 
 Usage:
     plan.py approve --investigation <id>   # the operator approves the plan
-    plan.py run --investigation <id> [--settle <seconds>]
+    plan.py run --investigation <id>
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import math
 import re
 import shlex
 import subprocess
@@ -57,6 +58,10 @@ NEEDS_HUMAN = "needs-human"
 # guess.
 APPROVED = "approved"
 RUNNING = "running"
+
+# How long a step waits for the answers, when the plan does not say. It is the
+# wait of the plan, not of the run: the run does not get to shorten it.
+DEFAULT_SETTLE = 8.0
 
 EXIT_OK = 0
 EXIT_FAILED = 1
@@ -217,12 +222,32 @@ def config_scope(path: Path | None = None) -> dict:
     }
 
 
+def settle_of(step: dict) -> float:
+    """How long a step waits for the answers, in seconds.
+
+    The wait is part of what the step observes: a step that stops listening
+    earlier may miss the request that carries the answer, and the evidence of
+    such a step is not the evidence of the step with a longer wait. The wait
+    therefore belongs to the scope of the step, and it is read from the plan
+    alone — a run cannot shorten it behind the approval.
+    """
+    value = step.get("settle", DEFAULT_SETTLE)
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError) as error:
+        raise SystemExit(f"the step {step.get('name')} has a malformed settle: {value!r}") from error
+    if not math.isfinite(seconds) or seconds < 0:
+        raise SystemExit(f"the step {step.get('name')} has a malformed settle: {value!r}")
+    return seconds
+
+
 def step_payload(step: dict) -> dict:
-    """What a step is: its name, its command and the origins it may reach."""
+    """What a step is: its name, its command, the origins it may reach, its wait."""
     return {
         "name": step.get("name"),
         "command": step.get("command"),
         "allow_hosts": sorted(step.get("allow_hosts", [])),
+        "settle": settle_of(step),
     }
 
 
@@ -273,7 +298,7 @@ def config_snapshot(investigation: str) -> Path:
     return path
 
 
-def run_step(investigation: str, step: dict, settle: float, config_path: Path) -> tuple[str, str]:
+def run_step(investigation: str, step: dict, config_path: Path) -> tuple[str, str]:
     """Run one step of the plan: its state and what the capture printed.
 
     The state follows the exit code of the capture: a step that was recorded
@@ -282,7 +307,8 @@ def run_step(investigation: str, step: dict, settle: float, config_path: Path) -
     is the operator's decision, not the runner's.
 
     The capture works under the config the run froze, not under the shared
-    file: the scope of the run is the scope that was approved.
+    file: the scope of the run is the scope that was approved. The wait is
+    the one of the step, for the same reason.
     """
     name = step["name"]
     command = shlex.split(step["command"])
@@ -297,7 +323,7 @@ def run_step(investigation: str, step: dict, settle: float, config_path: Path) -
         "--config",
         str(config_path),
         "--settle",
-        str(step.get("settle", settle)),
+        str(settle_of(step)),
     ]
     # An origin the step is allowed to reach. The approval is in the plan, so
     # it is inspectable, and it holds for this step only — the shared config
@@ -373,7 +399,7 @@ def approve(investigation: str) -> int:
     return EXIT_OK
 
 
-def run(investigation: str, settle: float) -> int:
+def run(investigation: str) -> int:
     """Run the steps of the plan that are not done yet."""
     path = plan_path(investigation)
     plan = load_plan(path)
@@ -406,7 +432,7 @@ def run(investigation: str, settle: float) -> int:
             print(f"{step['name']}: {state} — {step.get('note', '')}")
             stopped = True
             break
-        new_state, output = run_step(investigation, step, settle, snapshot)
+        new_state, output = run_step(investigation, step, snapshot)
         step["state"] = new_state
         step["note"] = note_of(investigation, step["name"], new_state)
         # The scope the state was made under: a later approval compares it with
@@ -434,12 +460,11 @@ def main(argv: list[str] | None = None) -> int:
 
     run_parser = sub.add_parser("run", help="run the steps of the plan that are not done yet")
     run_parser.add_argument("--investigation", required=True, help="the investigation id")
-    run_parser.add_argument("--settle", type=float, default=8.0, help="seconds a step waits for the answers")
 
     args = parser.parse_args(argv)
     if args.verb == "approve":
         return approve(args.investigation)
-    return run(args.investigation, args.settle)
+    return run(args.investigation)
 
 
 if __name__ == "__main__":
