@@ -1,8 +1,8 @@
 schema: wb-research/validation/v1
 id: 2026-11-20-wb-catalog-agent
 candidate: storefront-catalog-search
-generated: '2026-11-20T23:26:35+00:00'
-plan_scope: 692eeb104ed984954c81852464864e8c8ec541cac10f48d47a38cf67af7a710c
+generated: '2026-11-20T23:34:19+00:00'
+plan_scope: 1a7a7cae853d88ac9029cd3251ebbe7e61757cd1f3da5338756730c91648edbd
 page: https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E
 request:
   method: GET
@@ -29,6 +29,7 @@ request:
   credentials: include
 baseline: baseline
 baseline_reproduced: true
+session: one browser session
 experiments:
 - name: baseline
   kind: replay
@@ -63,7 +64,7 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 148743
+      bodyBytes: 148794
       isJson: true
       error: null
     schema:
@@ -76,7 +77,7 @@ experiments:
       total: 113593
     outcome: completed
     ordering:
-      orderHash: 82adaeae2e62fdb1f7fdd5dd49e7d519cea5be060e2460c7f1f85de5d0bc1d5c
+      orderHash: 8c3dc9b5d1657d182257b559e5b518637c3446ab3ea75a8cad2ee70af32cecd3
   - id: baseline-2
     experiment: baseline
     run: 2
@@ -98,7 +99,7 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 148743
+      bodyBytes: 148794
       isJson: true
       error: null
     schema:
@@ -111,7 +112,7 @@ experiments:
       total: 113593
     outcome: completed
     ordering:
-      orderHash: 82adaeae2e62fdb1f7fdd5dd49e7d519cea5be060e2460c7f1f85de5d0bc1d5c
+      orderHash: 8c3dc9b5d1657d182257b559e5b518637c3446ab3ea75a8cad2ee70af32cecd3
   comparisons:
   - status: same
     changedFields: []
@@ -134,6 +135,7 @@ experiments:
     expect: changed
     compare:
     - order
+    distinct: null
   observations:
   - id: sort-priceup-1
     experiment: sort-priceup
@@ -255,6 +257,7 @@ experiments:
     expect: changed
     compare:
     - order
+    distinct: true
   observations:
   - id: page-2-1
     experiment: page-2
@@ -277,7 +280,7 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 146413
+      bodyBytes: 146321
       isJson: true
       error: null
     schema:
@@ -290,7 +293,7 @@ experiments:
       total: 113593
     outcome: completed
     ordering:
-      orderHash: b6c74b83758d9046123dc0482ae7fde3ec5932e3081d80b9e92df12d8acca79c
+      orderHash: 65ec5710294bfdfea6e35ab36f1e0667a10b0b00a0b2bcae0009f6b8c654e0f9
     comparison:
       status: changed
       changedFields:
@@ -320,7 +323,7 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 146413
+      bodyBytes: 146321
       isJson: true
       error: null
     schema:
@@ -333,7 +336,7 @@ experiments:
       total: 113593
     outcome: completed
     ordering:
-      orderHash: b6c74b83758d9046123dc0482ae7fde3ec5932e3081d80b9e92df12d8acca79c
+      orderHash: 65ec5710294bfdfea6e35ab36f1e0667a10b0b00a0b2bcae0009f6b8c654e0f9
     comparison:
       status: changed
       changedFields:
@@ -447,6 +450,7 @@ experiments:
   expectation:
     expect: same
     compare: null
+    distinct: null
   observations:
   - id: after-reload-1
     experiment: after-reload
@@ -469,7 +473,7 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 148743
+      bodyBytes: 148794
       isJson: true
       error: null
     schema:
@@ -482,7 +486,7 @@ experiments:
       total: 113593
     outcome: completed
     ordering:
-      orderHash: 82adaeae2e62fdb1f7fdd5dd49e7d519cea5be060e2460c7f1f85de5d0bc1d5c
+      orderHash: 8c3dc9b5d1657d182257b559e5b518637c3446ab3ea75a8cad2ee70af32cecd3
     comparison:
       status: same
       changedFields: []
@@ -511,7 +515,7 @@ experiments:
     response:
       status: 200
       contentType: text/plain; charset=UTF-8
-      bodyBytes: 148743
+      bodyBytes: 148794
       isJson: true
       error: null
     schema:
@@ -524,7 +528,7 @@ experiments:
       total: 113593
     outcome: completed
     ordering:
-      orderHash: 82adaeae2e62fdb1f7fdd5dd49e7d519cea5be060e2460c7f1f85de5d0bc1d5c
+      orderHash: 8c3dc9b5d1657d182257b559e5b518637c3446ab3ea75a8cad2ee70af32cecd3
     comparison:
       status: same
       changedFields: []
@@ -559,6 +563,7 @@ experiments:
     expect: changed
     compare:
     - order
+    distinct: null
   observations:
   - id: without-cookies-1
     experiment: without-cookies
@@ -631,6 +636,7 @@ checks:
     expect: changed
     compare:
     - order
+    distinct: null
   met:
   - true
   - true
@@ -640,6 +646,7 @@ checks:
     expect: changed
     compare:
     - order
+    distinct: true
   met:
   - true
   - true
@@ -648,6 +655,7 @@ checks:
   expectation:
     expect: same
     compare: null
+    distinct: null
   met:
   - true
   - true
@@ -657,10 +665,14 @@ checks:
     expect: changed
     compare:
     - order
+    distinct: null
   met:
   - true
   state: inconclusive
 not_validated:
+- experiment: page-0
+  state: observed
+  reason: one observation — reproducibility is not established
 - experiment: without-cookies
   state: inconclusive
   reason: the site refused the request — a refusal is not a validation

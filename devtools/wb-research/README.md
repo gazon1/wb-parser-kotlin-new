@@ -937,6 +937,7 @@ experiments:
     vary: {page: '2'}
     expect: changed
     compare: [order]
+    distinct: true                     # a next page shares no product id with this one
     repeat: 2
   - name: page-0
     vary: {page: '0'}                  # no expectation: it says what was seen
@@ -969,6 +970,11 @@ handful of requests against a live site, and the issue asks for the site's rate
 limits to be respected. A plan that asks for more is refused before the browser
 opens.
 
+**A page is checked by its products.** `distinct: true` adds the pagination
+expectation to a variation: the answer has to share no product id with the
+reference. An answer that reorders the same products is not another page, and
+the run says so.
+
 **A reload is a navigation too.** The page it lands on is held to the same
 approved pages as the page the run opened: a reload that leaves them is a
 failed experiment, and no probe runs in the page the config does not approve.
@@ -985,7 +991,9 @@ from a local file outside the repository —
 
 A path inside the repository is refused, and a header the plan names and the
 file does not carry stops the run: a request replayed without the header it was
-seen with is a different request. The browser drops a few header names by
+seen with is a different request. The path itself is part of the approval, so
+pointing the plan at another file needs another approval; editing that file is
+the operator's act, and its values are deliberately outside the fingerprint. The browser drops a few header names by
 design (`referer`, `cookie`, `user-agent`, the `sec-*` family); a plan that
 names one gets an **incomplete replay** — the observation is `inconclusive`, the
 run stops, and the report names the header. It is not a validation of the
@@ -1036,7 +1044,7 @@ A state is not a label the operator chooses; the evidence decides it:
 
 | State | Earned when |
 |---|---|
-| `observed` | the request was answered once, or an expectation held once |
+| `observed` | the request was answered once, or an expectation held once; it is listed as not established |
 | `reproduced` | the same answer came back from independent runs |
 | `validated` | a controlled variation repeated, its expectation held every time, and the reference itself was reproduced |
 | `rejected` | a stable answer contradicts the expectation |
@@ -1044,7 +1052,10 @@ A state is not a label the operator chooses; the evidence decides it:
 
 `validated` also needs the runs of the variation to agree with each other: two
 different answers that both count as "changed" leave the behaviour itself
-unreproduced, and the experiment is `inconclusive`.
+unreproduced, and the experiment is `inconclusive`. The runs share one browser
+session, so `reproduced` means two compatible answers from separate requests —
+not two independent sessions, and not a promise about other accounts or times.
+The report says so.
 
 A refusal, a failure and a single sample are never reported as a validation:
 the report names them, and the run says so in its exit code.

@@ -348,8 +348,9 @@ def test_a_single_sample_does_not_validate(world, monkeypatch):
 
     summary = read_summary(place.directory)
     assert summary["experiments"][1]["state"] == validate.OBSERVED
-    assert [item["experiment"] for item in summary["not_validated"]] == ["sorted"]
-    assert "one sample" in summary["not_validated"][0]["reason"]
+    assert "sorted" in [item["experiment"] for item in summary["not_validated"]]
+    sorted_entry = next(item for item in summary["not_validated"] if item["experiment"] == "sorted")
+    assert "one sample" in sorted_entry["reason"]
 
 
 def test_a_stable_contradiction_is_rejected(world, monkeypatch):
@@ -389,6 +390,58 @@ def test_a_failed_probe_is_not_a_result(world, monkeypatch):
     summary = read_summary(place.directory)
     assert summary["experiments"][1]["outcome"] == validate.FAILED
     assert summary["experiments"][1]["state"] == validate.INCONCLUSIVE
+
+
+def test_a_next_page_is_validated_by_being_distinct(world, monkeypatch):
+    place = world(
+        [baseline(), variant("page-2", vary={"page": "2"}, expect="changed", compare=["order"], distinct=True)]
+    )
+    validate.approve(INVESTIGATION)
+    fake_browser(
+        monkeypatch,
+        [answer(ids=(1, 2)), answer(ids=(1, 2)), answer(ids=(3, 4)), answer(ids=(3, 4))],
+    )
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_OK
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["state"] == validate.VALIDATED
+    assert summary["experiments"][1]["comparisons"][0]["details"]["sharedIds"] == 0
+
+
+def test_a_next_page_that_overlaps_is_not_a_next_page(world, monkeypatch):
+    place = world(
+        [baseline(), variant("page-2", vary={"page": "2"}, expect="changed", compare=["order"], distinct=True)]
+    )
+    validate.approve(INVESTIGATION)
+    # The order changed, but it is the same products: not another page.
+    fake_browser(
+        monkeypatch,
+        [answer(ids=(1, 2)), answer(ids=(1, 2)), answer(ids=(2, 1)), answer(ids=(2, 1))],
+    )
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["state"] == validate.REJECTED
+
+
+def test_a_changed_request_file_needs_a_new_approval(world, monkeypatch, tmp_path):
+    place = world([baseline()])
+    validate.approve(INVESTIGATION)
+
+    other = tmp_path / "other-request.json"
+    other.write_text(
+        json.dumps({"headers": {"deviceid": "site_test_value", "x-requested-with": "XMLHttpRequest"}}),
+        encoding="utf-8",
+    )
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["request_file"] = str(other)
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    calls = fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="approve it again"):
+        validate.run(INVESTIGATION, None, False)
+
+    assert calls["probes"] == []
 
 
 def test_a_changed_json_shape_is_a_change(world, monkeypatch):
@@ -687,12 +740,14 @@ def test_a_variant_without_an_expectation_is_observed_not_judged(world, monkeypa
     validate.approve(INVESTIGATION)
     fake_browser(monkeypatch, [answer(), answer(), answer(ids=(), total=0)])
 
-    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_OK
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
 
     summary = read_summary(place.directory)
     assert summary["experiments"][1]["state"] == validate.OBSERVED
     assert summary["experiments"][1]["comparisons"][0]["status"] == "changed"
-    assert summary["not_validated"] == []
+    # One observation is not a result: the report says so.
+    assert [item["experiment"] for item in summary["not_validated"]] == ["page-0"]
+    assert "one observation" in summary["not_validated"][0]["reason"]
 
 
 def test_the_summary_keeps_a_hash_and_the_evidence_keeps_the_ids(world, monkeypatch):

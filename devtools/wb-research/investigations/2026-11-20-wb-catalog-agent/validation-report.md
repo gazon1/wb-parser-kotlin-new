@@ -6,8 +6,9 @@
 - Query parameters: `ab_testing`, `appType`, `curr`, `dest`, `hide_vflags`, `inheritFilters`, `lang`, `locale`, `query`, `resultset`, `sort`, `spp`, `suppressSpellcheck`
 - Headers named by the plan: `deviceid`, `x-requested-with`, `x-spa-version`, `x-userid`
 - Evidence: [`evidence/validation.json`](evidence/validation.json)
-- Generated: 2026-11-20T23:26:35+00:00
+- Generated: 2026-11-20T23:34:19+00:00
 - Baseline: `baseline` — reproduced
+- Runs share one browser session: `reproduced` means two compatible answers from separate requests, not from independent sessions.
 
 The headers' values are not in `experiments.yaml` and never reach this report: the plan names the headers, and their values are read from a local file outside the repository.
 
@@ -26,8 +27,8 @@ The headers' values are not in `experiments.yaml` and never reach this report: t
 
 ### `baseline` — reproduced
 
-- run 1: 200 text/plain; charset=UTF-8, 148743 bytes, 100 products, total 113593, keys [metadata, products, total], order `82adaeae2e62` — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 148743 bytes, 100 products, total 113593, keys [metadata, products, total], order `82adaeae2e62` — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 148794 bytes, 100 products, total 113593, keys [metadata, products, total], order `8c3dc9b5d165` — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 148794 bytes, 100 products, total 113593, keys [metadata, products, total], order `8c3dc9b5d165` — **completed**
 
 ### `sort-priceup` — validated
 
@@ -36,8 +37,8 @@ The headers' values are not in `experiments.yaml` and never reach this report: t
 
 ### `page-2` — validated
 
-- run 1: 200 text/plain; charset=UTF-8, 146413 bytes, 100 products, total 113593, keys [metadata, products, total], order `b6c74b83758d`; vs the baseline: changed (order) — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 146413 bytes, 100 products, total 113593, keys [metadata, products, total], order `b6c74b83758d`; vs the baseline: changed (order) — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 146321 bytes, 100 products, total 113593, keys [metadata, products, total], order `65ec5710294b`; vs the baseline: changed (order) — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 146321 bytes, 100 products, total 113593, keys [metadata, products, total], order `65ec5710294b`; vs the baseline: changed (order) — **completed**
 
 ### `page-0` — observed
 
@@ -45,8 +46,8 @@ The headers' values are not in `experiments.yaml` and never reach this report: t
 
 ### `after-reload` — validated
 
-- run 1: 200 text/plain; charset=UTF-8, 148743 bytes, 100 products, total 113593, keys [metadata, products, total], order `82adaeae2e62`; vs the baseline: same (nothing) — **completed**
-- run 2: 200 text/plain; charset=UTF-8, 148743 bytes, 100 products, total 113593, keys [metadata, products, total], order `82adaeae2e62`; vs the baseline: same (nothing) — **completed**
+- run 1: 200 text/plain; charset=UTF-8, 148794 bytes, 100 products, total 113593, keys [metadata, products, total], order `8c3dc9b5d165`; vs the baseline: same (nothing) — **completed**
+- run 2: 200 text/plain; charset=UTF-8, 148794 bytes, 100 products, total 113593, keys [metadata, products, total], order `8c3dc9b5d165`; vs the baseline: same (nothing) — **completed**
 
 ### `without-cookies` — inconclusive
 
@@ -57,6 +58,7 @@ the site refused the request — a refusal is not a validation
 
 ## What was not established
 
+- `page-0` — observed: one observation — reproducibility is not established
 - `without-cookies` — inconclusive: the site refused the request — a refusal is not a validation
 
 ## Safety

@@ -423,6 +423,9 @@ def check_experiment(experiment: dict, base: dict) -> dict:
     expect = experiment.get("expect")
     if expect is not None and expect not in ("same", "changed"):
         raise SystemExit(f"the experiment {name} has an unknown expectation: {expect!r}")
+    distinct = experiment.get("distinct", False)
+    if not isinstance(distinct, bool):
+        raise SystemExit(f"the experiment {name} has a malformed distinct: {distinct!r}")
     on = experiment.get("compare")
     if on is not None:
         if not isinstance(on, list) or not on:
@@ -430,7 +433,7 @@ def check_experiment(experiment: dict, base: dict) -> dict:
         unknown = [field for field in on if field not in COMPARED_FIELDS]
         if unknown:
             raise SystemExit(f"the experiment {name} compares unknown fields: {', '.join(map(str, unknown))}")
-        if expect is None:
+        if expect is None and not distinct:
             raise SystemExit(f"the experiment {name} names fields to compare but no expectation")
     repeat = experiment.get("repeat", 1)
     if isinstance(repeat, bool) or not isinstance(repeat, int) or not 1 <= repeat <= MAX_REPEAT:
@@ -507,11 +510,15 @@ def check_experiments(experiments: list[dict], base: dict) -> None:
         check_experiment(experiment, base)
     first = experiments[0]
     varies = bool(
-        first.get("vary") or first.get("remove") or first.get("credentials") or first.get("kind", "replay") != "replay"
+        first.get("vary")
+        or first.get("remove")
+        or first.get("credentials")
+        or first.get("distinct")
+        or first.get("kind", "replay") != "replay"
     )
     if varies:
         raise SystemExit("the first experiment is the reference: it cannot vary anything")
-    if first.get("expect") or first.get("compare"):
+    if first.get("expect") or first.get("compare") or first.get("distinct"):
         # The reference is what the others are compared with; a claim about it
         # has nothing to be judged against, and a run that accepts one would
         # reach the summary with an empty list of comparisons.
@@ -630,7 +637,14 @@ def config_scope() -> dict:
     }
 
 
-def scope_of(page: str, request: dict, experiments: list[dict], interval: float, config: dict) -> str:
+def scope_of(
+    page: str,
+    request: dict,
+    experiments: list[dict],
+    interval: float,
+    config: dict,
+    request_file: str | None = None,
+) -> str:
     """The fingerprint of what a run is approved to do.
 
     The approval covers the page the session rests on, the endpoint, the query
@@ -650,13 +664,21 @@ def scope_of(page: str, request: dict, experiments: list[dict], interval: float,
         },
         "experiments": experiments,
         "min_interval_seconds": interval,
+        "request_file": request_file,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
 def approved_scope(plan: dict, request: dict, experiments: list[dict], config: dict) -> str:
     """The fingerprint as `approve` writes it: the plan's own words, not the run's."""
-    return scope_of(plan["page"], request, experiments, float(plan.get("min_interval_seconds", 2)), config)
+    return scope_of(
+        plan["page"],
+        request,
+        experiments,
+        float(plan.get("min_interval_seconds", 2)),
+        config,
+        plan.get("request_file"),
+    )
 
 
 def check_scope(plan: dict, request: dict, experiments: list[dict], config: dict) -> None:
@@ -944,15 +966,34 @@ def compare(reference: dict, other: dict) -> dict:
     }
 
 
+def has_expectation(experiment: dict) -> bool:
+    """Whether an experiment claims anything about its answer."""
+    return experiment.get("expect") is not None or bool(experiment.get("distinct"))
+
+
 def expectation_met(experiment: dict, comparison: dict) -> bool | None:
-    """Whether the comparison is what the experiment expected. None when it cannot tell."""
+    """Whether the comparison is what the experiment expected. None when it cannot tell.
+
+    A `distinct` experiment is about pagination: it says the answer shares no
+    product id with the reference, which is what a next page means. It is judged
+    together with `expect` when both are given.
+    """
     if comparison["status"] == "incomparable":
         return None
     fields = experiment.get("compare") or list(COMPARED_FIELDS)
     changed = [field for field in fields if field in comparison["changedFields"]]
     if experiment.get("expect") == "changed":
-        return bool(changed)
-    return not changed
+        met = bool(changed)
+    elif experiment.get("expect") == "same":
+        met = not changed
+    else:
+        met = True
+    if experiment.get("distinct"):
+        shared = comparison["details"].get("sharedIds")
+        if shared is None:
+            return None
+        met = met and shared == 0
+    return met
 
 
 def state_of(
@@ -988,7 +1029,7 @@ def state_of(
         compare(observations[0], entry)["status"] == "same" for entry in observations[1:]
     ):
         return INCONCLUSIVE, "the runs of the experiment disagree"
-    if experiment.get("expect") is None:
+    if not has_expectation(experiment):
         # A variant without an expectation says what was seen, not whether it
         # was expected: two compatible runs are `reproduced`, and one is one.
         return (REPRODUCED, "") if len(observations) >= 2 else (OBSERVED, "")
@@ -1145,19 +1186,27 @@ def summarize(plan: dict, declared: dict, observations: list[dict]) -> tuple[dic
             "outcome": overall_outcome(runs),
             "state": state,
             "reason": reason,
-            "expectation": {"expect": experiment.get("expect"), "compare": experiment.get("compare")}
-            if experiment.get("expect")
+            "expectation": {
+                "expect": experiment.get("expect"),
+                "compare": experiment.get("compare"),
+                "distinct": experiment.get("distinct") or None,
+            }
+            if has_expectation(experiment)
             else None,
             "observations": [compact_observation(run) for run in runs],
             "comparisons": comparisons,
         }
         experiments.append(record)
-        if experiment.get("expect"):
+        if has_expectation(experiment):
             met = [expectation_met(experiment, comparison) for comparison in comparisons]
             checks.append(
                 {
                     "experiment": experiment["name"],
-                    "expectation": {"expect": experiment.get("expect"), "compare": experiment.get("compare")},
+                    "expectation": {
+                        "expect": experiment.get("expect"),
+                        "compare": experiment.get("compare"),
+                        "distinct": experiment.get("distinct") or None,
+                    },
                     "met": met,
                     "state": state,
                 }
@@ -1170,6 +1219,14 @@ def summarize(plan: dict, declared: dict, observations: list[dict]) -> tuple[dic
                         "reason": reason or "the expectation was not established by the experiments",
                     }
                 )
+        elif state == OBSERVED:
+            not_validated.append(
+                {
+                    "experiment": experiment["name"],
+                    "state": state,
+                    "reason": "one observation — reproducibility is not established",
+                }
+            )
         elif state == INCONCLUSIVE:
             not_validated.append({"experiment": experiment["name"], "state": state, "reason": reason})
 
@@ -1189,6 +1246,7 @@ def summarize(plan: dict, declared: dict, observations: list[dict]) -> tuple[dic
         },
         "baseline": first["name"],
         "baseline_reproduced": baseline_reproduced,
+        "session": "one browser session",
         "experiments": experiments,
         "checks": checks,
         "not_validated": not_validated,
@@ -1215,6 +1273,8 @@ def report_of(summary: dict) -> str:
         f"- Generated: {summary['generated']}",
         f"- Baseline: `{summary['baseline']}` — "
         + ("reproduced" if summary["baseline_reproduced"] else "not reproduced"),
+        "- Runs share one browser session: `reproduced` means two compatible answers from separate requests, "
+        "not from independent sessions.",
         "",
         "The headers' values are not in `experiments.yaml` and never reach this report: the plan names "
         "the headers, and their values are read from a local file outside the repository.",

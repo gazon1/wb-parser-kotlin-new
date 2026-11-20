@@ -43,7 +43,9 @@ The plan names one candidate from the record, the page whose context the probe
 runs in, the base query and the **names** of the headers to send. The run is
 bounded: a pause of at least one second between requests, at most forty
 requests, and no repeated query parameter in the base URL — a variation cannot
-say which of two values with the same name it changed. The candidate
+say which of two values with the same name it changed. A pagination experiment
+can say `distinct: true`: the answer must share no product id with the
+reference, so a reordered same page is not a next page. The candidate
 contributes its method, endpoint and query; the plan overrides what it needs.
 
 One experiment changes exactly one thing: one query parameter replaced, one
@@ -82,13 +84,17 @@ The approval is a fingerprint of the scope, written into the plan as
 `approved_scope` — the page, the endpoint, the query as the plan writes it,
 the header names, the credentials mode, the experiments and the pause between
 them, plus the approved origins and pages of the capture config. The values of
-the headers are not in it: they are the operator's session. A plan whose scope changed
+the headers are not in it: they are the operator's session. The local file the
+values come from is in the scope, so pointing the plan at another file needs
+another approval. A plan whose scope changed
 does not run until it is approved again.
 
 The state is earned by the evidence, not chosen by the writer:
 
-- `observed` — one answer, or an expectation that held once;
-- `reproduced` — the same answer from independent runs;
+- `observed` — one answer, or an expectation that held once; it is reported as
+  not established, because one sample is not a reproduction;
+- `reproduced` — the same answer from separate requests of one browser session
+  (the tool does not claim two independent sessions);
 - `validated` — a controlled variation repeated, its expectation held every
   time, and the reference itself reproduced;
 - `rejected` — a stable answer contradicts the expectation;
@@ -148,7 +154,8 @@ is the operator's question, not the tool's problem.
 - **Always** compute the state from the observations: one sample is `observed`,
   `validated` needs the reference reproduced and the variation repeated with the
   runs agreeing with each other, and a refusal, a failure or an unreadable
-  answer is `inconclusive`. Two "changed" answers that differ from each other
+  answer is `inconclusive`. A `distinct` pagination variation is judged on the
+  product ids it shares with the reference. Two "changed" answers that differ from each other
   leave the behaviour unreproduced.
 - **Never** report a blocked, failed or inconclusive experiment as a validation,
   and **never** turn a refusal into a claim about what the site requires.

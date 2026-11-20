@@ -31,6 +31,7 @@ experiments:
   compare:
   - order
   repeat: 2
+  distinct: true
 - name: page-0
   vary:
     page: '0'
@@ -45,5 +46,5 @@ experiments:
   compare:
   - order
   repeat: 2
-approved_scope: 692eeb104ed984954c81852464864e8c8ec541cac10f48d47a38cf67af7a710c
+approved_scope: 1a7a7cae853d88ac9029cd3251ebbe7e61757cd1f3da5338756730c91648edbd
 status: approved
