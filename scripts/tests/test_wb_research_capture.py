@@ -616,3 +616,25 @@ def test_a_page_action_may_only_open_an_approved_host(tmp_path, monkeypatch):
         capture.capture_step(args, CONFIG)
 
     assert not any("start" in call for call in calls)
+
+
+def test_a_page_action_may_not_open_a_host_by_an_upper_case_scheme(tmp_path, monkeypatch):
+    # The finding of the review: the scheme of a URL is not case-sensitive, so
+    # the check that looks at it was not.
+    calls = []
+
+    def fake_chrome_use(*args):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
+    args = argparse.Namespace(
+        name="step", investigation="demo", command=["chrome-use", "open", "HTTPS://example.test/buy"], settle=0.0
+    )
+
+    with pytest.raises(SystemExit):
+        capture.capture_step(args, CONFIG)
+
+    assert not any("start" in call for call in calls)

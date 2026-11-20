@@ -344,7 +344,14 @@ def check_read_only(actions: list[list[str]], approved: list[str]) -> None:
         if verb not in NAVIGATION_PAGE_ACTIONS:
             continue
         url = action[2] if len(action) > 2 else ""
-        if url.startswith("http") and not host_matches(host_of(url), approved):
+        if not url or url.startswith("-"):
+            # The page action names no page: `read` without a URL reads the tab
+            # that is open, and an option is not a page.
+            continue
+        scheme = urlsplit(url).scheme.lower()
+        if scheme not in ("http", "https"):
+            raise SystemExit(f"the page action may only open an http page, not {url!r}")
+        if not host_matches(host_of(url), approved):
             raise SystemExit(f"the page action may only open an approved host, not {host_of(url)}")
 
 
