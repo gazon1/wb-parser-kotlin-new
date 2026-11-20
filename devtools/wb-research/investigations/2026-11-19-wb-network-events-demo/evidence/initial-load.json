@@ -24,6 +24,9 @@
           "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
           "x-wb-antibot-key": "<redacted:x-wb-antibot-key>",
           "x-wb-antibot-sdk-version": "<redacted:x-wb-antibot-sdk-version>"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -89,6 +92,9 @@
           "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           "x-spa-version": "14.33.2"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -160,6 +166,9 @@
           "x-requested-with": "XMLHttpRequest",
           "x-spa-version": "14.33.2",
           "x-userid": "<redacted:x-userid>"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -233,6 +242,9 @@
           "x-requested-with": "XMLHttpRequest",
           "x-spa-version": "14.33.2",
           "x-userid": "<redacted:x-userid>"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -301,6 +313,9 @@
           "x-requested-with": "XMLHttpRequest",
           "x-spa-version": "14.33.2",
           "x-userid": "<redacted:x-userid>"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -371,6 +386,9 @@
           "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           "x-spa-version": "14.33.2"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -444,6 +462,9 @@
           "x-address-locale": "<redacted:x-address-locale>",
           "xcheck": "<redacted:xcheck>",
           "xposition": "<redacted:xposition>"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -502,6 +523,9 @@
           "sec-ch-ua-mobile": "?0",
           "sec-ch-ua-platform": "\"Linux\"",
           "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {

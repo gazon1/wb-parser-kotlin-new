@@ -62,6 +62,13 @@ keys, the size, whether it was JSON. The body itself is never written, and the
 shape is carried to the redactor through a `_capture` annotation on the HAR
 entry.
 
+The body of a **request** is in the recording already, so there is nothing to
+read and nothing to fetch: the redactor takes its shape out of the recording —
+the media type, the size, the names of the fields at the top level — and
+leaves the values behind. A recording that does not carry the body of a
+request says so with `recorded: false`, because a body that is not in the
+recording is a body that was not recorded and not a request that sent nothing.
+
 ## Rationale
 
 The wrapper wins over hand-filtering because the separation is a decision that
@@ -98,6 +105,14 @@ was never answered is evidence of something different.
   `allowedOrigins` is approved, a host of `noiseHosts` is noise, and the config
   is the only source of that decision.
 - **Never** write a response body into a capture; only its shape.
+- **Never** write the values of a request body into a capture; only its shape —
+  the media type, the size and the names of the fields at the top level. A body
+  of a request says what the session did, and a name the service chose is as
+  much as may be kept.
+- **Never** read the absence of a request body as a request that sent nothing:
+  the browser does not write the body of every request it sees, so a body that
+  is not in the recording is a body that was not recorded, and the capture says
+  so with `recorded: false`.
 - **Never** write a status for a request that has none: null with a reason.
 - **Always** wait for the in-flight requests before stopping a recording
   (`--settle`).

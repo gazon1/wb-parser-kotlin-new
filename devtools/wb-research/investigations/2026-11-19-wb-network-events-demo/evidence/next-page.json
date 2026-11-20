@@ -25,6 +25,14 @@
           "x-wb-antibot-key": "<redacted:x-wb-antibot-key>",
           "x-wb-antibot-sdk-version": "<redacted:x-wb-antibot-sdk-version>",
           "x-wbaas-token": "<redacted:x-wbaas-token>"
+        },
+        "body": {
+          "recorded": true,
+          "mimeType": "application/json",
+          "bodyBytes": 1139,
+          "jsonType": "scalar",
+          "topLevelKeys": null,
+          "formFields": null
         }
       },
       "response": {
@@ -85,6 +93,9 @@
           "test-properties": "<redacted:test-properties>",
           "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
           "userid": "<redacted:userid>"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -141,6 +152,9 @@
           "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           "x-spa-version": "14.33.2"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -210,6 +224,14 @@
           "x-wb-antibot-key": "<redacted:x-wb-antibot-key>",
           "x-wb-antibot-sdk-version": "<redacted:x-wb-antibot-sdk-version>",
           "x-wbaas-token": "<redacted:x-wbaas-token>"
+        },
+        "body": {
+          "recorded": true,
+          "mimeType": "application/json",
+          "bodyBytes": 1711,
+          "jsonType": "scalar",
+          "topLevelKeys": null,
+          "formFields": null
         }
       },
       "response": {
@@ -271,6 +293,9 @@
           "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           "x-spa-version": "14.33.2"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -339,6 +364,9 @@
           "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/155.0.0.0 Safari/537.36",
           "x-requested-with": "XMLHttpRequest",
           "x-spa-version": "14.33.2"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -409,6 +437,9 @@
           "x-requested-with": "XMLHttpRequest",
           "x-spa-version": "14.33.2",
           "x-userid": "<redacted:x-userid>"
+        },
+        "body": {
+          "recorded": false
         }
       },
       "response": {
@@ -481,6 +512,14 @@
           "x-wb-antibot-key": "<redacted:x-wb-antibot-key>",
           "x-wb-antibot-sdk-version": "<redacted:x-wb-antibot-sdk-version>",
           "x-wbaas-token": "<redacted:x-wbaas-token>"
+        },
+        "body": {
+          "recorded": true,
+          "mimeType": "application/json",
+          "bodyBytes": 1539,
+          "jsonType": "scalar",
+          "topLevelKeys": null,
+          "formFields": null
         }
       },
       "response": {
@@ -543,6 +582,14 @@
           "x-wb-antibot-key": "<redacted:x-wb-antibot-key>",
           "x-wb-antibot-sdk-version": "<redacted:x-wb-antibot-sdk-version>",
           "x-wbaas-token": "<redacted:x-wbaas-token>"
+        },
+        "body": {
+          "recorded": true,
+          "mimeType": "application/json",
+          "bodyBytes": 1327,
+          "jsonType": "scalar",
+          "topLevelKeys": null,
+          "formFields": null
         }
       },
       "response": {

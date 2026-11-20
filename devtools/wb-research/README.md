@@ -167,6 +167,28 @@ A capture is metadata, not a recording: the method, the URL, which headers went
 out, the status, the content type and the size. The response body is never
 included.
 
+`request.body` is the shape of the body the request sent — the media type, the
+size, and the names of the fields at the top level (`topLevelKeys` for a JSON
+body, `formFields` for a form). The values of a request body are not
+committed: a body says what the session did, and a name is as much as may be
+kept.
+
+```json
+"body": {
+  "recorded": true,
+  "mimeType": "application/json",
+  "bodyBytes": 1139,
+  "jsonType": "scalar",
+  "topLevelKeys": null,
+  "formFields": null
+}
+```
+
+`recorded: false` means the recording does not carry the body of that request.
+That is not the same as a request that sent nothing: the browser does not write
+the body of every request it sees, so a body that is not there is a body that
+was not recorded, and the capture says exactly that.
+
 ## Producing evidence
 
 `scripts/wb-research/redact.py` turns a raw capture into a sanitized fixture.
@@ -399,6 +421,13 @@ When the body was not read, the annotation carries a **code** for the reason
 browser's own error text quotes the URL and the request, so it is dropped at
 the source: what the evidence says is that the body was not read, and the
 redactor turns the code into the sentence that says so.
+
+The body of a **request** is a different thing: the recording carries it, so
+there is nothing to read and nothing to fetch. The redactor takes its shape
+out of the recording — the media type, the size, the names of the fields — and
+leaves the values behind. A recording that does not carry the body of a
+request says so with `recorded: false`; it does not claim that the request
+sent nothing.
 
 A request that was still in flight when the recording stopped has no status.
 It is written as `status: null` with a reason, not as a fake HTTP value: a
@@ -649,6 +678,10 @@ The rules the redactor applies:
   the URL and the request, so it is dropped at the source and never written
   down. A reason that is not one of the codes is not kept at all;
 - a response body is never included;
+- a request body is never included either: only its shape — the media type,
+  the size and the names of the fields at the top level. A name is a name the
+  service chose and goes through the same rules as any other key; a value of a
+  request body is what the session did and stays out of the file;
 - the content type of a response keeps the media type and the safe parameters
   (`charset`) only: a server may answer with anything, and the same value in a
   header goes through the rules — a `content-type` header is judged by the same

@@ -1912,3 +1912,79 @@ def test_a_count_that_cannot_be_a_count_is_not_kept():
     measurements = redact.redact_measurements({"total": -1, "productCount": 2.7, "productsWithPoints": 0})
 
     assert measurements == {"productsWithPoints": 0}
+
+
+def har_entry_with_body(post_data: object) -> dict:
+    """One HAR entry whose request carries the given body."""
+    request = {"method": "POST", "url": "https://www.wildberries.ru/__internal/antibot/api/v1/frontend-analytics"}
+    if post_data is not None:
+        request["postData"] = post_data
+    return {
+        "startedDateTime": "2026-11-19T20:16:07.581Z",
+        "request": request,
+        "response": {"status": 200, "headers": [], "content": {"mimeType": "application/json", "size": 12}},
+    }
+
+
+def test_the_shape_of_a_request_body_is_the_names_of_its_fields():
+    # Issue #310 asks for the shape of the request body, and the capture kept
+    # the shape of the answer only: a request that sent a body said nothing
+    # about it.
+    entry = har_entry_with_body({"mimeType": "application/json", "text": '{"filter":{"color":"red"},"page":2}'})
+
+    body = redact.capture_from_har_entry(entry, "c1", "step.har")["request"]["body"]
+
+    assert body["recorded"] is True
+    assert body["mimeType"] == "application/json"
+    assert body["jsonType"] == "object"
+    assert body["topLevelKeys"] == ["filter", "page"]
+    assert body["bodyBytes"] == len('{"filter":{"color":"red"},"page":2}')
+
+
+def test_a_value_of_a_request_body_never_reaches_the_fixture():
+    entry = har_entry_with_body(
+        {"mimeType": "application/json", "text": '{"query":"колонки","token":"' + SECRET_TOKEN + '"}'}
+    )
+
+    capture = redact.capture_from_har_entry(entry, "c1", "step.har")
+
+    assert SECRET_TOKEN not in json.dumps(capture, ensure_ascii=False)
+    assert "колонки" not in json.dumps(capture, ensure_ascii=False)
+
+
+def test_a_request_body_the_recording_does_not_carry_is_not_a_request_without_a_body():
+    # The recording does not write the body of every request it sees, so the
+    # absence of a body is not the fact that the request sent nothing.
+    entry = har_entry_with_body(None)
+
+    body = redact.capture_from_har_entry(entry, "c1", "step.har")["request"]["body"]
+
+    assert body == {"recorded": False}
+
+
+def test_a_request_body_that_is_not_json_carries_no_keys():
+    entry = har_entry_with_body({"mimeType": "application/json", "text": '"a string, not an object"'})
+
+    body = redact.capture_from_har_entry(entry, "c1", "step.har")["request"]["body"]
+
+    assert body["jsonType"] == "scalar"
+    assert body["topLevelKeys"] is None
+
+
+def test_a_key_of_a_request_body_that_is_an_address_is_not_kept():
+    entry = har_entry_with_body({"mimeType": "application/json", "text": '{"alice@example.com":1}'})
+
+    body = redact.capture_from_har_entry(entry, "c1", "step.har")["request"]["body"]
+
+    assert body["topLevelKeys"] == ["<redacted:key>"]
+
+
+def test_the_fields_of_a_form_body_are_kept_and_its_values_are_not():
+    entry = har_entry_with_body(
+        {"mimeType": "application/x-www-form-urlencoded", "text": "search=%D0%BA%D0%BE%D0%BB%D0%BE%D0%BD%D0%BA%D0%B8"}
+    )
+
+    body = redact.capture_from_har_entry(entry, "c1", "step.har")["request"]["body"]
+
+    assert body["formFields"] == ["search"]
+    assert "колонки" not in json.dumps(body, ensure_ascii=False)

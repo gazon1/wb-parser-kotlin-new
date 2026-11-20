@@ -1273,6 +1273,70 @@ def har_schema(entry: dict[str, Any]) -> dict[str, Any]:
     return shape
 
 
+def har_request_body(request: dict[str, Any]) -> dict[str, Any]:
+    """The shape of the body a request sent, without the body itself.
+
+    A request body says what the page asked for — a filter, a search, a
+    payload of analytics — and its shape is the evidence: the media type, the
+    size and the names of the fields at the top level. The values are not
+    evidence: a body carries what the session did, and that is not committed.
+
+    The recording may not carry the body at all, and then the capture says so
+    rather than claiming that the request sent nothing. The recording is what
+    this module reads, and a body it does not hold is a body that was not
+    recorded — not a body that was not sent. Chrome does not write the body of
+    every request it sees, so the two are not the same fact.
+    """
+    post = request.get("postData")
+    if not isinstance(post, dict):
+        return {"recorded": False}
+    shape: dict[str, Any] = {
+        "recorded": True,
+        "mimeType": safe_content_type(post.get("mimeType")),
+        "bodyBytes": None,
+        "jsonType": None,
+        "topLevelKeys": None,
+        "formFields": None,
+    }
+    text = post.get("text")
+    if not isinstance(text, str):
+        return shape
+    shape["bodyBytes"] = len(text.encode("utf-8", "replace"))
+    media_type = (shape["mimeType"] or "").lower()
+    if "form-urlencoded" in media_type:
+        shape["formFields"] = safe_keys(form_field_names(post, text))
+        return shape
+    if post.get("encoding") == "base64":
+        # The body is written as it was sent over the wire, and a body that is
+        # encoded says nothing about its shape until it is decoded. The size
+        # and the media type are what the recording holds.
+        return shape
+    try:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return shape
+    if isinstance(parsed, dict):
+        shape["jsonType"] = "object"
+        shape["topLevelKeys"] = safe_keys(list(parsed))
+    elif isinstance(parsed, list):
+        shape["jsonType"] = "array"
+    else:
+        shape["jsonType"] = "scalar"
+    return shape
+
+
+def form_field_names(post: dict[str, Any], text: str) -> list[str]:
+    """The names of the fields of a form body, without their values.
+
+    A form body is a list of names and values. The names are what the service
+    chose and are the shape of the body; the values are what the session sent.
+    """
+    params = post.get("params")
+    if isinstance(params, list):
+        return [str(param.get("name", "")) for param in params if isinstance(param, dict)]
+    return [name for name, _ in parse_qsl(text, keep_blank_values=True)]
+
+
 def har_response(response: dict[str, Any], pending: bool) -> dict[str, Any]:
     """What came back.
 
@@ -1313,6 +1377,7 @@ def capture_from_har_entry(entry: dict[str, Any], capture_id: str, source_file: 
             "method": safe_method(request.get("method")),
             "url": redact_url(str(request.get("url", ""))),
             "headers": redact_headers(request.get("headers", []) or [], SAFE_REQUEST_HEADERS),
+            "body": har_request_body(request),
         },
         "response": har_response(response, pending),
         "timing": har_timing(entry),
