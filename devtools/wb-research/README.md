@@ -268,17 +268,24 @@ keeps the session on, and a query the tool did not ask for is not a navigation
 of its own. The session is read the way the browser reads it: the browser reads
 a backslash as a slash, so a session on `https://a.example\@b.example/` names
 the host `b.example` to the parser and the host `a.example` to the browser —
-such a session is not approved, and the step fails. The page may navigate the
+such a session is not approved, and the step fails. A session on a path that
+hides a separator behind an escape is refused the same way: the browser sends
+the path as it is written, but a server or a proxy may decode it, and then it
+is another path. The page may navigate the
 session by itself as well — a script that replaces the location — and the
 browser says where it went, so such a step fails too. A browser that cannot
 say where the session is fails the step as well — a step whose evidence says
 nothing about where the session went shows nothing about what the step did.
 The recording does not decide this: it cannot tell the main frame of the tab
-from a frame of another site — both are documents in it — so a frame of an
-approved host outside the approved pages is not a navigation of the session and
-does not fail the step. The pages the recording shows that the config does not
-name are named in the report, and a document of another host is third-party
-traffic that the filter keeps out of the evidence.
+from a frame of another site — both are documents in it. The browser does: it
+names the frames of the page it is on, and a frame that is still there is a
+frame — not a place the session went — and does not fail the step. A document
+of the recording that is neither a frame nor a page the config approves is a
+page the session visited and left, and such a step fails: the pages are named
+in the report. A browser that cannot name the frames of the page fails the
+step as well — a step that cannot tell a frame from the session cannot say
+where the session went. A document of another host that is a frame is
+third-party traffic that the filter keeps out of the evidence.
 The tool cannot know what the site will answer before it answers it, so the
 guarantee it keeps is the one it can hold: the commands it runs are commands
 that read the page, and a step whose session left the approved pages is not

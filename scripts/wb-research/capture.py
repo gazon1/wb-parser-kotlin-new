@@ -22,9 +22,11 @@ reads the page, and an action that could change the site — a click, a typed
 text, a shell — is refused before the recording starts.
 
 The site may answer the page the operator opens with another page. The browser
-follows it, so the tool reads the answer in the recording: a navigation that
-left the approved pages makes the step a failed one, and the capture of a
-failed step is not exported.
+follows it, and the browser is also the one that says which frames the page
+has: a frame that is still there is a frame, not a place the session went. So
+the tool reads the answer in the browser: a session that left the approved
+pages, or that visited a page the config does not approve, makes the step a
+failed one, and the capture of a failed step is not exported.
 
 Usage:
     capture.py step --investigation <id> --name <step> -- <read-only chrome-use command...>
@@ -722,6 +724,52 @@ def session_page() -> str:
     return str(data.get("url", ""))
 
 
+def browser_frames() -> list[str] | None:
+    """The pages the browser shows: the tab itself and the frames inside it.
+
+    The recording cannot tell the main frame of the tab from a frame of
+    another site — both are documents in it. The browser tells them apart: it
+    names the frame of the tab and the frames inside it. `None` when the
+    browser cannot say, and a step that cannot tell a frame from the session
+    is a step that cannot judge where the session went.
+    """
+    proc = chrome_use("frames", "--json")
+    text = (proc.stdout or "") + (proc.stderr or "")
+    start = text.find("{")
+    if proc.returncode != 0 or start < 0:
+        return None
+    try:
+        payload = json.loads(text[start:])
+    except json.JSONDecodeError:
+        return None
+    data = payload.get("data") or {}
+    frames = data.get("frames")
+    if not isinstance(frames, list):
+        return None
+    urls: list[str] = []
+    for frame in frames:
+        if not isinstance(frame, dict):
+            continue
+        url = str(frame.get("url", ""))
+        if url:
+            urls.append(url)
+    return urls
+
+
+def same_page(url: str, other: str) -> bool:
+    """Whether two URLs name the same page.
+
+    The page is the origin and the path: the query is what the site adds to
+    the page it keeps the session on, and it says nothing about which page
+    this is.
+    """
+    left = origin_of(url)
+    right = origin_of(other)
+    if left is None or right is None or left != right:
+        return False
+    return page_path(url) == page_path(other)
+
+
 def document_urls(entries: list[dict]) -> list[str]:
     """The pages the recording shows as documents.
 
@@ -779,7 +827,10 @@ def session_problem(url: str, approved: list[str], pages: list[str]) -> str:
     parameters to the page it keeps the session on, and a query the tool did
     not ask for is not a navigation of its own. A URL the browser reads
     differently than the parser reads it — a backslash — is not a URL this
-    check can read, so it is not approved.
+    check can read, so it is not approved. A path that hides a separator
+    behind an escape is refused as well: the browser sends it as it is
+    written, but a server or a proxy may decode it, and then it is another
+    path — the path the check reads is not the path the server routes.
     """
     if not url:
         # The browser could not say where the session is. A step whose evidence
@@ -793,6 +844,11 @@ def session_problem(url: str, approved: list[str], pages: list[str]) -> str:
         # browser. A page the tool cannot read the way the browser reads it is
         # a page it cannot approve.
         return f"the session is on a page the tool cannot read the way the browser reads it: {url}"
+    parts = url_parts(url)
+    if parts is None:
+        return f"the session is on a page the tool cannot read at all: {url}"
+    if hides_separator(parts.path):
+        return f"the session is on a page whose path hides a separator behind an escape: {url}"
     if not approved_origin(url, approved):
         return f"the session left the approved origins: {url}"
     if not approved_page(url, pages):
@@ -920,31 +976,48 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     # site answers.
     #
     # The recording cannot tell the main frame of the tab from a frame of
-    # another site: both are documents in it, and a frame of an approved origin
-    # is not a navigation of the session either. So the recording does not
-    # decide the step — it names the pages it shows that the config does not
-    # name, and the browser decides where the session is.
+    # another site: both are documents in it. The browser tells them apart —
+    # it names the frames of the page it is on — and a frame that is still
+    # there is a frame, not a place the session went. A page that is not a
+    # frame and not a page the config approves is a page the session visited
+    # and left: the step fails, because the capture of a session that went
+    # somewhere else is not evidence of what the step shows.
     pages = config.get("allowedPages", [])
-    left_pages = [
-        target
-        for target in navigation_targets(entries)
-        if approved_origin(target, config["allowedOrigins"])
-        and not approved_navigation(target, config["allowedOrigins"], pages, config.get("allowedQueryParams", []))
-    ]
-    left_documents = [
-        url
-        for url in document_urls(entries)
-        if approved_origin(url, config["allowedOrigins"])
-        and not approved_navigation(url, config["allowedOrigins"], pages, config.get("allowedQueryParams", []))
-    ]
-    left = list(dict.fromkeys(left_pages + left_documents))
+    noise = config.get("noiseHosts", [])
+    frames = browser_frames()
+    frame_pages = [frame for frame in (frames or []) if not approved_page(frame, pages)]
+    visited: list[str] = []
+    if frames is not None:
+        for url in dict.fromkeys(document_urls(entries) + navigation_targets(entries)):
+            if host_matches(host_of(url), noise):
+                # The traffic of a noise host carries no API, and the operator
+                # has said so: a page of such a host is not where the session
+                # went.
+                continue
+            if approved_navigation(url, config["allowedOrigins"], pages, config.get("allowedQueryParams", [])):
+                continue
+            if any(same_page(url, frame) for frame in frames):
+                # A frame that is still there is a frame, and not a place the
+                # session went.
+                continue
+            visited.append(url)
 
     # The browser tells the main frame of the tab from a frame of another site:
     # the main frame of the tab is the page the session is on. A session that
     # left the approved pages observes something else, so the step fails: the
     # capture of a failed step is not evidence of what the step shows.
-    problem = session_problem(session_page(), config["allowedOrigins"], pages)
-    if problem:
+    problems: list[str] = []
+    if frames is None:
+        # The browser could not say which frames the page has. A step that
+        # cannot tell a frame from the session cannot say where the session
+        # went, so it is not a successful one.
+        problems.append("the browser did not tell which frames the page has")
+    session_reason = session_problem(session_page(), config["allowedOrigins"], pages)
+    if session_reason:
+        problems.append(session_reason)
+    if visited:
+        problems.append("the session visited a page the config does not approve: " + "; ".join(visited[:3]))
+    if problems:
         failed = failed or EXIT_FAILED
 
     listed = chrome_use_json("network", "requests").get("requests", [])
@@ -1002,12 +1075,12 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     if action_failure:
         notes.append(action_failure)
     else:
-        if problem:
-            notes.append(problem)
-        elif failed:
+        for reason in problems:
+            notes.append(reason)
+        if not problems and failed:
             notes.append(f"the page action failed with exit code {failed}, so the capture is partial")
-    if left:
-        notes.append("the recording shows a navigation the config does not approve: " + "; ".join(left[:3]))
+    if frame_pages:
+        notes.append("the page shows frames the config does not name as pages: " + "; ".join(frame_pages[:3]))
 
     report = {
         "step": step,
@@ -1016,6 +1089,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         "dropped": dict(dropped),
         "droppedHosts": {reason: sorted(hosts) for reason, hosts in dropped_hosts.items()},
         "unapprovedApiHosts": unapproved,
+        "frames": frames,
         "failedExitCode": failed,
         "notes": notes,
     }
@@ -1037,7 +1111,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
 
     if failed:
         print(
-            action_failure or problem or f"the command failed with exit code {failed}",
+            action_failure or "; ".join(problems) or f"the command failed with exit code {failed}",
             file=sys.stderr,
         )
         return EXIT_FAILED

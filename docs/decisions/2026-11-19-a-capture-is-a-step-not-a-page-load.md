@@ -48,6 +48,14 @@ is not an API call) and `maxBodyFetches`. The pages a capture may open are named
 in the same file: `allowedPages` and the query parameters a navigation may carry
 (`allowedQueryParams`).
 
+After its actions the step asks the browser two questions: where the session is
+(the page of the main frame of the tab) and which frames the page has (the tab
+itself and the frames inside it). The first says whether the session is on a
+page the config approves. The second tells a frame of another site from a page
+the session went to — the recording cannot tell them apart, both are documents
+in it, and a page the session visited and left is a page the capture is not
+evidence of.
+
 An API-shaped request to an origin that is neither approved nor marked as noise
 is **not** dropped: the capture writes everything it has, names the origin and
 exits with code 2. The developer then approves the origin with `--allow-host` or
@@ -290,6 +298,11 @@ was never answered is evidence of something different.
   session on `https://a.example\@b.example/` names the host `b.example` to the
   parser and the host `a.example` to the browser. Such a session is not
   approved, and the step fails and is not committed.
+- **Never** judge a session on a path that hides a separator behind an escape:
+  the browser sends the path as it is written, but a server or a proxy may
+  decode it, and then it is another path — the path the check reads is not the
+  path the server routes. `%2f` and `%5c` are refused, read layer by layer, and
+  a session on such a path fails the step and is not committed.
 - **Never** let the session go to a page the config does not name, whoever
   sends it there: a redirect is one way, and the page itself may navigate the
   session — a script that replaces the location. The browser says where the
@@ -322,12 +335,16 @@ was never answered is evidence of something different.
   page are what is judged: the site may add query parameters to the page it
   keeps the session on, and a query the tool did not ask for is not a
   navigation of its own.
-- **Never** read a document of the recording as a navigation of the session: the
-  main frame of the tab and a frame of another site are both documents in it, so
-  a frame of an approved host outside the approved pages is not a navigation and
-  does not fail the step. The pages the recording shows that the config does
-  not name are named in the report, and the browser decides where the session
-  is.
+- **Never** read a document of the recording as a navigation of the session
+  without asking the browser: the main frame of the tab and a frame of another
+  site are both documents in it, so the recording alone cannot tell them apart.
+  The browser names the frames of the page it is on, and a frame that is still
+  there is a frame — not a place the session went, and it does not fail the
+  step. A document of the recording that is neither a frame nor a page the
+  config approves is a page the session visited and left: the step fails, and
+  the pages are named in the report. A browser that cannot name the frames of
+  the page fails the step as well — a step that cannot tell a frame from the
+  session cannot say where the session went.
 - **Never** let a navigation name a page the tool does not read: a navigation
   (`open`, `read`) names the page right after the verb, and a command that
   names no page is refused — `read` without a URL reads the tab that is open,
