@@ -74,17 +74,81 @@ already there and only renames it.
 
 `feedback_points` does not exist until `V16__scraped_items_feedback_points.sql` has been
 applied, so the read model's index cannot be built before that. Its rollout is three
-phases, not one:
+phases, not one — and the phases are about **who writes**, not only about the order of
+the SQL.
 
-1. **Apply V16.** It adds the column and touches no index, so it is quick and the crawler
-   keeps writing to the table. Flyway stops where it is told to: `SPRING_FLYWAY_TARGET=16`
-   (or `flyway migrate -target=16`) applies the migrations up to V16 and no further. The
-   deployment that carries the rest of this change does not set the target.
-2. **Build the index concurrently**, under the name `..._v2` — the statement above. The
-   column is there now, so the build succeeds; on a database that has not applied V16 it
-   fails with `column "feedback_points" does not exist`.
-3. **Apply V17 and V18.** V18 finds the index already built (`IF NOT EXISTS`), drops the
-   old one and renames the new one to the name the queries and the docs use.
+The change this index belongs to changes what the writer stores.
+`V17__scraped_items_cashback_is_a_percentage.sql` converts the cashback of every
+existing row from the old unit to the new one, and the new release writes rows in the
+new unit from its first crawl. The conversion assumes every row it reads is in the old
+unit. A row written in the new unit before the conversion is read as an old one: 3 % of
+2590 ₽ is stored as 77.70 ₽, the conversion reads that as 3 % = 7770 %, and the row
+ends up carrying 201243 ₽ of cashback.
+
+So the order the phases enforce is this:
+
+> The writer that writes the new unit starts **after** the conversion has been applied,
+> and the conversion is applied while **no writer runs**.
+
+#### Phase 1 — apply V16, with the old writer still running
+
+`V16` adds a column: it touches no row and no index, so the release that is still
+running keeps writing the old unit, and the column is simply `NULL` for the rows it
+writes.
+
+The migration is applied by an instance of the new release whose writer is off
+(`CRAWLER_WORKER_ENABLED=false`), and Flyway is told where to stop:
+
+```bash
+SPRING_FLYWAY_TARGET=16 CRAWLER_WORKER_ENABLED=false \
+  java -jar app/build/libs/app.jar
+```
+
+The API instance on the VPS has its writer off by design, so it is the natural instance
+for this phase: there the setting is an environment variable of the container, and it is
+removed again for phase 3. The crawler on the workstation is the writer, and it keeps
+running the release it is running.
+
+#### Phase 2 — build the index concurrently, and prove that it is valid
+
+The `..._v2` build from the statement list above. Then the check that decides whether
+phase 3 may start:
+
+```sql
+SELECT c.relname, i.indisvalid, i.indisready
+  FROM pg_index i
+  JOIN pg_class c ON c.oid = i.indexrelid
+ WHERE c.relname = 'ix_scraped_items_product_latest_covering_v2';
+```
+
+`indisvalid = true` is the answer we want. A `CREATE INDEX CONCURRENTLY` that failed
+leaves an index that exists and is not valid, and the planner ignores it — drop it and
+build it again:
+
+```sql
+DROP INDEX CONCURRENTLY ix_scraped_items_product_latest_covering_v2;
+```
+
+This is a prerequisite, not a suggestion: `V18` refuses to run on an index that is not
+valid — it raises, the deployment fails, and the index that works stays in place.
+
+#### Phase 3 — apply V17 and V18, then let the new writer run
+
+1. **Stop the crawler.** The conversion reads every row and rewrites it. A writer that
+   keeps writing the old unit during the conversion leaves rows that were never
+   converted, and a writer that writes the new unit during it leaves rows the
+   conversion reads the wrong way round.
+2. **Apply V17 and V18** — start the new release with the writer still off and without
+   `SPRING_FLYWAY_TARGET` this time. V17 converts the rows; V18 finds the index built
+   in phase 2, drops the old one and renames the new one to the name the queries and
+   the docs use.
+3. **Start the new crawler** — the new release with the writer on. Every row it writes
+   is in the new unit, and the conversion has already run.
+
+Until step 3 the crawler that runs is the old one, and the rows it writes are in the
+old unit — that is what the conversion is for. The new crawler must not be started
+before step 2, whatever else happens: its rows would be read by the conversion as rows
+of the old unit.
 
 Between the first and the third phase the old index is still the one in use. It does not
 carry `feedback_points`, so the read model visits the heap for every observation — the
@@ -154,6 +218,9 @@ Two reasons, both of them deliberate:
 - A concurrently built index is only marked valid when the build finishes. A migration
   that can leave something invalid behind is a thing an operator has to check afterwards,
   and the crawler's migrations are meant to be things that either happened or did not.
+  The migration that renames the index built outside it makes that true for this index
+  as well: it refuses to rename an index that is not valid, so an index that a failed
+  build left behind is a failed deployment and not a broken catalog.
 
 So the ordinary `CREATE INDEX` stays in the migration — it is the right thing for a fresh
 database, which is every test and every new deployment — and this runbook is the

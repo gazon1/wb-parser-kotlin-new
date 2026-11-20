@@ -112,9 +112,20 @@ reported, dressed up as a fix.
   carries it. The read model's index carries `feedback_points`, and that column does not
   exist until `V16` is applied: a build before that fails with "column feedback_points does
   not exist", and letting the migration build the index instead holds the lock on the
-  crawler's table that the concurrent build exists to avoid. The rollout is three phases —
-  apply `V16`, build the index concurrently, apply `V17` and `V18` — and Flyway stops
-  where it is told to (`SPRING_FLYWAY_TARGET=16`).
+  crawler's table that the concurrent build exists to avoid.
+- **Never** let the writer that writes the new unit run before the migration that converts
+  the old rows has been applied, and apply that migration while no writer runs. `V17`
+  reads every row as the old writer wrote it and rewrites it in the new unit; a row
+  written in the new unit before the conversion is read as an old one — 3 % of 2590 ₽ is
+  stored as 77.70 ₽, the conversion reads that as 7770 %, and the row ends up carrying
+  201243 ₽. The rollout is three phases: apply `V16` with the old writer still running,
+  build the index concurrently and prove that it is valid, then stop the writer, apply
+  `V17` and `V18`, and only then start the new writer
+  (`docs/operations/catalog-index-rollout.md`).
+- **Never** rename an index that is not valid. A `CREATE INDEX CONCURRENTLY` that failed
+  leaves one behind, and `CREATE INDEX IF NOT EXISTS` sees only the name: without a check
+  the migration would drop the index that works and rename the one the planner ignores.
+  `V18` refuses to run on such an index.
 - The catalog's cashback-based sort, its `minCashback` filter and its "best cashback" list
   have nothing to sort by any more: no crawled product carries a wallet cashback, because the
   request does not ask for one. They keep working — they just report empty and order by

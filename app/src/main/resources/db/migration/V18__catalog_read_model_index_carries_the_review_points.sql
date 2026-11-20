@@ -26,6 +26,11 @@
 -- exist". The order on a live database is therefore V16, then the concurrent build,
 -- then this migration — `docs/operations/catalog-index-rollout.md` says so.
 --
+-- This migration is applied together with `V17__scraped_items_cashback_is_a_percentage.sql`,
+-- which converts the cashback of every existing row to the new unit. That conversion
+-- reads the rows as the old writer wrote them, so the writer that writes the new unit
+-- must not run before it — the runbook says which writer is stopped, and when.
+--
 -- `CREATE INDEX CONCURRENTLY` cannot run inside a transaction block, and the crawler's
 -- migrations are applied inside one, so the build here is the ordinary one: on the
 -- production database the index is built before the migration is applied, concurrently,
@@ -37,6 +42,37 @@
 -- moment; the build, the part that takes minutes on a big table, is the one the runbook
 -- does concurrently. The rename keeps the index's name the one the docs and the runbook
 -- name, so nothing outside the migration has to learn a second name.
+--
+-- ## Why the migration refuses an index that is not valid
+--
+-- A `CREATE INDEX CONCURRENTLY` that failed leaves an index behind that exists and is
+-- not valid: PostgreSQL marks it invalid, and the planner ignores it. `CREATE INDEX IF
+-- NOT EXISTS` sees the name and does nothing — so a migration that only looked at the
+-- name would drop the index that works and rename the one that does not, and the read
+-- model would visit the heap for every observation, with nothing to show for the
+-- minutes the build took.
+--
+-- So the migration checks that the index it is about to rename is valid, and refuses to
+-- run otherwise: the deployment fails, the old index stays, and the operator drops the
+-- invalid index and builds it again. The check is the last line of the runbook's
+-- "checking that it worked" made into a gate — the runbook asks for it, and the
+-- migration does not trust the answer.
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM pg_index i
+        JOIN pg_class c ON c.oid = i.indexrelid
+        WHERE c.relname = 'ix_scraped_items_product_latest_covering_v2'
+          AND NOT i.indisvalid
+    ) THEN
+        RAISE EXCEPTION
+            'the index ix_scraped_items_product_latest_covering_v2 is not valid: drop it with '
+            'DROP INDEX CONCURRENTLY and build it again';
+    END IF;
+END
+$$;
+
 CREATE INDEX IF NOT EXISTS ix_scraped_items_product_latest_covering_v2
     ON scraped_items (product_id, scraped_at DESC, id DESC)
     INCLUDE (
