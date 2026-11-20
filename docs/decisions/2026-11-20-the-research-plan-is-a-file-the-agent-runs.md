@@ -86,6 +86,14 @@ while the evidence on disk is from the old one. A step whose scope did not
 change keeps its state, so approving the same plan again resumes the work
 instead of throwing it away.
 
+A run works under the config it froze. The capture reads the config itself, so
+a config that changed while the run was going would widen the scope of the
+steps that come after it — under an approval that was given for the old one.
+The runner therefore copies the config into the raw cache at the start of the
+run, compares the scope of the approval with the scope of that copy, and hands
+the copy to every step. The scope that is checked and the scope that is run
+are the same file.
+
 A pause is a state, not an improvisation. A CAPTCHA, a login, an ambiguous page
 or an origin the config does not approve stops the run, is named in the plan
 and is answered by the operator. The runner never works around a blockage and
@@ -134,6 +142,10 @@ every other run.
   runner writes that scope into the step, and an approval plans the step again
   when the scope has changed. A step that is `done` under another scope is a
   step that has to run again — otherwise the plan claims a command it never ran.
+- **Always** run under the config the approval covered: the runner freezes the
+  config at the start of the run, checks the approval against that copy and
+  hands the copy to every step, so a config that is widened mid-run reaches no
+  step of that run.
 - **Always** cover every setting of the capture config that decides what the
   capture refuses to stop at: the origins, the pages, the query parameters, the
   noise hosts and the kept request types. A setting that is left out of the

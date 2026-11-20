@@ -69,6 +69,10 @@ resumed by the next run. An approval plans a step again when the scope it was
 run under has changed since: a state that belongs to another command, another
 origin or another config says nothing about the step as it stands.
 
+The run freezes the config it runs under: every step of a run works under the
+copy of the capture config that the run made, so a config that is widened while
+the run is going reaches no step of that run.
+
 ## Boundaries
 
 Never, and the tools already refuse most of it:

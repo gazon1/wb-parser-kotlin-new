@@ -55,6 +55,7 @@ def step(name: str, command: str = 'chrome-use open "https://www.wildberries.ru/
 def investigation(tmp_path, monkeypatch):
     """An investigation whose plan is the one under test."""
     monkeypatch.setattr(plan, "INVESTIGATIONS", tmp_path)
+    monkeypatch.setattr(plan, "RAW_ROOT", tmp_path / "raw")
 
     def make(steps: list[dict], status: str = "approved") -> str:
         name = "2026-11-20-wb-catalog-agent"
@@ -73,7 +74,7 @@ def fake_capture(monkeypatch, states: list[int]):
     """A capture that returns the given exit codes, one per step."""
     calls: list[list[str]] = []
 
-    def run_step(investigation, step, settle):
+    def run_step(investigation, step, settle, config_path):
         calls.append(step["command"])
         code = states[len(calls) - 1]
         if code == plan.EXIT_OK:
@@ -204,6 +205,7 @@ def test_the_capture_is_run_with_the_command_of_the_step(monkeypatch):
         "2026-11-20-wb-catalog-agent",
         {"name": "initial-load", "command": 'chrome-use open "https://www.wildberries.ru/"'},
         8.0,
+        Path("/tmp/approved-config.json"),
     )
 
     assert state == plan.DONE
@@ -235,10 +237,37 @@ def test_an_approved_origin_reaches_the_capture(monkeypatch):
             "allow_hosts": ["splitter.wb.ru"],
         },
         8.0,
+        Path("/tmp/approved-config.json"),
     )
 
     assert "--allow-host" in seen[0]
     assert seen[0][seen[0].index("--allow-host") + 1] == "splitter.wb.ru"
+
+
+def test_the_capture_works_under_the_config_of_the_run(monkeypatch):
+    """The capture gets the config the run froze, not the shared file."""
+    seen: list[list[str]] = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(argv, **kwargs):
+        seen.append(argv)
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    plan.run_step(
+        "2026-11-20-wb-catalog-agent",
+        {"name": "initial-load", "command": 'chrome-use open "https://www.wildberries.ru/"'},
+        8.0,
+        Path("/tmp/approved-config.json"),
+    )
+
+    assert "--config" in seen[0]
+    assert seen[0][seen[0].index("--config") + 1] == "/tmp/approved-config.json"
 
 
 def test_an_id_that_is_a_path_is_refused(investigation, tmp_path, monkeypatch):
@@ -351,6 +380,46 @@ def test_a_state_that_no_run_made_is_not_trusted(investigation, tmp_path, monkey
 
     approved = read_plan(tmp_path, name)
     assert approved["steps"][0]["state"] == plan.PLANNED
+
+
+def test_the_config_is_frozen_for_the_run(investigation, tmp_path, monkeypatch):
+    """A config that changes while the run is going does not reach the capture."""
+    config = tmp_path / "capture-config.json"
+    config.write_text(
+        json.dumps({"allowedOrigins": ["www.wildberries.ru"], "allowedPages": [], "allowedQueryParams": []}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plan, "CONFIG_PATH", config)
+
+    name = investigation([step("initial-load"), step("next-page")])
+    approved = plan.config_scope()
+
+    def run_step(investigation, step, settle, config_path):
+        # Somebody widens the shared config while the first step is running.
+        config.write_text(
+            json.dumps(
+                {
+                    "allowedOrigins": ["www.wildberries.ru", "evil.example"],
+                    "allowedPages": [],
+                    "allowedQueryParams": [],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return plan.DONE, "recorded"
+
+    monkeypatch.setattr(plan, "run_step", run_step)
+
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+
+    written = read_plan(tmp_path, name)
+    for step_written in written["steps"]:
+        assert step_written["scope"] == plan.step_scope(step_written, approved)
+
+    snapshot = tmp_path / "raw" / name / "approved-config.json"
+    frozen = json.loads(snapshot.read_text(encoding="utf-8"))
+    assert frozen["allowedOrigins"] == ["www.wildberries.ru"]
+    assert "evil.example" in config.read_text(encoding="utf-8")
 
 
 def test_a_changed_config_plans_the_steps_again(investigation, tmp_path, monkeypatch):

@@ -178,7 +178,7 @@ def check_plan(plan: dict, investigation: str) -> list[dict]:
     return steps
 
 
-def config_scope() -> dict:
+def config_scope(path: Path | None = None) -> dict:
     """The part of the capture config that decides what the session may touch.
 
     The capture reads the shared config when it runs a step, so the config is
@@ -196,13 +196,18 @@ def config_scope() -> dict:
     The defaults are the defaults of the capture: a config that leaves a
     setting out is read by the capture as its own default, and the scope has
     to say the same thing.
+
+    The scope is read from a file the caller names, so that the scope of a
+    run is the scope of the file the run froze and not the scope of a file
+    that may change under it.
     """
-    if not CONFIG_PATH.is_file():
-        raise SystemExit(f"no capture config at {CONFIG_PATH}")
+    path = CONFIG_PATH if path is None else path
+    if not path.is_file():
+        raise SystemExit(f"no capture config at {path}")
     try:
-        config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+        config = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
-        raise SystemExit(f"the capture config is not readable: {CONFIG_PATH} ({error})") from error
+        raise SystemExit(f"the capture config is not readable: {path} ({error})") from error
     return {
         "allowedOrigins": sorted(config.get("allowedOrigins", [])),
         "allowedPages": sorted(config.get("allowedPages", [])),
@@ -249,13 +254,35 @@ def step_scope(step: dict, config: dict) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def run_step(investigation: str, step: dict, settle: float) -> tuple[str, str]:
+def config_snapshot(investigation: str) -> Path:
+    """The capture config, frozen for the run.
+
+    The capture reads the config itself, every time it starts, so a config
+    that changed while the run was going would widen the scope of the steps
+    that come after it — under an approval that was given for the old one.
+    The run hands the capture this file instead: every step of the run works
+    under the config the approval covered, whatever the shared file says
+    afterwards.
+    """
+    directory = RAW_ROOT / safe_investigation(investigation)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "approved-config.json"
+    if not CONFIG_PATH.is_file():
+        raise SystemExit(f"no capture config at {CONFIG_PATH}")
+    path.write_text(CONFIG_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+    return path
+
+
+def run_step(investigation: str, step: dict, settle: float, config_path: Path) -> tuple[str, str]:
     """Run one step of the plan: its state and what the capture printed.
 
     The state follows the exit code of the capture: a step that was recorded
     is done, a step whose action failed is failed, and a call to an origin
     that is neither approved nor marked as noise needs a human — the origin
     is the operator's decision, not the runner's.
+
+    The capture works under the config the run froze, not under the shared
+    file: the scope of the run is the scope that was approved.
     """
     name = step["name"]
     command = shlex.split(step["command"])
@@ -267,6 +294,8 @@ def run_step(investigation: str, step: dict, settle: float) -> tuple[str, str]:
         investigation,
         "--name",
         name,
+        "--config",
+        str(config_path),
         "--settle",
         str(step.get("settle", settle)),
     ]
@@ -356,7 +385,8 @@ def run(investigation: str, settle: float) -> int:
     approved = plan.get("approved_scope")
     if not approved:
         raise SystemExit("the plan was not approved — approve it: plan.py approve --investigation <id>")
-    config = config_scope()
+    snapshot = config_snapshot(investigation)
+    config = config_scope(snapshot)
     if approved != scope_of(steps, config):
         raise SystemExit(
             "the scope of the plan is not the scope that was approved — the operator has to approve it again"
@@ -376,7 +406,7 @@ def run(investigation: str, settle: float) -> int:
             print(f"{step['name']}: {state} — {step.get('note', '')}")
             stopped = True
             break
-        new_state, output = run_step(investigation, step, settle)
+        new_state, output = run_step(investigation, step, settle, snapshot)
         step["state"] = new_state
         step["note"] = note_of(investigation, step["name"], new_state)
         # The scope the state was made under: a later approval compares it with

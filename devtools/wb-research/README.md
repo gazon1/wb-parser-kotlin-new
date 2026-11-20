@@ -872,6 +872,12 @@ the state was written is planned again, because that state says nothing about th
 step as it stands now. A step whose scope did not change keeps its state, so
 approving the same plan again does not throw the work away.
 
+The run freezes the config it runs under: it copies `capture-config.json` into
+the raw cache and hands that copy to every step of the run, and the scope of
+the approval is compared with the scope of the copy — not with the scope of the
+shared file, which may change while the run is going. A config that is widened
+mid-run therefore reaches no step of that run.
+
 The id of the investigation is a name, not a path: the runner refuses an id that
 carries a separator or a `..`, the same rule the capture follows. The name of
 a step is checked the same way: it is the name of a file, so a name the rules
