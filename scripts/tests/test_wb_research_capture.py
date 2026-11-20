@@ -1413,3 +1413,53 @@ def test_a_redirect_to_a_page_that_hides_a_host_behind_a_backslash_fails_the_ste
     assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
 
     assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+
+
+def test_a_navigation_the_page_makes_itself_fails_the_step(tmp_path, monkeypatch):
+    # The finding of the review: a redirect is an answer with a status of 3xx,
+    # but the site may navigate the session in the page itself — a script that
+    # replaces the location. The recording shows that navigation as a document
+    # of its own, and it is judged by the same measure as a redirect.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://www.wildberries.ru/basket/add", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+
+
+def test_a_document_of_another_host_is_not_a_navigation(tmp_path, monkeypatch):
+    # The recording cannot tell a frame of another site from a navigation to
+    # it, and a document of another host is third-party traffic — it is kept
+    # out of the evidence by the filter, and it cannot change the account the
+    # capture observes.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://frames.example.test/widget", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_browser(entries))
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_OK
+
+    assert (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()

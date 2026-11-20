@@ -243,7 +243,13 @@ failed one — its capture is not exported, and the reason is in the report. A
 redirect is judged the way the browser reads it: the browser reads a backslash
 as a slash, so a redirect to `https://a.example\@b.example/` names the host
 `b.example` to the parser and the host `a.example` to the browser — such a
-redirect is not an approved navigation, and the step fails.
+redirect is not an approved navigation, and the step fails. The page may
+navigate the session by itself as well — a script that replaces the location —
+and the recording shows that navigation as a document of its own: a document of
+an approved host must be a page the config names, so such a step fails too. A
+document of another host is third-party traffic — the recording cannot tell a
+frame of another site from a navigation to it — and the filter keeps it out of
+the evidence.
 The tool cannot know what the site will answer before it answers it, so the
 guarantee it keeps is the one it can hold: the commands it runs are commands
 that read the page, and a step whose navigation left the approved pages is not
