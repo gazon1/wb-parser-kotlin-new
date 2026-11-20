@@ -5,7 +5,6 @@ site: www.wildberries.ru
 status: concluded
 created: 2026-11-19T20:06:00+03:00
 updated: 2026-11-20T13:40:00+03:00
-raw_captures: ~/.cache/wb-research/2026-11-19-wb-network-events-demo/
 tools:
   - name: chrome-use
     version: 1.5.294

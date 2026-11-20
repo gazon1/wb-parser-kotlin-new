@@ -2204,3 +2204,44 @@ def test_the_same_host_on_another_port_is_an_unapproved_origin():
 
     assert reason == "origin-not-approved"
     assert host == "https://api.example.ru:8444"
+
+
+def test_a_settling_time_that_is_not_a_number_of_seconds_is_refused():
+    # The finding of the review: the settling time was read as a plain float,
+    # so a negative one skipped the wait and an infinite one never ended it —
+    # and both passed silently, as if the step had waited.
+    for value in ("-1", "nan", "inf", "-inf", "soon"):
+        with pytest.raises(argparse.ArgumentTypeError) as refusal:
+            capture.settle_seconds(value)
+
+        assert "settling time" in str(refusal.value)
+
+
+def test_a_settling_time_the_command_line_refuses_ends_the_step():
+    # The refusal is at the door: the operator sees it, and the recording
+    # never starts.
+    with pytest.raises(SystemExit) as refusal:
+        capture.main(
+            [
+                "step",
+                "--investigation",
+                "demo",
+                "--name",
+                "step",
+                "--settle",
+                "-1",
+                "--",
+                "chrome-use",
+                "open",
+                "https://www.wildberries.ru/",
+            ]
+        )
+
+    assert refusal.value.code == 2
+
+
+def test_a_settling_time_of_zero_is_a_wait_of_no_seconds():
+    # Zero is not a broken wait: it is the operator saying that there is
+    # nothing to wait for, and the step still runs.
+    assert capture.settle_seconds("0") == 0.0
+    assert capture.settle_seconds("8") == 8.0

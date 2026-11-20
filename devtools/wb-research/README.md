@@ -39,14 +39,16 @@ site: www.wildberries.ru
 status: concluded                         # in-progress | concluded | blocked
 created: 2026-11-19T16:05:00+03:00
 updated: 2026-11-19T18:40:00+03:00
-raw_captures: ~/.cache/wb-research/2026-11-19-wb-catalog-request-9467/
+raw_captures: ~/.cache/wb-research/2026-11-19-wb-catalog-request-9467/  # local only, never committed
 tools:
   - name: chrome-use
     version: 1.5.294
 ```
 
 `raw_captures` says where the unredacted captures live on the machine that made
-them. The path is never useful to anyone else and is never committed.
+them. The path is never useful to anyone else and is never committed: the
+committed record leaves the field out, and the raw captures are found by the id
+of the investigation — `~/.cache/wb-research/<id>/`.
 
 ### `steps` — what was done
 
@@ -479,6 +481,12 @@ get theirs.
 `--settle` (3 seconds by default) is the wait before the recording stops. The
 page action returns before the requests it started are answered, and a capture
 stopped too early holds requests with no status at all.
+
+The wait is a number of seconds to wait, and a number that is not one — a
+negative one, an infinite one — is refused at the door: a negative wait skips
+the wait altogether and an infinite one never ends it, and both pass silently
+as a number. A step that says it waits eight seconds has to wait eight
+seconds.
 
 ## The manual test
 

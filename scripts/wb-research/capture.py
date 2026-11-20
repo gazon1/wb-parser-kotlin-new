@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import math
 import re
 import subprocess
 import sys
@@ -1279,6 +1280,26 @@ def export_investigation(investigation: str) -> list[str]:
     return exported
 
 
+def settle_seconds(text: str) -> float:
+    """The settling time as a finite number of seconds to wait.
+
+    A negative time and an infinite one are not a time to wait: the first
+    skips the wait altogether and the second never ends it, and both pass
+    silently as a number. A step that says it waits three seconds has to
+    wait three seconds — the wait is what lets the answers arrive — so both
+    are refused at the door, where the operator sees the refusal.
+    """
+    try:
+        value = float(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"the settling time is not a number: {text}") from None
+    if not math.isfinite(value):
+        raise argparse.ArgumentTypeError(f"the settling time is not a finite number of seconds: {text}")
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"the settling time is not a number of seconds to wait: {text}")
+    return value
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="verb", required=True)
@@ -1288,7 +1309,9 @@ def main(argv: list[str] | None = None) -> int:
     step.add_argument("--name", required=True, help="the name of the step")
     step.add_argument("--config", default=str(CONFIG_PATH), help="the capture config to use")
     step.add_argument("--allow-host", action="append", default=[], help="a host or an origin to approve for this run")
-    step.add_argument("--settle", type=float, default=3.0, help="seconds to wait for the requests to be answered")
+    step.add_argument(
+        "--settle", type=settle_seconds, default=3.0, help="seconds to wait for the requests to be answered"
+    )
     step.add_argument("command", nargs=argparse.REMAINDER, help="the page action, after `--`")
 
     export = sub.add_parser("export", help="redact the captures of an investigation again")

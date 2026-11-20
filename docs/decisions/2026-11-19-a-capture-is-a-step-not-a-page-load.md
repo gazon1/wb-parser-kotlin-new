@@ -144,6 +144,10 @@ was never answered is evidence of something different.
 - **Never** write a status for a request that has none: null with a reason.
 - **Always** wait for the in-flight requests before stopping a recording
   (`--settle`).
+- **Never** accept a settling time that is not a number of seconds to wait: a
+  negative time skips the wait and an infinite one never ends it, and both
+  pass silently as a number. A step that says it waits eight seconds has to
+  wait eight seconds, so both are refused at the door.
 - **Never** keep a top-level key that carries a value: a key is a name the
   service chose, and it can be an address or an account id — it goes through the
   same rules as everything else.
