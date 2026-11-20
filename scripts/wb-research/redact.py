@@ -963,7 +963,7 @@ def authority_without_userinfo(parts: SplitResult) -> str:
         port = parts.port
     except ValueError:
         port = None
-    return f"{host}:{port}" if port else host
+    return f"{host}:{port}" if port is not None else host
 
 
 def redact_headers(headers: list[dict[str, Any]], safe: set[str]) -> dict[str, str]:

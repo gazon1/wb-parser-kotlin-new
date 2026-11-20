@@ -286,6 +286,14 @@ def test_the_host_and_the_port_of_a_url_survive():
     assert url == "https://www.wildberries.ru:8443/catalog/0/list.aspx"
 
 
+def test_a_port_of_zero_survives():
+    # The finding of the review: the port is part of the origin, and zero is a
+    # port the parser reads — dropping it names another origin.
+    url = redact.redact_url("https://www.wildberries.ru:0/catalog/0/list.aspx")
+
+    assert url == "https://www.wildberries.ru:0/catalog/0/list.aspx"
+
+
 def test_a_value_in_the_path_of_a_url_is_replaced():
     # The finding of the review: the path is part of the URL too, and it carries
     # a token, an address and a phone number just as the query does.
