@@ -7,6 +7,10 @@
     "data-checker.wildberries.ru",
     "chat-prod.wildberries.ru"
   ],
+  "allowedPages": [
+    "https://www.wildberries.ru/",
+    "https://www.wildberries.ru/catalog/"
+  ],
   "noiseHosts": [
     "a.wb.ru",
     "nel.wb.ru",

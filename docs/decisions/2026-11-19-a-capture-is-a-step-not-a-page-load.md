@@ -194,5 +194,10 @@ was never answered is evidence of something different.
   program of that name is refused.
 - **Never** open a host the config does not approve: a navigation is a request,
   and a request may change what it is asked to change.
+- **Never** open a page the config does not name: an approved host answers a GET
+  that adds to the cart as well, so the page is what the config approves. The
+  path of the page is resolved before it is compared, so a page cannot hide
+  behind a relative segment, and a named page approves the path it names and
+  the paths under it, by path segment.
 - The tool stays in `scripts/` and `devtools/`: no production module depends on
   it and it adds no runtime dependency.

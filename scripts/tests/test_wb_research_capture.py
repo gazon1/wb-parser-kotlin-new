@@ -36,6 +36,7 @@ def no_real_browser(monkeypatch):
 
 CONFIG = {
     "allowedOrigins": ["www.wildberries.ru", "*.wbcontent.net"],
+    "allowedPages": ["https://www.wildberries.ru/", "https://www.wildberries.ru/catalog/"],
     "noiseHosts": ["a.wb.ru"],
     "keptResourceTypes": ["Fetch", "XHR"],
     "maxBodyFetches": 50,
@@ -566,7 +567,7 @@ def test_several_read_only_page_actions_are_one_step(tmp_path, monkeypatch):
         ["chrome-use", "scroll", "down", "20000", "--", "chrome-use", "scroll", "down", "20000"]
     )
 
-    capture.check_read_only(actions, CONFIG["allowedOrigins"])
+    capture.check_read_only(actions, CONFIG["allowedOrigins"], CONFIG["allowedPages"])
 
     assert len(actions) == 2
 
@@ -638,3 +639,77 @@ def test_a_page_action_may_not_open_a_host_by_an_upper_case_scheme(tmp_path, mon
         capture.capture_step(args, CONFIG)
 
     assert not any("start" in call for call in calls)
+
+
+def test_a_page_action_may_not_open_a_page_the_config_does_not_approve(tmp_path, monkeypatch):
+    # The finding of the review: an approved host answers a GET that changes
+    # the account as well, so the host alone is not enough — the page is what
+    # the config names.
+    calls = []
+
+    def fake_chrome_use(*args):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/basket/add?nm=1"],
+        settle=0.0,
+    )
+
+    with pytest.raises(SystemExit):
+        capture.capture_step(args, CONFIG)
+
+    assert not any("start" in call for call in calls)
+
+
+def test_a_page_action_may_not_hide_a_page_behind_a_relative_segment(tmp_path, monkeypatch):
+    # The browser resolves the segments of a path before it asks for the page,
+    # so a check that does not resolve them approves another page.
+    calls = []
+
+    def fake_chrome_use(*args):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/../basket/add"],
+        settle=0.0,
+    )
+
+    with pytest.raises(SystemExit):
+        capture.capture_step(args, CONFIG)
+
+    assert not any("start" in call for call in calls)
+
+
+def test_a_page_action_may_open_a_page_the_config_approves(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_chrome_use(*args):
+        calls.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(capture, "chrome_use", fake_chrome_use)
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/131954/list.aspx?search=x"],
+        settle=0.0,
+    )
+
+    with pytest.raises(SystemExit):
+        capture.capture_step(args, CONFIG)
+
+    assert any("start" in call for call in calls)

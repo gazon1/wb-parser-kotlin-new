@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import posixpath
 import re
 import subprocess
 import sys
@@ -118,6 +119,7 @@ def load_config(path: Path, extra_hosts: list[str]) -> dict:
         raise SystemExit(f"no capture config at {path} — the config file is the only source of the approved hosts")
     config = json.loads(path.read_text(encoding="utf-8"))
     config["allowedOrigins"] = list(config.get("allowedOrigins", [])) + list(extra_hosts)
+    config["allowedPages"] = list(config.get("allowedPages", []))
     config["noiseHosts"] = list(config.get("noiseHosts", []))
     config["keptResourceTypes"] = list(config.get("keptResourceTypes", list(API_RESOURCE_TYPES)))
     config["maxBodyFetches"] = int(config.get("maxBodyFetches", 50))
@@ -140,6 +142,44 @@ def host_matches(host: str, patterns: list[str]) -> bool:
             if host.endswith("." + root):
                 return True
         elif host == pattern:
+            return True
+    return False
+
+
+def page_path(url: str) -> str:
+    """The path of a URL, resolved: `.` and `..` are the segments they are.
+
+    A browser resolves the segments of a path before it asks for the page, so
+    a check that does not resolve them would approve a path that the browser
+    reads as another one.
+    """
+    path = urlsplit(url).path
+    if not path:
+        return "/"
+    resolved = posixpath.normpath(path)
+    return resolved if resolved.startswith("/") else "/" + resolved
+
+
+def approved_page(url: str, pages: list[str]) -> bool:
+    """Whether the page a navigation opens is one the config approves.
+
+    A navigation is a request, and a request may change what it is asked to
+    change — a page that answers a GET may add to the cart. So the config
+    names the pages a capture may open, and a page that is not under one of
+    them is refused.
+
+    A named page approves the path it names and the paths under it, by path
+    segment: `https://example.ru/catalog/` approves `/catalog/131954/list.aspx`
+    and not `/catalogue/x`.
+    """
+    for page in pages:
+        if urlsplit(page).scheme.lower() not in ("http", "https"):
+            continue
+        if host_of(page) != host_of(url):
+            continue
+        prefix = page_path(page)
+        path = page_path(url)
+        if path == prefix or (prefix != "/" and path.startswith(prefix + "/")):
             return True
     return False
 
@@ -319,7 +359,7 @@ def page_actions(command: list[str]) -> list[list[str]]:
     return actions
 
 
-def check_read_only(actions: list[list[str]], approved: list[str]) -> None:
+def check_read_only(actions: list[list[str]], approved: list[str], pages: list[str]) -> None:
     """Refuse a page action that could change the site.
 
     The tool observes. A page action is the chrome-use command that reads the
@@ -329,8 +369,9 @@ def check_read_only(actions: list[list[str]], approved: list[str]) -> None:
 
     The program is the chrome-use command by its own name: a path to a program
     that happens to be called chrome-use is not it. And an action that opens a
-    page may only open an approved host — a navigation is a request, and a
-    request may change what it is asked to change.
+    page may only open an approved host and an approved page — a navigation is
+    a request, and a request may change what it is asked to change: an
+    approved host answers a GET that adds to the cart as well.
     """
     for action in actions:
         if action[0] != "chrome-use":
@@ -353,6 +394,11 @@ def check_read_only(actions: list[list[str]], approved: list[str]) -> None:
             raise SystemExit(f"the page action may only open an http page, not {url!r}")
         if not host_matches(host_of(url), approved):
             raise SystemExit(f"the page action may only open an approved host, not {host_of(url)}")
+        if not approved_page(url, pages):
+            raise SystemExit(
+                f"the page action may only open an approved page, not {url!r} — "
+                f"the pages the config approves: {', '.join(pages) or 'none'}"
+            )
 
 
 def run_page_action(action: list[str]) -> int:
@@ -382,7 +428,7 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         raise SystemExit("no command to run — put the page action after `--`")
     # Checked before the recording starts too: an action that changes the site
     # must never run inside a capture of a logged-in session.
-    check_read_only(actions, config["allowedOrigins"])
+    check_read_only(actions, config["allowedOrigins"], config.get("allowedPages", []))
 
     cleared = chrome_use("network", "requests", "--clear")
     if cleared.returncode != 0:

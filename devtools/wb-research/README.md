@@ -204,10 +204,15 @@ The page action is a `chrome-use` command that **reads** the page: `open`,
 that could change the site — a click, a typed text, a filled form, a shell —
 is refused before the recording starts. The program is `chrome-use` itself, by
 its own name: a path to another program of that name is refused as well. An
-action that opens a page may only open a host the config approves, because a
-navigation is a request. Several actions in one step are separated by `--`.
-The capture names the step, keeps the requests the config approves, reports
-what it dropped and hands the result to the redactor.
+action that opens a page may only open a host **and a page** the config
+approves: a navigation is a request, and a request may change what it is asked
+to change — an approved host answers a GET that adds to the cart as well. The
+config names the pages (`allowedPages`), and a named page approves the path it
+names and the paths under it, by path segment: `https://www.wildberries.ru/catalog/`
+approves `/catalog/131954/list.aspx` and not `/catalogue/x`. Several actions in
+one step are separated by `--`. The capture names the step, keeps the requests
+the config approves, reports what it dropped and hands the result to the
+redactor.
 
 ```bash
 # one step: open the catalog page and record what it asks for
