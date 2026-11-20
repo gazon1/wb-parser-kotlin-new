@@ -135,9 +135,9 @@ def fake_browser(monkeypatch, results: list[dict]) -> dict:
     def open_page(page, session, config):
         calls["opened"].append(page)
 
-    def reload_page(session):
+    def reload_page(session, config):
         calls["reloads"] += 1
-        return True
+        return True, ""
 
     monkeypatch.setattr(validate, "probe", probe)
     monkeypatch.setattr(validate, "open_page", open_page)
@@ -487,6 +487,34 @@ def test_a_reload_is_a_reload_and_not_another_experiment(world, monkeypatch):
 
     assert validate.run(INVESTIGATION, None, False) == validate.EXIT_OK
     assert calls["reloads"] == 2
+
+
+def test_a_reload_that_leaves_the_approved_pages_stops_the_run(world, monkeypatch):
+    world([baseline(), {"name": "after-reload", "kind": "reload", "expect": "same", "repeat": 2}])
+    validate.approve(INVESTIGATION)
+    calls = fake_browser(monkeypatch, [answer(), answer()])
+
+    def reload_page(session, config):
+        calls["reloads"] += 1
+        return False, "the reload landed on a page the capture config does not approve: https://example.com/"
+
+    monkeypatch.setattr(validate, "reload_page", reload_page)
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+    # No probe runs in a context the config does not approve.
+    assert len(calls["probes"]) == 2
+    assert calls["reloads"] == 1
+
+
+def test_a_pause_above_the_maximum_is_refused(world, monkeypatch):
+    place = world([baseline()])
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["min_interval_seconds"] = 61
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="between"):
+        validate.approve(INVESTIGATION)
 
 
 def test_the_headers_values_never_reach_a_committed_file(world, monkeypatch):

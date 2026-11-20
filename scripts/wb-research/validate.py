@@ -759,10 +759,24 @@ def session_page(session: str | None) -> str:
     return str((payload.get("data") or {}).get("url", ""))
 
 
-def reload_page(session: str | None) -> bool:
-    """Reload the page in the same session. False when the browser refused."""
+def reload_page(session: str | None, config: dict) -> tuple[bool, str]:
+    """Reload the page in the same session, and check where the session landed.
+
+    A reload is a navigation: the site may answer it with a redirect or a script
+    may move the session, and the probe that follows runs in whatever page the
+    browser is on. So the landing page is held to the same approved pages as
+    `open_page`, and a reload that leaves them is a failed step, not a context
+    the next probe may run in.
+    """
     proc = chrome_use("reload", session=session)
-    return proc.returncode == 0
+    if proc.returncode != 0:
+        return False, "the browser refused to reload the page"
+    landed = session_page(session)
+    if not landed:
+        return False, "the browser did not say where the session is after the reload"
+    if not capture().approved_page(landed, config["allowedPages"]):
+        return False, f"the reload landed on a page the capture config does not approve: {landed}"
+    return True, ""
 
 
 def probe(request: dict, session: str | None) -> dict:
@@ -1001,7 +1015,13 @@ def write_raw(investigation: str, name: str, run: int, result: dict) -> None:
 
 
 def run_experiments(
-    plan: dict, declared: dict, query: dict[str, str], headers: dict[str, str], investigation: str, session: str | None
+    plan: dict,
+    declared: dict,
+    query: dict[str, str],
+    headers: dict[str, str],
+    investigation: str,
+    session: str | None,
+    config: dict,
 ) -> list[dict]:
     """Run every experiment, in order, one request at a time.
 
@@ -1029,18 +1049,20 @@ def run_experiments(
                 continue
             if interval:
                 time.sleep(interval)
-            if experiment.get("kind") == "reload" and not reload_page(session):
-                observations.append(
-                    {
-                        "id": f"{experiment['name']}-{run}",
-                        "experiment": experiment["name"],
-                        "run": run,
-                        "outcome": FAILED,
-                        "notRun": "the browser refused to reload the page",
-                    }
-                )
-                stopped = "the browser refused to reload the page"
-                continue
+            if experiment.get("kind") == "reload":
+                reloaded, reason = reload_page(session, config)
+                if not reloaded:
+                    observations.append(
+                        {
+                            "id": f"{experiment['name']}-{run}",
+                            "experiment": experiment["name"],
+                            "run": run,
+                            "outcome": FAILED,
+                            "notRun": reason,
+                        }
+                    )
+                    stopped = reason
+                    continue
             request = request_for(experiment, declared, query, headers)
             result = probe(request, session)
             write_raw(investigation, experiment["name"], run, result)
@@ -1359,7 +1381,9 @@ def run(investigation: str, session: str | None, dry_run: bool) -> int:
 
     with investigation_lock(investigation):
         open_page(plan["page"], session, config)
-        observations = run_experiments(plan, declared, declared["query"], headers_for_run, investigation, session)
+        observations = run_experiments(
+            plan, declared, declared["query"], headers_for_run, investigation, session, config
+        )
         summary, report = summarize(plan, declared, observations)
         write_outputs(investigation, summary, report, observations)
     for experiment in summary["experiments"]:

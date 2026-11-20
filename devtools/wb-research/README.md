@@ -969,6 +969,10 @@ handful of requests against a live site, and the issue asks for the site's rate
 limits to be respected. A plan that asks for more is refused before the browser
 opens.
 
+**A reload is a navigation too.** The page it lands on is held to the same
+approved pages as the page the run opened: a reload that leaves them is a
+failed experiment, and no probe runs in the page the config does not approve.
+
 **Header values are not committed.** The plan names the headers; the values come
 from a local file outside the repository —
 `~/.cache/wb-research/<id>/request.json`, or the path in `request_file`:

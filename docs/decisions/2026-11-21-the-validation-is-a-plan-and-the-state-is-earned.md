@@ -69,6 +69,10 @@ is not followed either: the approved origin is the only origin, and a redirect
 the site answers with is the site choosing a destination the operator did not
 approve.
 
+A reload is a navigation as well, so the page it lands on is checked against
+the approved pages before the probe runs: a reload that leaves them is a failed
+experiment, not a context the next probe inherits.
+
 A replay is only the approved request if the browser sent it. The browser drops
 a few header names by design (`referer`, `cookie`, `user-agent`, the `sec-*`
 family), so an observation whose named header was dropped is `inconclusive` —
@@ -161,6 +165,9 @@ is the operator's question, not the tool's problem.
   did not move.
 - **Always** keep the tool outside the mandatory CI: it needs a real browser and
   a live site, and its tests replace the browser with a function.
+- **Always** check where a reload landed, the way the opened page is checked: a
+  reload may redirect, and the probe after it runs in whatever page the browser
+  is on.
 - **Always** replay `GET` only, without following a redirect, and treat a `5xx`
   as a failed request: a POST may change the site, a redirect leaves the
   approved origin, and a server error is not an answer that can validate a
