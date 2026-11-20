@@ -374,12 +374,7 @@ def test_the_headers_values_never_reach_a_committed_file(world, monkeypatch):
 def test_the_evidence_keeps_the_names_the_browser_dropped(world, monkeypatch):
     place = world([baseline()], request={"headers": ["deviceid", "referer"]})
     (place.raw / "request.json").write_text(
-        json.dumps(
-            {
-                "headers": {"deviceid": "site_test_value", "referer": "https://www.wildberries.ru/catalog/"},
-                "query": {"query": "колонки"},
-            }
-        ),
+        json.dumps({"headers": {"deviceid": "site_test_value", "referer": "https://www.wildberries.ru/catalog/"}}),
         encoding="utf-8",
     )
     validate.approve(INVESTIGATION)
@@ -394,29 +389,36 @@ def test_the_evidence_keeps_the_names_the_browser_dropped(world, monkeypatch):
     assert request["headersSent"] == ["deviceid"]
 
 
-def test_a_redacted_query_value_comes_from_the_local_file(world, monkeypatch):
-    place = world([baseline()], query={"query": "<redacted:query-param>"})
+def test_a_redacted_query_value_has_to_be_written_in_the_plan(world, monkeypatch):
+    world([baseline()], query={"query": "<redacted:query-param>"})
     validate.approve(INVESTIGATION)
-    calls = fake_browser(monkeypatch, [answer(), answer()])
-
-    validate.run(INVESTIGATION, None, False)
-
-    assert "query=%D0%BA%D0%BE%D0%BB%D0%BE%D0%BD%D0%BA%D0%B8" in calls["probes"][0]["url"]
-    report = (place.directory / validate.REPORT_FILE).read_text(encoding="utf-8")
-    assert "колонки" not in report
-
-
-def test_a_redacted_query_value_without_a_local_value_is_refused(world, monkeypatch):
-    place = world([baseline()], query={"query": "<redacted:query-param>"})
-    validate.approve(INVESTIGATION)
-    (place.raw / "request.json").write_text(
-        json.dumps({"headers": {"deviceid": "site_test_value", "x-requested-with": "XMLHttpRequest"}}),
-        encoding="utf-8",
-    )
     fake_browser(monkeypatch, [answer(), answer()])
 
-    with pytest.raises(SystemExit, match="no value"):
+    with pytest.raises(SystemExit, match="write its value in the plan"):
         validate.run(INVESTIGATION, None, False)
+
+
+def test_a_non_get_candidate_is_refused(world, monkeypatch):
+    place = world([baseline()])
+    record = yaml.safe_load((place.directory / "investigation.yaml").read_text(encoding="utf-8"))
+    record["api_candidates"][0]["method"] = "POST"
+    (place.directory / "investigation.yaml").write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="read-only"):
+        validate.approve(INVESTIGATION)
+
+
+def test_a_server_error_is_not_a_result(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="same", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(), answer(), answer(status=500), answer(status=502)])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["outcome"] == validate.FAILED
+    assert summary["experiments"][1]["state"] == validate.INCONCLUSIVE
 
 
 def test_a_dry_run_opens_no_browser(world, monkeypatch):

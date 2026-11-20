@@ -28,7 +28,10 @@ run writes three files next to it:
 
 Header values are never in any of them. The plan names the headers to send, a
 local file outside the repository supplies their values, and the evidence keeps
-the names that went out and the names the browser dropped.
+the names that went out and the names the browser dropped. The query is part of
+the plan, and part of the approval: a value the record redacted has to be
+written in the plan, because a value the local file supplied would be outside
+the scope the operator approved.
 
 Read-only: every experiment is a GET replay from the page's own context, with
 cookies included by default. The tool does not click, does not type, does not
@@ -500,6 +503,14 @@ def declared_request(plan: dict, request: dict, record: dict) -> dict:
     method = request.get("method") or candidate.get("method") or "GET"
     if redactor().safe_method(method) is None:
         raise SystemExit(f"the method of the request is malformed: {method!r}")
+    if redactor().safe_method(method) != "GET":
+        # A replay is an observation, and an observation is a GET. The
+        # investigation format carries POST candidates (the antibot service is
+        # one), and a POST is not a request this tool may repeat: the page's
+        # `fetch` would send it, and the site may act on it.
+        raise SystemExit(
+            f"the method of the request is {method!r}: a validation replays GET only — the workflow is read-only"
+        )
     url = request.get("url") or candidate.get("endpoint")
     if not isinstance(url, str) or capture().url_parts(url) is None:
         raise SystemExit(f"the request has no readable URL: {url!r}")
@@ -526,22 +537,25 @@ def declared_request(plan: dict, request: dict, record: dict) -> dict:
     }
 
 
-def resolved_values(declared: dict, local: dict, path: Path) -> tuple[dict, dict[str, str]]:
-    """The request as it is actually sent: the placeholders and headers resolved.
+def header_values(declared: dict, local: dict, path: Path) -> dict[str, str]:
+    """The header values, from the local file the plan points at.
 
-    A query value that is a placeholder was redacted in the record and has to
-    come from the local file; a header has no value in the plan at all. A value
-    that is not there is a request that cannot be replayed as it was seen, so
-    the run stops and says what is missing instead of sending a different one.
+    The plan is committed, so it names the headers and never their values; the
+    values come from a file outside the repository. A named header with no
+    value stops the run: a request replayed without the header it was seen with
+    is a different request.
+
+    The query is not resolved here. It is part of the experiment and part of
+    the approval, so a query value the record redacted has to be written in the
+    plan — a value that comes from a local file would change what the run asks
+    without changing the fingerprint the operator approved.
     """
-    query = {}
     for name, value in declared["query"].items():
         if PLACEHOLDER.fullmatch(value):
-            replacement = (local.get("query") or {}).get(name)
-            if not isinstance(replacement, str):
-                raise SystemExit(f"the query parameter {name} is redacted in the plan and has no value in {path}")
-            value = replacement
-        query[name] = value
+            raise SystemExit(
+                f"the query parameter {name} is redacted in the record — write its value in the plan: "
+                "a query the local file supplies would be outside the approved scope"
+            )
     headers = {}
     missing = []
     values = local.get("headers") or {}
@@ -558,7 +572,7 @@ def resolved_values(declared: dict, local: dict, path: Path) -> tuple[dict, dict
             f"the header(s) {', '.join(missing)} have no value in {path} — "
             "the plan names them, and the browser cannot send a header it has no value for"
         )
-    return query, headers
+    return headers
 
 
 def config_scope() -> dict:
@@ -779,6 +793,10 @@ def outcome_of(status: int | None, error: str | None) -> str:
         return INCONCLUSIVE
     if status in BLOCKED_STATUSES:
         return BLOCKED
+    if status >= 500:
+        # A server error is not an answer: a 500 twice is a broken endpoint,
+        # not a reproduced one, and an expectation cannot be met by an outage.
+        return FAILED
     return COMPLETED
 
 
@@ -1270,7 +1288,7 @@ def run(investigation: str, session: str | None, dry_run: bool) -> int:
     check_place(plan, declared, config)
     check_scope(plan, declared, experiments, config)
     local_path = local_request_file(plan, investigation)
-    values = resolved_values(declared, load_json_object(local_path), local_path)
+    headers_for_run = header_values(declared, load_json_object(local_path), local_path)
 
     if dry_run:
         print(f"the plan is approved: {investigation}")
@@ -1278,17 +1296,16 @@ def run(investigation: str, session: str | None, dry_run: bool) -> int:
         print(f"the page: {redactor().redact_url(plan['page'])}")
         print(f"the endpoint: {declared['method']} {redactor().redact_url(declared['url'])}")
         for experiment in experiments:
-            planned = request_for(experiment, declared, *values)
+            planned = request_for(experiment, declared, declared["query"], headers_for_run)
             print(
                 f"  {experiment['name']}: {planned['method']} {redactor().redact_url(planned['url'])} "
                 f"({planned['credentials']}, {experiment.get('repeat', 1)} run(s))"
             )
         return EXIT_OK
 
-    query, headers = values
     with investigation_lock(investigation):
         open_page(plan["page"], session, config)
-        observations = run_experiments(plan, declared, query, headers, investigation, session)
+        observations = run_experiments(plan, declared, declared["query"], headers_for_run, investigation, session)
         summary, report = summarize(plan, declared, observations)
         write_outputs(investigation, summary, report, observations)
     for experiment in summary["experiments"]:

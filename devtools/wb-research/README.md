@@ -110,9 +110,10 @@ The point of the format: a claim is only as strong as its state.
 |---|---|
 | `observed` | seen once in a capture; not repeated |
 | `reproduced` | seen again in an independent run of the same experiment |
-| `validated` | confirmed against something outside the experiment — the crawler's own code, a second method, a documented behaviour |
+| `validated` | confirmed by a controlled experiment that was repeated, or against something outside the experiment — the crawler's own code, a second method, a documented behaviour |
 | `rejected` | the experiment says it is false |
-| `open` | not settled: the evidence does not answer the question yet |
+| `inconclusive` | the evidence does not settle it, or the environment prevented the experiment: a refusal, a failed request, an unreadable answer |
+| `open` | a hypothesis nobody has tested yet; it belongs in `open_questions` as well |
 
 ```yaml
 validation:
@@ -950,8 +951,10 @@ experiments:
 ```
 
 The candidate contributes its method, endpoint, query and header names; the
-plan overrides the query. The request is a `fetch` from the page's own context,
-with the browser's cookies unless the plan says otherwise.
+plan overrides the query. Only a `GET` is replayed — the workflow is read-only,
+and the investigation format carries POST candidates (the antibot service is
+one) that must not be repeated. The request is a `fetch` from the page's own
+context, with the browser's cookies unless the plan says otherwise.
 
 **One experiment, one variation.** An experiment changes exactly one of: one
 query parameter (`vary`), one removal (`remove`), the credentials mode
@@ -965,15 +968,18 @@ from a local file outside the repository —
 
 ```json
 {
-  "headers": {"deviceid": "…", "x-requested-with": "XMLHttpRequest"},
-  "query": {"query": "the free text the record redacted"}
+  "headers": {"deviceid": "…", "x-requested-with": "XMLHttpRequest"}
 }
 ```
 
 A path inside the repository is refused, and a header the plan names and the
 file does not carry stops the run: a request replayed without the header it was
-seen with is a different request. A query value the record wrote as
-`<redacted:…>` is resolved from the same file.
+seen with is a different request.
+
+The **query** is part of the plan and part of the approval, so a value the
+record wrote as `<redacted:…>` has to be written in the plan. A query value the
+local file supplied would change what the run asks without changing the
+fingerprint the operator approved; the run refuses it and says so.
 
 ```bash
 uv run python scripts/wb-research/validate.py approve --investigation <id>
@@ -1016,7 +1022,7 @@ A state is not a label the operator chooses; the evidence decides it:
 | `reproduced` | the same answer came back from independent runs |
 | `validated` | a controlled variation repeated, its expectation held every time, and the reference itself was reproduced |
 | `rejected` | a stable answer contradicts the expectation |
-| `inconclusive` | the site refused, the request failed, the answer could not be read, the runs disagree, or one sample is all there is |
+| `inconclusive` | the site refused, the request failed (a transport error or a 5xx), the answer could not be read, the runs disagree, or one sample is all there is |
 
 A refusal, a failure and a single sample are never reported as a validation:
 the report names them, and the run says so in its exit code.

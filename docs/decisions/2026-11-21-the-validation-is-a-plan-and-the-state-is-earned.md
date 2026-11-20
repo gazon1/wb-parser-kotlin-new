@@ -50,10 +50,18 @@ reference and varies nothing.
 
 The value of a header is never in the plan. The plan names it, and the value
 comes from a local file outside the repository (`~/.cache/wb-research/<id>/request.json`
-by default). A path inside the repository is refused, a named header with no
-value stops the run, and a query value the record redacted is resolved from the
-same file. A request replayed without the header it was seen with is a different
-request, and the tool refuses to pretend otherwise.
+by default). A path inside the repository is refused, and a named header with no
+value stops the run. A request replayed without the header it was seen with is a
+different request, and the tool refuses to pretend otherwise.
+
+The query is the other half of that split: it is part of the plan and part of
+the approval, so a value the record redacted has to be written in the plan. A
+value the local file supplied would change what the run asks without changing
+the fingerprint the operator approved.
+
+Only a `GET` is replayed. The investigation format carries POST candidates —
+the antibot service is one — and a POST is not a request a read-only tool may
+repeat: the page's `fetch` would send it and the site may act on it.
 
 The approval is a fingerprint of the scope, written into the plan as
 `approved_scope` — the page, the endpoint, the query as the plan writes it,
@@ -69,8 +77,8 @@ The state is earned by the evidence, not chosen by the writer:
 - `validated` — a controlled variation repeated, its expectation held every
   time, and the reference itself reproduced;
 - `rejected` — a stable answer contradicts the expectation;
-- `inconclusive` — a refusal, a failure, an unreadable answer, disagreeing runs,
-  or a sample of one.
+- `inconclusive` — a refusal, a failure (a transport error or a 5xx), an
+  unreadable answer, disagreeing runs, or a sample of one.
 
 A refusal ends the run: after a `403`, `429` or WB's `498` the remaining probes
 are marked "not run" instead of hammering the site, and the run exits `2`. A
@@ -95,6 +103,11 @@ to be inspectable before it runs, and an approval that is a fingerprint of the
 plan can bind to the plan instead of to a moment. The one-variation rule is the
 smallest thing that makes an experiment mean something: a plan that changes two
 parameters cannot say which one the answer belongs to.
+
+The states are the ones the issue names, and the tool computes them from the
+observations rather than letting the writer type them. The record format's older
+table needed something outside the experiment for `validated`; a repeated
+controlled experiment is now one way to earn it, and the table says so.
 
 The states are computed from the observations rather than typed by the writer.
 A person who can label a sample `validated` will label it so, and the record is
@@ -131,5 +144,7 @@ is the operator's question, not the tool's problem.
   change, and a body is never committed.
 - **Always** keep the tool outside the mandatory CI: it needs a real browser and
   a live site, and its tests replace the browser with a function.
+- **Always** replay `GET` only, and treat a `5xx` as a failed request: a POST may
+  change the site, and a server error is not an answer that can validate a claim.
 - **Never** let `validate.py` click, type, bypass a CAPTCHA, a rate limit or an
   access control, or reach an origin the capture config does not approve.
