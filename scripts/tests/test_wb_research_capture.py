@@ -1352,6 +1352,10 @@ def test_the_fixture_of_the_previous_run_is_removed_before_the_raw_artifacts(tmp
         return real_unlink(self, *args, **kwargs)
 
     monkeypatch.setattr(Path, "unlink", refuse_the_raw_recording)
+    # The browser is a double: the test is about the removal of the artifacts
+    # of the previous run, and a real browser is not installed everywhere the
+    # test runs.
+    monkeypatch.setattr(capture, "chrome_use", fake_browser())
 
     args = argparse.Namespace(
         name="step", investigation="demo", command=["chrome-use", "open", "https://www.wildberries.ru/"], settle=0.0
