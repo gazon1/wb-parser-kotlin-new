@@ -634,6 +634,10 @@ def _saved_columns() -> list[str]:
         saved = json.loads(COLUMNS_FILE.read_text())
     except (OSError, ValueError):
         return list(ITEM_COLUMNS)
+    # The file is the operator's to edit: a root that is not a list is a file to ignore,
+    # not a reason for the terminal to fail on start.
+    if not isinstance(saved, list):
+        return list(ITEM_COLUMNS)
     kept = [name for name in ITEM_COLUMNS if name in saved]
     return kept or list(ITEM_COLUMNS)
 
@@ -1045,13 +1049,16 @@ async def _since(api: Api, period: str) -> datetime | None:
     The lower bound of one preset: `today` is local midnight, `last run` is when the
     newest crawl started — the catalog's clock, not this tool's.
 
-    A `last run` with no run recorded has no bound, and no rows either.
+    A `last run` with no recorded start is an **empty** window, and a bound of "now" is
+    how that is said: reading it as "no bound" would answer the last run with the whole
+    table. The jobs endpoint orders a row without a start last, so this only happens when
+    no run has a start at all.
     """
     if period == Period.today:
         return datetime.now().astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
     if period == Period.last_run:
         jobs = await api.get("/api/admin/jobs", list[Job], role="admin", limit=1)
-        return jobs[0].started_at if jobs else None
+        return (jobs[0].started_at if jobs else None) or datetime.now(UTC)
     return None
 
 

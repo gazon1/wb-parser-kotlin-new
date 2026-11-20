@@ -794,21 +794,23 @@ def test_a_period_names_its_lower_bound() -> None:
     """`today` is local midnight, `last run` is when the newest crawl started, `all` is nothing."""
     mod = _load_wbparser()
 
-    class FakeApi:
-        async def get(self, path, model=None, *, role="public", **params):
-            assert (path, role, params) == ("/api/admin/jobs", "admin", {"limit": 1})
-            return [
-                mod.Job.model_validate(
-                    {
-                        "id": "11111111-1111-1111-1111-111111111111",
-                        "status": "Completed",
-                        "startedAt": "2026-11-20T09:00:00Z",
-                        "completedAt": "2026-11-20T09:05:00Z",
-                    }
-                )
-            ]
+    def api_that_answers(*jobs):
+        class FakeApi:
+            async def get(self, path, model=None, *, role="public", **params):
+                assert (path, role, params) == ("/api/admin/jobs", "admin", {"limit": 1})
+                return list(jobs)
 
-    api = FakeApi()
+        return FakeApi()
+
+    started = mod.Job.model_validate(
+        {
+            "id": "11111111-1111-1111-1111-111111111111",
+            "status": "Completed",
+            "startedAt": "2026-11-20T09:00:00Z",
+            "completedAt": "2026-11-20T09:05:00Z",
+        }
+    )
+    api = api_that_answers(started)
     assert asyncio.run(mod._since(api, mod.Period.all)) is None
     assert asyncio.run(mod._since(api, mod.Period.last_run)) == datetime(2026, 11, 20, 9, 0, tzinfo=UTC)
 
@@ -816,6 +818,75 @@ def test_a_period_names_its_lower_bound() -> None:
     assert today is not None
     assert (today.hour, today.minute, today.second, today.microsecond) == (0, 0, 0, 0)
     assert today.utcoffset() == datetime.now().astimezone().utcoffset(), "midnight of the operator's own day"
+
+    # No run, or a run whose start was never recorded: the window is empty, not the
+    # whole table. A bound of "now" is how an empty window is said.
+    unstarted = mod.Job.model_validate({"id": "22222222-2222-2222-2222-222222222222", "status": "Created"})
+    for api in (api_that_answers(), api_that_answers(unstarted)):
+        bound = asyncio.run(mod._since(api, mod.Period.last_run))
+        assert bound is not None, "a missing start must not mean no filter"
+        assert abs((bound - datetime.now(UTC)).total_seconds()) < 60
+
+
+def test_a_saved_selection_that_is_not_a_list_is_ignored(tmp_path, monkeypatch) -> None:
+    """The preference file is the operator's to edit: a broken one falls back to all fields."""
+    mod = _load_wbparser()
+    monkeypatch.setattr(mod, "COLUMNS_FILE", tmp_path / "items-columns.json")
+
+    for content in ("null", "42", '{"target": true}', "not json at all"):
+        mod.COLUMNS_FILE.write_text(content)
+        assert mod._saved_columns() == mod.ITEM_COLUMNS, content
+
+    mod.COLUMNS_FILE.write_text('["target", "no such field"]')
+    assert mod._saved_columns() == ["target"]
+
+
+def test_a_field_choice_is_saved_and_restored(tmp_path, monkeypatch) -> None:
+    """A click on a checkbox writes the choice and a fresh pane reads it back."""
+    mod = _load_wbparser()
+    monkeypatch.setattr(mod, "COLUMNS_FILE", tmp_path / "items-columns.json")
+
+    async def scenario() -> None:
+        pane = mod.ItemsPane()
+        async with _host(mod, pane).run_test() as pilot:
+            pane.query_one("#col-2", mod.Checkbox).toggle()  # "price"
+            await pilot.pause()
+            assert json.loads(mod.COLUMNS_FILE.read_text()) == [name for name in mod.ITEM_COLUMNS if name != "price"]
+
+        assert mod.ItemsPane().columns == [name for name in mod.ITEM_COLUMNS if name != "price"]
+
+    asyncio.run(scenario())
+
+
+def test_a_click_on_a_row_opens_the_product(monkeypatch) -> None:
+    """The table reports the click before `DataTable` stops it — the regression this fixes."""
+    mod = _load_wbparser()
+
+    async def fake_items(api, **kwargs):
+        return _items_page(mod)
+
+    async def fake_status(api):
+        return ({"status": "UP", "checks": {}, "crawler": {}, "egress": {}}, {})
+
+    monkeypatch.setattr(mod, "_fetch_items", fake_items)
+    monkeypatch.setattr(mod, "_fetch_status", fake_status)
+    opened: list[str] = []
+    monkeypatch.setattr(mod.webbrowser, "open", lambda url: opened.append(url) or True)
+
+    async def scenario() -> None:
+        app = mod.WbparserApp()
+        app.REFRESH_EVERY = 3600.0
+        async with app.run_test(size=(160, 50)) as pilot:
+            app.action_tab("tab-items")
+            await pilot.pause()
+            await app.query_one(mod.ItemsPane).workers.wait_for_complete()
+
+            # y=0 is the header, y=1 is the first data row.
+            assert await pilot.click("#items-table", offset=(4, 1)), "the click landed on the table"
+            await pilot.pause()
+            assert opened == ["https://example.invalid/p/1"]
+
+    asyncio.run(scenario())
 
 
 def _fake_tabs(monkeypatch, mod, calls: list[str]) -> None:

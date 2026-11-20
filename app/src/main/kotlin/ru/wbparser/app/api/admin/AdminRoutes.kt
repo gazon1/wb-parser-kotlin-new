@@ -346,6 +346,12 @@ internal fun nextTick(
 
 /**
  * Fetches admin jobs from the database.
+ *
+ * The order is newest first, and a row whose start was never recorded comes last: the
+ * column is nullable, and PostgreSQL puts NULL first for a `DESC` order by default — so a
+ * row without a start would answer "the newest run" and the operator would read a job
+ * that never started. `NULLS LAST` keeps the newest *started* run first, and the caller
+ * that takes `limit = 1` gets the run it means.
  */
 fun DataSource.fetchAdminJobs(
     limit: Int,
@@ -356,13 +362,13 @@ fun DataSource.fetchAdminJobs(
             """
             SELECT id, target_id, status, started_at, completed_at,
                    pages_crawled, items_saved, triggered_by, error_message
-            FROM crawl_jobs WHERE target_id = ? ORDER BY started_at DESC LIMIT ?
+            FROM crawl_jobs WHERE target_id = ? ORDER BY started_at DESC NULLS LAST LIMIT ?
             """.trimIndent()
         } else {
             """
             SELECT id, target_id, status, started_at, completed_at,
                    pages_crawled, items_saved, triggered_by, error_message
-            FROM crawl_jobs ORDER BY started_at DESC LIMIT ?
+            FROM crawl_jobs ORDER BY started_at DESC NULLS LAST LIMIT ?
             """.trimIndent()
         }
     return connection.use { conn ->

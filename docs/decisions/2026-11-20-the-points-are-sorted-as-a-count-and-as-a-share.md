@@ -89,8 +89,13 @@ terminal names its windows and sends a moment.
 - **Always** treat `scrapedAfter` as a bound on the current observation, not on the history:
   the list answers about products, and a product's membership and price are decided on its
   newest observation.
-- A window in the terminal is a name for one bound. "Last run" with no run recorded has no
-  bound and no rows: there is nothing a crawl has collected yet.
+- **Always** order the crawler's jobs with `NULLS LAST` when the newest run is the question.
+  `crawl_jobs.started_at` is nullable, and PostgreSQL puts NULL first for a `DESC` order, so
+  an unstarted row would answer as the newest run — and the window built from it would be a
+  bound of "now" (or, read as no bound, the whole table).
+- A window in the terminal is a name for one bound. "Last run" with no recorded start is an
+  **empty** window, a bound of "now", and not the whole table: there is nothing a crawl has
+  collected yet.
 - The storefront (another repository) validates its sort values against its own copy of the
   contract; the eight orders it accepted keep their meaning, and the four new ones reach it
   as ordinary additions.
