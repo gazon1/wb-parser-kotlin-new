@@ -25,7 +25,9 @@ fixture; `scripts/wb-research/plan.py` runs an approved plan step by step.
    the steps, and what each step expects to see. A step is one page action and
    one expectation.
 3. **Approve.** Show the plan to the user. The plan is the scope of the run:
-   nothing outside it is done, and expanding it needs the user's OK.
+   nothing outside it is done, and expanding it needs the user's OK. The
+   approval is written into the plan:
+   `uv run python scripts/wb-research/plan.py approve --investigation <id>`.
 4. **Run.** `uv run python scripts/wb-research/plan.py run --investigation <id>`.
    One step, one capture, one state. The runner stops where it must stop.
 5. **Correlate.** Read `evidence/<step>.json`. The capture ids start with the
@@ -56,13 +58,13 @@ steps:
 several actions are separated by `--`. `state` is written by the runner, and
 the file is rewritten without comments — a note belongs in `note`.
 
-`allow_hosts` names the origins one step may reach. The runner writes
+`allow_hosts` names the origins one step may reach. `plan.py approve` writes
 `approved_scope` — the fingerprint of the scope the approval covered — and a
-later run whose scope differs is refused: the user has to approve the changed
-plan again (`status: approved`) before it runs.
+run whose scope differs is refused: the user has to approve the changed plan
+again before it runs. Never approve a plan the user did not read.
 
-The runner only acts on `status: approved` and only on a step in state
-`planned`, so a run that stops is resumed by the next run.
+The runner only acts on a step in state `planned`, so a run that stops is
+resumed by the next run.
 
 ## Boundaries
 
@@ -96,8 +98,8 @@ The workflow pauses and resumes; it never works around a blockage.
 - The user solves it in their Chrome (or approves the origin), sets the step
   back to `planned`, and the next `plan.py run` continues from there.
 - If the plan itself has to change — another origin, another page — the user
-  approves the changed plan again. The runner refuses to run a scope it was
-  not given, and the refusal is not a thing to work around.
+  approves the changed plan again with `plan.py approve`. The runner refuses to
+  run a scope it was not given, and the refusal is not a thing to work around.
 - Everything the run has done stays on disk: the plan holds the state, the raw
   captures are in `~/.cache/wb-research/<id>/`, the sanitized evidence is in
   `evidence/`.

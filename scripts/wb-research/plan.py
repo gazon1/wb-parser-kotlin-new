@@ -16,6 +16,7 @@ sanitized fixture. This script runs steps, records what happened and stops
 where it must stop.
 
 Usage:
+    plan.py approve --investigation <id>   # the operator approves the plan
     plan.py run --investigation <id> [--settle <seconds>]
 """
 
@@ -23,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import re
 import shlex
@@ -35,8 +37,11 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 CAPTURE = HERE / "capture.py"
+REDACTOR = HERE / "redact.py"
 INVESTIGATIONS = REPO_ROOT / "devtools" / "wb-research" / "investigations"
 RAW_ROOT = Path.home() / ".cache" / "wb-research"
+
+_REDACTOR = None
 
 # The states of a step. `planned` is the only one the runner acts on, so a run
 # that was interrupted resumes at the first step that did not finish.
@@ -103,6 +108,29 @@ def save_plan(path: Path, plan: dict) -> None:
     )
 
 
+def load_redactor():
+    """The redactor next door. Its rules about a name are the rules here."""
+    global _REDACTOR
+    if _REDACTOR is not None:
+        return _REDACTOR
+    spec = importlib.util.spec_from_file_location("wb_research_redact", REDACTOR)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    _REDACTOR = module
+    return module
+
+
+def safe_step_name(name: str) -> str:
+    """The name of a step, checked the way the capture checks it.
+
+    The name of a step is the name of the file it produces, in the raw cache
+    and in the repository. A name the rules would reduce is refused rather
+    than silently changed: two names can reduce to one, and the second step
+    would overwrite the evidence of the first one.
+    """
+    return load_redactor().safe_identifier(name, "step")
+
+
 def check_plan(plan: dict, investigation: str) -> list[dict]:
     """The steps of the plan, checked at the door.
 
@@ -123,6 +151,8 @@ def check_plan(plan: dict, investigation: str) -> list[dict]:
         command = step.get("command")
         if not isinstance(name, str) or not name:
             raise SystemExit("a step of the plan has no name")
+        if safe_step_name(name) != name:
+            raise SystemExit(f"the name of a step is one name, not something to reduce: {name!r}")
         if name in names:
             raise SystemExit(f"two steps of the plan are named {name}")
         names.add(name)
@@ -213,6 +243,26 @@ def note_of(investigation: str, name: str, state: str) -> str:
     return ""
 
 
+def approve(investigation: str) -> int:
+    """Approve the plan as it stands and write down what was approved.
+
+    The approval is an act of its own, not a field the runner reads: the
+    fingerprint of the scope is written into the plan here, and the runner
+    only compares the scope it finds with the one that was approved. A plan
+    whose scope changed after this — another command, another origin — does
+    not match the fingerprint and is refused until it is approved again.
+    """
+    path = plan_path(investigation)
+    plan = load_plan(path)
+    steps = check_plan(plan, investigation)
+    plan["approved_scope"] = scope_of(steps)
+    plan["status"] = APPROVED
+    save_plan(path, plan)
+    print(f"the plan is approved: {investigation}")
+    print(f"the scope that was approved: {plan['approved_scope'][:12]}")
+    return EXIT_OK
+
+
 def run(investigation: str, settle: float) -> int:
     """Run the steps of the plan that are not done yet."""
     path = plan_path(investigation)
@@ -220,18 +270,18 @@ def run(investigation: str, settle: float) -> int:
     steps = check_plan(plan, investigation)
 
     status = plan.get("status")
-    if status == APPROVED:
-        # The approval covers this scope and this scope only.
-        plan["approved_scope"] = scope_of(steps)
-        plan["status"] = RUNNING
-        save_plan(path, plan)
-    elif status == RUNNING:
-        if plan.get("approved_scope") != scope_of(steps):
-            raise SystemExit(
-                "the scope of the plan is not the scope that was approved — the operator has to approve it again"
-            )
-    else:
+    if status not in {APPROVED, RUNNING}:
         raise SystemExit(f"the plan is not approved (status: {status})")
+    approved = plan.get("approved_scope")
+    if not approved:
+        raise SystemExit("the plan was not approved — approve it: plan.py approve --investigation <id>")
+    if approved != scope_of(steps):
+        raise SystemExit(
+            "the scope of the plan is not the scope that was approved — the operator has to approve it again"
+        )
+
+    plan["status"] = RUNNING
+    save_plan(path, plan)
 
     stopped = False
     for step in steps:
@@ -264,11 +314,16 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="verb", required=True)
 
+    approve_parser = sub.add_parser("approve", help="approve the plan as it stands and record the scope")
+    approve_parser.add_argument("--investigation", required=True, help="the investigation id")
+
     run_parser = sub.add_parser("run", help="run the steps of the plan that are not done yet")
     run_parser.add_argument("--investigation", required=True, help="the investigation id")
     run_parser.add_argument("--settle", type=float, default=8.0, help="seconds a step waits for the answers")
 
     args = parser.parse_args(argv)
+    if args.verb == "approve":
+        return approve(args.investigation)
     return run(args.investigation, args.settle)
 
 

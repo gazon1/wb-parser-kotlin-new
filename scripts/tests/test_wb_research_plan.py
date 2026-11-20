@@ -58,7 +58,11 @@ def investigation(tmp_path, monkeypatch):
     def make(steps: list[dict], status: str = "approved") -> str:
         name = "2026-11-20-wb-catalog-agent"
         (tmp_path / name).mkdir(exist_ok=True)
-        write_plan(tmp_path / name / "plan.yaml", steps, status)
+        write_plan(tmp_path / name / "plan.yaml", steps, "draft")
+        if status == "approved":
+            # The operator approves the plan: the scope that was approved is
+            # written into the file, and the run only compares it.
+            plan.approve(name)
         return name
 
     return make
@@ -163,7 +167,7 @@ def test_a_stopped_step_stops_a_later_run_until_it_is_released(investigation, tm
 
 
 def test_a_plan_without_steps_is_refused(investigation):
-    name = investigation([])
+    name = investigation([], status="draft")
 
     with pytest.raises(SystemExit, match="no steps"):
         plan.run(name, 8.0)
@@ -282,18 +286,74 @@ def test_a_new_approval_covers_the_new_scope(investigation, tmp_path, monkeypatc
     written = read_plan(tmp_path, name)
     written["steps"][0]["command"] = 'chrome-use open "https://www.wildberries.ru/other"'
     written["steps"][0]["state"] = "planned"
-    written["status"] = "approved"
     (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
 
     calls = fake_capture(monkeypatch, [plan.EXIT_OK, plan.EXIT_OK])
+
+    with pytest.raises(SystemExit, match="approve it again"):
+        plan.run(name, 8.0)
+    assert calls == []
+
+    # The operator approves the changed plan: the scope is approved again.
+    plan.approve(name)
 
     assert plan.run(name, 8.0) == plan.EXIT_OK
     assert len(calls) == 1
 
 
+def test_a_plan_changed_after_the_approval_does_not_run(investigation, tmp_path, monkeypatch):
+    """The approval covers the plan as it was approved, not as it is later."""
+    name = investigation([step("initial-load")])
+
+    # Somebody widens the plan between the approval and the first run.
+    written = read_plan(tmp_path, name)
+    written["steps"][0]["command"] = 'chrome-use open "https://www.wildberries.ru/other"'
+    (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    with pytest.raises(SystemExit, match="approve it again"):
+        plan.run(name, 8.0)
+
+    assert calls == []
+
+
+def test_a_plan_without_an_approval_record_does_not_run(investigation, tmp_path, monkeypatch):
+    """The status alone is not an approval: the approved scope has to be there."""
+    name = investigation([step("initial-load")], status="draft")
+
+    written = read_plan(tmp_path, name)
+    written["status"] = "approved"
+    (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    with pytest.raises(SystemExit, match="was not approved"):
+        plan.run(name, 8.0)
+
+    assert calls == []
+
+
+def test_the_approval_writes_the_scope_it_covered(investigation, tmp_path):
+    """The approval says what it approved."""
+    name = investigation([step("initial-load")])
+
+    written = read_plan(tmp_path, name)
+    assert written["status"] == plan.APPROVED
+    assert written["approved_scope"] == plan.scope_of(written["steps"])
+
+
 def test_a_malformed_allow_hosts_is_refused(investigation):
     """The approved origins are a list of names, not a string."""
-    name = investigation([{**step("initial-load"), "allow_hosts": "splitter.wb.ru"}])
+    name = investigation([{**step("initial-load"), "allow_hosts": "splitter.wb.ru"}], status="draft")
 
     with pytest.raises(SystemExit, match="malformed allow_hosts"):
+        plan.run(name, 8.0)
+
+
+def test_a_step_name_that_is_a_path_is_refused(investigation):
+    """The name of a step is the name of a file: one name, not a path."""
+    name = investigation([step("../../other/step")], status="draft")
+
+    with pytest.raises(SystemExit, match="one name"):
         plan.run(name, 8.0)

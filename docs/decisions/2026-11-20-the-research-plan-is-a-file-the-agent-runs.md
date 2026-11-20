@@ -60,6 +60,13 @@ step that did not finish. A later run resumes there: the steps that are `done`
 are skipped, and a step that waits for a human waits until a human sets it
 back to `planned`.
 
+The approval is an act of its own, not a field the runner reads. `plan.py
+approve` writes the fingerprint of the scope — the names, the commands and the
+approved origins of the steps — into the plan, and the runner only compares
+the scope it finds with the one that was approved. A plan that was widened
+after the approval does not match the fingerprint and is refused until it is
+approved again, so the approval binds to a plan and not to a moment.
+
 A pause is a state, not an improvisation. A CAPTCHA, a login, an ambiguous page
 or an origin the config does not approve stops the run, is named in the plan
 and is answered by the operator. The runner never works around a blockage and
@@ -100,11 +107,13 @@ every other run.
 - **Always** keep the state of the run in the plan: a step that is `done` is
   not run again, a step that is `failed` or `needs-human` is where a later run
   resumes.
-- **Always** bind the approval to the scope it covered: the runner writes the
-  fingerprint of the approved scope into the plan and refuses a run whose scope
-  differs, so a plan that was widened during a pause needs a new approval.
-- **Never** let the id of an investigation be a path: it names a directory, and
-  a name that climbs out of it is refused before anything is read or written.
+- **Always** bind the approval to the scope it covered: `plan.py approve`
+  writes the fingerprint of the approved scope into the plan and the runner
+  refuses a run whose scope differs, so a plan that was widened during a pause
+  needs a new approval.
+- **Never** let the id of an investigation or the name of a step be a path: they
+  name directories and files, and a name that climbs out of one is refused
+  before anything is read or written.
 - **Always** stop for the operator on a CAPTCHA, a login, an ambiguous page or
   an origin the config does not approve, and name the reason in the plan. Never
   work around a blockage and never widen the scope by itself.

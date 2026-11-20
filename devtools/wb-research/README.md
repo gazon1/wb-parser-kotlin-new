@@ -822,8 +822,8 @@ in the plan, instead of in the shared config:
     note: recorded 319 requests, kept 10
 ```
 
-`approved_scope` is written by the runner, not by hand: it is the fingerprint of
-the scope the approval covered.
+`approved_scope` is written by `plan.py approve`, not by hand: it is the
+fingerprint of the scope the approval covered.
 
 `command` is the `chrome-use` command of the step, exactly as it is run; several
 actions are separated by `--`. The states are the runner's: `done` is a recorded
@@ -833,23 +833,28 @@ for the operator.
 `scripts/wb-research/plan.py` runs an approved plan:
 
 ```bash
+uv run python scripts/wb-research/plan.py approve --investigation 2026-11-20-wb-catalog-agent
 uv run python scripts/wb-research/plan.py run --investigation 2026-11-20-wb-catalog-agent
 ```
 
-It runs only the steps that are `planned`, and it stops at the first step that
-did not finish — a run that stops is resumed by the next run, which skips the
-steps that are `done`. A plan that was not approved is not run at all: the
-approval is what makes the scope of the experiment a decision and not a guess.
+`approve` is the operator's act: it writes the fingerprint of the scope as it
+stands — the names, the commands and the approved origins of the steps — into
+`approved_scope`, and sets `status: approved`. `run` only compares: a plan
+without an `approved_scope`, or with one that does not match the plan, is
+refused. A plan that was widened after the approval — another command, another
+origin — does not run on the old approval; the operator approves it again and
+the fingerprint is written anew.
 
-The approval covers a scope, not just a moment. When the runner starts a plan,
-it writes the fingerprint of the scope into `approved_scope`: the names, the
-commands and the approved origins of the steps. A later run that finds a
-different scope is refused — the operator has to approve the changed plan
-again (`status: approved`), and the fingerprint is written anew. A plan that was
-widened while nobody watched does not run on the old approval.
+`run` executes only the steps that are `planned`, and it stops at the first
+step that did not finish — a run that stops is resumed by the next run, which
+skips the steps that are `done`. A plan that was not approved is not run at
+all: the approval is what makes the scope of the experiment a decision and not
+a guess.
 
 The id of the investigation is a name, not a path: the runner refuses an id that
-carries a separator or a `..`, the same rule the capture follows.
+carries a separator or a `..`, the same rule the capture follows. The name of
+a step is checked the same way: it is the name of a file, so a name the rules
+would reduce is refused rather than quietly changed.
 
 ## The agent workflow
 
