@@ -59,9 +59,10 @@ several actions are separated by `--`. `state` is written by the runner, and
 the file is rewritten without comments — a note belongs in `note`.
 
 `allow_hosts` names the origins one step may reach. `plan.py approve` writes
-`approved_scope` — the fingerprint of the scope the approval covered — and a
-run whose scope differs is refused: the user has to approve the changed plan
-again before it runs. Never approve a plan the user did not read.
+`approved_scope` — the fingerprint of the scope the approval covered, the steps
+and the shared capture config alike — and a run whose scope differs is refused:
+the user has to approve the changed plan again before it runs. Never approve a
+plan the user did not read.
 
 The runner only acts on a step in state `planned`, so a run that stops is
 resumed by the next run.

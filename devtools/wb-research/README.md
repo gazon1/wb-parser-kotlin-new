@@ -838,12 +838,13 @@ uv run python scripts/wb-research/plan.py run --investigation 2026-11-20-wb-cata
 ```
 
 `approve` is the operator's act: it writes the fingerprint of the scope as it
-stands — the names, the commands and the approved origins of the steps — into
+stands — the names, the commands and the approved origins of the steps, and
+the part of `capture-config.json` that decides what the session may reach — into
 `approved_scope`, and sets `status: approved`. `run` only compares: a plan
 without an `approved_scope`, or with one that does not match the plan, is
 refused. A plan that was widened after the approval — another command, another
-origin — does not run on the old approval; the operator approves it again and
-the fingerprint is written anew.
+origin, another origin in the shared config — does not run on the old approval;
+the operator approves it again and the fingerprint is written anew.
 
 `run` executes only the steps that are `planned`, and it stops at the first
 step that did not finish — a run that stops is resumed by the next run, which

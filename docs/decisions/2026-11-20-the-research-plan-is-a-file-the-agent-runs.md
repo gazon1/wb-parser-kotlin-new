@@ -62,9 +62,10 @@ back to `planned`.
 
 The approval is an act of its own, not a field the runner reads. `plan.py
 approve` writes the fingerprint of the scope — the names, the commands and the
-approved origins of the steps — into the plan, and the runner only compares
-the scope it finds with the one that was approved. A plan that was widened
-after the approval does not match the fingerprint and is refused until it is
+approved origins of the steps, and the part of the capture config that decides
+what the session may reach — into the plan, and the runner only compares the
+scope it finds with the one that was approved. A plan that was widened after
+the approval does not match the fingerprint and is refused until it is
 approved again, so the approval binds to a plan and not to a moment.
 
 A pause is a state, not an improvisation. A CAPTCHA, a login, an ambiguous page
@@ -109,8 +110,8 @@ every other run.
   resumes.
 - **Always** bind the approval to the scope it covered: `plan.py approve`
   writes the fingerprint of the approved scope into the plan and the runner
-  refuses a run whose scope differs, so a plan that was widened during a pause
-  needs a new approval.
+  refuses a run whose scope differs — a wider step and a wider capture config
+  alike — so a plan that was widened during a pause needs a new approval.
 - **Never** let the id of an investigation or the name of a step be a path: they
   name directories and files, and a name that climbs out of one is refused
   before anything is read or written.

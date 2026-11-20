@@ -9,6 +9,7 @@ lets a later run resume.
 from __future__ import annotations
 
 import importlib.util
+import json
 import subprocess
 from pathlib import Path
 
@@ -341,6 +342,36 @@ def test_the_approval_writes_the_scope_it_covered(investigation, tmp_path):
     written = read_plan(tmp_path, name)
     assert written["status"] == plan.APPROVED
     assert written["approved_scope"] == plan.scope_of(written["steps"])
+
+
+def test_a_changed_config_needs_a_new_approval(investigation, tmp_path, monkeypatch):
+    """The capture config is part of the scope: it decides what is reachable."""
+    config = tmp_path / "capture-config.json"
+    config.write_text(
+        json.dumps({"allowedOrigins": ["www.wildberries.ru"], "allowedPages": [], "allowedQueryParams": []}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plan, "CONFIG_PATH", config)
+
+    name = investigation([step("initial-load")])
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    # The config is widened after the approval.
+    config.write_text(
+        json.dumps(
+            {
+                "allowedOrigins": ["www.wildberries.ru", "api.wildberries.ru"],
+                "allowedPages": [],
+                "allowedQueryParams": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit, match="approve it again"):
+        plan.run(name, 8.0)
+
+    assert calls == []
 
 
 def test_a_malformed_allow_hosts_is_refused(investigation):

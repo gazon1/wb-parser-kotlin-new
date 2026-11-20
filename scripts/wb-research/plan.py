@@ -38,6 +38,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 CAPTURE = HERE / "capture.py"
 REDACTOR = HERE / "redact.py"
+CONFIG_PATH = REPO_ROOT / "devtools" / "wb-research" / "capture-config.json"
 INVESTIGATIONS = REPO_ROOT / "devtools" / "wb-research" / "investigations"
 RAW_ROOT = Path.home() / ".cache" / "wb-research"
 
@@ -164,13 +165,36 @@ def check_plan(plan: dict, investigation: str) -> list[dict]:
     return steps
 
 
+def config_scope() -> dict:
+    """The part of the capture config that decides what the session may touch.
+
+    The capture reads the shared config when it runs a step, so the config is
+    part of the scope a plan runs under: a config that allows another origin
+    or another page widens what the session may reach, exactly as a wider
+    command in the plan does. The rest of the config — the noise hosts, the
+    resource types, the limit — decides what is kept, not what is reached.
+    """
+    if not CONFIG_PATH.is_file():
+        raise SystemExit(f"no capture config at {CONFIG_PATH}")
+    try:
+        config = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"the capture config is not readable: {CONFIG_PATH} ({error})") from error
+    return {
+        "allowedOrigins": sorted(config.get("allowedOrigins", [])),
+        "allowedPages": sorted(config.get("allowedPages", [])),
+        "allowedQueryParams": sorted(config.get("allowedQueryParams", [])),
+    }
+
+
 def scope_of(steps: list[dict]) -> str:
     """The scope of a plan: what it may do and which origins it may reach.
 
-    The name, the command and the approved origins are the scope. The state of
-    a step and its note are not: they change while the run goes on. The
-    fingerprint of the scope is what the approval covers — a plan whose scope
-    changed after the approval has to be approved again.
+    The name, the command and the approved origins of a step are the scope, and
+    so is the capture config, because the capture reads it while the step runs.
+    The state of a step and its note are not: they change while the run goes
+    on. The fingerprint of the scope is what the approval covers — a plan whose
+    scope changed after the approval has to be approved again.
     """
     scope = [
         {
@@ -180,7 +204,7 @@ def scope_of(steps: list[dict]) -> str:
         }
         for step in steps
     ]
-    payload = json.dumps(scope, sort_keys=True, ensure_ascii=False)
+    payload = json.dumps({"config": config_scope(), "steps": scope}, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
