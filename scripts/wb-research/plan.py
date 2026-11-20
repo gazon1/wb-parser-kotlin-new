@@ -22,7 +22,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import shlex
 import subprocess
 import sys
@@ -53,10 +55,29 @@ EXIT_OK = 0
 EXIT_FAILED = 1
 EXIT_UNAPPROVED_API = 2
 
+# The id of an investigation becomes a directory name in the repository and in
+# the raw cache, so it has to be one name and nothing else: the same rule as
+# in `capture.py`.
+INVESTIGATION_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def safe_investigation(value: str) -> str:
+    """The id of an investigation, checked to be a single safe path component.
+
+    The id names a directory in the repository. A name that carries a
+    separator or a `..` would point at another directory than the one the
+    operator named, and the runner writes the plan back — so it is refused
+    before any file is read or written.
+    """
+    text = str(value or "").strip()
+    if not text or ".." in text or not INVESTIGATION_NAME.fullmatch(text):
+        raise SystemExit(f"the investigation id must be a single name, not a path: {value!r}")
+    return text
+
 
 def plan_path(investigation: str) -> Path:
     """The plan file of an investigation."""
-    return INVESTIGATIONS / investigation / "plan.yaml"
+    return INVESTIGATIONS / safe_investigation(investigation) / "plan.yaml"
 
 
 def load_plan(path: Path) -> dict:
@@ -107,7 +128,30 @@ def check_plan(plan: dict, investigation: str) -> list[dict]:
         names.add(name)
         if not isinstance(command, str) or not command.strip():
             raise SystemExit(f"the step {name} has no command")
+        hosts = step.get("allow_hosts", [])
+        if not isinstance(hosts, list) or any(not isinstance(host, str) or not host for host in hosts):
+            raise SystemExit(f"the step {name} has a malformed allow_hosts")
     return steps
+
+
+def scope_of(steps: list[dict]) -> str:
+    """The scope of a plan: what it may do and which origins it may reach.
+
+    The name, the command and the approved origins are the scope. The state of
+    a step and its note are not: they change while the run goes on. The
+    fingerprint of the scope is what the approval covers — a plan whose scope
+    changed after the approval has to be approved again.
+    """
+    scope = [
+        {
+            "name": step.get("name"),
+            "command": step.get("command"),
+            "allow_hosts": sorted(step.get("allow_hosts", [])),
+        }
+        for step in steps
+    ]
+    payload = json.dumps(scope, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def run_step(investigation: str, step: dict, settle: float) -> tuple[str, str]:
@@ -176,11 +220,18 @@ def run(investigation: str, settle: float) -> int:
     steps = check_plan(plan, investigation)
 
     status = plan.get("status")
-    if status not in {APPROVED, RUNNING}:
+    if status == APPROVED:
+        # The approval covers this scope and this scope only.
+        plan["approved_scope"] = scope_of(steps)
+        plan["status"] = RUNNING
+        save_plan(path, plan)
+    elif status == RUNNING:
+        if plan.get("approved_scope") != scope_of(steps):
+            raise SystemExit(
+                "the scope of the plan is not the scope that was approved — the operator has to approve it again"
+            )
+    else:
         raise SystemExit(f"the plan is not approved (status: {status})")
-
-    plan["status"] = RUNNING
-    save_plan(path, plan)
 
     stopped = False
     for step in steps:

@@ -810,6 +810,21 @@ steps:
     state: planned                      # planned | done | failed | needs-human
 ```
 
+`allow_hosts` names the origins the step may reach — the approval of one run,
+in the plan, instead of in the shared config:
+
+```yaml
+  - name: initial-load
+    command: chrome-use open "https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки"
+    allow_hosts:
+      - splitter.wb.ru
+    state: done
+    note: recorded 319 requests, kept 10
+```
+
+`approved_scope` is written by the runner, not by hand: it is the fingerprint of
+the scope the approval covered.
+
 `command` is the `chrome-use` command of the step, exactly as it is run; several
 actions are separated by `--`. The states are the runner's: `done` is a recorded
 step, `failed` is a step whose action failed, `needs-human` is a step that waits
@@ -825,6 +840,16 @@ It runs only the steps that are `planned`, and it stops at the first step that
 did not finish — a run that stops is resumed by the next run, which skips the
 steps that are `done`. A plan that was not approved is not run at all: the
 approval is what makes the scope of the experiment a decision and not a guess.
+
+The approval covers a scope, not just a moment. When the runner starts a plan,
+it writes the fingerprint of the scope into `approved_scope`: the names, the
+commands and the approved origins of the steps. A later run that finds a
+different scope is refused — the operator has to approve the changed plan
+again (`status: approved`), and the fingerprint is written anew. A plan that was
+widened while nobody watched does not run on the old approval.
+
+The id of the investigation is a name, not a path: the runner refuses an id that
+carries a separator or a `..`, the same rule the capture follows.
 
 ## The agent workflow
 

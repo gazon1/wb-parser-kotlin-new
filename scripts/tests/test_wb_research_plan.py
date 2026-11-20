@@ -234,3 +234,66 @@ def test_an_approved_origin_reaches_the_capture(monkeypatch):
 
     assert "--allow-host" in seen[0]
     assert seen[0][seen[0].index("--allow-host") + 1] == "splitter.wb.ru"
+
+
+def test_an_id_that_is_a_path_is_refused(investigation, tmp_path, monkeypatch):
+    """The id names a directory: a path is not an id, and nothing is written."""
+    monkeypatch.setattr(plan, "INVESTIGATIONS", tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    plan_file = outside / "plan.yaml"
+    plan_file.write_text("id: ../../outside\nstatus: approved\nsteps: []\n", encoding="utf-8")
+    before = plan_file.read_text(encoding="utf-8")
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    with pytest.raises(SystemExit, match="single name"):
+        plan.run("../../outside", 8.0)
+
+    assert calls == []
+    assert plan_file.read_text(encoding="utf-8") == before
+
+
+def test_a_changed_scope_needs_a_new_approval(investigation, tmp_path, monkeypatch):
+    """The scope that was approved is the scope that runs."""
+    name = investigation([step("initial-load")])
+    fake_capture(monkeypatch, [plan.EXIT_OK])
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+
+    # The plan is running. Somebody widens it while nobody watches.
+    written = read_plan(tmp_path, name)
+    written["steps"][0]["command"] = 'chrome-use open "https://www.wildberries.ru/other"'
+    (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    with pytest.raises(SystemExit, match="approve it again"):
+        plan.run(name, 8.0)
+
+    assert calls == []
+
+
+def test_a_new_approval_covers_the_new_scope(investigation, tmp_path, monkeypatch):
+    """The operator approves the widened plan: then it runs."""
+    name = investigation([step("initial-load")])
+    fake_capture(monkeypatch, [plan.EXIT_OK])
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+
+    written = read_plan(tmp_path, name)
+    written["steps"][0]["command"] = 'chrome-use open "https://www.wildberries.ru/other"'
+    written["steps"][0]["state"] = "planned"
+    written["status"] = "approved"
+    (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK, plan.EXIT_OK])
+
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert len(calls) == 1
+
+
+def test_a_malformed_allow_hosts_is_refused(investigation):
+    """The approved origins are a list of names, not a string."""
+    name = investigation([{**step("initial-load"), "allow_hosts": "splitter.wb.ru"}])
+
+    with pytest.raises(SystemExit, match="malformed allow_hosts"):
+        plan.run(name, 8.0)

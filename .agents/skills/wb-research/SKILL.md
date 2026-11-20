@@ -56,6 +56,11 @@ steps:
 several actions are separated by `--`. `state` is written by the runner, and
 the file is rewritten without comments — a note belongs in `note`.
 
+`allow_hosts` names the origins one step may reach. The runner writes
+`approved_scope` — the fingerprint of the scope the approval covered — and a
+later run whose scope differs is refused: the user has to approve the changed
+plan again (`status: approved`) before it runs.
+
 The runner only acts on `status: approved` and only on a step in state
 `planned`, so a run that stops is resumed by the next run.
 
@@ -90,6 +95,9 @@ The workflow pauses and resumes; it never works around a blockage.
   `needs-human` in the plan, and tell the user exactly what is needed.
 - The user solves it in their Chrome (or approves the origin), sets the step
   back to `planned`, and the next `plan.py run` continues from there.
+- If the plan itself has to change — another origin, another page — the user
+  approves the changed plan again. The runner refuses to run a scope it was
+  not given, and the refusal is not a thing to work around.
 - Everything the run has done stays on disk: the plan holds the state, the raw
   captures are in `~/.cache/wb-research/<id>/`, the sanitized evidence is in
   `evidence/`.
