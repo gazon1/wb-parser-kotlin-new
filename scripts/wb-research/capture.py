@@ -645,8 +645,16 @@ def check_read_only(
         scheme = parts.scheme.lower()
         if scheme not in ("http", "https"):
             raise SystemExit(f"the page action may only open an http page, not {url!r}")
-        if not host_matches(host_of(url), approved):
-            raise SystemExit(f"the page action may only open an approved host, not {host_of(url)}")
+        if not approved_origin(url, approved):
+            # The approval is of an origin, and not of a host: the same host on
+            # another port is another service, and the plain-http origin of an
+            # https host is another origin. A navigation is judged by the same
+            # measure the API traffic is judged by, so an origin the config
+            # names in full passes here as it does there.
+            origin = origin_of(url)
+            raise SystemExit(
+                f"the page action may only open an approved origin, not {origin_label(origin) if origin else host_of(url)}"
+            )
         if hides_separator(parts.path):
             # A separator behind an escape is another path to a server that
             # decodes it, and the check cannot know how the page is routed.
@@ -809,7 +817,11 @@ def approved_navigation(url: str, approved: list[str], pages: list[str], allowed
         return False
     if parts.scheme.lower() not in ("http", "https"):
         return False
-    if not host_matches(host_of(url), approved):
+    if not approved_origin(url, approved):
+        # The approval is of an origin, and not of a host: the same host on
+        # another port is another service, and the plain-http origin of an
+        # https host is another origin. A navigation is judged by the same
+        # measure the API traffic is judged by.
         return False
     if hides_separator(parts.path):
         return False
@@ -818,18 +830,24 @@ def approved_navigation(url: str, approved: list[str], pages: list[str], allowed
     return all(name in allowed_query for name in query_names(url))
 
 
-def session_problem(url: str, approved: list[str], pages: list[str]) -> str:
+def session_problem(url: str, approved: list[str], pages: list[str], allowed_query: list[str]) -> str:
     """Why the session is not on a page the config approves, and an empty
     string when it is.
 
-    The origin and the page are what is judged: the site may add query
-    parameters to the page it keeps the session on, and a query the tool did
-    not ask for is not a navigation of its own. A URL the browser reads
-    differently than the parser reads it — a backslash — is not a URL this
-    check can read, so it is not approved. A path that hides a separator
-    behind an escape is refused as well: the browser sends it as it is
-    written, but a server or a proxy may decode it, and then it is another
-    path — the path the check reads is not the path the server routes.
+    The origin, the page and the query are what is judged: a query parameter
+    can switch an action on just as a path can, and the site can put one on
+    the page it keeps the session on without asking — `history.pushState`
+    changes the address of the page without a request of its own, and the
+    address is what the session is judged by. So a parameter the config does
+    not name is refused, and the operator names it in `allowedQueryParams` if
+    the site needs it.
+
+    A URL the browser reads differently than the parser reads it — a
+    backslash — is not a URL this check can read, so it is not approved. A
+    path that hides a separator behind an escape is refused as well: the
+    browser sends it as it is written, but a server or a proxy may decode it,
+    and then it is another path — the path the check reads is not the path
+    the server routes.
     """
     if not url:
         # The browser could not say where the session is. A step whose evidence
@@ -852,6 +870,9 @@ def session_problem(url: str, approved: list[str], pages: list[str]) -> str:
         return f"the session left the approved origins: {url}"
     if not approved_page(url, pages):
         return f"the session left the approved pages: {url}"
+    for name in query_names(url):
+        if name not in allowed_query:
+            return f"the session is on a page whose query the config does not name: {url}"
     return ""
 
 
@@ -976,25 +997,31 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
     #
     # The recording cannot tell the main frame of the tab from a frame of
     # another site: both are documents in it. The browser tells them apart —
-    # it names the frame of the tab and the frames inside it. A frame inside
-    # the page that is still there is a frame, not a place the session went.
-    # The frame of the tab is the session itself: a document of it is a
-    # navigation of the session, and it is held to the same measure as any
-    # other navigation — the host, the page and the query. A page that is
-    # neither an approved navigation nor a frame inside the page is a page the
-    # session visited and left: the step fails, because the capture of a
-    # session that went somewhere else is not evidence of what the step shows.
+    # it names the frame of the tab and the frames inside it. The frame of the
+    # tab is the session itself: a document of it is a navigation of the
+    # session, and it is held to the same measure as any other navigation —
+    # the origin, the page and the query.
+    #
+    # A page that is neither an approved navigation nor a frame the page
+    # still shows is a page the session visited and left: the step fails,
+    # because the capture of a session that went somewhere else is not
+    # evidence of what the step shows.
     pages = config.get("allowedPages", [])
     noise = config.get("noiseHosts", [])
+    origins = config["allowedOrigins"]
+    allowed_query = config.get("allowedQueryParams", [])
     frames = browser_frames()
     frame_pages = [frame["url"] for frame in (frames or []) if not approved_page(frame["url"], pages)]
-    # Only the frames inside the page are exempt. The frame of the tab is the
-    # session: a document of it is a navigation of the session, and a
-    # navigation that carries a query the config does not name is one the
-    # config does not approve — the site may add a parameter to a page it
-    # keeps the session on, but a parameter that switches an action on is not
-    # one the tool can let pass unnoticed.
-    inside = [frame["url"] for frame in (frames or []) if frame.get("kind") == "inline"]
+    # A frame is a frame, and not a place the session went: the browser says
+    # which frames the page has, so a document of a frame is judged by the
+    # rule of the frame and not by the rule of the session. A frame of another
+    # site is exempt: its document request goes to a host of its own, and it
+    # cannot reach an endpoint of the site the capture observes. A frame of an
+    # approved host is a request of the site, and the site may keep a frame on
+    # a page the config does not name — so such a frame is held to the same
+    # measure as any other navigation: the page and the query.
+    inline = [frame["url"] for frame in (frames or []) if frame.get("kind") == "inline"]
+    own = [url for url in inline if approved_host(host_of(url), origins)]
     visited: list[str] = []
     if frames is not None:
         for url in dict.fromkeys(document_urls(entries) + navigation_targets(entries)):
@@ -1003,11 +1030,11 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
                 # has said so: a page of such a host is not where the session
                 # went.
                 continue
-            if approved_navigation(url, config["allowedOrigins"], pages, config.get("allowedQueryParams", [])):
+            if approved_navigation(url, origins, pages, allowed_query):
                 continue
-            if any(same_page(url, frame) for frame in inside):
-                # A frame inside the page that is still there is a frame, and
-                # not a place the session went.
+            if any(same_page(url, frame) for frame in inline):
+                # A frame that is still there is a frame, and not a place the
+                # session went: the browser says so.
                 continue
             visited.append(url)
 
@@ -1021,11 +1048,19 @@ def capture_step(args: argparse.Namespace, config: dict) -> int:
         # cannot tell a frame from the session cannot say where the session
         # went, so it is not a successful one.
         problems.append("the browser did not tell which frames the page has")
-    session_reason = session_problem(session_page(), config["allowedOrigins"], pages)
+    session_reason = session_problem(session_page(), origins, pages, allowed_query)
     if session_reason:
         problems.append(session_reason)
     if visited:
         problems.append("the session visited a page the config does not approve: " + "; ".join(visited[:3]))
+    unapproved_frames = [url for url in own if not approved_navigation(url, origins, pages, allowed_query)]
+    if unapproved_frames:
+        # A frame of an approved origin is a request of the site, and a
+        # request may change what it is asked to change: the frame is on a
+        # page the config does not name, or it carries a query the config
+        # does not name. The frame may have been loaded before the recording
+        # started, so the recording cannot be asked about it.
+        problems.append("the page shows a frame the config does not approve: " + "; ".join(unapproved_frames[:3]))
     if problems:
         failed = failed or EXIT_FAILED
 

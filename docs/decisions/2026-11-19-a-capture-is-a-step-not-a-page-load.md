@@ -56,6 +56,26 @@ the session went to — the recording cannot tell them apart, both are documents
 in it, and a page the session visited and left is a page the capture is not
 evidence of.
 
+The frames are judged by the host they are on. A frame of another site is
+third-party traffic and is exempt: its document request goes to a host of its
+own, so it cannot reach an endpoint of the site the capture observes. A frame
+of an approved host is a request of the site itself, and an approved host
+answers a GET that adds to the cart as well — so such a frame is held to the
+same measure as any other navigation, the page and the query, and a frame the
+config does not approve fails the step.
+
+The session is judged by the origin, the page and the query. A query parameter
+can switch an action on just as a path can, and the site can put one on the
+page it keeps the session on without asking: `history.pushState` changes the
+address of the page without a request of its own, and the address is what the
+session is judged by. A parameter the config does not name fails the step, and
+the operator names it in `allowedQueryParams` if the site needs it.
+
+An approval is of an origin, and not of a host: the same host on another port is
+another service. A navigation is judged by that same measure the API traffic is
+judged by, so an origin the config names in full (`https://api.example.ru:8443`)
+passes a navigation as it passes API traffic.
+
 An API-shaped request to an origin that is neither approved nor marked as noise
 is **not** dropped: the capture writes everything it has, names the origin and
 exits with code 2. The developer then approves the origin with `--allow-host` or
@@ -322,6 +342,11 @@ was never answered is evidence of something different.
   belongs to. The noise list is the other case: it is the operator's statement
   about a host — the traffic of that host carries no API — so the host is what
   is matched there.
+- **Always** judge a navigation by the same measure the API traffic is judged by:
+  an origin, and not a host. The same host on another port is another service,
+  so a page action and a navigation are approved by the origin they open — and
+  an origin the config names in full (`https://api.example.ru:8443`) passes a
+  navigation as it passes API traffic.
 - **Always** answer a failed step with the failure, even when a call went to
   an unapproved origin as well: a step that failed has no evidence, and the
   origin is named in the output and in the report either way.
@@ -331,10 +356,13 @@ was never answered is evidence of something different.
   The step reads that page after its actions, and a session on an origin the
   config does not approve fails the step — as does a browser that cannot say
   where the session is, because a step whose evidence says nothing about where
-  the session went shows nothing about what the step did. The origin and the
-  page are what is judged: the site may add query parameters to the page it
-  keeps the session on, and a query the tool did not ask for is not a
-  navigation of its own.
+  the session went shows nothing about what the step did. The origin, the page
+  and the query are what is judged: a query parameter can switch an action on
+  just as a path can, and the site can put one on the page it keeps the session
+  on without asking — `history.pushState` changes the address of the page
+  without a request of its own, and the address is what the session is judged
+  by. So a parameter the config does not name fails the step, and the operator
+  names it in `allowedQueryParams` if the site needs it.
 - **Never** read a document of the recording as a navigation of the session
   without asking the browser: the main frame of the tab and a frame of another
   site are both documents in it, so the recording alone cannot tell them apart.
@@ -342,12 +370,21 @@ was never answered is evidence of something different.
   inside it. A frame inside the page that is still there is a frame and not a
   place the session went, and it does not fail the step. The frame of the tab
   is the session itself: a document of it is a navigation of the session, and
-  it is held to the same measure as any other navigation — the host, the page
+  it is held to the same measure as any other navigation — the origin, the page
   and the query. A document of the recording that is neither a frame inside the
   page nor a navigation the config approves is a page the session visited and
   left: the step fails, and the pages are named in the report. A browser that
   cannot name the frames of the page fails the step as well — a step that
   cannot tell a frame from the session cannot say where the session went.
+- **Never** exempt a frame of the site itself from the measure of a navigation:
+  a frame of an approved host is a request of the site, and an approved host
+  answers a GET that adds to the cart as well — so such a frame is held to the
+  same measure as any other navigation, the page and the query, and a frame the
+  config does not approve fails the step. A frame of another site is exempt:
+  its document request goes to a host of its own, so it cannot reach an
+  endpoint of the site the capture observes, and the filter keeps it out of the
+  evidence. The frames are told apart by the host, and the frame that is
+  judged is the one the browser names, not the one the recording shows.
 - **Never** let a navigation carry a query the config does not name, whoever
   makes it: a navigation is a request, and a request may change what it is
   asked to change — a parameter can switch an action on just as a path can.

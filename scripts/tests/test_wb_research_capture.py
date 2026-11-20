@@ -1014,14 +1014,13 @@ def test_a_navigation_that_left_the_approved_pages_fails_the_step(tmp_path, monk
     assert any("left the approved pages" in note for note in report["notes"])
 
 
-def test_a_frame_of_an_approved_host_outside_the_approved_pages_is_not_a_navigation(tmp_path, monkeypatch):
-    # The finding of the review: the recording cannot tell the main frame of
-    # the tab from a frame of another site — both are documents in it — so a
-    # frame of an approved host outside the approved pages was read as a
-    # navigation of the session and failed the step. The browser tells them
-    # apart: it names the frames of the page, and a frame that is still there
-    # is a frame and not a place the session went. The session is on the page
-    # the config names, and the step is a successful one.
+def test_a_frame_of_an_approved_host_outside_the_approved_pages_fails_the_step(tmp_path, monkeypatch):
+    # The finding of the review: the browser names the frames of the page, and
+    # a frame of an approved host is a request of the site itself — an
+    # approved host answers a GET that adds to the cart as well. A frame on a
+    # page the config does not name is therefore held to the same measure as
+    # any other navigation, and the step fails: the capture of a page that
+    # shows such a frame is not evidence of what the step shows.
     entries = [
         entry("https://www.wildberries.ru/catalog/", "Document"),
         entry("https://www.wildberries.ru/basket/widget", "Document"),
@@ -1044,11 +1043,141 @@ def test_a_frame_of_an_approved_host_outside_the_approved_pages_is_not_a_navigat
         settle=0.0,
     )
 
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    fixture = tmp_path / "investigations" / "demo" / "evidence" / "step.json"
+    assert not fixture.exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("the page shows a frame the config does not approve" in note for note in report["notes"])
+
+
+def test_a_frame_of_another_site_is_not_a_navigation(tmp_path, monkeypatch):
+    # A frame of another site is third-party traffic: its document request
+    # goes to a host of its own, so it cannot reach an endpoint of the site
+    # the capture observes. It is exempt: a page of the site may keep such a
+    # frame, and the step is a successful one.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://frames.example.test/widget", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(
+            entries,
+            frames=["https://www.wildberries.ru/catalog/", "https://frames.example.test/widget"],
+        ),
+    )
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
     assert capture.capture_step(args, CONFIG) == capture.EXIT_OK
 
     assert (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
     report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
-    assert any("basket/widget" in note for note in report["notes"])
+    assert not any("the session visited a page the config does not approve" in note for note in report["notes"])
+
+
+def test_a_frame_of_an_approved_host_with_a_query_the_config_does_not_name_fails_the_step(tmp_path, monkeypatch):
+    # A query may switch an action on just as a path may, and a frame of the
+    # site is a request of the site: a frame that carries a query the config
+    # does not name fails the step.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://www.wildberries.ru/catalog/?action=add-to-cart", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(
+            entries,
+            frames=["https://www.wildberries.ru/catalog/", "https://www.wildberries.ru/catalog/?action=add-to-cart"],
+        ),
+    )
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("the page shows a frame the config does not approve" in note for note in report["notes"])
+
+
+def test_a_session_with_a_query_the_config_does_not_name_fails_the_step(tmp_path, monkeypatch):
+    # The finding of the review: the session was judged by the origin and the
+    # page, but not by the query — and the site can put a parameter on the
+    # page it keeps the session on without asking: `history.pushState` changes
+    # the address of the page without a request of its own, and the address is
+    # what the session is judged by. A parameter the config does not name may
+    # switch an action on, so the session is not an approved one.
+    entries = [
+        entry("https://www.wildberries.ru/catalog/", "Document"),
+        entry("https://www.wildberries.ru/__internal/u-search"),
+    ]
+    monkeypatch.setattr(capture, "RAW_ROOT", tmp_path)
+    monkeypatch.setattr(capture, "EVIDENCE_ROOT", tmp_path / "investigations")
+    monkeypatch.setattr(
+        capture,
+        "chrome_use",
+        fake_browser(entries, session_url="https://www.wildberries.ru/catalog/?action=add-to-cart"),
+    )
+    args = argparse.Namespace(
+        name="step",
+        investigation="demo",
+        command=["chrome-use", "open", "https://www.wildberries.ru/catalog/"],
+        settle=0.0,
+    )
+
+    assert capture.capture_step(args, CONFIG) == capture.EXIT_FAILED
+
+    assert not (tmp_path / "investigations" / "demo" / "evidence" / "step.json").exists()
+    report = json.loads((tmp_path / "demo" / "step.report.json").read_text(encoding="utf-8"))
+    assert any("query the config does not name" in note for note in report["notes"])
+
+
+def test_an_origin_named_in_full_is_approved_for_a_navigation():
+    # The finding of the review: the navigation checks compared the host
+    # alone, while the API traffic is judged by the origin — so an origin the
+    # config names in full (`https://api.example.ru:8443`) was refused as a
+    # navigation and accepted as API traffic. One measure for both.
+    origins = ["https://api.example.ru:8443"]
+    pages = ["https://api.example.ru:8443/"]
+    assert capture.approved_navigation("https://api.example.ru:8443/", origins, pages, []) is True
+    assert capture.approved_navigation("http://api.example.ru:8443/", origins, pages, []) is False
+    assert capture.approved_navigation("https://api.example.ru/", origins, pages, []) is False
+
+
+def test_a_page_action_may_open_an_origin_the_config_names_in_full():
+    # One measure for both: an action that opens an origin the config names
+    # in full is allowed, and another port of the same host is not.
+    capture.check_read_only(
+        [["chrome-use", "open", "https://api.example.ru:8443/private"]],
+        ["https://api.example.ru:8443"],
+        ["https://api.example.ru:8443/private"],
+        [],
+    )
+    with pytest.raises(SystemExit):
+        capture.check_read_only(
+            [["chrome-use", "open", "https://api.example.ru/private"]],
+            ["https://api.example.ru:8443"],
+            ["https://api.example.ru:8443/private"],
+            [],
+        )
 
 
 def test_a_session_on_a_page_the_config_does_not_name_fails_the_step(tmp_path, monkeypatch):
@@ -1749,11 +1878,19 @@ def test_a_session_whose_path_hides_a_separator_is_not_an_approved_session():
     pages = CONFIG["allowedPages"]
     assert (
         capture.session_problem(
-            "https://www.wildberries.ru/catalog/item%2f..%2fprivate", CONFIG["allowedOrigins"], pages
+            "https://www.wildberries.ru/catalog/item%2f..%2fprivate",
+            CONFIG["allowedOrigins"],
+            pages,
+            CONFIG["allowedQueryParams"],
         )
         != ""
     )
-    assert capture.session_problem("https://www.wildberries.ru/catalog/", CONFIG["allowedOrigins"], pages) == ""
+    assert (
+        capture.session_problem(
+            "https://www.wildberries.ru/catalog/", CONFIG["allowedOrigins"], pages, CONFIG["allowedQueryParams"]
+        )
+        == ""
+    )
 
 
 def test_a_session_that_left_the_approved_hosts_fails_the_step(tmp_path, monkeypatch):
@@ -1818,19 +1955,38 @@ def test_a_session_behind_a_backslash_is_not_an_approved_session():
     # browser. A session the check cannot read the way the browser reads it is
     # not a session it can approve.
     pages = ["https://www.wildberries.ru/catalog/"]
-    assert capture.session_problem("https://www.wildberries.ru\\@evil.example/", CONFIG["allowedOrigins"], pages) != ""
-    assert capture.session_problem("https://www.wildberries.ru/catalog/", CONFIG["allowedOrigins"], pages) == ""
+    assert (
+        capture.session_problem(
+            "https://www.wildberries.ru\\@evil.example/", CONFIG["allowedOrigins"], pages, CONFIG["allowedQueryParams"]
+        )
+        != ""
+    )
+    assert (
+        capture.session_problem(
+            "https://www.wildberries.ru/catalog/", CONFIG["allowedOrigins"], pages, CONFIG["allowedQueryParams"]
+        )
+        == ""
+    )
 
 
 def test_a_session_on_a_page_the_config_does_not_name_is_not_an_approved_session():
     # The session is judged by the page it is on: an approved origin answers a
-    # page the config does not name as well, and the query the site adds to
-    # the page is not a navigation of its own.
+    # page the config does not name as well. A query the site adds to the
+    # page is a query of its own, and it is judged as well: a parameter the
+    # config does not name may switch an action on.
     pages = CONFIG["allowedPages"]
-    assert capture.session_problem("https://www.wildberries.ru/basket/add", CONFIG["allowedOrigins"], pages) != ""
     assert (
         capture.session_problem(
-            "https://www.wildberries.ru/catalog/131954/list.aspx?search=x", CONFIG["allowedOrigins"], pages
+            "https://www.wildberries.ru/basket/add", CONFIG["allowedOrigins"], pages, CONFIG["allowedQueryParams"]
+        )
+        != ""
+    )
+    assert (
+        capture.session_problem(
+            "https://www.wildberries.ru/catalog/131954/list.aspx?search=x",
+            CONFIG["allowedOrigins"],
+            pages,
+            CONFIG["allowedQueryParams"],
         )
         == ""
     )

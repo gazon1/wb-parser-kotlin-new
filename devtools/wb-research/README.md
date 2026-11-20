@@ -258,18 +258,19 @@ escape, so `%252e%252e` is `..` and `%252f` is a separator to a server that
 decodes twice. The query of the page is judged
 too: a navigation may only carry the query parameters the config names
 (`allowedQueryParams`), because a parameter can switch an action on just as a
-path can. This holds for the navigations of the site as well: the site may add
-a parameter to the page it keeps the session on, and the query of the page the
-session rests on is not a navigation of its own — but a document of the tab that
-carries a parameter the config does not name is a navigation, and it fails the
-step. The site may answer the page the operator opens with another page:
+path can. This holds for the navigations of the site as well: a document of the
+tab that carries a parameter the config does not name is a navigation, and it
+fails the step. The site may answer the page the operator opens with another page:
 the browser follows the redirect, so the step reads where the session ended up
 — the browser names the page of the main frame of the tab after its actions —
 and a session on a page the config does not name makes the step a failed one:
-its capture is not exported, and the reason is in the report. The origin and
-the page are what is judged: the site may add query parameters to the page it
-keeps the session on, and a query the tool did not ask for is not a navigation
-of its own. The session is read the way the browser reads it: the browser reads
+its capture is not exported, and the reason is in the report. The origin, the
+page and the query are what is judged: a query parameter can switch an action
+on just as a path can, and the site can put one on the page it keeps the session
+on without asking — `history.pushState` changes the address of the page without
+a request of its own, and the address is what the session is judged by. A
+parameter the config does not name fails the step; name it in
+`allowedQueryParams` if the site needs it. The session is read the way the browser reads it: the browser reads
 a backslash as a slash, so a session on `https://a.example\@b.example/` names
 the host `b.example` to the parser and the host `a.example` to the browser —
 such a session is not approved, and the step fails. A session on a path that
@@ -286,13 +287,23 @@ names the frame of the tab and the frames inside it. A frame inside the page
 that is still there is a frame — not a place the session went — and does not
 fail the step. The frame of the tab is the session itself: a document of it is
 a navigation of the session and is held to the same measure as any other
-navigation — the host, the page and the query. A document of the recording
+navigation — the origin, the page and the query. A document of the recording
 that is neither a frame inside the page nor a navigation the config approves is
 a page the session visited and left, and such a step fails: the pages are
 named in the report. A browser that cannot name the frames of the page fails
 the step as well — a step that cannot tell a frame from the session cannot say
-where the session went. A document of another host that is a frame is
-third-party traffic that the filter keeps out of the evidence.
+where the session went. The frames are judged by the host they are on. A frame
+of another site is third-party traffic that the filter keeps out of the
+evidence, and it is exempt: its document request goes to a host of its own, so
+it cannot reach an endpoint of the site the capture observes. A frame of an
+approved host is a request of the site itself, and an approved host answers a
+GET that adds to the cart as well — so such a frame is held to the same measure
+as any other navigation, the page and the query, and a frame the config does
+not approve fails the step.
+An approval is of an origin and not of a host: the same host on another port is
+another service, and a navigation is judged by that same measure the API
+traffic is judged by — so an origin the config names in full
+(`https://api.example.ru:8443`) passes a navigation as it passes API traffic.
 The tool cannot know what the site will answer before it answers it, so the
 guarantee it keeps is the one it can hold: the commands it runs are commands
 that read the page, and a step whose session left the approved pages is not
@@ -414,8 +425,9 @@ hosts.
   origin it names — the scheme, the host and the port — and the path it names
   and the paths under it, by path segment.
 - `allowedQueryParams` — the names of the query parameters a navigation may
-  carry. The query of a page is a request as well, and a parameter can switch
-  an action on, so a parameter the config does not name is refused. The name
+  carry, and the names a page the session rests on may carry. The query of a
+  page is a request as well, and a parameter can switch an action on, so a
+  parameter the config does not name is refused. The name
   is read the way the server reads it: the server decodes once, so `?%73earch`
   is `search` and `?%2573earch` is not it.
 - `maxBodyFetches` — how many response bodies one step may read, so a busy
