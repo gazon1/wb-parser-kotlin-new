@@ -399,10 +399,11 @@ The rules the redactor applies:
 - a value is judged **as the server reads it**: a capture may percent-encode it
   once, twice or three times, and the server resolves every layer. The name of
   a query parameter, the value of a query parameter, the value of an
-  allowlisted header and the key of a JSON answer are decoded layer by layer
-  (at most three) before the rules look at them, so an address behind two
-  layers of escapes (`alice%2540example.com`) is the address and is replaced. A
-  value that survives the rules unchanged keeps the spelling it came with;
+  allowlisted header, the key of a JSON answer, **a note** and **an
+  operator-chosen name** are decoded layer by layer (at most three) before the
+  rules look at them, so an address behind two layers of escapes
+  (`alice%2540example.com`) is the address and is replaced. A value that
+  survives the rules unchanged keeps the spelling it came with;
 - a URL keeps its scheme, host, port, path and query names, but its **fragment is
   dropped** and its **user information is dropped** (`user:password@host`): the
   fragment never reaches the server and the user information is a credential —

@@ -473,6 +473,28 @@ def test_the_capture_id_does_not_carry_the_file_name_verbatim():
     assert capture["id"] == "email-001"
 
 
+def test_an_encoded_address_in_a_name_is_replaced():
+    # The finding of the review: the name was judged as it was written, and the
+    # slug of an encoded address still spelled the address out.
+    name = redact.safe_identifier("alice%40example.com", "capture")
+
+    assert "alice" not in name
+    assert "example.com" not in name
+
+
+def test_a_twice_encoded_address_in_a_name_is_replaced():
+    name = redact.safe_identifier("alice%2540example.com", "capture")
+
+    assert "alice" not in name
+    assert "example.com" not in name
+
+
+def test_an_ordinary_name_keeps_its_spelling():
+    name = redact.safe_identifier("initial-load", "capture")
+
+    assert name == "initial-load"
+
+
 def test_a_note_goes_through_the_same_rules():
     # A note is free text: without the rules it is the easiest way to smuggle a
     # value into a committed file.
@@ -480,6 +502,28 @@ def test_a_note_goes_through_the_same_rules():
 
     assert "site_9ee9449a3a1a448393d750b3dd2c22e8" not in note
     assert "alice" not in note
+
+
+def test_an_encoded_address_in_a_note_is_replaced():
+    # The finding of the review: a note was judged as it was written, and the
+    # address behind an escape reached the committed file.
+    note = redact.redact_note("contact: alice%40example.com")
+
+    assert "alice" not in note
+    assert "example.com" not in note
+
+
+def test_a_twice_encoded_address_in_a_note_is_replaced():
+    note = redact.redact_note("contact: alice%2540example.com")
+
+    assert "alice" not in note
+    assert "example.com" not in note
+
+
+def test_a_note_that_survives_the_rules_keeps_its_spelling():
+    note = redact.redact_note("kept 8 of 312 recorded requests")
+
+    assert note == "kept 8 of 312 recorded requests"
 
 
 def test_a_url_inside_a_note_is_redacted_as_a_url():

@@ -502,16 +502,26 @@ def safe_identifier(value: Any, fallback: str) -> str:
     rules to see.
     """
     raw = str(value or "")
-    text = redact_credentials(raw, label="redacted")
+    decoded = decode_layers(raw)
+    redacted = _identifier_text(decoded)
+    # The name is judged as the server reads it: a name that hides an address
+    # behind an escape is the address all the same. A name that survives the
+    # rules unchanged keeps the spelling it came with.
+    source = redacted if redacted != decoded else raw
+    text = UNSAFE_IDENTIFIER.sub("-", source).strip("-")
+    if not text or LONG_DIGIT_RUN.search(text):
+        return fallback
+    return text[:MAX_IDENTIFIER_LENGTH]
+
+
+def _identifier_text(value: str) -> str:
+    """The personal values of an operator-chosen name, replaced."""
+    text = redact_credentials(value, label="redacted")
     text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
     text = UUID_VALUE.sub("opaque", text)
     text = UUID_COMPACT.sub("opaque", text)
-    text = redact_opaque_run(text)
-    text = UNSAFE_IDENTIFIER.sub("-", text).strip("-")
-    if not text or LONG_DIGIT_RUN.search(text):
-        return fallback
-    return text[:MAX_IDENTIFIER_LENGTH]
+    return redact_opaque_run(text)
 
 
 def is_number(value: Any) -> bool:
@@ -642,14 +652,26 @@ def redact_note(note: str) -> str:
     So a note loses its email addresses and its phone numbers, its long digit
     runs (that is the shape of an account id), its URLs become redacted URLs,
     and an opaque value in it is dropped.
+
+    A note is judged as the server reads it: the escapes are resolved, layer by
+    layer, at most three, because an address behind two of them is the address
+    all the same. A note that survives the rules unchanged keeps the spelling
+    it came with.
     """
-    text = EMAIL_ADDRESS.sub("email", str(note))
+    raw = str(note)
+    decoded = decode_layers(raw)
+    redacted = _redact_note_text(decoded)
+    return redacted[:MAX_VALUE_LENGTH] if redacted != decoded else raw[:MAX_VALUE_LENGTH]
+
+
+def _redact_note_text(text: str) -> str:
+    """The personal values of a note, replaced."""
+    text = EMAIL_ADDRESS.sub("email", text)
     text = PHONE_NUMBER.sub("phone", text)
     text = URL_IN_TEXT.sub(lambda match: redact_url(match.group(0)), text)
     text = redact_credentials(text)
     text = OPAQUE_TOKEN.sub(placeholder("opaque"), text)
-    text = LONG_DIGIT_RUN.sub(placeholder("account-id"), text)
-    return text[:MAX_VALUE_LENGTH]
+    return LONG_DIGIT_RUN.sub(placeholder("account-id"), text)
 
 
 def redact_generic_value(value: str) -> str:
