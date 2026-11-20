@@ -830,6 +830,11 @@ actions are separated by `--`. The states are the runner's: `done` is a recorded
 step, `failed` is a step whose action failed, `needs-human` is a step that waits
 for the operator.
 
+`scope` is written by the runner too: it is the fingerprint of the scope the
+state was made under — the command, the approved origins and the capture config
+of that run. It is what tells a state that belongs to this step from a state that
+belongs to another one.
+
 `scripts/wb-research/plan.py` runs an approved plan:
 
 ```bash
@@ -860,6 +865,12 @@ step that did not finish — a run that stops is resumed by the next run, which
 skips the steps that are `done`. A plan that was not approved is not run at
 all: the approval is what makes the scope of the experiment a decision and not
 a guess.
+
+An approval plans the steps again whose state was made under another scope: a
+step whose command, whose approved origins or whose capture config changed since
+the state was written is planned again, because that state says nothing about the
+step as it stands now. A step whose scope did not change keeps its state, so
+approving the same plan again does not throw the work away.
 
 The id of the investigation is a name, not a path: the runner refuses an id that
 carries a separator or a `..`, the same rule the capture follows. The name of

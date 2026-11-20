@@ -65,7 +65,9 @@ the user has to approve the changed plan again before it runs. Never approve a
 plan the user did not read.
 
 The runner only acts on a step in state `planned`, so a run that stops is
-resumed by the next run.
+resumed by the next run. An approval plans a step again when the scope it was
+run under has changed since: a state that belongs to another command, another
+origin or another config says nothing about the step as it stands.
 
 ## Boundaries
 

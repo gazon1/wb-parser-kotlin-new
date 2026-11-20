@@ -212,7 +212,16 @@ def config_scope() -> dict:
     }
 
 
-def scope_of(steps: list[dict]) -> str:
+def step_payload(step: dict) -> dict:
+    """What a step is: its name, its command and the origins it may reach."""
+    return {
+        "name": step.get("name"),
+        "command": step.get("command"),
+        "allow_hosts": sorted(step.get("allow_hosts", [])),
+    }
+
+
+def scope_of(steps: list[dict], config: dict | None = None) -> str:
     """The scope of a plan: what it may do and which origins it may reach.
 
     The name, the command and the approved origins of a step are the scope, and
@@ -221,15 +230,22 @@ def scope_of(steps: list[dict]) -> str:
     on. The fingerprint of the scope is what the approval covers — a plan whose
     scope changed after the approval has to be approved again.
     """
-    scope = [
-        {
-            "name": step.get("name"),
-            "command": step.get("command"),
-            "allow_hosts": sorted(step.get("allow_hosts", [])),
-        }
-        for step in steps
-    ]
-    payload = json.dumps({"config": config_scope(), "steps": scope}, sort_keys=True, ensure_ascii=False)
+    config = config_scope() if config is None else config
+    scope = [step_payload(step) for step in steps]
+    payload = json.dumps({"config": config, "steps": scope}, sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def step_scope(step: dict, config: dict) -> str:
+    """The scope one step was run under: the step itself and the config of the run.
+
+    The config is part of it for the same reason it is part of the approval: a
+    config that reaches another origin makes the same command a different run.
+    The fingerprint is written into the step when it runs, so a state that was
+    made under another scope can be told from a state that was made under this
+    one.
+    """
+    payload = json.dumps({"config": config, "step": step_payload(step)}, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
@@ -300,11 +316,27 @@ def approve(investigation: str) -> int:
     only compares the scope it finds with the one that was approved. A plan
     whose scope changed after this — another command, another origin — does
     not match the fingerprint and is refused until it is approved again.
+
+    The approval also plans the steps again whose state was made under another
+    scope: a state that belongs to another command, another origin or another
+    config says nothing about the step as it stands now, and a run that skips
+    such a step would claim a command it never ran. A step whose scope did not
+    change keeps its state — the run resumes where it stopped.
     """
     path = plan_path(investigation)
     plan = load_plan(path)
     steps = check_plan(plan, investigation)
-    plan["approved_scope"] = scope_of(steps)
+    config = config_scope()
+    for step in steps:
+        if step.get("scope") == step_scope(step, config):
+            continue
+        state = step.get("state", PLANNED)
+        step["state"] = PLANNED
+        step.pop("note", None)
+        step.pop("scope", None)
+        if state != PLANNED:
+            print(f"{step['name']}: {state} → planned — the step is not the one that was run")
+    plan["approved_scope"] = scope_of(steps, config)
     plan["status"] = APPROVED
     save_plan(path, plan)
     print(f"the plan is approved: {investigation}")
@@ -324,7 +356,8 @@ def run(investigation: str, settle: float) -> int:
     approved = plan.get("approved_scope")
     if not approved:
         raise SystemExit("the plan was not approved — approve it: plan.py approve --investigation <id>")
-    if approved != scope_of(steps):
+    config = config_scope()
+    if approved != scope_of(steps, config):
         raise SystemExit(
             "the scope of the plan is not the scope that was approved — the operator has to approve it again"
         )
@@ -346,6 +379,9 @@ def run(investigation: str, settle: float) -> int:
         new_state, output = run_step(investigation, step, settle)
         step["state"] = new_state
         step["note"] = note_of(investigation, step["name"], new_state)
+        # The scope the state was made under: a later approval compares it with
+        # the scope of the step and plans the step again when they differ.
+        step["scope"] = step_scope(step, config)
         save_plan(path, plan)
         if output:
             print(output)

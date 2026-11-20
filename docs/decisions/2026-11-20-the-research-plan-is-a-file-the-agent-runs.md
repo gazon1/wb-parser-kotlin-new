@@ -77,6 +77,15 @@ approval, and a request type that is not kept is not an API call, so an
 unapproved host passes as ordinary traffic. Only the limit on the bodies stays
 out — it decides how much is read, not what is reached.
 
+A state belongs to the scope it was made under. The runner writes that scope
+into the step as it runs, and an approval plans a step again whose scope has
+changed since: another command, another approved origin, another capture
+config. A state that belongs to another scope says nothing about the step as it
+stands, and a run that skipped such a step would claim a command it never ran
+while the evidence on disk is from the old one. A step whose scope did not
+change keeps its state, so approving the same plan again resumes the work
+instead of throwing it away.
+
 A pause is a state, not an improvisation. A CAPTCHA, a login, an ambiguous page
 or an origin the config does not approve stops the run, is named in the plan
 and is answered by the operator. The runner never works around a blockage and
@@ -121,6 +130,10 @@ every other run.
   writes the fingerprint of the approved scope into the plan and the runner
   refuses a run whose scope differs — a wider step and a wider capture config
   alike — so a plan that was widened during a pause needs a new approval.
+- **Always** bind the state of a step to the scope it was made under: the
+  runner writes that scope into the step, and an approval plans the step again
+  when the scope has changed. A step that is `done` under another scope is a
+  step that has to run again — otherwise the plan claims a command it never ran.
 - **Always** cover every setting of the capture config that decides what the
   capture refuses to stop at: the origins, the pages, the query parameters, the
   noise hosts and the kept request types. A setting that is left out of the

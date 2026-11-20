@@ -286,7 +286,6 @@ def test_a_new_approval_covers_the_new_scope(investigation, tmp_path, monkeypatc
 
     written = read_plan(tmp_path, name)
     written["steps"][0]["command"] = 'chrome-use open "https://www.wildberries.ru/other"'
-    written["steps"][0]["state"] = "planned"
     (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
 
     calls = fake_capture(monkeypatch, [plan.EXIT_OK, plan.EXIT_OK])
@@ -300,6 +299,89 @@ def test_a_new_approval_covers_the_new_scope(investigation, tmp_path, monkeypatc
 
     assert plan.run(name, 8.0) == plan.EXIT_OK
     assert len(calls) == 1
+
+
+def test_a_changed_step_is_planned_again_by_the_approval(investigation, tmp_path, monkeypatch):
+    """A state that belongs to another command says nothing about this one."""
+    name = investigation([step("initial-load")])
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert calls == ['chrome-use open "https://www.wildberries.ru/"']
+
+    written = read_plan(tmp_path, name)
+    written["steps"][0]["command"] = 'chrome-use open "https://www.wildberries.ru/other"'
+    (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
+
+    plan.approve(name)
+
+    approved = read_plan(tmp_path, name)
+    assert approved["steps"][0]["state"] == plan.PLANNED
+
+    # The step runs again: the plan may not claim a command it never ran.
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert calls == ['chrome-use open "https://www.wildberries.ru/other"']
+
+
+def test_an_unchanged_step_keeps_its_state_when_the_plan_is_approved_again(investigation, tmp_path, monkeypatch):
+    """The approval of the same plan does not throw the work away."""
+    name = investigation([step("initial-load")])
+    fake_capture(monkeypatch, [plan.EXIT_OK])
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+
+    plan.approve(name)
+
+    approved = read_plan(tmp_path, name)
+    assert approved["steps"][0]["state"] == plan.DONE
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert calls == []
+
+
+def test_a_state_that_no_run_made_is_not_trusted(investigation, tmp_path, monkeypatch):
+    """A state that was written by hand is planned again: no run made it."""
+    name = investigation([step("initial-load")], status="draft")
+
+    written = read_plan(tmp_path, name)
+    written["steps"][0]["state"] = plan.DONE
+    (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
+
+    plan.approve(name)
+
+    approved = read_plan(tmp_path, name)
+    assert approved["steps"][0]["state"] == plan.PLANNED
+
+
+def test_a_changed_config_plans_the_steps_again(investigation, tmp_path, monkeypatch):
+    """The config is part of the scope of a step: another config, another run."""
+    config = tmp_path / "capture-config.json"
+    config.write_text(
+        json.dumps({"allowedOrigins": ["www.wildberries.ru"], "allowedPages": [], "allowedQueryParams": []}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(plan, "CONFIG_PATH", config)
+
+    name = investigation([step("initial-load")])
+    fake_capture(monkeypatch, [plan.EXIT_OK])
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+
+    config.write_text(
+        json.dumps(
+            {
+                "allowedOrigins": ["www.wildberries.ru"],
+                "allowedPages": [],
+                "allowedQueryParams": [],
+                "noiseHosts": ["a.wb.ru"],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    plan.approve(name)
+
+    approved = read_plan(tmp_path, name)
+    assert approved["steps"][0]["state"] == plan.PLANNED
 
 
 def test_a_plan_changed_after_the_approval_does_not_run(investigation, tmp_path, monkeypatch):
