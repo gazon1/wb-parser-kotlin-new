@@ -23,6 +23,11 @@ wb-parser-kotlin/
                       в рантайме не участвует
 ```
 
+Исследование WB ведёт агент по скиллу `.agents/skills/wb-research/SKILL.md`:
+план эксперимента (`plan.yaml`), прогон шагов через `scripts/wb-research/plan.py`,
+запись в формате `devtools/wb-research/investigations/<id>/`. Только чтение, без
+обхода CAPTCHA и антибота, без секретов в репозитории.
+
 Границы явные, и их проверяет сборка, а не соглашение:
 
 - `app → wbparser → browser-api`, и `browser → browser-api`. Обратного ребра нет:

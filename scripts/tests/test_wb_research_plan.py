@@ -1,0 +1,236 @@
+"""The plan is the scope of the experiment, and it has to survive a stop.
+
+The runner is what stands between a plan and a real browser session, so the
+rules are tested here: an unapproved plan does not run, a step that failed
+stops the run, a done step is not run again, and the plan keeps the state that
+lets a later run resume.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import subprocess
+from pathlib import Path
+
+import pytest
+import yaml
+
+PLAN = Path(__file__).resolve().parents[1] / "wb-research" / "plan.py"
+
+
+def load_runner():
+    spec = importlib.util.spec_from_file_location("wb_research_plan", PLAN)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+plan = load_runner()
+
+
+def write_plan(path: Path, steps: list[dict], status: str = "approved") -> Path:
+    """A plan file with the given steps."""
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "id": "2026-11-20-wb-catalog-agent",
+                "goal": "how the seller catalog is loaded and paged",
+                "status": status,
+                "steps": steps,
+            },
+            sort_keys=False,
+            allow_unicode=True,
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def step(name: str, command: str = 'chrome-use open "https://www.wildberries.ru/"') -> dict:
+    return {"name": name, "command": command, "expected": "the page answers", "state": "planned"}
+
+
+@pytest.fixture
+def investigation(tmp_path, monkeypatch):
+    """An investigation whose plan is the one under test."""
+    monkeypatch.setattr(plan, "INVESTIGATIONS", tmp_path)
+
+    def make(steps: list[dict], status: str = "approved") -> str:
+        name = "2026-11-20-wb-catalog-agent"
+        (tmp_path / name).mkdir(exist_ok=True)
+        write_plan(tmp_path / name / "plan.yaml", steps, status)
+        return name
+
+    return make
+
+
+def fake_capture(monkeypatch, states: list[int]):
+    """A capture that returns the given exit codes, one per step."""
+    calls: list[list[str]] = []
+
+    def run_step(investigation, step, settle):
+        calls.append(step["command"])
+        code = states[len(calls) - 1]
+        if code == plan.EXIT_OK:
+            return plan.DONE, "recorded"
+        if code == plan.EXIT_UNAPPROVED_API:
+            return plan.NEEDS_HUMAN, "the origin is not approved"
+        return plan.FAILED, "the action failed"
+
+    monkeypatch.setattr(plan, "run_step", run_step)
+    return calls
+
+
+def read_plan(tmp_path: Path, investigation: str) -> dict:
+    return yaml.safe_load((tmp_path / investigation / "plan.yaml").read_text(encoding="utf-8"))
+
+
+def test_an_unapproved_plan_does_not_run(investigation, monkeypatch):
+    name = investigation([step("initial-load")], status="draft")
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    with pytest.raises(SystemExit, match="not approved"):
+        plan.run(name, 8.0)
+
+    assert calls == []
+
+
+def test_a_step_is_captured_and_marked_done(investigation, tmp_path, monkeypatch):
+    name = investigation([step("initial-load")])
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert calls == ['chrome-use open "https://www.wildberries.ru/"']
+
+    written = read_plan(tmp_path, name)
+    assert written["steps"][0]["state"] == plan.DONE
+    assert written["status"] == plan.RUNNING
+
+
+def test_a_failing_step_stops_the_run(investigation, tmp_path, monkeypatch):
+    name = investigation([step("initial-load"), step("next-page")])
+    calls = fake_capture(monkeypatch, [plan.EXIT_FAILED, plan.EXIT_OK])
+
+    assert plan.run(name, 8.0) == plan.EXIT_FAILED
+    assert calls == ['chrome-use open "https://www.wildberries.ru/"']
+
+    written = read_plan(tmp_path, name)
+    assert written["steps"][0]["state"] == plan.FAILED
+    assert written["steps"][1]["state"] == "planned"
+
+
+def test_an_unapproved_origin_needs_a_human(investigation, tmp_path, monkeypatch):
+    name = investigation([step("initial-load")])
+    fake_capture(monkeypatch, [plan.EXIT_UNAPPROVED_API])
+
+    assert plan.run(name, 8.0) == plan.EXIT_FAILED
+
+    written = read_plan(tmp_path, name)
+    assert written["steps"][0]["state"] == plan.NEEDS_HUMAN
+
+
+def test_a_done_step_is_not_run_again(investigation, tmp_path, monkeypatch):
+    name = investigation([step("initial-load"), step("next-page")])
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK, plan.EXIT_OK])
+
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert len(calls) == 2
+
+    # The second run resumes: the step that is done is skipped.
+    calls.clear()
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert calls == []
+
+
+def test_a_stopped_step_stops_a_later_run_until_it_is_released(investigation, tmp_path, monkeypatch):
+    name = investigation([step("initial-load"), step("next-page")])
+    fake_capture(monkeypatch, [plan.EXIT_FAILED, plan.EXIT_OK])
+
+    assert plan.run(name, 8.0) == plan.EXIT_FAILED
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK])
+    assert plan.run(name, 8.0) == plan.EXIT_FAILED
+    assert calls == []
+
+    # The human releases the step: it is planned again and the run continues.
+    written = read_plan(tmp_path, name)
+    written["steps"][0]["state"] = "planned"
+    (tmp_path / name / "plan.yaml").write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
+
+    calls = fake_capture(monkeypatch, [plan.EXIT_OK, plan.EXIT_OK])
+    assert plan.run(name, 8.0) == plan.EXIT_OK
+    assert len(calls) == 2
+
+
+def test_a_plan_without_steps_is_refused(investigation):
+    name = investigation([])
+
+    with pytest.raises(SystemExit, match="no steps"):
+        plan.run(name, 8.0)
+
+
+def test_a_plan_of_another_investigation_is_refused(investigation, tmp_path):
+    name = investigation([step("initial-load")])
+    path = tmp_path / name / "plan.yaml"
+    written = yaml.safe_load(path.read_text(encoding="utf-8"))
+    written["id"] = "2026-11-19-another-one"
+    path.write_text(yaml.safe_dump(written, sort_keys=False), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="another investigation"):
+        plan.run(name, 8.0)
+
+
+def test_the_capture_is_run_with_the_command_of_the_step(monkeypatch):
+    """The step reaches the capture as a command line, not as a string."""
+    seen: list[list[str]] = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(argv, **kwargs):
+        seen.append(argv)
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    state, _ = plan.run_step(
+        "2026-11-20-wb-catalog-agent",
+        {"name": "initial-load", "command": 'chrome-use open "https://www.wildberries.ru/"'},
+        8.0,
+    )
+
+    assert state == plan.DONE
+    assert seen[0][-4:] == ["--", "chrome-use", "open", "https://www.wildberries.ru/"]
+    assert "2026-11-20-wb-catalog-agent" in seen[0]
+    assert "initial-load" in seen[0]
+
+
+def test_an_approved_origin_reaches_the_capture(monkeypatch):
+    """An origin the step may reach is approved for this step only."""
+    seen: list[list[str]] = []
+
+    class Result:
+        returncode = 0
+        stdout = ""
+        stderr = ""
+
+    def fake_run(argv, **kwargs):
+        seen.append(argv)
+        return Result()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    plan.run_step(
+        "2026-11-20-wb-catalog-agent",
+        {
+            "name": "initial-load",
+            "command": 'chrome-use open "https://www.wildberries.ru/"',
+            "allow_hosts": ["splitter.wb.ru"],
+        },
+        8.0,
+    )
+
+    assert "--allow-host" in seen[0]
+    assert seen[0][seen[0].index("--allow-host") + 1] == "splitter.wb.ru"

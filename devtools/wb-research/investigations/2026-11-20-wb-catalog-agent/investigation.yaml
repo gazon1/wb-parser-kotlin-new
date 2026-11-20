@@ -1,0 +1,308 @@
+id: 2026-11-20-wb-catalog-agent
+title: The seller catalog is loaded by one search endpoint, paged by the same endpoint, and the sort of the page URL is ignored
+scenario: wb-catalog-request
+site: www.wildberries.ru
+status: concluded
+created: 2026-11-20T18:05:00+03:00
+updated: 2026-11-20T19:20:00+03:00
+tools:
+  - name: chrome-use
+    version: 1.5.295
+  - name: scripts/wb-research/plan.py
+    version: local plan runner, unpinned (issue 311)
+  - name: scripts/wb-research/capture.py
+    version: local capture script, unpinned (issue 310)
+
+steps:
+  - action: open the catalog page for 131954 with the search token, in a real Chrome session, and record the network
+    expected: the storefront issues a catalog search request and the traffic around it
+    observed: >-
+      ten requests on the approved hosts, among them one catalog search against
+      /__internal/u-search/exactmatch/ru/common/v18/search with resultset=catalog, a second search with
+      resultset=filters, the redirect check of the page and the analytics of the antibot service. The
+      catalog answer is served as text/plain and its body is a JSON object with metadata, products and
+      total. The call to splitter.wb.ru was to an origin the config did not approve, so the step stopped
+      and waited for the operator; the operator approved that origin for this investigation alone
+    evidence: [initial-load-003, initial-load-004, initial-load-007]
+  - action: open the same catalog page with the sort order of the URL (sort=rating) and record the network
+    expected: the sort order of the page URL is carried by the catalog search request
+    observed: >-
+      the redirect check of the page carried sort=rating, so the site read the parameter of the URL, but
+      the catalog search request still asked for sort=popular. The parameter of the page URL does not
+      reach the request
+    evidence: [sort-by-rating-002, sort-by-rating-003]
+  - action: scroll the page to the bottom twice, in the same session, and record the network
+    expected: the page asks for more products of the same catalog
+    observed: >-
+      nine requests on the approved hosts: three card lists against /__internal/u-card/cards/v4/list,
+      each of them carrying the ids of the products to render in the parameter nm, and a second catalog
+      search — the same endpoint as the first step, with page=2
+    evidence: [next-page-004, next-page-005, next-page-006, next-page-008]
+
+api_candidates:
+  - id: storefront-catalog-search
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      ab_testing: 'false'
+      appType: '1'
+      curr: rub
+      dest: '1259570991'
+      hide_vflags: '4294967296'
+      inheritFilters: 'true'
+      lang: ru
+      locale: ru
+      query: <redacted:query-param>
+      resultset: catalog
+      sort: popular
+      spp: '30'
+      suppressSpellcheck: 'false'
+    headers:
+      deviceid: <redacted:deviceid>
+      referer: https://www.wildberries.ru/catalog/0/search.aspx?search=<redacted:query-param>
+      x-requested-with: XMLHttpRequest
+      x-spa-version: 14.33.3
+      x-queryid: <redacted:x-queryid>
+      x-userid: <redacted:x-userid>
+    observed_status: 200
+    response_content_type: text/plain; charset=UTF-8
+    response_body_bytes: 148308
+    response_schema:
+      top_level_keys: [metadata, products, total]
+  - id: storefront-card-list
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-card/cards/v4/list
+    query:
+      ab_testing: 'false'
+      appType: '1'
+      curr: rub
+      dest: '1259570991'
+      hide_vflags: '4294967296'
+      ignore_stocks: 'true'
+      lang: ru
+      nm: 838232735;238846075;1339833298
+      spp: '30'
+    headers:
+      deviceid: <redacted:deviceid>
+      referer: https://www.wildberries.ru/catalog/0/search.aspx?search=<redacted:query-param>
+      x-requested-with: XMLHttpRequest
+      x-spa-version: 14.33.3
+    observed_status: 200
+    response_content_type: application/json
+    response_body_bytes: 3817
+    response_schema:
+      top_level_keys: [products]
+  - id: storefront-filters-search
+    method: GET
+    endpoint: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+    query:
+      appType: '1'
+      autoselectFilters: 'false'
+      curr: rub
+      dest: '1259570991'
+      lang: ru
+      query: <redacted:query-param>
+      resultset: filters
+      scale: '5'
+      spp: '30'
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+      x-spa-version: 14.33.3
+    observed_status: 200
+    response_content_type: text/plain; charset=UTF-8
+    response_body_bytes: 13057
+    response_schema:
+      top_level_keys: [data, metadata]
+  - id: storefront-page-redirect-check
+    method: GET
+    endpoint: https://www.wildberries.ru/webapi/check-redirect/catalog/131954/list.aspx
+    query:
+      search: <redacted:query-param>
+      sort: rating
+    headers:
+      deviceid: <redacted:deviceid>
+      referer: https://www.wildberries.ru/catalog/131954/list.aspx?search=<redacted:query-param>
+      x-requested-with: XMLHttpRequest
+      x-spa-version: 14.33.3
+    observed_status: 200
+    response_content_type: application/json; charset=utf-8
+    response_body_bytes: 120
+    response_schema:
+      top_level_keys: [resultState, value]
+  - id: analytics-search-goods
+    method: GET
+    endpoint: https://search-goods.wildberries.ru/search
+    query:
+      query: <redacted:query-param>
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+    observed_status: 200
+    response_content_type: application/json
+    response_body_bytes: 2877
+    response_schema:
+      json_type: array
+  - id: antibot-frontend-settings
+    method: POST
+    endpoint: https://www.wildberries.ru/__internal/antibot/api/v1/find-frontend-settings
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+    observed_status: 200
+    response_content_type: application/json
+    response_body_bytes: 277
+    response_schema:
+      top_level_keys: [analytics, solverConfig, solverPath]
+  - id: antibot-frontend-analytics
+    method: POST
+    endpoint: https://www.wildberries.ru/__internal/antibot/api/v1/frontend-analytics
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+    observed_status: 200
+    response_content_type: application/json
+    response_body_bytes: 978
+    response_schema:
+      available: false
+      reason: several requests looked the same, so no body was attributed to this one
+  - id: splitter-result
+    method: GET
+    endpoint: https://splitter.wb.ru/v2/result
+    headers:
+      referer: https://www.wildberries.ru/catalog/0/search.aspx?search=<redacted:query-param>
+      x-api-key: <redacted:x-api-key>
+      x-user-id: <redacted:x-user-id>
+    observed_status: 204
+    response_content_type: application/octet-stream
+    response_body_bytes: 473
+    response_schema:
+      available: false
+      reason: the browser did not return the response body
+  - id: user-grade-proxy
+    method: GET
+    endpoint: https://ug-bt.wildberries.ru/user-grade-proxy/api/v6/grade
+    query:
+      curr: RUB
+    headers:
+      deviceid: <redacted:deviceid>
+      x-requested-with: XMLHttpRequest
+    observed_status: 200
+    response_content_type: application/json
+    response_body_bytes: 2430
+    response_schema:
+      top_level_keys: [payload, sign, sign_version, state]
+
+evidence:
+  - id: initial-load
+    fixture: evidence/initial-load.json
+    kind: har
+    note: the network of the page load, filtered to the approved hosts
+    captures:
+      - initial-load-001
+      - initial-load-002
+      - initial-load-003
+      - initial-load-004
+      - initial-load-005
+      - initial-load-006
+      - initial-load-007
+      - initial-load-008
+      - initial-load-009
+      - initial-load-010
+  - id: sort-by-rating
+    fixture: evidence/sort-by-rating.json
+    kind: har
+    note: the network of the page load with the sort order in the URL
+    captures:
+      - sort-by-rating-001
+      - sort-by-rating-002
+      - sort-by-rating-003
+      - sort-by-rating-004
+      - sort-by-rating-005
+      - sort-by-rating-006
+      - sort-by-rating-007
+      - sort-by-rating-008
+  - id: next-page
+    fixture: evidence/next-page.json
+    kind: har
+    note: the network of the scroll that loads more products
+    captures:
+      - next-page-001
+      - next-page-002
+      - next-page-003
+      - next-page-004
+      - next-page-005
+      - next-page-006
+      - next-page-007
+      - next-page-008
+      - next-page-009
+
+validation:
+  - claim: the storefront reads the seller catalog with GET /__internal/u-search/exactmatch/ru/common/v18/search and resultset=catalog
+    state: reproduced
+    rationale: >-
+      the request is in the page load and again in the scroll, with the same endpoint and the same
+      query; the second one adds page=2
+    evidence: [initial-load-004, next-page-008]
+  - claim: the catalog answer is a JSON object with metadata, products and total, even though the content type says text/plain
+    state: reproduced
+    rationale: >-
+      the body of the request was read in two steps and the top-level keys are the same three
+    evidence: [initial-load-004, next-page-008]
+  - claim: the next page of the catalog is the same endpoint with the parameter page
+    state: observed
+    rationale: >-
+      the search request of the scroll carries page=2 and no other value of the parameter was seen;
+      the run was one, so the claim is not reproduced yet
+    evidence: [next-page-008]
+  - claim: loading more products asks the card list endpoint with the ids of the products to render, in the parameter nm
+    state: observed
+    rationale: >-
+      three requests to /__internal/u-card/cards/v4/list of the scroll carry a list of product ids in
+      nm, and the answers carry a products array
+    evidence: [next-page-004, next-page-005, next-page-006]
+  - claim: the sort order of the page URL is carried by the catalog search request
+    state: rejected
+    rationale: >-
+      the page was opened with sort=rating and the redirect check of the page carried it, but the
+      catalog search request asked for sort=popular. The parameter of the page URL does not reach
+      the request, so the sort of the storefront is something else — the control of the page, most
+      likely, and a click is out of the read-only scope of the capture
+    evidence: [sort-by-rating-002, sort-by-rating-003, initial-load-004]
+  - claim: the catalog request carries deviceid, x-requested-with, x-spa-version, x-queryid and x-userid
+    state: reproduced
+    rationale: the same five headers are on the request of the page load and of the scroll
+    evidence: [initial-load-004, next-page-008]
+  - claim: the catalog request carries the browser session without a cookie of its own
+    state: open
+    rationale: >-
+      the capture keeps the names of the headers, not their values, and a header of the browser is
+      not in the request at all: whether the session rides on the cookie of the browser or on the
+      deviceid is not settled here
+    evidence: [initial-load-004]
+  - claim: every page of the storefront calls the antibot service
+    state: observed
+    rationale: >-
+      the page load asks for the settings of the frontend and the scroll posts the analytics of the
+      page four times
+    evidence: [initial-load-001, next-page-001, next-page-002, next-page-007, next-page-009]
+
+open_questions:
+  - how the sort order of the storefront is changed at all, given that the parameter of the URL is ignored
+  - whether the products of the card list and the products of the search answer are the same list
+  - what splitter.wb.ru/v2/result answers, and why the page needs it — it answers 204 with no body
+  - whether the crawler sends the sort order the storefront sends, and which of the two is the source of truth
+
+follow_up:
+  kotlin_adapter: not-started
+  issue: 311
+  pr: null
+  note: >-
+    the record is about the site, not about the crawler. The finding that reaches the crawler is the
+    sort: the storefront does not take it from the URL, so the crawler cannot copy the sort of the
+    page by adding a parameter to its URL. The endpoint, the parameters and the shape of the answer
+    are the ones the crawler already knows (issue 308); the page=2 of the next page and the nm of the
+    card list are new to this record and are not in the crawler yet. Two things were widened for this
+    run and are named here: the shared capture config names the query parameter sort, which the sort
+    step needed to open the page, and the origin splitter.wb.ru was approved for this investigation
+    alone, in the plan of the step that reached it.

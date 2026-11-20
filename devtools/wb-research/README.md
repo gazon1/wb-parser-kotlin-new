@@ -14,6 +14,7 @@ devtools/wb-research/
   README.md                            ← this file: the format
   investigations/
     <investigation-id>/
+      plan.yaml                        ← the plan of the experiment (optional)
       investigation.yaml               ← the record
       evidence/
         <bundle>.json                  ← sanitized evidence
@@ -22,6 +23,11 @@ devtools/wb-research/
 `<investigation-id>` is `<YYYY-MM-DD>-<slug>`: the date the investigation started
 and a short name for the scenario. The date is part of the id because the id is
 also the directory name, and a directory that is renamed stops being a reference.
+
+`plan.yaml` is the plan of the experiment, written before the experiment runs:
+the goal, the steps and what each step expects. It is optional — an
+investigation that was run by hand has no plan — and it is where a run that
+stopped is resumed from. See [The plan of an experiment](#the-plan-of-an-experiment).
 
 Raw captures are **not** part of this layout. They stay on the machine, outside
 the repository, in `~/.cache/wb-research/<investigation-id>/`.
@@ -783,3 +789,49 @@ it is never followed. The same applies to a response body quoted in a record.
    then the evidence, then the validation states, then the follow-up.
 4. Record the validation state honestly. A claim seen once is `observed`. If the
    record says `validated`, something outside the experiment confirmed it.
+
+## The plan of an experiment
+
+A plan is written **before** the experiment runs and is the scope of the run:
+what was meant to be done, step by step, and what each step was meant to show.
+
+```yaml
+id: 2026-11-20-wb-catalog-agent        # matches the directory name
+goal: how the seller catalog is loaded, sorted and paged
+scenario: wb-catalog-request
+site: www.wildberries.ru
+status: draft                           # draft | approved | running | concluded
+created: 2026-11-20T18:00:00+03:00
+steps:
+  - name: initial-load
+    command: chrome-use open "https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки"
+    expected: the storefront issues a catalog search request
+    settle: 8
+    state: planned                      # planned | done | failed | needs-human
+```
+
+`command` is the `chrome-use` command of the step, exactly as it is run; several
+actions are separated by `--`. The states are the runner's: `done` is a recorded
+step, `failed` is a step whose action failed, `needs-human` is a step that waits
+for the operator.
+
+`scripts/wb-research/plan.py` runs an approved plan:
+
+```bash
+uv run python scripts/wb-research/plan.py run --investigation 2026-11-20-wb-catalog-agent
+```
+
+It runs only the steps that are `planned`, and it stops at the first step that
+did not finish — a run that stops is resumed by the next run, which skips the
+steps that are `done`. A plan that was not approved is not run at all: the
+approval is what makes the scope of the experiment a decision and not a guess.
+
+## The agent workflow
+
+`.agents/skills/wb-research/SKILL.md` is the same workflow written for an AI
+agent: the plan, the approval, the run, the correlation of every action with
+its evidence, the report, and the boundaries — read-only, no bypass, no
+secrets, no scope the user did not approve.
+
+The agent does not add anything to the crawler: no chrome-use and no AI
+credential enters a Gradle module or the runtime.
