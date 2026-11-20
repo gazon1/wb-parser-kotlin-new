@@ -382,6 +382,13 @@ The rules the redactor applies:
 - a value that is itself a URL is redacted as a URL, wherever it appears — a
   header value, a query value — because a URL carries its own secrets in its
   query;
+- a value is judged **as the server reads it**: a capture may percent-encode it
+  once, twice or three times, and the server resolves every layer. The name of
+  a query parameter, the value of a query parameter and the value of an
+  allowlisted header are decoded layer by layer (at most three) before the
+  rules look at them, so an address behind two layers of escapes
+  (`alice%2540example.com`) is the address and is replaced. A value that
+  survives the rules unchanged keeps the spelling it came with;
 - a URL keeps its scheme, host, port, path and query names, but its **fragment is
   dropped** and its **user information is dropped** (`user:password@host`): the
   fragment never reaches the server and the user information is a credential —

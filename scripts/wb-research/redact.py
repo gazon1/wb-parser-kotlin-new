@@ -667,11 +667,19 @@ def redact_header_value(name: str, value: str, safe: set[str]) -> str:
     what may be shown; the value still goes through the rules — including the
     ones that need no name, because an allowlisted name is not a promise about
     the value it carries.
+
+    The value is looked at as the server reads it: a capture may encode it
+    once, twice or three times, and a value that hides an address behind two
+    layers of escapes is the address all the same.
     """
     if name.lower() in safe:
         if URL_VALUE.match(value):
             return redact_url(value)
-        return redact_generic_value(value)
+        decoded = decode_layers(value)
+        if URL_VALUE.match(decoded):
+            return redact_url(decoded)
+        redacted = redact_generic_value(decoded)
+        return redacted if redacted != decoded else value
     return placeholder(name.lower())
 
 
@@ -695,18 +703,30 @@ def redact_query_value(name: str, value: str) -> str:
     run, and it is not evidence. A run of ten digits stays — it cannot be told
     apart from the site's own constants (`dest=1259570991`), and those are
     the evidence.
+
+    The name and the value are looked at as the server reads them: a capture
+    may encode either once, twice or three times, and a value that hides an
+    address behind two layers of escapes is the address all the same.
     """
-    if name.lower() in FREE_TEXT_QUERY_PARAMS:
+    plain_name = decode_layers(name)
+    if plain_name.lower() in FREE_TEXT_QUERY_PARAMS:
         return placeholder("query-param")
-    if name.lower() in SENSITIVE_QUERY_PARAMS:
+    if plain_name.lower() in SENSITIVE_QUERY_PARAMS:
         return placeholder("query-param")
-    if name.lower().endswith(CREDENTIAL_NAME_SUFFIX):
+    if plain_name.lower().endswith(CREDENTIAL_NAME_SUFFIX):
         return placeholder("query-param")
-    if CREDENTIAL_SEGMENT.fullmatch(name) is not None:
+    if CREDENTIAL_SEGMENT.fullmatch(plain_name) is not None:
         return placeholder("query-param")
     if URL_VALUE.match(value):
         return redact_url(value)
-    return redact_generic_value(value)
+    # The value may be encoded once, twice or three times, and the server
+    # resolves every layer. So the rules look at the value as the server reads
+    # it, and only a value that survives them unchanged keeps its spelling.
+    decoded = decode_layers(value)
+    if URL_VALUE.match(decoded):
+        return redact_url(decoded)
+    redacted = redact_generic_value(decoded)
+    return redacted if redacted != decoded else value
 
 
 def redact_error(value: Any) -> str | None:
@@ -736,8 +756,12 @@ def safe_query_name(name: str) -> str:
     A name that carries a space is a phrase, not the name of a field: it is
     free text — a person's name — that the request happens to be keyed by. A
     name the service chose is one word.
+
+    The name is judged as the server reads it: a name that hides an address
+    behind two layers of escapes is the address all the same.
     """
-    if name.isdigit() or any(character.isspace() for character in name) or redact_note(name) != name:
+    decoded = decode_layers(name)
+    if decoded.isdigit() or any(character.isspace() for character in decoded) or redact_note(decoded) != decoded:
         return placeholder("query-name")
     return name
 
@@ -787,7 +811,7 @@ def redact_path(path: str) -> str:
     """
     if not path:
         return path
-    decoded = decode_path(path)
+    decoded = decode_layers(path)
     segments = decoded.split("/")
     kept = []
     previous = ""
@@ -819,19 +843,21 @@ def redact_path(path: str) -> str:
     return quote(text, safe=PATH_SAFE)
 
 
-def decode_path(path: str) -> str:
-    """The path as the server reads it, with the escapes resolved.
+def decode_layers(text: str) -> str:
+    """The text as the server reads it, with the escapes resolved.
 
-    A capture may encode a value once or twice; the server resolves every
-    layer, so the sanitizer has to look at the same text.
+    A capture may encode a value once, twice or three times; the server
+    resolves every layer, so the sanitizer has to look at the same text. The
+    number of layers is bounded: a value that is still encoded after three
+    rounds is left as it is, and the rules look at what is left of it.
     """
-    text = path
+    current = text
     for _ in range(3):
-        decoded = unquote(text)
-        if decoded == text:
+        decoded = unquote(current)
+        if decoded == current:
             break
-        text = decoded
-    return text
+        current = decoded
+    return current
 
 
 def authority_without_userinfo(parts: SplitResult) -> str:

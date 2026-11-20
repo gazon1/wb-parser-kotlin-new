@@ -1511,3 +1511,51 @@ def test_a_charset_that_carries_an_identifier_is_dropped():
     assert content_type == "application/json"
     assert "1234567890123456789" not in content_type
     assert redact.safe_content_type("application/json; charset=utf-8") == "application/json; charset=utf-8"
+
+
+def test_a_twice_encoded_address_in_a_query_value_is_replaced():
+    # The finding of the review: the value was decoded once, so an address
+    # behind two layers of escapes reached the fixture as it was.
+    url = redact.redact_url("https://example.com/api?x=alice%2540example.com")
+
+    assert "alice" not in url
+    assert "@" not in url
+
+
+def test_a_thrice_encoded_address_in_a_query_value_is_replaced():
+    url = redact.redact_url("https://example.com/api?x=alice%252540example.com")
+
+    assert "alice" not in url
+    assert "@" not in url
+
+
+def test_a_twice_encoded_credential_in_a_query_value_is_replaced():
+    url = redact.redact_url("https://example.com/api?token=abc%252Fdef%252Bghi")
+
+    assert "abc" not in url
+    assert "def" not in url
+
+
+def test_a_twice_encoded_name_of_a_sensitive_parameter_is_replaced():
+    # The name is judged as the server reads it too: a name that hides a
+    # credential behind two layers of escapes is the credential.
+    url = redact.redact_url("https://example.com/api?%2561ccess%255Ftoken=1")
+
+    assert "=1" not in url
+    assert "%3Credacted%3Aquery-param%3E" in url
+
+
+def test_a_twice_encoded_name_of_an_address_is_replaced():
+    url = redact.redact_url("https://example.com/api?alice%2540example.com=1")
+
+    assert "alice" not in url
+    assert "%3Credacted%3Aquery-name%3E" in url
+
+
+def test_a_twice_encoded_address_in_an_allowed_header_value_is_replaced():
+    headers = redact.redact_headers(
+        [{"name": "x-cache-status", "value": "MISS alice%2540example.com"}],
+        redact.SAFE_RESPONSE_HEADERS,
+    )
+
+    assert "alice" not in headers["x-cache-status"]
