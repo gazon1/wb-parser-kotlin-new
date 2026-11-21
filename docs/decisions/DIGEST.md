@@ -704,15 +704,20 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - **Always** generate from a record, never from a chat message; the generator refuses a record that does not earn a proposal and says which part of it failed. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Always** let the drift gate inventory the disk as well as the manifest: a file no manifest names is drift too. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Always** regenerate and commit the proposal when the record changes; the drift gate fails otherwise. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
+- **Never** accept a candidate whose endpoint or method disagrees with the contract table: the contract is what the generated test pins. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
+- **Never** accept a capture that does not match the observation it is filed under: the experiment, the run, the request and the order have to agree. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Never** accept a claim whose evidence does not come from an experiment of this contract that reached `validated` or `reproduced`. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Never** accept a validated claim of another endpoint as the validation of this one: the claim has to be one the candidate's own experiments observed. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
-- **Never** accept an observation that did not ask the candidate's own request: the method, the endpoint and the identity parameters the contract declares. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
+- **Never** accept an observation that did not ask the candidate's own request: the method, the endpoint and the identity parameters the contract declares — and each identity parameter exactly once. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Never** accept two evidence bundles that carry the same capture id. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Never** add a production dependency on the research tooling; the generator writes into a test source set and a development directory. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
+- **Never** commit a value the record did not sanitize: a query value, a request URL and a crawl URL that reach a proposal, a fixture or a test carry a placeholder or a value that has no secret shape. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
+- **Never** generate a proposal from a record whose claims are only `reproduced`: a contract needs a claim a controlled experiment confirmed. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Never** generate an assertion from a claim that is only `observed`, `inconclusive`, `open` or `rejected`. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Never** generate an assertion from an observation that has no capture in the evidence, or whose capture does not hold the products the observation recorded — a fixture rebuilt from a shape nobody recorded is a guess. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
-- **Never** let an investigation id name anything but a single directory name; the generator writes only inside the repository. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
+- **Never** let an investigation id name anything but a single directory name; every generated path stays inside the output root that was chosen, and the default output root is the repository. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Never** let an observation id name anything but a plain fixture file name, and write a fixture only inside the fixture directory — the output root alone is not a boundary. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
+- **Never** let the fixtures of two contracts share one directory, and never leave a file in the fixture directory that the generator does not produce. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Never** let the generator commit, branch or merge; the output is a diff a human reviews. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Never** put a captured body, a cookie, a token or the production `deviceid` into a fixture or a proposal; the body is reconstructed from the recorded shape. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)
 - **Always** change one thing per experiment, and keep the first experiment as the reference. A plan that changes two things is refused, not interpreted. _(from `2026-11-21-the-validation-is-a-plan-and-the-state-is-earned`)
@@ -935,6 +940,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - The pipeline re-runs `scripts/parser/generate-models.sh` and fails on `git diff --exit-code`. That is the literal check: whatever the flags, the generator version or a hand-edit did to the file, regenerating it must produce no diff. It needs PyPI, so — like the action-pin check — it runs in the pipeline, and `scripts/ci/check-ci-workflows.py` fails unless one step of the `static` job runs the generator **and** diffs the generated file: the diff is the check, so keeping the generator and dropping the diff is the same defect as deleting the step, and both are findings. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
 - The recipe also appends the contract's SHA-256 as `# source-sha256: …`, and `scripts/ci/check-catalog-models.py` compares it in the static registry. That one needs no generator and no network, so it answers the same question the moment a contract edit lands, without waiting for a pipeline that can reach PyPI. _(from `2026-11-17-the-python-catalog-models-are-generated`)_
 - The schema copy in the storefront, its `DATABASE_URL` and its read-only role are removed only after the rollback window has closed and a rollback drill has been run — not before. _(from `2026-10-19-catalog-read-api-contract`)_
+- The suite of the generator is `scripts/tests/test_wb_research_generate_proposal.py`; the `--self-test` of the tool is the smoke check of the installed generator, and it does not repeat the rules — the rules live in the suite. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)_
 
 ### `conventions`
 
@@ -1252,6 +1258,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - A new contract family is a new entry in `CONTRACTS`, not a new framework. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)_
 - One contract has one proposal: the test and the fixtures belong to the contract, so a second investigation of it is refused. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)_
 - The format is a development-only surface: no production module depends on it, and it adds no runtime dependency. _(from `2026-11-19-the-research-format-is-a-file-in-the-repository`)_
+- The suite of the generator is `scripts/tests/test_wb_research_generate_proposal.py`; the `--self-test` of the tool is the smoke check of the installed generator, and it does not repeat the rules — the rules live in the suite. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)_
 - The tool stays in `scripts/` and `devtools/`: no production module depends on it and it adds no runtime dependency. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)_
 
 ### `resilience`
@@ -1346,6 +1353,7 @@ Markers that surface as Critical: `**Always**`, `**Never**`, `**MUST**`.
 - One contract has one proposal: the test and the fixtures belong to the contract, so a second investigation of it is refused. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)_
 - The format is a development-only surface: no production module depends on it, and it adds no runtime dependency. _(from `2026-11-19-the-research-format-is-a-file-in-the-repository`)_
 - The nightly run costs a full pipeline every day. It is the price of knowing that the repository is still healthy when nobody touches it. _(from `2026-10-20-ci-security-gates-and-lint-autofix`)_
+- The suite of the generator is `scripts/tests/test_wb_research_generate_proposal.py`; the `--self-test` of the tool is the smoke check of the installed generator, and it does not repeat the rules — the rules live in the suite. _(from `2026-11-21-a-validated-record-becomes-a-proposal`)_
 - The tool stays in `scripts/` and `devtools/`: no production module depends on it and it adds no runtime dependency. _(from `2026-11-19-a-capture-is-a-step-not-a-page-load`)_
 - `GET /api/admin/targets` returns everything unless a `limit` is passed. _(from `2026-10-19-idempotent-target-load-and-root-categories`)_
 

@@ -1100,7 +1100,10 @@ just research::proposal 2026-11-20-wb-catalog-agent
 must carry a `validation.yaml` for the candidate, at least one of that
 candidate's experiments must have reached `validated` or `reproduced`, and at
 least one claim *those experiments observed* must have reached `validated` or
-`reproduced`. A claim that is merely `observed`, `inconclusive`, `rejected` or
+`reproduced` — with at least one of them reaching `validated` strictly. A
+`reproduced` claim is a fact the record earned, but a contract needs a claim a
+controlled experiment confirmed, so a record whose claims are only `reproduced`
+is refused. A claim that is merely `observed`, `inconclusive`, `rejected` or
 `open` is a hypothesis, and code generated from a hypothesis is a guess with a
 confident shape — so the tool refuses the record and says which state it holds
 instead. A validated claim about *another* endpoint is not enough either: a
@@ -1113,14 +1116,24 @@ names what was held back.
 
 | File | What it is |
 |---|---|
-| `wbparser/src/test/resources/fixtures/catalog-search/<observation>.json` | the sanitized observation: the request as it was made, the shape of the answer and the order of the products |
+| `wbparser/src/test/resources/fixtures/catalog-search/<contract>/<observation>.json` | the sanitized observation: the request as it was made, the shape of the answer and the order of the products |
 | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` | the regression test: it pins the crawler's request to the fixtures |
 | `devtools/wb-research/proposals/<id>/proposal.md` | the proposal a human reads: the contract, the claim→evidence→assertion table, the known differences, the reviewer's checklist |
 | `devtools/wb-research/proposals/<id>/manifest.json` | the hashes of the record, of the evidence bundles, of the generator and of every written file |
 
 The fixtures live in the module that owns the contract, so the ordinary
 `./gradlew :wbparser:test` runs them — offline, with no browser and no live
-site. A fixture that is not on the classpath is not a fixture.
+site. A fixture that is not on the classpath is not a fixture. The directory
+belongs to the contract: two contract families never share one inventory, and
+the generator refuses to write when the directory holds a file it does not
+produce.
+
+**The record is the boundary of sanitization.** The query of the candidate is
+published in the proposal, the request of the observation is committed in the
+fixture and the crawl URL is committed in the test, so every value that reaches
+one of them has to hold to the record's own rule: a committed value is a
+placeholder or a value that carries no secret shape. A session token, an account
+id or a phrase somebody typed is refused, not published.
 
 **A fixture carries no captured payload.** The capture kept the shape of the
 answer and the ids of the products, not the body — a body is where a price, a

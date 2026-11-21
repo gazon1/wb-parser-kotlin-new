@@ -57,7 +57,7 @@ PROPOSALS = ROOT / "devtools" / "wb-research" / "proposals"
 # into the module that owns the contract (`:wbparser`), the fixtures into its test
 # resources — a fixture that is not on the classpath is not a fixture.
 TEST_FILE = "wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt"
-FIXTURE_DIR = "wbparser/src/test/resources/fixtures/catalog-search"
+FIXTURE_ROOT = "wbparser/src/test/resources/fixtures/catalog-search"
 PROPOSAL_DIR = "devtools/wb-research/proposals"
 GENERATOR_PATH = "scripts/wb-research/generate_proposal.py"
 
@@ -101,6 +101,11 @@ CONTRACTS: dict[str, dict[str, Any]] = {
         "endpoint": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search",
         "method": "GET",
         "identity": {"resultset": "catalog"},
+        # The URL the crawler builds for a catalog — the shape of the crawl URL the
+        # record has to name. It mirrors `WbCatalogRequest.crawlUrlOf`, and the record
+        # is checked against it: a page URL of another shape is a page the crawler
+        # would not ask with, so the contract would pin a request nobody sends.
+        "crawl_url": "https://www.wildberries.ru/catalog/{catalog_id}/list.aspx",
         "crawler_only": {
             "ffeedbackpoints": {
                 "value": "1",
@@ -134,6 +139,16 @@ VALIDATED_STATES = {"validated", "reproduced"}
 SEARCH_TOKEN = "menu_v3_9467 карты памяти"
 
 
+# A placeholder is the only shape a removed value may take. The redactor leaves one
+# behind instead of the value, and the generator publishes it as it is.
+PLACEHOLDER = re.compile(r"<redacted:[^>]+>")
+
+# A committed value is either a placeholder or a value that carries no secret shape.
+# The rule is the one the record's own redactor applies, kept to what a query
+# parameter can be: a name, a number, a flag, a path.
+SAFE_QUERY_VALUE = re.compile(r"[A-Za-z0-9._%:@/+-]{1,32}")
+
+
 class Refused(Exception):
     """The record does not earn a proposal."""
 
@@ -164,33 +179,66 @@ def candidate_of(investigation: dict[str, Any], candidate_id: str) -> dict[str, 
 
 
 def candidate_request_matches(
-    candidate: dict[str, Any],
     contract: dict[str, Any],
     method: Any,
     url: Any,
 ) -> bool:
-    """Whether a recorded request asked this candidate's endpoint.
+    """Whether a recorded request asked this contract's endpoint.
 
     The endpoint alone is not enough: the record holds several candidates that share
     a path — the catalog search and the filters search are the same URL with a
-    different `resultset`. So a request is this candidate's when it asks the same
+    different `resultset`. So a request is this contract's when it asks the same
     method, the same endpoint and the same identity parameters.
+
+    The endpoint and the method are the contract's, not the record's: the contract
+    table is what the generated test pins, so a record that names another endpoint
+    is refused before it reaches a fixture (see `generate`).
+
+    An identity parameter has to occur exactly once. A request that names it twice
+    says two different things about which request it is, and the reader that keeps
+    the last value and the server that keeps the first would disagree about it.
     """
     text = str(url or "")
-    if text.split("?", 1)[0] != str(candidate.get("endpoint") or ""):
+    if text.split("?", 1)[0] != str(contract.get("endpoint") or ""):
         return False
-    if str(method or "").upper() != str(candidate.get("method") or "GET").upper():
+    if str(method or "").upper() != str(contract.get("method") or "GET").upper():
         return False
-    query = query_of(text)
-    return all(query.get(name) == value for name, value in (contract.get("identity") or {}).items())
+    pairs = query_pairs_of(text)
+    for name, value in (contract.get("identity") or {}).items():
+        if [seen for key, seen in pairs if key == name] != [value]:
+            return False
+    return True
+
+
+def capture_matches_observation(capture: dict[str, Any], observation: dict[str, Any]) -> bool:
+    """Whether the capture is the capture of this observation.
+
+    The summary (`validation.yaml`) and the evidence bundle describe the same run
+    twice. A bundle filed under the id of another observation — the same endpoint,
+    another experiment — would put the products of one run into the fixture of
+    another, and the fixture would look perfectly plausible. So the two descriptions
+    have to agree: the experiment, the run, the request and the order of the answer.
+    """
+    for name in ("experiment", "run"):
+        left, right = capture.get(name), observation.get(name)
+        if left is not None and right is not None and left != right:
+            return False
+    capture_request = capture.get("request") or {}
+    observation_request = observation.get("request") or {}
+    if str(capture_request.get("method") or "") != str(observation_request.get("method") or ""):
+        return False
+    if str(capture_request.get("url") or "") != str(observation_request.get("url") or ""):
+        return False
+    capture_order = (capture.get("ordering") or {}).get("orderHash")
+    observation_order = (observation.get("ordering") or {}).get("orderHash")
+    return capture_order is None or observation_order is None or capture_order == observation_order
 
 
 def claims_about_candidate(
     investigation: dict[str, Any],
     evidence: dict[str, dict[str, Any]],
-    candidate: dict[str, Any],
     contract: dict[str, Any],
-    experiment_observations: set[str],
+    observations: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """The claims the candidate's own controlled experiments established.
 
@@ -200,7 +248,8 @@ def claims_about_candidate(
 
     - the claim names an observation of the candidate's controlled experiments, not
       an old capture of the page load;
-    - that observation's capture asked the candidate's endpoint.
+    - that observation's capture asked the candidate's endpoint, and it is the
+      capture of that observation and of no other.
 
     A capture of the right endpoint from the first page load is not enough on its
     own: it says what the storefront does, not what the controlled experiments
@@ -212,13 +261,16 @@ def claims_about_candidate(
             continue
         for observation_id in claim.get("evidence") or []:
             name = str(observation_id)
-            if name not in experiment_observations:
+            observation = observations.get(name)
+            if observation is None:
                 continue
             capture = evidence.get(name)
             if capture is None:
                 continue
+            if not capture_matches_observation(capture, observation):
+                continue
             request = capture.get("request") or {}
-            if candidate_request_matches(candidate, contract, request.get("method"), request.get("url")):
+            if candidate_request_matches(contract, request.get("method"), request.get("url")):
                 earned.append(claim)
                 break
     return earned
@@ -254,6 +306,13 @@ def check_eligible(
         raise Refused(
             f"no claim about the candidate '{candidate_id}' reached a validated state in the "
             f"candidate's own experiments — the record holds {states or ['no claims at all']}"
+        )
+
+    if not any(str(claim.get("state")) == "validated" for claim in earned):
+        raise Refused(
+            f"no claim about the candidate '{candidate_id}' reached the `validated` state — a "
+            f"`reproduced` claim is a fact the record earned, but a contract needs a claim that "
+            f"a controlled experiment confirmed"
         )
 
 
@@ -323,6 +382,84 @@ def evidence_index(directory: Path) -> dict[str, dict[str, Any]]:
 def query_of(url: str) -> dict[str, str]:
     """The query of a URL, decoded — the request as it was made."""
     return dict(parse_qsl(urlsplit(url).query, keep_blank_values=True))
+
+
+def query_pairs_of(url: str) -> list[tuple[str, str]]:
+    """The query of a URL as pairs — a repeated parameter stays two pairs.
+
+    `query_of` collapses a repeated parameter into its last value, which is fine for
+    reading a query and wrong for checking one: a request that names a parameter
+    twice is a request that says two things about it.
+    """
+    return list(parse_qsl(urlsplit(url).query, keep_blank_values=True))
+
+
+def crawl_url_carries_search(crawl_url: str) -> bool:
+    """Whether the crawl URL names the search parameter the crawler asks with.
+
+    The crawler carries the catalog's token in the URL, and the request is built
+    from that URL. A crawl URL without the parameter is a crawl without a token —
+    the endpoint answers 200 with the unfiltered popular list — so the record has
+    to name one before the proposal is written.
+    """
+    parts = urlsplit(crawl_url)
+    names = [chunk.split("=", 1)[0] for chunk in parts.query.split("&") if chunk]
+    return "search" in names
+
+
+def publishable_query_value(value: Any) -> bool:
+    """Whether a query value may be committed as it is.
+
+    The record's rule: a committed value is either a placeholder or a value that
+    carries no secret shape. The generator publishes the query of the candidate in
+    the proposal, so it has to hold the record to that rule — a session token, an
+    account id or a search phrase that somebody typed would otherwise be committed
+    in the Markdown of the proposal.
+
+    The shapes that are refused: a value with a space in it (a phrase somebody
+    typed), a value that is a URL (a URL carries its own secrets in its query), a
+    value that is longer than a parameter name and a number may be, and a value
+    that looks like an opaque token — letters and digits mixed, long enough to be
+    random rather than written.
+    """
+    text = str(value if value is not None else "")
+    if PLACEHOLDER.fullmatch(text):
+        return True
+    if not SAFE_QUERY_VALUE.fullmatch(text):
+        return False
+    if text.isdigit() and len(text) > 12:
+        # A long number is an identifier — a catalog, an account, a session.
+        return False
+    return not (
+        len(text) >= 16
+        and any(character.isdigit() for character in text)
+        and any(character.isalpha() for character in text)
+    )
+
+
+def fixture_dir_of(candidate_id: str) -> str:
+    """The directory the fixtures of one contract live in.
+
+    The fixtures belong to the contract, so the directory does too: a directory
+    shared by two contract families would make one proposal's inventory the
+    other's, and the drift gate would report the neighbour's fixtures as
+    leftovers.
+    """
+    return f"{FIXTURE_ROOT}/{candidate_id}"
+
+
+def unpublishable_query_values(url: str) -> list[str]:
+    """The names of the query values of a URL that may not be committed.
+
+    The URL of a request is committed in the fixture and the crawl URL is
+    committed in the test, so the record's sanitization rule applies to the values
+    inside them. The values are read as the server reads them: decoded.
+    """
+    return sorted(
+        name
+        for name, value in parse_qsl(urlsplit(url).query, keep_blank_values=True)
+        if not publishable_query_value(value)
+    )
 
 
 def header_names_of(observation: dict[str, Any]) -> list[str]:
@@ -470,11 +607,26 @@ class %%TEST_CLASS%% :
         /** The token the crawler asks with; the record redacted the one it saw. */
         val token = "%%TOKEN%%"
 
-        /** The crawl URL of the record — the page the crawl starts from. */
+        /**
+         * The crawl URL of the record — the page the crawl starts from.
+         *
+         * The record redacted the token it saw, so this URL carries a placeholder.
+         */
         val crawlUrl = "%%CRAWL_URL%%"
 
         /** The catalog the record crawled. */
         val catalogId = "%%CATALOG_ID%%"
+
+        /**
+         * The crawl URL the crawler asks with — the URL the crawler itself builds
+         * for this catalog and this token.
+         *
+         * The record redacted the token it saw, so the crawl URL of the record holds a
+         * placeholder. At runtime the crawl starts from the URL that carries the real
+         * token, and the crawler builds it: the request is built from that URL, exactly
+         * as the crawler builds it.
+         */
+        val runtimeCrawlUrl = WbCatalogRequest.crawlUrlOf(catalogId, token)
 
         /** The parameters the crawler sends and the storefront did not. */
         val crawlerOnly = setOf(%%CRAWLER_ONLY%%)
@@ -493,7 +645,7 @@ class %%TEST_CLASS%% :
 
         fun fixture(name: String): ContractFixture {
             val stream =
-                javaClass.getResourceAsStream("/fixtures/catalog-search/$name.json")
+                javaClass.getResourceAsStream("/fixtures/catalog-search/%%CANDIDATE%%/$name.json")
                     ?: error("the fixture $name is not on the classpath")
             return json.decodeFromString(stream.readBytes().decodeToString())
         }
@@ -534,7 +686,15 @@ class %%TEST_CLASS%% :
         val reload = fixture("%%RELOAD%%")
         val reloadReplay = fixture("%%RELOAD_REPLAY%%")
 
-        val productionUrl = WbCatalogApi.buildWbApiUrl(page = 1, searchQuery = token)
+        // The request is built from the crawl URL, exactly as the crawler builds it:
+        // the URL is parsed, and the token it carries becomes the query of the request.
+        // A literal here would pin a request nobody sends.
+        val parsedCrawl = WbCatalogRequest.parseCatalogUrl(runtimeCrawlUrl)
+        val productionUrl =
+            WbCatalogApi.buildWbApiUrl(
+                page = parsedCrawl.page,
+                searchQuery = parsedCrawl.searchQuery,
+            )
         val productionQuery = queryOf(productionUrl)
         val productionHeaders =
             WbCatalogApi
@@ -542,6 +702,28 @@ class %%TEST_CLASS%% :
                 .keys
                 .map { it.lowercase() }
                 .toSet()
+
+        test("the crawl URL of the crawler is the record's URL with the crawler's token in it") {
+            // The record redacted the token it saw, so the record's URL and the
+            // crawler's URL differ in one parameter — and in nothing else. A token
+            // that changed the page would be a crawl of another catalog.
+            val recorded = URI(crawlUrl)
+            val runtime = URI(runtimeCrawlUrl)
+
+            recorded.scheme shouldBe runtime.scheme
+            recorded.host shouldBe runtime.host
+            recorded.path shouldBe runtime.path
+        }
+
+        test("the search token of the crawl URL reaches the request") {
+            // The chain the crawler walks: crawl URL → parsed page → request. The
+            // token of the URL is the identity of the catalog, and a request that
+            // carried another token would ask for another catalog's goods while
+            // answering 200 with plausible ones.
+            parsedCrawl.catalogId shouldBe catalogId
+            parsedCrawl.searchQuery shouldBe token
+            productionQuery["query"] shouldBe token
+        }
 
         test("the request goes to the endpoint the record observed") {
             // The path is as much a part of the contract as the parameters are: the
@@ -553,6 +735,7 @@ class %%TEST_CLASS%% :
             production.scheme shouldBe recorded.scheme
             production.host shouldBe recorded.host
             production.path shouldBe recorded.path
+            production.port shouldBe recorded.port
         }
 
         test("the request carries every parameter of the contract — and only those") {
@@ -637,13 +820,15 @@ class %%TEST_CLASS%% :
             // advances it and the request builder reads it back. A pagination that
             // stopped incrementing would ask for the first page forever, and the
             // endpoint would answer 200 with the same products every time.
-            val next = WbCatalogRequest.nextPageUrl(crawlUrl)!!
+            val next = WbCatalogRequest.nextPageUrl(runtimeCrawlUrl)!!
             val parsed = WbCatalogRequest.parseCatalogUrl(next)
             parsed.page shouldBe 2
             parsed.catalogId shouldBe catalogId
+            parsed.searchQuery shouldBe token
 
-            val page = queryOf(WbCatalogApi.buildWbApiUrl(page = parsed.page, searchQuery = token))
+            val page = queryOf(WbCatalogApi.buildWbApiUrl(page = parsed.page, searchQuery = parsed.searchQuery))
             page["page"] shouldBe "2"
+            page["query"] shouldBe token
             page.keys shouldBe productionQuery.keys
             nextPage.request.query["page"] shouldBe "2"
         }
@@ -753,6 +938,31 @@ def render_kotlin(
     catalog = re.search(r"/catalog/(\d+)", crawl_url)
     if catalog is None:
         raise Refused(f"the crawl URL '{crawl_url}' carries no catalog id")
+    # The crawl URL of the record has to be the crawler's own URL for that catalog:
+    # the test builds the runtime URL from the catalog id, and a page of another shape
+    # would be a page the crawler never asks with.
+    expected_crawl_url = str(contract.get("crawl_url") or "").format(catalog_id=catalog.group(1))
+    if not expected_crawl_url or crawl_url.split("?", 1)[0] != expected_crawl_url:
+        raise Refused(
+            f"the crawl URL '{crawl_url}' is not the crawler's URL for the catalog "
+            f"'{catalog.group(1)}' — the contract declares '{expected_crawl_url}'"
+        )
+    if not crawl_url_carries_search(crawl_url):
+        raise Refused(
+            f"the crawl URL '{crawl_url}' names no search parameter — the crawler carries "
+            f"the catalog's token in the URL, and a crawl without one asks for the "
+            f"unfiltered popular list"
+        )
+    # The crawl URL is committed in the test, so its values have to hold to the
+    # record's sanitization rule: a placeholder or a value that carries no secret
+    # shape.
+    unsafe = unpublishable_query_values(crawl_url)
+    if unsafe:
+        raise Refused(
+            f"the crawl URL holds a value the record did not sanitize for {unsafe} — the URL "
+            f"is committed in the test, so a committed value is a placeholder or a value that "
+            f"carries no secret shape"
+        )
 
     def names(role: str) -> list[str]:
         if role not in fixtures:
@@ -824,15 +1034,12 @@ def render_proposal(
     investigation_id: str,
     fixtures: dict[str, list[str]],
     generated_files: list[str],
-    evidence: dict[str, dict[str, Any]],
+    earned: list[dict[str, Any]],
 ) -> str:
     validated = validated_claims(investigation)
     wanted = set(contract["experiments"].values())
     experiments = [experiment for experiment in eligible_experiments(validation) if experiment.get("name") in wanted]
-    about = {
-        str(claim.get("claim"))
-        for claim in claims_about_candidate(investigation, evidence, candidate, contract, observation_ids(experiments))
-    }
+    about = {str(claim.get("claim")) for claim in earned}
     evidence_of = {observation["id"] for observation in observations_of(experiments)}
 
     lines: list[str] = []
@@ -1054,34 +1261,74 @@ def generate(
     candidate = candidate_of(investigation, candidate_id)
     evidence = evidence_index(directory)
 
+    # The contract table is what the generated test pins, so it is the authority on the
+    # endpoint: a record that names another endpoint is not this contract, however
+    # convincing its evidence is.
+    if str(candidate.get("endpoint") or "") != str(contract.get("endpoint") or ""):
+        raise Refused(
+            f"the candidate '{candidate_id}' names the endpoint '{candidate.get('endpoint')}', "
+            f"the contract declares '{contract.get('endpoint')}' — the contract is what the "
+            f"generated test pins, so the two have to be the same request"
+        )
+    if str(candidate.get("method") or "GET").upper() != str(contract.get("method") or "GET").upper():
+        raise Refused(
+            f"the candidate '{candidate_id}' names the method '{candidate.get('method')}', "
+            f"the contract declares '{contract.get('method')}'"
+        )
+
     # Only the experiments of this contract produce fixtures, so only they can earn the
     # proposal. Every observation of them must have asked the candidate's endpoint: an
     # experiment of another endpoint would otherwise be pinned as this contract's
     # evidence.
     wanted = set(contract["experiments"].values())
     experiments = []
+    observations: dict[str, dict[str, Any]] = {}
     for experiment in eligible_experiments(validation):
         if experiment.get("name") not in wanted:
             continue
         for observation in experiment["observations"]:
             # The id becomes a file name, and the request becomes the claim the
             # fixture pins. Both are checked before anything is written.
-            safe_observation(observation.get("id"))
+            observation_id = safe_observation(observation.get("id"))
             request = observation.get("request") or {}
-            if not candidate_request_matches(candidate, contract, request.get("method"), request.get("url")):
+            if not candidate_request_matches(contract, request.get("method"), request.get("url")):
                 raise Refused(
-                    f"the observation '{observation.get('id')}' of the '{experiment.get('name')}' "
+                    f"the observation '{observation_id}' of the '{experiment.get('name')}' "
                     f"experiment asked another endpoint — a fixture of this contract must be "
                     f"built from a request of this contract"
                 )
+            # The URL of the request is committed in the fixture, so its values have
+            # to hold to the record's sanitization rule.
+            unsafe = unpublishable_query_values(str(request.get("url") or ""))
+            if unsafe:
+                raise Refused(
+                    f"the observation '{observation_id}' holds a request with a value the record "
+                    f"did not sanitize for {unsafe} — the request is committed in the fixture, so "
+                    f"a committed value is a placeholder or a value that carries no secret shape"
+                )
+            # The capture has to be the capture of this observation: the bundle is
+            # filed under the id, and a bundle of another run of the same endpoint
+            # would put its products into this fixture.
+            capture = evidence.get(observation_id)
+            if capture is None:
+                raise Refused(
+                    f"the observation '{observation_id}' has no capture in the evidence bundle — "
+                    f"a fixture cannot be rebuilt from a shape nobody recorded"
+                )
+            if not capture_matches_observation(capture, observation):
+                raise Refused(
+                    f"the capture of the observation '{observation_id}' describes another run — "
+                    f"the bundle and the record disagree about what was requested, so the "
+                    f"fixture would not be the answer that was recorded"
+                )
+            observations[observation_id] = observation
         experiments.append(experiment)
 
     earned = claims_about_candidate(
         investigation,
         evidence,
-        candidate,
         contract,
-        observation_ids(experiments),
+        observations,
     )
     check_eligible(investigation, validation, candidate_id, experiments, earned)
 
@@ -1091,6 +1338,35 @@ def generate(
             f"the contract '{candidate_id}' was already proposed by '{owner}' — the test and the "
             f"fixtures are the contract's, so one contract has one proposal; remove the old "
             f"proposal first if this investigation supersedes it"
+        )
+
+    # A captured header value never reaches a query, a fixture or a proposal: the
+    # header names are the contract, their values are not. A record that holds the
+    # same value in a query and in a header has leaked one into the other, and the
+    # query is the place it would be committed.
+    header_values = {
+        str(value)
+        for value in (candidate.get("headers") or {}).values()
+        if value and not str(value).startswith("<redacted:")
+    }
+    leaked = sorted(name for name, value in (candidate.get("query") or {}).items() if str(value) in header_values)
+    if leaked:
+        raise Refused(
+            f"the candidate's query carries the value of a header for {leaked} — a captured "
+            f"header value never reaches a query, a fixture or a proposal"
+        )
+
+    # The query of the candidate is published in the proposal, so the record has to
+    # hold to its own sanitization rule: a committed value is a placeholder or a
+    # value that carries no secret shape. A session token, an account id or a search
+    # phrase in the query would be committed in the Markdown of the proposal.
+    unpublishable = sorted(
+        name for name, value in (candidate.get("query") or {}).items() if not publishable_query_value(value)
+    )
+    if unpublishable:
+        raise Refused(
+            f"the candidate's query holds a value the record did not sanitize for {unpublishable} — "
+            f"a committed query value is a placeholder or a value that carries no secret shape"
         )
 
     fixtures: dict[str, list[str]] = {}
@@ -1112,7 +1388,7 @@ def generate(
                     f"a fixture cannot be rebuilt from a shape nobody recorded"
                 )
             captured = capture.get("request") or {}
-            if not candidate_request_matches(candidate, contract, captured.get("method"), captured.get("url")):
+            if not candidate_request_matches(contract, captured.get("method"), captured.get("url")):
                 raise Refused(
                     f"the capture of the observation '{observation_id}' asked another endpoint — "
                     f"a fixture of this contract must be built from a request of this contract"
@@ -1135,6 +1411,7 @@ def generate(
 
     written: list[Path] = []
     root = output_root.resolve()
+    fixture_dir = fixture_dir_of(candidate_id)
 
     def write(relative: str, content: str, within: str | None = None) -> None:
         path = output_root / relative
@@ -1147,11 +1424,26 @@ def generate(
         path.write_text(content, encoding="utf-8")
         written.append(path)
 
+    # The fixture directory belongs to the contract: everything in it is written by
+    # this generator, and a file that this generation does not produce is a leftover
+    # of another one. The drift gate reports it too, but the generator refuses
+    # before it writes, so the leftover never gets a new sibling.
+    produced = {f"{document['observation']}.json" for document in fixture_documents}
+    folder = output_root / fixture_dir
+    leftovers = (
+        sorted(path.name for path in folder.glob("*.json") if path.name not in produced) if folder.is_dir() else []
+    )
+    if leftovers:
+        raise Refused(
+            f"the fixture directory '{fixture_dir}' holds {leftovers} — the directory belongs to "
+            f"the contract and every file in it is written by this generator; remove the leftovers"
+        )
+
     for document in fixture_documents:
         write(
-            f"{FIXTURE_DIR}/{document['observation']}.json",
+            f"{fixture_dir}/{document['observation']}.json",
             json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            within=FIXTURE_DIR,
+            within=fixture_dir,
         )
 
     write(TEST_FILE, render_kotlin(contract, investigation_id, candidate_id, fixtures, validation))
@@ -1166,9 +1458,9 @@ def generate(
         investigation_id,
         fixtures,
         [TEST_FILE]
-        + [f"{FIXTURE_DIR}/{document['observation']}.json" for document in fixture_documents]
+        + [f"{fixture_dir}/{document['observation']}.json" for document in fixture_documents]
         + [proposal_file],
-        evidence,
+        earned,
     )
     write(proposal_file, proposal)
 
@@ -1206,6 +1498,12 @@ def generate(
 # --------------------------------------------------------------------------------------
 # The self-test
 # --------------------------------------------------------------------------------------
+#
+# The suite of the generator is `scripts/tests/test_wb_research_generate_proposal.py`:
+# it holds the rules of the tool and a counterexample for each of them. This
+# self-test is the smoke check of the installed tool — it proves that the tool runs
+# end to end, refuses what it must refuse, and writes the same bytes twice, without
+# a test framework and without the repository's record.
 
 
 def self_test() -> None:
@@ -1213,6 +1511,7 @@ def self_test() -> None:
 
     with tempfile.TemporaryDirectory() as directory:
         root = Path(directory)
+        endpoint = str(CONTRACTS["storefront-catalog-search"]["endpoint"])
         investigations = root / "devtools/wb-research/investigations"
         investigation_dir = investigations / "2026-01-01-demo"
         (investigation_dir / "evidence").mkdir(parents=True)
@@ -1221,7 +1520,6 @@ def self_test() -> None:
             experiment: str,
             run: int,
             ids: list[int],
-            total: int,
             sort: str = "popular",
             page: int | None = None,
         ) -> dict[str, Any]:
@@ -1234,7 +1532,7 @@ def self_test() -> None:
                 "run": run,
                 "request": {
                     "method": "GET",
-                    "url": f"https://www.wildberries.ru/x?{query}",
+                    "url": f"{endpoint}?{query}",
                     "headerNames": ["deviceid", "x-requested-with"],
                 },
                 "response": {
@@ -1247,7 +1545,7 @@ def self_test() -> None:
                     "jsonType": "object",
                     "topLevelKeys": ["metadata", "products", "total"],
                     "productCount": len(ids),
-                    "total": total,
+                    "total": 7,
                 },
                 "ordering": {"orderHash": f"hash-{experiment}"},
             }
@@ -1256,31 +1554,28 @@ def self_test() -> None:
             {
                 "name": "baseline",
                 "state": "reproduced",
-                "observations": [observation("baseline", 1, [1, 2], 7), observation("baseline", 2, [1, 2], 7)],
+                "observations": [observation("baseline", 1, [1, 2]), observation("baseline", 2, [1, 2])],
             },
             {
                 "name": "sort-priceup",
                 "state": "validated",
                 "observations": [
-                    observation("sort-priceup", 1, [3, 4], 5, sort="priceup"),
-                    observation("sort-priceup", 2, [3, 4], 5, sort="priceup"),
+                    observation("sort-priceup", 1, [3, 4], sort="priceup"),
+                    observation("sort-priceup", 2, [3, 4], sort="priceup"),
                 ],
             },
             {
                 "name": "page-2",
                 "state": "validated",
                 "observations": [
-                    observation("page-2", 1, [5, 6], 7, page=2),
-                    observation("page-2", 2, [5, 6], 7, page=2),
+                    observation("page-2", 1, [5, 6], page=2),
+                    observation("page-2", 2, [5, 6], page=2),
                 ],
             },
             {
                 "name": "after-reload",
                 "state": "validated",
-                "observations": [
-                    observation("after-reload", 1, [1, 2], 7),
-                    observation("after-reload", 2, [1, 2], 7),
-                ],
+                "observations": [observation("after-reload", 1, [1, 2]), observation("after-reload", 2, [1, 2])],
             },
         ]
 
@@ -1288,16 +1583,20 @@ def self_test() -> None:
         captures = []
         for experiment in experiments:
             for item in experiment["observations"]:
-                ids = [1, 2] if item["experiment"] in ("baseline", "after-reload") else [3, 4]
-                if item["experiment"] == "page-2":
-                    ids = [5, 6]
+                ids = (
+                    [5, 6]
+                    if item["experiment"] == "page-2"
+                    else [3, 4]
+                    if item["experiment"] == "sort-priceup"
+                    else [1, 2]
+                )
                 captures.append({**item, "ordering": {**item["ordering"], "productIds": ids}})
         (investigation_dir / "evidence" / "validation.json").write_text(
             json.dumps({"schema": "wb-research/validation/v1", "captures": captures}),
             encoding="utf-8",
         )
 
-        def write_record(state: str, with_validation: bool = True, claim_evidence: list[str] | None = None) -> None:
+        def write_record(state: str) -> None:
             record = {
                 "id": "2026-01-01-demo",
                 "status": "concluded",
@@ -1305,7 +1604,7 @@ def self_test() -> None:
                     {
                         "id": "storefront-catalog-search",
                         "method": "GET",
-                        "endpoint": "https://www.wildberries.ru/x",
+                        "endpoint": endpoint,
                         "query": {"resultset": "catalog"},
                         "headers": {"deviceid": "<redacted:deviceid>"},
                         "observed_status": 200,
@@ -1317,131 +1616,56 @@ def self_test() -> None:
                     {
                         "claim": "the catalog is read with resultset=catalog",
                         "state": state,
-                        "evidence": claim_evidence or ["baseline-1"],
+                        "evidence": ["baseline-1"],
                     },
                 ],
             }
             (investigation_dir / "investigation.yaml").write_text(
                 yaml.safe_dump(record, allow_unicode=True), encoding="utf-8"
             )
-            if with_validation:
-                (investigation_dir / "validation.yaml").write_text(
-                    yaml.safe_dump(
-                        {
-                            "candidate": "storefront-catalog-search",
-                            "page": "https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E",
-                            "experiments": experiments,
-                        },
-                        allow_unicode=True,
-                    ),
-                    encoding="utf-8",
-                )
-            else:
-                (investigation_dir / "validation.yaml").unlink(missing_ok=True)
+            (investigation_dir / "validation.yaml").write_text(
+                yaml.safe_dump(
+                    {
+                        "candidate": "storefront-catalog-search",
+                        "page": "https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E",
+                        "experiments": experiments,
+                    },
+                    allow_unicode=True,
+                ),
+                encoding="utf-8",
+            )
 
-        def run(root_path: Path) -> list[Path]:
-            return generate("2026-01-01-demo", root_path, investigations)
+        def run() -> list[Path]:
+            return generate("2026-01-01-demo", root, investigations)
 
         # A claim that was only observed is not a contract.
         write_record("observed")
         try:
-            run(root)
+            run()
         except Refused as refusal:
             assert "validated" in str(refusal), str(refusal)
         else:
             raise AssertionError("an observed claim must not produce a proposal")
 
-        # A record without controlled experiments is not a contract either.
-        write_record("validated", with_validation=False)
-        try:
-            run(root)
-        except Refused as refusal:
-            assert "validation.yaml" in str(refusal), str(refusal)
-        else:
-            raise AssertionError("a record without validation.yaml must not produce a proposal")
-
-        # A claim that only an old capture supports is not a claim of the experiments.
-        write_record("validated", claim_evidence=["initial-load-004"])
-        try:
-            run(root)
-        except Refused as refusal:
-            assert "no claim about the candidate" in str(refusal), str(refusal)
-        else:
-            raise AssertionError("a claim outside the controlled experiments must not produce a proposal")
-
-        # An observation of another endpoint is not evidence of this contract.
-        other = observation("baseline", 1, [1, 2], 7)
-        other["request"]["url"] = "https://www.wildberries.ru/y?resultset=catalog"
-        experiments[0]["observations"][0] = other
-        write_record("validated")
-        try:
-            run(root)
-        except Refused as refusal:
-            assert "another endpoint" in str(refusal), str(refusal)
-        else:
-            raise AssertionError("an observation of another endpoint must not produce a proposal")
-        experiments[0]["observations"][0] = observation("baseline", 1, [1, 2], 7)
-
-        # The same path with another resultset is another request.
-        other = observation("baseline", 1, [1, 2], 7)
-        other["request"]["url"] = "https://www.wildberries.ru/x?resultset=filters&sort=popular"
-        experiments[0]["observations"][0] = other
-        write_record("validated")
-        try:
-            run(root)
-        except Refused as refusal:
-            assert "another endpoint" in str(refusal), str(refusal)
-        else:
-            raise AssertionError("a request with another resultset must not produce a proposal")
-        experiments[0]["observations"][0] = observation("baseline", 1, [1, 2], 7)
-
-        # An observation id that names another file is refused before anything is written.
-        escaping = observation("baseline", 1, [1, 2], 7)
-        escaping["id"] = "../../../../.betterleaks-baseline"
-        experiments[0]["observations"][0] = escaping
-        write_record("validated")
-        try:
-            run(root)
-        except Refused as refusal:
-            assert "single name" in str(refusal), str(refusal)
-        else:
-            raise AssertionError("an observation id with a path in it must not produce a proposal")
-        experiments[0]["observations"][0] = observation("baseline", 1, [1, 2], 7)
-
-        # Two bundles that carry the same capture leave the record ambiguous.
-        write_record("validated")
-        run(root)
-        bundle = json.loads((investigation_dir / "evidence" / "validation.json").read_text(encoding="utf-8"))
-        (investigation_dir / "evidence" / "second.json").write_text(
-            json.dumps({"schema": "wb-research/validation/v1", "captures": bundle["captures"][:1]}),
-            encoding="utf-8",
-        )
-        try:
-            run(root)
-        except Refused as refusal:
-            assert "two evidence bundles" in str(refusal), str(refusal)
-        else:
-            raise AssertionError("two bundles with the same capture must not produce a proposal")
-        (investigation_dir / "evidence" / "second.json").unlink()
-
         # A validated claim produces the files, and produces them the same way twice.
         write_record("validated")
-        written = run(root)
+        written = run()
         assert written, "a validated record must produce files"
         first = {path.relative_to(root).as_posix(): path.read_bytes() for path in written}
-        second = {path.relative_to(root).as_posix(): path.read_bytes() for path in run(root)}
+        second = {path.relative_to(root).as_posix(): path.read_bytes() for path in run()}
         assert first == second, "the generator must be reproducible"
 
         test_source = (root / TEST_FILE).read_text(encoding="utf-8")
         assert "%%" not in test_source, "a template token was left in the generated test"
-        assert "headerNames" in test_source, "the headers must be read from the fixture"
         assert "<redacted:deviceid>" not in test_source, "a redacted value must not be committed"
 
-        fixture = json.loads((root / f"{FIXTURE_DIR}/baseline-1.json").read_text(encoding="utf-8"))
+        fixture = json.loads(
+            (root / f"{fixture_dir_of('storefront-catalog-search')}/baseline-1.json").read_text(encoding="utf-8")
+        )
         assert fixture["ordering"]["productIds"] == [1, 2], "the order must come from the evidence"
         assert len(fixture["body"]["products"]) == 2, "the body must be rebuilt from the recorded order"
 
-    print("self-test: an observed claim and a record without experiments are both refused, a validated one generates")
+    print("self-test: an observed claim is refused, a validated one generates the same files twice")
 
 
 def main() -> int:

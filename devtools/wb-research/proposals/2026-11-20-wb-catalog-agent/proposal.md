@@ -61,14 +61,14 @@ The fixtures carry the evidence itself: the request as it was made, the shape of
 ## The files this proposal adds
 
 - `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt`
-- `wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json`
-- `wbparser/src/test/resources/fixtures/catalog-search/baseline-2.json`
-- `wbparser/src/test/resources/fixtures/catalog-search/sort-priceup-1.json`
-- `wbparser/src/test/resources/fixtures/catalog-search/sort-priceup-2.json`
-- `wbparser/src/test/resources/fixtures/catalog-search/page-2-1.json`
-- `wbparser/src/test/resources/fixtures/catalog-search/page-2-2.json`
-- `wbparser/src/test/resources/fixtures/catalog-search/after-reload-1.json`
-- `wbparser/src/test/resources/fixtures/catalog-search/after-reload-2.json`
+- `wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/baseline-1.json`
+- `wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/baseline-2.json`
+- `wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-1.json`
+- `wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-2.json`
+- `wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/page-2-1.json`
+- `wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/page-2-2.json`
+- `wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-1.json`
+- `wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-2.json`
 - `devtools/wb-research/proposals/2026-11-20-wb-catalog-agent/proposal.md`
 
 ## What the repository already implements

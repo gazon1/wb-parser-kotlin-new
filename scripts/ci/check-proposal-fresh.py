@@ -47,9 +47,26 @@ MANIFEST_SCHEMA = "wb-research/proposal-manifest/v1"
 FILE_SECTION = "## The files this proposal adds"
 LISTED_FILE = re.compile(r"^- `([^`]+)`$")
 
+# Where the record of an investigation keeps its evidence bundles. The manifest names
+# the investigation, and the investigation names the directory — so the gate can look
+# at the evidence even when the manifest names none of it.
+EVIDENCE_DIR = "devtools/wb-research/investigations"
+
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def read_text(path: Path) -> str | None:
+    """The text of a file, or None when it is not text at all.
+
+    A file that is not UTF-8 is a finding, not a crash: the gate has to say what is
+    wrong with the proposal, not die on it.
+    """
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 def listed_files(proposal_path: Path) -> set[str] | None:
@@ -62,9 +79,12 @@ def listed_files(proposal_path: Path) -> set[str] | None:
     """
     if not proposal_path.is_file():
         return None
+    text = read_text(proposal_path)
+    if text is None:
+        return None
     inside = False
     files: set[str] = set()
-    for line in proposal_path.read_text(encoding="utf-8").splitlines():
+    for line in text.splitlines():
         if line.startswith("## "):
             inside = line.strip() == FILE_SECTION
             continue
@@ -119,13 +139,41 @@ def inventory_findings(entries: dict[str, str], root: Path, suffix: str) -> list
     return findings
 
 
+def evidence_findings(investigation: str, entries: dict[str, str], root: Path) -> list[str]:
+    """The evidence bundles of the investigation that the manifest does not name.
+
+    The directory of the evidence is derived from the id of the investigation, not
+    from the manifest: a manifest that names no evidence at all would otherwise
+    hide the very bundle the generator would read next time.
+    """
+    if not investigation:
+        return []
+    directory = f"{EVIDENCE_DIR}/{investigation}/evidence"
+    folder = root / directory
+    if not folder.is_dir():
+        return []
+    findings: list[str] = []
+    named = {path for path in entries if str(Path(path).parent) == directory}
+    for path in sorted(folder.glob("*.json")):
+        relative = f"{directory}/{path.name}"
+        if relative not in named:
+            findings.append(
+                f"{relative}: a file the manifest does not name — regenerate the proposal, "
+                f"so the inventory says what is on the disk"
+            )
+    return findings
+
+
 def check_one(manifest_path: Path, root: Path) -> list[str]:
     """The findings of one proposal. An empty list means it is current."""
     findings: list[str] = []
     relative_manifest = manifest_path.relative_to(root)
 
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        text = read_text(manifest_path)
+        if text is None:
+            return [f"{relative_manifest}: not readable as text"]
+        manifest = json.loads(text)
     except json.JSONDecodeError as error:
         return [f"{relative_manifest}: not readable as JSON ({error})"]
 
@@ -158,6 +206,7 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
 
     findings += inventory_findings(sections["generated"], root, ".json")
     findings += inventory_findings(sections["sources"], root, ".json")
+    findings += evidence_findings(str(manifest.get("investigation") or ""), sections["sources"], root)
 
     if not sections["sources"]:
         findings.append(f"{relative_manifest}: the manifest names no source of the proposal")
@@ -200,8 +249,11 @@ def check(proposals: Path, root: Path) -> list[str]:
             continue
         findings += check_one(manifest_path, root)
 
+        text = read_text(manifest_path)
+        if text is None:
+            continue
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest = json.loads(text)
         except json.JSONDecodeError:
             continue
         generated = section(manifest, "generated") if isinstance(manifest, dict) else None
@@ -326,6 +378,27 @@ def self_test() -> None:
         assert any("the manifest does not name" in finding for finding in findings), findings
         extra_bundle.unlink()
         assert check(proposals, root) == [], "a proposal whose inventory is complete must pass"
+
+        # The same bundle, but a manifest that names no evidence at all: the directory
+        # of the evidence comes from the id of the investigation, so the bundle is
+        # still found.
+        manifest["sources"].pop("devtools/wb-research/investigations/demo/evidence/validation.json")
+        write_manifest()
+        extra_bundle.write_text("{}\n", encoding="utf-8")
+        findings = check(proposals, root)
+        assert any("the manifest does not name" in finding for finding in findings), findings
+        extra_bundle.unlink()
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal whose inventory is complete must pass"
+
+        # A manifest that is not text at all is a finding, not a crash.
+        manifest_path.write_bytes(b"\xff\xfe not utf-8")
+        findings = check(proposals, root)
+        assert findings, "a manifest that is not text must fail"
+        assert "not readable as text" in findings[0], findings
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal whose manifest is text must pass"
 
         # A manifest that is not a mapping of paths to hashes is a finding, not a crash.
         manifest["generated"] = ["wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json"]

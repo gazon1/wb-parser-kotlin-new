@@ -212,6 +212,41 @@ class SimpleWorld:
                         capture[name] = value
         self.write_evidence(captures)
 
+    def patch_capture(self, capture_id: str, **changes) -> None:
+        """Change a capture of the evidence, leaving the summary as it is.
+
+        The bundle and the summary describe the same run twice. A change in one of
+        them alone is the case the generator has to notice: the fixture would carry
+        the products of one run under the name of another.
+        """
+        captures = self.captures()
+        for capture in captures:
+            if capture["id"] == capture_id:
+                for name, value in changes.items():
+                    if name == "url":
+                        capture["request"]["url"] = value
+                    else:
+                        capture[name] = value
+        self.write_evidence(captures)
+
+    def patch_candidate(self, **changes) -> None:
+        """Change the candidate of the record."""
+        record = yaml.safe_load((self.directory / "investigation.yaml").read_text(encoding="utf-8"))
+        candidate = record["api_candidates"][0]
+        for name, value in changes.items():
+            if name == "query":
+                candidate["query"].update(value)
+            else:
+                candidate[name] = value
+        (self.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
+
+    def patch_page(self, page: str) -> None:
+        """Change the crawl URL of the record."""
+        validation = self.directory / "validation.yaml"
+        document = yaml.safe_load(validation.read_text(encoding="utf-8"))
+        document["page"] = page
+        validation.write_text(yaml.safe_dump(document, allow_unicode=True), encoding="utf-8")
+
     def generate(self, output_root: Path) -> list[Path]:
         return generate_proposal.generate("2026-01-01-demo", output_root, investigations_root=self.investigations)
 
@@ -433,3 +468,111 @@ def test_no_captured_value_reaches_a_file(world, tmp_path):
 
     for path in written:
         assert DEVICE_ID not in path.read_text(encoding="utf-8")
+
+
+def test_a_candidate_that_names_another_endpoint_is_refused(world, tmp_path):
+    # The contract table is what the generated test pins. A record that keeps the
+    # id of a known candidate and names another endpoint is not that contract, and
+    # its evidence would pin a request nobody authorized.
+    world.patch_candidate(endpoint="https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v19/search")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_candidate_that_names_another_method_is_refused(world, tmp_path):
+    world.patch_candidate(method="POST")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_capture_that_asks_another_request_is_refused(world, tmp_path):
+    # The bundle and the summary describe the same run twice. When they disagree
+    # about the request, the fixture would carry the products of one run under the
+    # name of another.
+    world.patch_capture(
+        "baseline-1",
+        url=f"{ENDPOINT}?resultset=catalog&sort=priceup&query=%3Credacted%3Aquery-param%3E",
+    )
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_capture_of_another_experiment_is_refused(world, tmp_path):
+    world.patch_capture("baseline-1", experiment="sort-priceup")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_repeated_identity_parameter_is_refused(world, tmp_path):
+    # A request that names the identity parameter twice says two things about
+    # which request it is.
+    world.patch_observation(
+        url=f"{ENDPOINT}?resultset=catalog&resultset=filters&sort=popular&query=%3Credacted%3Aquery-param%3E"
+    )
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_record_without_a_validated_claim_is_refused(world, tmp_path):
+    # A reproduced claim is a fact the record earned, but a contract needs a claim
+    # a controlled experiment confirmed.
+    world.write(state="reproduced")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_query_value_the_record_did_not_sanitize_is_refused(world, tmp_path):
+    # The query of the candidate is published in the proposal, so an unsanitized
+    # value in it would be committed in the Markdown of the proposal.
+    world.patch_candidate(query={"session": "8f14e45fceea167a5a36dedd4bea2543"})
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_crawl_url_that_is_not_the_crawler_s_url_is_refused(world, tmp_path):
+    # The crawler builds the runtime URL from the catalog id, so a page of another
+    # shape is a page the crawler never asks with.
+    world.patch_page("https://www.wildberries.ru/catalog/131954/search.aspx?search=%3Credacted%3Aquery-param%3E")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_crawl_url_without_a_search_parameter_is_refused(world, tmp_path):
+    # A crawl without the token asks for the unfiltered popular list.
+    world.patch_page("https://www.wildberries.ru/catalog/131954/list.aspx")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_crawl_url_with_an_unsanitized_value_is_refused(world, tmp_path):
+    world.patch_page("https://www.wildberries.ru/catalog/131954/list.aspx?search=8f14e45fceea167a5a36dedd4bea2543")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_the_fixtures_live_in_the_directory_of_their_contract(world, tmp_path):
+    written = world.generate(tmp_path)
+
+    fixtures = [path for path in written if path.suffix == ".json" and path.parent.name == CANDIDATE]
+    assert fixtures, "the fixtures must live in the directory of the contract"
+
+
+def test_a_leftover_fixture_in_the_contract_directory_is_refused(world, tmp_path):
+    # The directory belongs to the contract: everything in it is written by this
+    # generator, and a file of another generation is a leftover.
+    folder = tmp_path / "wbparser/src/test/resources/fixtures/catalog-search" / CANDIDATE
+    folder.mkdir(parents=True)
+    (folder / "obsolete.json").write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)

@@ -53,11 +53,26 @@ class WbCatalogSearchContractTest :
         /** The token the crawler asks with; the record redacted the one it saw. */
         val token = "menu_v3_9467 карты памяти"
 
-        /** The crawl URL of the record — the page the crawl starts from. */
+        /**
+         * The crawl URL of the record — the page the crawl starts from.
+         *
+         * The record redacted the token it saw, so this URL carries a placeholder.
+         */
         val crawlUrl = "https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E"
 
         /** The catalog the record crawled. */
         val catalogId = "131954"
+
+        /**
+         * The crawl URL the crawler asks with — the URL the crawler itself builds
+         * for this catalog and this token.
+         *
+         * The record redacted the token it saw, so the crawl URL of the record holds a
+         * placeholder. At runtime the crawl starts from the URL that carries the real
+         * token, and the crawler builds it: the request is built from that URL, exactly
+         * as the crawler builds it.
+         */
+        val runtimeCrawlUrl = WbCatalogRequest.crawlUrlOf(catalogId, token)
 
         /** The parameters the crawler sends and the storefront did not. */
         val crawlerOnly = setOf("ffeedbackpoints", "page")
@@ -76,7 +91,7 @@ class WbCatalogSearchContractTest :
 
         fun fixture(name: String): ContractFixture {
             val stream =
-                javaClass.getResourceAsStream("/fixtures/catalog-search/$name.json")
+                javaClass.getResourceAsStream("/fixtures/catalog-search/storefront-catalog-search/$name.json")
                     ?: error("the fixture $name is not on the classpath")
             return json.decodeFromString(stream.readBytes().decodeToString())
         }
@@ -117,7 +132,15 @@ class WbCatalogSearchContractTest :
         val reload = fixture("after-reload-1")
         val reloadReplay = fixture("after-reload-2")
 
-        val productionUrl = WbCatalogApi.buildWbApiUrl(page = 1, searchQuery = token)
+        // The request is built from the crawl URL, exactly as the crawler builds it:
+        // the URL is parsed, and the token it carries becomes the query of the request.
+        // A literal here would pin a request nobody sends.
+        val parsedCrawl = WbCatalogRequest.parseCatalogUrl(runtimeCrawlUrl)
+        val productionUrl =
+            WbCatalogApi.buildWbApiUrl(
+                page = parsedCrawl.page,
+                searchQuery = parsedCrawl.searchQuery,
+            )
         val productionQuery = queryOf(productionUrl)
         val productionHeaders =
             WbCatalogApi
@@ -125,6 +148,28 @@ class WbCatalogSearchContractTest :
                 .keys
                 .map { it.lowercase() }
                 .toSet()
+
+        test("the crawl URL of the crawler is the record's URL with the crawler's token in it") {
+            // The record redacted the token it saw, so the record's URL and the
+            // crawler's URL differ in one parameter — and in nothing else. A token
+            // that changed the page would be a crawl of another catalog.
+            val recorded = URI(crawlUrl)
+            val runtime = URI(runtimeCrawlUrl)
+
+            recorded.scheme shouldBe runtime.scheme
+            recorded.host shouldBe runtime.host
+            recorded.path shouldBe runtime.path
+        }
+
+        test("the search token of the crawl URL reaches the request") {
+            // The chain the crawler walks: crawl URL → parsed page → request. The
+            // token of the URL is the identity of the catalog, and a request that
+            // carried another token would ask for another catalog's goods while
+            // answering 200 with plausible ones.
+            parsedCrawl.catalogId shouldBe catalogId
+            parsedCrawl.searchQuery shouldBe token
+            productionQuery["query"] shouldBe token
+        }
 
         test("the request goes to the endpoint the record observed") {
             // The path is as much a part of the contract as the parameters are: the
@@ -136,6 +181,7 @@ class WbCatalogSearchContractTest :
             production.scheme shouldBe recorded.scheme
             production.host shouldBe recorded.host
             production.path shouldBe recorded.path
+            production.port shouldBe recorded.port
         }
 
         test("the request carries every parameter of the contract — and only those") {
@@ -220,13 +266,15 @@ class WbCatalogSearchContractTest :
             // advances it and the request builder reads it back. A pagination that
             // stopped incrementing would ask for the first page forever, and the
             // endpoint would answer 200 with the same products every time.
-            val next = WbCatalogRequest.nextPageUrl(crawlUrl)!!
+            val next = WbCatalogRequest.nextPageUrl(runtimeCrawlUrl)!!
             val parsed = WbCatalogRequest.parseCatalogUrl(next)
             parsed.page shouldBe 2
             parsed.catalogId shouldBe catalogId
+            parsed.searchQuery shouldBe token
 
-            val page = queryOf(WbCatalogApi.buildWbApiUrl(page = parsed.page, searchQuery = token))
+            val page = queryOf(WbCatalogApi.buildWbApiUrl(page = parsed.page, searchQuery = parsed.searchQuery))
             page["page"] shouldBe "2"
+            page["query"] shouldBe token
             page.keys shouldBe productionQuery.keys
             nextPage.request.query["page"] shouldBe "2"
         }
