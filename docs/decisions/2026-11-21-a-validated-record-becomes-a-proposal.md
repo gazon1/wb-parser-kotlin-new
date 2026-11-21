@@ -499,9 +499,17 @@ deleted file would otherwise pass.
   from, and a check that runs only when the manifest helps it is a check the
   manifest can switch off.
 - **Never** let a malformed record raise out of the tool: a nested field that is
-  not an object is read as nothing at all, so the dimension it should carry is
-  missing — and a missing dimension does not match. The record is refused, not
-  crashed on.
+  not an object is refused by name — an optional field that is absent is a field
+  the record does not speak about, and a field that is there and is not an
+  object is a broken declaration. Reading it as an empty one would make the two
+  the same and let an answer publish itself over a declaration nobody could
+  read. An evidence bundle that is not an object, or whose captures are not a
+  list, is refused by name for the same reason.
+- **Never** let the drift gate read the evidence of another investigation: a
+  proposal is produced from one record, the record of the investigation the
+  manifest names, and the captures of another record cannot witness its
+  fixtures. A source of another investigation is a finding, and its bundles are
+  not read at all.
 - **Never** publish an answer the evidence did not record: the status, the
   content type and the keys of the body come from the candidate's own summary,
   so the summary has to agree with the capture, and the published values are the

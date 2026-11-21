@@ -732,6 +732,37 @@ def test_a_candidate_whose_query_is_not_an_object_is_refused(world, tmp_path):
         world.generate(tmp_path)
 
 
+def test_a_candidate_whose_response_schema_is_not_an_object_is_refused(world, tmp_path):
+    # A candidate that declares the shape of the answer as a list declares
+    # nothing: the declaration is broken, and a broken declaration is refused by
+    # name — not read as a candidate that declared no shape at all.
+    world.patch_candidate(response_schema=["top_level_keys"])
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "response_schema" in str(refusal.value), str(refusal.value)
+
+
+@pytest.mark.parametrize(
+    "bundle",
+    [
+        "[]\n",
+        '"the captures"\n',
+        "null\n",
+        json.dumps({"captures": {"baseline-1": {}}}) + "\n",
+    ],
+)
+def test_an_evidence_bundle_that_is_malformed_is_refused(world, tmp_path, bundle):
+    # The bundle holds the captures the fixtures were built from. A bundle that is
+    # not an object, or whose captures are not a list, holds none — and the record
+    # is refused by name rather than read as an empty bundle.
+    (world.directory / "evidence" / "validation.json").write_text(bundle, encoding="utf-8")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "validation.json" in str(refusal.value), str(refusal.value)
+
+
 def test_a_candidate_with_another_identity_parameter_is_refused(world, tmp_path):
     # The catalog search and the filters search share the path and differ only in
     # `resultset`. A candidate that names the other one is not this contract, and a

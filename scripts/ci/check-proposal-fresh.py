@@ -73,7 +73,7 @@ FIXTURE_PATH = re.compile(r"^(?P<directory>.+/fixtures/[^/]+/(?P<candidate>[^/]+
 # An evidence bundle of an investigation: the file that holds the captures the
 # fixtures were built from. The gate reads the bundles the manifest names, so the
 # fixtures are checked against the record and not against themselves.
-EVIDENCE_BUNDLE = re.compile(rf"^{re.escape(EVIDENCE_DIR)}/[^/]+/evidence/[^/]+\.json$")
+EVIDENCE_BUNDLE = re.compile(rf"^{re.escape(EVIDENCE_DIR)}/(?P<investigation>[^/]+)/evidence/[^/]+\.json$")
 
 
 def digest(path: Path) -> str:
@@ -342,7 +342,31 @@ def object_field(container: dict, field: str) -> dict:
     return value if isinstance(value, dict) else {}
 
 
-def evidence_captures(sources: dict[str, str], root: Path) -> tuple[dict[str, dict], list[str]]:
+def source_investigation_findings(investigation: str, entries: dict[str, str]) -> list[str]:
+    """The sources of the proposal that belong to another investigation.
+
+    A proposal is produced from one record: the record of the investigation the
+    manifest names and the evidence of that investigation. A source of another
+    investigation is a source of another record — and the captures of another
+    record would witness the fixtures of this one, which is a fixture built from a
+    record nobody named.
+    """
+    findings: list[str] = []
+    for relative in sorted(entries):
+        parts = Path(relative).parts
+        if len(parts) < 4 or parts[:3] != ("devtools", "wb-research", "investigations"):
+            continue
+        owner = parts[3]
+        if owner != investigation:
+            findings.append(
+                f"{relative}: the source belongs to the investigation '{owner}' — the proposal names "
+                f"the investigation '{investigation}', and the record of another investigation is not "
+                f"the record this proposal was produced from"
+            )
+    return findings
+
+
+def evidence_captures(sources: dict[str, str], root: Path, investigation: str) -> tuple[dict[str, dict], list[str]]:
     """The captures of the evidence bundles the manifest names, by their id.
 
     The bundles are the record the fixtures were built from, so they are the only
@@ -354,11 +378,18 @@ def evidence_captures(sources: dict[str, str], root: Path) -> tuple[dict[str, di
     bundles hold is a finding as well — the generator refuses a duplicate id, so
     the record holds one capture under one id, and a gate that quietly kept the
     last one would read a record the generator would never have read.
+
+    A bundle of another investigation is not read at all: the captures of another
+    record cannot witness the fixtures of this one, and the finding that names the
+    bundle is made where the sources are read.
     """
     captures: dict[str, dict] = {}
     findings: list[str] = []
     for relative in sorted(sources):
-        if not EVIDENCE_BUNDLE.match(relative):
+        match = EVIDENCE_BUNDLE.match(relative)
+        if not match:
+            continue
+        if investigation and match.group("investigation") != investigation:
             continue
         text = read_text(root / relative)
         if text is None:
@@ -711,7 +742,8 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
     findings += inventory_findings(sections["generated"], root, ".json")
     findings += inventory_findings(sections["sources"], root, ".json")
     findings += evidence_findings(investigation, sections["sources"], root)
-    captures, capture_findings = evidence_captures(sections["sources"], root)
+    findings += source_investigation_findings(investigation, sections["sources"])
+    captures, capture_findings = evidence_captures(sections["sources"], root, investigation)
     findings += capture_findings
     findings += fixture_findings(sections["generated"], captures, root, investigation)
 
@@ -1279,6 +1311,21 @@ def self_test() -> None:
         manifest["investigation"] = "demo"
         write_manifest()
         assert check(proposals, root) == [], "a manifest that names the investigation must pass"
+
+        # A source of another investigation: the proposal is produced from one
+        # record, and the captures of another record cannot witness its fixtures.
+        other_record = root / "devtools" / "wb-research" / "investigations" / "other-record"
+        (other_record / "evidence").mkdir(parents=True)
+        other_bundle = other_record / "evidence" / "validation.json"
+        other_bundle.write_text(json.dumps({"captures": [capture_document()]}) + "\n", encoding="utf-8")
+        other_relative = "devtools/wb-research/investigations/other-record/evidence/validation.json"
+        manifest["sources"][other_relative] = digest(other_bundle)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("belongs to the investigation" in finding for finding in findings), findings
+        del manifest["sources"][other_relative]
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal of one investigation must pass"
 
         # A query whose values are not text: the test reads the query as a map of
         # names to values, so a value of another type is a query the test reads

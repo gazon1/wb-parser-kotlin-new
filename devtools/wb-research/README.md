@@ -1183,10 +1183,14 @@ second `dest` differs from its first is a record with two answers, and the
 generator would publish one of them. So a duplicate key is refused on reading,
 and so is a file that is not YAML at all. A nested field that is not an object
 is a malformed record too: an answer, a request or an ordering written as a
-list or a string is read as nothing at all, so the dimension it should carry is
-missing — and a missing dimension does not match. The record is refused, not
-crashed on: a traceback is not a way to tell a reviewer that the record does not
-earn a proposal.
+list or a string is refused by name — an optional field that is not there is a
+field the record does not speak about, and a field that is there and is not an
+object is a broken declaration, and reading it as an empty one would make the
+answer publish itself over a declaration nobody could read. The record is
+refused, not crashed on: a traceback is not a way to tell a reviewer that the
+record does not earn a proposal. The evidence bundle is read the same way: a
+bundle that is not an object, or whose captures are not a list, is refused by
+name — a bundle that holds no captures holds no evidence.
 
 **The contract declares the parameters of its request.** The redactor has a rule
 for every name it knows and none for a name it has never seen: `customer=Alice`
@@ -1358,7 +1362,11 @@ the generator and the redactor — because a dependency nobody names is a
 dependency nobody watches. The manifest has to name the investigation it was
 produced from: a proposal that names none cannot be bound to anything, and a
 check that runs only when the manifest helps it is a check the manifest can
-switch off. A fixture has to name the investigation of the
+switch off. The sources of the proposal have to be the sources of that
+investigation: a source of another investigation is a source of another
+record, and the captures of another record cannot witness the fixtures of this
+one — so the gate names such a source and does not read its bundles. A fixture
+has to name the investigation of the
 proposal that holds it, next to the candidate and the observation: a fixture of
 another investigation is a fixture of another record, and the gate names it even
 when everything else about the fixture is right — a fixture that names no

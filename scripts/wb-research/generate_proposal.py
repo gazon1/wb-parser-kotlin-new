@@ -456,19 +456,31 @@ def candidate_request_matches(
     return True
 
 
-def object_field(document: dict[str, Any], name: str) -> dict[str, Any]:
-    """The nested object of a document — or an empty one when it is not an object.
+def object_field(document: dict[str, Any], name: str, where: str = "") -> dict[str, Any]:
+    """The nested object of a document.
 
-    A field that holds a list or a string is not an answer: the record is malformed,
-    and a malformed record is a refusal, not a traceback. So the field is read as
-    the object it is or as nothing at all — and a dimension that is nothing at all
-    is a dimension that is missing, and a missing dimension does not match.
+    A field that is not there is a field the record does not speak about: the
+    dimension it should carry is missing, and a missing dimension does not match.
+
+    A field that is there and is not an object is a different thing: the record is
+    malformed, and a malformed record is refused by name. Reading it as an empty
+    object would make the two the same — a `response_schema` written as a list
+    would look like a candidate that declared no shape at all, and the answer
+    would be published without anybody saying that the declaration is broken.
     """
     value = document.get(name)
-    return value if isinstance(value, dict) else {}
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise Refused(
+            f"{where}the '{name}' field is {value!r} and not an object — a field that is not there "
+            f"is a dimension the record does not speak about, and a field that is there and is not "
+            f"an object is a malformed record"
+        )
+    return value
 
 
-def capture_matches_observation(capture: dict[str, Any], observation: dict[str, Any]) -> bool:
+def capture_matches_observation(capture: dict[str, Any], observation: dict[str, Any], where: str = "") -> bool:
     """Whether the capture is the capture of this observation.
 
     The summary (`validation.yaml`) and the evidence bundle describe the same run
@@ -491,14 +503,14 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
         left, right = capture.get(name), observation.get(name)
         if left is None or right is None or left != right:
             return False
-    capture_request = object_field(capture, "request")
-    observation_request = object_field(observation, "request")
+    capture_request = object_field(capture, "request", f"{where}the capture: ")
+    observation_request = object_field(observation, "request", f"{where}the observation: ")
     for name in ("method", "url"):
         left, right = capture_request.get(name), observation_request.get(name)
         if left is None or right is None or str(left) != str(right):
             return False
-    capture_order = object_field(capture, "ordering").get("orderHash")
-    observation_order = object_field(observation, "ordering").get("orderHash")
+    capture_order = object_field(capture, "ordering", f"{where}the capture: ").get("orderHash")
+    observation_order = object_field(observation, "ordering", f"{where}the observation: ").get("orderHash")
     if capture_order is None or observation_order is None or capture_order != observation_order:
         return False
     # The fixture is built from the summary and the proposal publishes the capture,
@@ -509,8 +521,8 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
         ("response", ("status", "contentType", "bodyBytes", "isJson")),
         ("schema", ("topLevelKeys", "productCount", "total")),
     ):
-        captured = object_field(capture, field)
-        observed = object_field(observation, field)
+        captured = object_field(capture, field, f"{where}the capture: ")
+        observed = object_field(observation, field, f"{where}the observation: ")
         for name in names:
             left, right = captured.get(name), observed.get(name)
             if left is None or right is None or left != right:
@@ -562,7 +574,7 @@ def candidate_agrees_with_evidence(
     read as a map, the second value hides the first, so the proposal would pin one
     request and the fixture another.
     """
-    query = {str(name): str(value) for name, value in object_field(candidate, "query").items()}
+    query = {str(name): str(value) for name, value in object_field(candidate, "query", "the candidate: ").items()}
 
     for name, value in (contract.get("identity") or {}).items():
         if query.get(str(name)) != str(value):
@@ -573,7 +585,7 @@ def candidate_agrees_with_evidence(
                 f"not this contract"
             )
 
-    recorded_pairs = query_pairs_of(str(object_field(observation, "request").get("url") or ""))
+    recorded_pairs = query_pairs_of(str(object_field(observation, "request", "the observation: ").get("url") or ""))
     repeated = duplicate_parameter_problems(recorded_pairs)
     if repeated:
         raise Refused(
@@ -633,8 +645,8 @@ def answer_of_the_evidence(candidate: dict[str, Any], capture: dict[str, Any]) -
     The types are asked for as well: a status that became the text `200` is not
     the status the request came with.
     """
-    recorded = object_field(capture, "response")
-    schema = object_field(capture, "schema")
+    recorded = object_field(capture, "response", "the capture: ")
+    schema = object_field(capture, "schema", "the capture: ")
     status = recorded.get("status")
     content_type = recorded.get("contentType")
     keys = schema.get("topLevelKeys")
@@ -666,7 +678,7 @@ def answer_of_the_evidence(candidate: dict[str, Any], capture: dict[str, Any]) -
             f"evidence recorded '{content_type}' — the proposal would publish an answer the record "
             f"never saw"
         )
-    named = object_field(candidate, "response_schema").get("top_level_keys")
+    named = object_field(candidate, "response_schema", "the candidate: ").get("top_level_keys")
     if named is not None:
         if not isinstance(named, list) or not all(isinstance(key, str) for key in named):
             raise Refused(
@@ -715,9 +727,9 @@ def claims_about_candidate(
             capture = evidence.get(name)
             if capture is None:
                 continue
-            if not capture_matches_observation(capture, observation):
+            if not capture_matches_observation(capture, observation, f"the observation '{name}': "):
                 continue
-            request = object_field(capture, "request")
+            request = object_field(capture, "request", "the capture: ")
             if candidate_request_matches(contract, request.get("method"), request.get("url")):
                 earned.append(claim)
                 break
@@ -808,9 +820,27 @@ def evidence_index(directory: Path) -> dict[str, dict[str, Any]]:
     if not evidence.is_dir():
         return index
     for path in sorted(evidence.glob("*.json")):
-        with path.open(encoding="utf-8") as handle:
-            bundle = json.load(handle)
-        for capture in bundle.get("captures") or []:
+        try:
+            with path.open(encoding="utf-8") as handle:
+                bundle = json.load(handle)
+        except json.JSONDecodeError as error:
+            raise Refused(
+                f"the evidence bundle '{path.name}' is not readable as JSON ({error}) — a bundle "
+                f"that cannot be read holds no captures"
+            ) from error
+        if not isinstance(bundle, dict):
+            raise Refused(
+                f"the evidence bundle '{path.name}' is not an object — the captures it holds are "
+                f"what the fixtures were built from, and a bundle that is not an object holds none"
+            )
+        listed = bundle.get("captures")
+        if listed is None:
+            continue
+        if not isinstance(listed, list):
+            raise Refused(
+                f"the captures of the evidence bundle '{path.name}' are not a list — a bundle holds a list of captures"
+            )
+        for capture in listed:
             if isinstance(capture, dict) and capture.get("id"):
                 name = str(capture["id"])
                 if name in index:
@@ -984,7 +1014,7 @@ def fixture_dir_of(candidate_id: str) -> str:
 
 
 def header_names_of(observation: dict[str, Any]) -> list[str]:
-    request = object_field(observation, "request")
+    request = object_field(observation, "request", "the observation: ")
     return list(request.get("headerNames") or [])
 
 
@@ -994,8 +1024,8 @@ def product_ids_of(observation: dict[str, Any], capture: dict[str, Any]) -> list
     The summary keeps the hash of the order; the evidence keeps the order. Both are
     read, and the evidence wins when both have it.
     """
-    for source in (capture, observation):
-        ordering = object_field(source, "ordering")
+    for source, label in ((capture, "the capture: "), (observation, "the observation: ")):
+        ordering = object_field(source, "ordering", label)
         ids = ordering.get("productIds")
         if ids:
             return list(ids)
@@ -1008,10 +1038,10 @@ def fixture_of(
     candidate_id: str,
     investigation_id: str,
 ) -> dict[str, Any]:
-    request = object_field(observation, "request")
-    response = object_field(observation, "response")
-    answer = object_field(observation, "schema")
-    ordering = object_field(observation, "ordering")
+    request = object_field(observation, "request", "the observation: ")
+    response = object_field(observation, "response", "the observation: ")
+    answer = object_field(observation, "schema", "the observation: ")
+    ordering = object_field(observation, "ordering", "the observation: ")
 
     return {
         "schema": "wb-research/contract-fixture/v1",
@@ -1631,7 +1661,7 @@ def render_proposal(
     lines.append("")
     lines.append("| Parameter | Value |")
     lines.append("| --- | --- |")
-    for name, value in object_field(candidate, "query").items():
+    for name, value in object_field(candidate, "query", "the candidate: ").items():
         lines.append(f"| `{name}` | `{value}` |")
     lines.append("")
     lines.append("### Headers")
@@ -1640,7 +1670,7 @@ def render_proposal(
     lines.append("")
     lines.append("| Header | The storefront's request | The validated replay |")
     lines.append("| --- | --- | --- |")
-    storefront_headers = list(object_field(candidate, "headers"))
+    storefront_headers = list(object_field(candidate, "headers", "the candidate: "))
     replay_headers = header_names_of(observations_of(experiments)[0])
     for name in sorted(set(storefront_headers) | set(replay_headers)):
         lines.append(
@@ -1929,7 +1959,7 @@ def generate(
                     f"'{experiment.get('name')}' — an observation has to belong to the "
                     f"experiment it is filed under"
                 )
-            request = object_field(observation, "request")
+            request = object_field(observation, "request", "the observation: ")
             if not candidate_request_matches(contract, request.get("method"), request.get("url")):
                 raise Refused(
                     f"the observation '{observation_id}' of the '{experiment.get('name')}' "
@@ -1956,7 +1986,7 @@ def generate(
                     f"the observation '{observation_id}' has no capture in the evidence bundle — "
                     f"a fixture cannot be rebuilt from a shape nobody recorded"
                 )
-            if not capture_matches_observation(capture, observation):
+            if not capture_matches_observation(capture, observation, f"the observation '{observation_id}': "):
                 raise Refused(
                     f"the capture of the observation '{observation_id}' describes another run — "
                     f"the bundle and the record disagree about what was requested, so the "
@@ -1986,9 +2016,15 @@ def generate(
     # same value in a query and in a header has leaked one into the other, and the
     # query is the place it would be committed.
     header_values = {
-        str(value) for value in object_field(candidate, "headers").values() if value and not is_placeholder(value)
+        str(value)
+        for value in object_field(candidate, "headers", "the candidate: ").values()
+        if value and not is_placeholder(value)
     }
-    leaked = sorted(name for name, value in object_field(candidate, "query").items() if str(value) in header_values)
+    leaked = sorted(
+        name
+        for name, value in object_field(candidate, "query", "the candidate: ").items()
+        if str(value) in header_values
+    )
     if leaked:
         raise Refused(
             f"the candidate's query carries the value of a header for {leaked} — a captured "
@@ -2000,7 +2036,7 @@ def generate(
     # parameter: a session token, an account id or a search phrase in the query
     # would be committed in the Markdown of the proposal, and a name nobody can
     # explain may carry somebody's name.
-    unpublishable = parameter_problems(contract, list(object_field(candidate, "query").items()))
+    unpublishable = parameter_problems(contract, list(object_field(candidate, "query", "the candidate: ").items()))
     if unpublishable:
         raise Refused(
             f"the candidate's query holds parameters the contract does not allow to be "
