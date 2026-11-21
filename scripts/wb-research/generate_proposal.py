@@ -353,7 +353,7 @@ def url_parts(url: str) -> SplitResult:
         _ = parts.port
     except ValueError as error:
         raise Refused(f"the URL '{url}' cannot be read as a URL ({error})") from error
-    if parts.scheme not in ("http", "https") or not parts.netloc:
+    if parts.scheme not in ("http", "https") or not parts.hostname:
         raise Refused(
             f"the URL '{url}' names no host — a request that names no host is not a request the record could have made"
         )
@@ -464,7 +464,9 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
     another experiment — would put the products of one run into the fixture of
     another, and the fixture would look perfectly plausible. So the two descriptions
     have to agree on every dimension that tells one run from another: the
-    experiment, the run, the method, the URL and the order of the answer.
+    experiment, the run, the method, the URL and the order of the answer — and on
+    the answer itself, since the fixture is built from the summary while the
+    proposal publishes the capture.
 
     Every dimension has to be *there* on both sides. A dimension that is missing is
     not a dimension that matches: a capture that says nothing about the experiment it
@@ -485,7 +487,23 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
             return False
     capture_order = (capture.get("ordering") or {}).get("orderHash")
     observation_order = (observation.get("ordering") or {}).get("orderHash")
-    return capture_order is not None and observation_order is not None and capture_order == observation_order
+    if capture_order is None or observation_order is None or capture_order != observation_order:
+        return False
+    # The fixture is built from the summary and the proposal publishes the capture,
+    # so the answer has to be the same one in both: a summary that says the request
+    # came with 200 while the bundle says 498 would write a fixture and a proposal
+    # that describe two different answers.
+    for field, names in (
+        ("response", ("status", "contentType", "bodyBytes", "isJson")),
+        ("schema", ("topLevelKeys", "productCount", "total")),
+    ):
+        captured = capture.get(field) or {}
+        observed = observation.get(field) or {}
+        for name in names:
+            left, right = captured.get(name), observed.get(name)
+            if left is None or right is None or left != right:
+                return False
+    return True
 
 
 def baseline_observation(contract: dict[str, Any], experiments: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1125,17 +1143,20 @@ class %%TEST_CLASS%% :
             return json.decodeFromString(stream.readBytes().decodeToString())
         }
 
-        /** The query of a URL, decoded — the parameters of the request itself. */
-        fun queryOf(url: String): Map<String, String> =
+        /** The query of a URL as pairs — a repeated parameter stays two pairs. */
+        fun queryPairsOf(url: String): List<Pair<String, String>> =
             url
                 .substringAfter('?', "")
                 .split('&')
                 .filter { it.isNotBlank() }
-                .associate { pair ->
+                .map { pair ->
                     val name = pair.substringBefore('=')
                     val value = pair.substringAfter('=', "")
                     name to URLDecoder.decode(value, "UTF-8")
                 }
+
+        /** The query of a URL, decoded — the parameters of the request itself. */
+        fun queryOf(url: String): Map<String, String> = queryPairsOf(url).toMap()
 
         fun fetched(body: String): Fetched {
             val url = CrawlUrl.of("https://www.wildberries.ru/catalog/131954/list.aspx").getOrNull()!!
@@ -1210,6 +1231,7 @@ class %%TEST_CLASS%% :
                 searchQuery = parsedCrawl.searchQuery,
             )
         val productionQuery = queryOf(productionUrl)
+        val productionNames = queryPairsOf(productionUrl).map { it.first }
         val productionHeaders =
             WbCatalogApi
                 .buildWbHeaders()
@@ -1258,6 +1280,13 @@ class %%TEST_CLASS%% :
             // one that was dropped. Both fail quietly: the endpoint answers 200 with
             // somebody else's products.
             productionQuery.keys shouldBe baseline.request.query.keys + crawlerOnly - storefrontOnly
+        }
+
+        test("the request names every parameter once") {
+            // A query read as a map keeps only the last value of a name that appears
+            // twice, so a request that names a parameter twice says two things about
+            // it — and the map would hide the first. The pairs are read for this.
+            productionNames.distinct().size shouldBe productionNames.size
         }
 
         test("the parameters the crawler and the storefront share carry the same values") {

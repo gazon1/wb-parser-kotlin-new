@@ -2,7 +2,7 @@
   "candidate": "storefront-catalog-search",
   "generated": {
     "devtools/wb-research/proposals/2026-11-20-wb-catalog-agent/proposal.md": "461d59d0241c514a1ac9adfe3b58f76a7fa91923e586309dff088625065b6579",
-    "wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt": "fadf3a0bc0560a2426dbfa07f765015b9872b76a09fd31b3e3c3008a0346bb9e",
+    "wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt": "2477a4c3856567cd64c2f5b30db7035d76f4a33e4f9595339d2edf3de4d5f1fc",
     "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-1.json": "649d70eccd57cf91ac958e4c333236e01084ed7ac7473ff023e63b86994af9dc",
     "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-2.json": "31f5b703641ae7c3303f5438d055cfd5abfb5ff5333fb892284e14ec858d4a9b",
     "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/baseline-1.json": "dd4c58dcbc2fafd413f2bff03914efc97a9dc9a6fca373368769af8248494e23",
@@ -13,7 +13,7 @@
     "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-2.json": "1b4c04eef53492893036a1c890f6eb26b63be3acc3405b88c6e422abb73bc3f5"
   },
   "generator": {
-    "scripts/wb-research/generate_proposal.py": "8d2b1c72d695c4c63af307ec66c34453213e3db2c4b62514e2ac4c1d6df913ae",
+    "scripts/wb-research/generate_proposal.py": "80938295fb213a8d9d6e177781faed6472841b1546892c9337cec8ccb8edbe6b",
     "scripts/wb-research/redact.py": "0611c354d9393a1e7a1291d6d02c18e74382b62d4c6aff49321cd04feb22c6c7"
   },
   "investigation": "2026-11-20-wb-catalog-agent",

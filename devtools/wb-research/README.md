@@ -1156,7 +1156,9 @@ proposal. So the generator refuses such a URL, and the gate reports it as a
 finding and keeps checking the other fixtures. A URL that reads but names no
 host is refused as well: `urlsplit` is permissive and reads
 `/search?resultset=catalog` as a path, and a request that names no host is not a
-request the record could have made.
+request the record could have made. The host is read as the host and not as the
+whole authority: `http://:80/path` carries a port and no host, and an authority
+that names a port alone is not a place the request could have been made to.
 
 **The answer the proposal publishes is the answer the evidence recorded.** The
 proposal says three things about the answer: the status it came with, the
@@ -1219,7 +1221,9 @@ was accepted.
 **A parameter that is sent twice is refused.** A request that names a parameter
 twice says two things about it, and a query read as a map keeps only the last
 value — the proposal would advertise one request and the fixture would pin
-another.
+another. The generated test reads the query as the pairs it carries and asserts
+that every parameter is named once, so the repetition cannot come back through
+the test itself.
 
 **The candidate and the evidence have to say the same thing.** The proposal
 publishes the query of the candidate as the parameters of the contract, and the
@@ -1239,6 +1243,15 @@ status that became the text `200` is not the status the capture recorded, and a
 comparison that reads both sides as text would call them equal. The observation
 has to belong to the experiment that holds it too: the bundle and the summary
 may agree with each other while both disagree with the experiment around them.
+
+**The answer has to be the same answer on both sides.** The fixture is built from
+the summary of the observation and the proposal publishes the capture, so the
+two descriptions of the answer have to agree as well: the status, the content
+type, the size and the kind of the answer, and the shape of that answer — its
+top-level keys, the number of its products and their total. A summary that
+says the request came with 200 while the bundle says 498 would write a fixture
+and a proposal that describe two different answers, and the record would earn
+neither.
 
 **The names are sets, and a name that appears twice is said on its own.** The
 generated test asks whether a header was sent and whether the answer carries a
@@ -1337,4 +1350,10 @@ of it, and so is a nested object that is not an object: a capture whose request
 is a list, a fixture whose ordering is a list. So is the same capture id in two
 bundles: two bundles that answer for one capture make the witness ambiguous. The manifest has to name every tool the proposal was produced by —
 the generator and the redactor — because a dependency nobody names is a
-dependency nobody watches.
+dependency nobody watches. A fixture has to name the investigation of the
+proposal that holds it, next to the candidate and the observation: a fixture of
+another investigation is a fixture of another record, and the gate names it even
+when everything else about the fixture is right. And the query a fixture holds
+has to be a map of text to text, because that is how the generated test reads
+it: a name or a value of another type is a query the test would read
+differently than the request that was made.

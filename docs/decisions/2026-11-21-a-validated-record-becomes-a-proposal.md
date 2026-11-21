@@ -404,6 +404,12 @@ deleted file would otherwise pass.
   under: the experiment, the run, the request and the order have to agree, and
   every one of them has to be there — a dimension that is missing is not a
   dimension that matches.
+- **Never** accept a capture whose answer disagrees with the observation: the
+  fixture is built from the summary and the proposal publishes the capture, so
+  the status, the content type, the size, the kind of the answer and the shape
+  of the answer have to be the same on both sides — a summary that says 200
+  while the bundle says 498 would write a fixture and a proposal that describe
+  two different answers.
 - **Never** accept an observation that does not belong to the experiment that
   holds it: the bundle and the summary may agree with each other and both
   disagree with the experiment around them.
@@ -420,7 +426,9 @@ deleted file would otherwise pass.
   is named by its value or its bounds, never by its shape: a phone number and a
   catalog id look the same to a redactor.
 - **Never** accept a request that names a parameter twice: it says two things
-  about the request, and a query read as a map keeps only the last value.
+  about the request, and a query read as a map keeps only the last value — so
+  the generated test reads the query as pairs and asserts that every parameter
+  is named once.
 - **Never** accept a record that writes a key twice: the duplicate is gone before
   anybody can refuse it, and every check after that sees a request nobody sent.
 - **Never** publish a claim the record's own redactor would change: the claim is
@@ -476,7 +484,16 @@ deleted file would otherwise pass.
 - **Never** let a malformed URL raise out of the tool: a URL that cannot be read
   is a record the tool refuses and a finding the gate names; a URL that reads
   but names no host is refused as well, because a request that names no host is
-  not a request the record could have made.
+  not a request the record could have made — and the host is read as the host
+  and not as the whole authority, so an authority that names a port alone
+  (`http://:80/path`) names no host either.
+- **Never** let the drift gate read a query as a map of anything but text to
+  text: that is how the generated test reads it, so a name or a value of
+  another type is a query the test would read differently than the request that
+  was made.
+- **Always** let the drift gate check that a fixture names the investigation of
+  the proposal that holds it: a fixture of another investigation is a fixture of
+  another record.
 - **Never** publish an answer the evidence did not record: the status, the
   content type and the keys of the body come from the candidate's own summary,
   so the summary has to agree with the capture, and the published values are the

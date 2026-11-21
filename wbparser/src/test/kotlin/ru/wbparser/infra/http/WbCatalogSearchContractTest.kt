@@ -104,17 +104,20 @@ class WbCatalogSearchContractTest :
             return json.decodeFromString(stream.readBytes().decodeToString())
         }
 
-        /** The query of a URL, decoded — the parameters of the request itself. */
-        fun queryOf(url: String): Map<String, String> =
+        /** The query of a URL as pairs — a repeated parameter stays two pairs. */
+        fun queryPairsOf(url: String): List<Pair<String, String>> =
             url
                 .substringAfter('?', "")
                 .split('&')
                 .filter { it.isNotBlank() }
-                .associate { pair ->
+                .map { pair ->
                     val name = pair.substringBefore('=')
                     val value = pair.substringAfter('=', "")
                     name to URLDecoder.decode(value, "UTF-8")
                 }
+
+        /** The query of a URL, decoded — the parameters of the request itself. */
+        fun queryOf(url: String): Map<String, String> = queryPairsOf(url).toMap()
 
         fun fetched(body: String): Fetched {
             val url = CrawlUrl.of("https://www.wildberries.ru/catalog/131954/list.aspx").getOrNull()!!
@@ -189,6 +192,7 @@ class WbCatalogSearchContractTest :
                 searchQuery = parsedCrawl.searchQuery,
             )
         val productionQuery = queryOf(productionUrl)
+        val productionNames = queryPairsOf(productionUrl).map { it.first }
         val productionHeaders =
             WbCatalogApi
                 .buildWbHeaders()
@@ -237,6 +241,13 @@ class WbCatalogSearchContractTest :
             // one that was dropped. Both fail quietly: the endpoint answers 200 with
             // somebody else's products.
             productionQuery.keys shouldBe baseline.request.query.keys + crawlerOnly - storefrontOnly
+        }
+
+        test("the request names every parameter once") {
+            // A query read as a map keeps only the last value of a name that appears
+            // twice, so a request that names a parameter twice says two things about
+            // it — and the map would hide the first. The pairs are read for this.
+            productionNames.distinct().size shouldBe productionNames.size
         }
 
         test("the parameters the crawler and the storefront share carry the same values") {

@@ -223,7 +223,7 @@ def is_url(url: str) -> bool:
         _ = parts.port
     except ValueError:
         return False
-    return parts.scheme in ("http", "https") and bool(parts.netloc)
+    return parts.scheme in ("http", "https") and bool(parts.hostname)
 
 
 def holds_type(value: Any, expect: type) -> bool:
@@ -420,7 +420,7 @@ def evidence_captures(sources: dict[str, str], root: Path) -> tuple[dict[str, di
     return captures, findings
 
 
-def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: Path) -> list[str]:
+def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: Path, investigation: str) -> list[str]:
     """The generated fixtures whose name does not say what they hold.
 
     The generator names a fixture after the observation it was built from and puts it
@@ -471,6 +471,12 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
             findings.append(
                 f"{relative}: the fixture holds the observation '{document.get('observation')}' — "
                 f"the generator names a fixture after the observation it was built from"
+            )
+        if investigation and str(document.get("investigation")) != investigation:
+            findings.append(
+                f"{relative}: the fixture names the investigation '{document.get('investigation')}' — "
+                f"the proposal names the investigation '{investigation}', and a fixture of another "
+                f"investigation is a fixture of another record"
             )
         if str(document.get("candidate")) != candidate:
             findings.append(
@@ -535,7 +541,18 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
             findings.append(
                 f"{relative}: the fixture holds no query — a dimension that is missing is not a dimension that matches"
             )
-        elif not isinstance(query, dict) or {str(name): str(value) for name, value in query.items()} != recorded_query:
+        elif not isinstance(query, dict):
+            findings.append(
+                f"{relative}: the fixture holds the query {query!r}, which is not a map of names to "
+                f"values — the request is committed in the fixture, and the test reads it as a map"
+            )
+        elif not all(isinstance(name, str) and isinstance(value, str) for name, value in query.items()):
+            findings.append(
+                f"{relative}: the fixture holds the query {query}, whose names and values have to be "
+                f"text — the test reads the query as a map of names to values, and a value of another "
+                f"type is a query the test would read differently"
+            )
+        elif query != recorded_query:
             findings.append(
                 f"{relative}: the fixture holds the query {query}, the evidence records "
                 f"{recorded_query} for the observation '{observation}'"
@@ -682,7 +699,7 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
     findings += evidence_findings(str(manifest.get("investigation") or ""), sections["sources"], root)
     captures, capture_findings = evidence_captures(sections["sources"], root)
     findings += capture_findings
-    findings += fixture_findings(sections["generated"], captures, root)
+    findings += fixture_findings(sections["generated"], captures, root, str(manifest.get("investigation") or ""))
 
     if not sections["sources"]:
         findings.append(f"{relative_manifest}: the manifest names no source of the proposal")
@@ -800,6 +817,7 @@ def self_test() -> None:
                     {
                         "observation": observation,
                         "candidate": "storefront-catalog-search",
+                        "investigation": "demo",
                         "experiment": experiment,
                         "run": run,
                         "request": {
@@ -1204,6 +1222,35 @@ def self_test() -> None:
         manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
         write_manifest()
         assert check(proposals, root) == [], "a capture that names a header once must pass"
+
+        # A fixture of another investigation: the proposal names the investigation,
+        # and a fixture that names another one is a fixture of another record.
+        other_investigation = json.loads(fixture_document())
+        other_investigation["investigation"] = "another-record"
+        fixture.write_text(json.dumps(other_investigation) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("names the investigation" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture of the proposal's investigation must pass"
+
+        # A query whose values are not text: the test reads the query as a map of
+        # names to values, so a value of another type is a query the test reads
+        # differently than the request that was made.
+        typed_query = json.loads(fixture_document())
+        typed_query["request"]["query"] = {"resultset": "catalog", "page": 2}
+        fixture.write_text(json.dumps(typed_query) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("have to be text" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture with a text query must pass"
 
         # A URL that names no host: `urlsplit` reads it as a path, and a request
         # that names no host is not a request the record could have made.
