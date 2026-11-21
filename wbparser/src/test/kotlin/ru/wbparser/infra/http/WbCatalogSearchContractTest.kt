@@ -18,6 +18,12 @@ import java.net.URI
 import java.net.URLDecoder
 import java.util.UUID
 
+// A placeholder is the whole value the redactor left behind. A value that begins
+// with one and goes on is not a placeholder but a value nobody judged — so the
+// pattern is the generator's own, and the test asks the same question the
+// generator asks.
+private val REDACTED_VALUE = Regex("<redacted:[^>]+>")
+
 /**
  * The seller-catalog contract, pinned to the evidence of one investigation.
  *
@@ -238,7 +244,7 @@ class WbCatalogSearchContractTest :
                 // The search token was redacted in the record: only its name can be
                 // compared, its value is the crawler's own token. The storefront-only
                 // parameters are not compared at all — the crawler does not send them.
-                if (value.startsWith("<redacted:") || name in storefrontOnly) return@forEach
+                if (REDACTED_VALUE.matches(value) || name in storefrontOnly) return@forEach
                 productionQuery[name] shouldBe value
             }
         }

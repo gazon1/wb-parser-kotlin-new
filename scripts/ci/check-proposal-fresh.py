@@ -38,6 +38,7 @@ import sys
 import tempfile
 from collections import Counter
 from pathlib import Path
+from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -195,8 +196,74 @@ def query_pairs_of(url: str) -> list[tuple[str, str]]:
     and a request that names a parameter twice says two things about it. The
     generator refuses such a request; the gate has to name it as well, so the
     pairs are kept and the names that appear twice are a finding of their own.
+
+    A URL that cannot be read as one has no query: `urlsplit` raises for a
+    malformed authority, and a gate that dies on a malformed record says
+    nothing about the proposal.
     """
-    return [(name, value) for name, value in parse_qsl(urlsplit(url).query, keep_blank_values=True)]
+    try:
+        query = urlsplit(url).query
+    except ValueError:
+        return []
+    return [(name, value) for name, value in parse_qsl(query, keep_blank_values=True)]
+
+
+def is_url(url: str) -> bool:
+    """Whether the URL can be read as one — a malformed authority cannot."""
+    try:
+        urlsplit(url)
+    except ValueError:
+        return False
+    return True
+
+
+def dimension_findings(
+    relative: str,
+    observation: str,
+    label: str,
+    field: str,
+    held: dict,
+    recorded: dict,
+    *,
+    as_text: bool = False,
+    normalize: Any = None,
+    expect_list: bool = False,
+) -> list[str]:
+    """One dimension of a fixture against the one the capture recorded.
+
+    A dimension that is missing on either side is not a dimension that matches: the
+    comparison of two absent values would pass, and a capture that says nothing
+    about the answer would witness anything.
+
+    `normalize` says how the two values are read — the names of the headers are a
+    set, the order of the products is not — and `expect_list` says that the
+    dimension holds a list at all.
+    """
+    if field not in held:
+        return [
+            f"{relative}: the fixture holds no {label} — a dimension that is missing is not a dimension that matches"
+        ]
+    if field not in recorded:
+        return [
+            f"{relative}: the evidence records no {label} for the observation "
+            f"'{observation}' — a dimension that is missing is not a dimension that matches"
+        ]
+    left, right = held[field], recorded[field]
+    if expect_list and (not isinstance(left, list) or not isinstance(right, list)):
+        return [
+            f"{relative}: the fixture holds the {label} {left!r}, the evidence records {right!r} for "
+            f"the observation '{observation}' — a {label} is a list"
+        ]
+    if as_text:
+        left, right = str(left), str(right)
+    if normalize is not None:
+        left, right = normalize(left), normalize(right)
+    if left != right:
+        return [
+            f"{relative}: the fixture holds the {label} '{left}', the evidence records '{right}' for "
+            f"the observation '{observation}'"
+        ]
+    return []
 
 
 def duplicate_names(pairs: list[tuple[str, str]]) -> list[str]:
@@ -354,17 +421,10 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
                 f"evidence does not record — a fixture is built from an observation of the record"
             )
             continue
-        if str(document.get("experiment")) != str(capture.get("experiment")):
-            findings.append(
-                f"{relative}: the fixture names the experiment '{document.get('experiment')}', "
-                f"the evidence records the observation '{observation}' in the experiment "
-                f"'{capture.get('experiment')}'"
-            )
-        if str(document.get("run")) != str(capture.get("run")):
-            findings.append(
-                f"{relative}: the fixture names the run '{document.get('run')}', the evidence records "
-                f"the observation '{observation}' in the run '{capture.get('run')}'"
-            )
+        findings += dimension_findings(
+            relative, observation, "experiment", "experiment", document, capture, as_text=True
+        )
+        findings += dimension_findings(relative, observation, "run", "run", document, capture, as_text=True)
         request = document.get("request")
         if not isinstance(request, dict):
             findings.append(
@@ -380,13 +440,12 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
             ordering = {}
         recorded_request = object_field(capture, "request")
         recorded_ordering = object_field(capture, "ordering")
-        for name in ("method", "url"):
-            if str(request.get(name)) != str(recorded_request.get(name)):
-                findings.append(
-                    f"{relative}: the fixture holds the request {name} '{request.get(name)}', the "
-                    f"evidence records '{recorded_request.get(name)}' for the observation "
-                    f"'{observation}'"
-                )
+        findings += dimension_findings(
+            relative, observation, "request method", "method", request, recorded_request, as_text=True
+        )
+        findings += dimension_findings(
+            relative, observation, "request url", "url", request, recorded_request, as_text=True
+        )
         # The query of the request and the order of the products are what the
         # generated test reads: it compares the crawler's parameters with the
         # recorded ones and rebuilds the body of the answer from the recorded
@@ -396,7 +455,13 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
         # The query is read as pairs: a request that names a parameter twice says
         # two things about it, and the map a query is usually read as keeps only
         # the last value — so a name that appears twice is named on its own.
-        recorded_pairs = query_pairs_of(str(recorded_request.get("url") or ""))
+        recorded_url = str(recorded_request.get("url") or "")
+        if not is_url(recorded_url):
+            findings.append(
+                f"{relative}: the evidence records a request url '{recorded_url}' that cannot be read "
+                f"as a URL — the capture is the witness of the request the fixture was built from"
+            )
+        recorded_pairs = query_pairs_of(recorded_url)
         for name in duplicate_names(recorded_pairs):
             findings.append(
                 f"{relative}: the evidence records the parameter '{name}' twice for the observation "
@@ -404,52 +469,60 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
             )
         recorded_query = dict(recorded_pairs)
         query = request.get("query")
-        if not isinstance(query, dict) or {str(name): str(value) for name, value in query.items()} != recorded_query:
+        if "query" not in request:
+            findings.append(
+                f"{relative}: the fixture holds no query — a dimension that is missing is not a dimension that matches"
+            )
+        elif not isinstance(query, dict) or {str(name): str(value) for name, value in query.items()} != recorded_query:
             findings.append(
                 f"{relative}: the fixture holds the query {query}, the evidence records "
                 f"{recorded_query} for the observation '{observation}'"
             )
-        ids = ordering.get("productIds")
-        recorded_ids = recorded_ordering.get("productIds")
-        if not isinstance(ids, list) or not isinstance(recorded_ids, list) or ids != recorded_ids:
-            findings.append(
-                f"{relative}: the fixture holds the order {ids}, the evidence records "
-                f"{recorded_ids} for the observation '{observation}'"
-            )
-        order = ordering.get("orderHash")
-        recorded = recorded_ordering.get("orderHash")
-        if str(order) != str(recorded):
-            findings.append(
-                f"{relative}: the fixture holds the order '{order}', the evidence records "
-                f"'{recorded}' for the observation '{observation}'"
-            )
+        # The order of the products is an order: the test rebuilds the body of the
+        # answer from it, so the same names in another order are another answer.
+        findings += dimension_findings(
+            relative, observation, "order of the products", "productIds", ordering, recorded_ordering, expect_list=True
+        )
+        findings += dimension_findings(
+            relative, observation, "order", "orderHash", ordering, recorded_ordering, as_text=True
+        )
         # The rest of the fixture is copied from the capture as well, and the
         # generated test reads it: the names of the headers the request sent, the
         # metadata of the answer and the shape of the answer. A fixture that
         # changed one of them changed the test, and the capture is the witness.
-        headers = request.get("headerNames")
-        recorded_headers = recorded_request.get("headerNames")
-        if not isinstance(headers, list) or not isinstance(recorded_headers, list) or headers != recorded_headers:
-            findings.append(
-                f"{relative}: the fixture holds the header names {headers}, the evidence records "
-                f"{recorded_headers} for the observation '{observation}'"
-            )
+        # The names of the headers are a set: the generated test reads them as a set,
+        # so a capture that lists the same names in another order records the same
+        # request.
+        findings += dimension_findings(
+            relative,
+            observation,
+            "header names",
+            "headerNames",
+            request,
+            recorded_request,
+            expect_list=True,
+            normalize=lambda value: sorted(value, key=str),
+        )
         response = object_field(document, "response")
         recorded_response = object_field(capture, "response")
         for name in ("status", "contentType", "bodyBytes", "isJson"):
-            if response.get(name) != recorded_response.get(name):
-                findings.append(
-                    f"{relative}: the fixture holds the response {name} '{response.get(name)}', the "
-                    f"evidence records '{recorded_response.get(name)}' for the observation '{observation}'"
-                )
+            findings += dimension_findings(relative, observation, f"response {name}", name, response, recorded_response)
         answer = object_field(document, "answer")
         recorded_answer = object_field(capture, "schema")
-        for name in ("topLevelKeys", "productCount", "total"):
-            if answer.get(name) != recorded_answer.get(name):
-                findings.append(
-                    f"{relative}: the fixture holds the answer {name} '{answer.get(name)}', the "
-                    f"evidence records '{recorded_answer.get(name)}' for the observation '{observation}'"
-                )
+        # The top-level keys are a set as well: the test asks whether the answer
+        # carries a key, not in which order the keys came.
+        findings += dimension_findings(
+            relative,
+            observation,
+            "answer topLevelKeys",
+            "topLevelKeys",
+            answer,
+            recorded_answer,
+            expect_list=True,
+            normalize=lambda value: sorted(value, key=str),
+        )
+        for name in ("productCount", "total"):
+            findings += dimension_findings(relative, observation, f"answer {name}", name, answer, recorded_answer)
     return findings
 
 
@@ -625,6 +698,7 @@ def self_test() -> None:
             url: str | None = None,
             header_names: list | None = None,
             total: int | None = None,
+            top_level_keys: list | None = None,
         ) -> str:
             """The fixture as the generator writes it — the fields it writes."""
             return (
@@ -647,7 +721,9 @@ def self_test() -> None:
                             "isJson": True,
                         },
                         "answer": {
-                            "topLevelKeys": ["metadata", "products", "total"],
+                            "topLevelKeys": ["metadata", "products", "total"]
+                            if top_level_keys is None
+                            else top_level_keys,
                             "productCount": 100,
                             "total": 113593 if total is None else total,
                         },
@@ -669,6 +745,7 @@ def self_test() -> None:
             url: str | None = None,
             header_names: list | None = None,
             total: int | None = None,
+            top_level_keys: list | None = None,
         ) -> dict:
             """The capture as the record keeps it — the fields the gate compares."""
             return {
@@ -687,7 +764,7 @@ def self_test() -> None:
                     "isJson": True,
                 },
                 "schema": {
-                    "topLevelKeys": ["metadata", "products", "total"],
+                    "topLevelKeys": ["metadata", "products", "total"] if top_level_keys is None else top_level_keys,
                     "productCount": 100,
                     "total": 113593 if total is None else total,
                 },
@@ -937,6 +1014,79 @@ def self_test() -> None:
         manifest["generated"][fixture_relative] = digest(fixture)
         write_manifest()
         assert check(proposals, root) == [], "a fixture with the recorded answer must pass"
+
+        # A dimension that is missing on both sides is not a dimension that matches:
+        # the comparison of two absent values would pass, and a capture that says
+        # nothing about the answer would witness anything.
+        thin_fixture = json.loads(fixture_document())
+        del thin_fixture["response"]["status"]
+        thin_capture = capture_document()
+        del thin_capture["response"]["status"]
+        fixture.write_text(json.dumps(thin_fixture) + "\n", encoding="utf-8")
+        bundle.write_text(json.dumps({"captures": [thin_capture]}) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("holds no response status" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        bundle.write_text(json.dumps({"captures": [capture_document()]}) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture with the recorded answer must pass"
+
+        # The names of the headers and the top-level keys of the answer are sets:
+        # the generated test asks whether a name is there, not in which order the
+        # names came. So a capture that lists the same names in another order
+        # records the same request.
+        fixture.write_text(
+            fixture_document(
+                header_names=["deviceid", "x-userid"],
+                top_level_keys=["metadata", "products", "total"],
+            ),
+            encoding="utf-8",
+        )
+        bundle.write_text(
+            json.dumps(
+                {
+                    "captures": [
+                        capture_document(
+                            header_names=["x-userid", "deviceid"],
+                            top_level_keys=["total", "products", "metadata"],
+                        )
+                    ]
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        manifest["generated"][fixture_relative] = digest(fixture)
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        assert check(proposals, root) == [], "the same names in another order must pass"
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        bundle.write_text(json.dumps({"captures": [capture_document()]}) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+
+        # A URL that cannot be read as one: a finding, not a crash. The gate reads
+        # the query of every capture, and a malformed authority is not a query.
+        broken_url = "https://[invalid/search"
+        fixture.write_text(fixture_document(url=broken_url), encoding="utf-8")
+        bundle.write_text(json.dumps({"captures": [capture_document(url=broken_url)]}) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("cannot be read as a URL" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        bundle.write_text(json.dumps({"captures": [capture_document()]}) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        assert check(proposals, root) == [], "a request with a readable URL must pass"
 
         # An evidence bundle whose captures are not a list: a finding, not a crash.
         bundle.write_text(json.dumps({"captures": 42}) + "\n", encoding="utf-8")

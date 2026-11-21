@@ -916,6 +916,61 @@ def test_the_parameters_of_another_candidate_are_not_published(world, tmp_path):
     assert "https://example.test/search" in proposal, proposal
 
 
+def test_a_contract_that_contradicts_itself_is_named():
+    # The table answers three questions about the parameters of the request, and
+    # the answers are kept apart on purpose — but they answer about the same
+    # names. A name one declaration names and another does not is a parameter the
+    # contract cannot judge.
+    problems = generate_proposal.contract_problems(
+        {
+            "identity": {"resultset": "catalog"},
+            "crawler_only": {},
+            "storefront_only": {"inheritFilters": "the storefront sends it"},
+            "parameters": {"resultset": {"value": "catalog"}},
+        }
+    )
+    assert any("inheritFilters" in problem for problem in problems), problems
+
+
+def test_a_parameter_without_a_rule_is_named():
+    # A parameter the contract declares without a rule is a parameter whose value
+    # nobody may publish — and the declaration is the tool's own, so the tool
+    # checks it.
+    problems = generate_proposal.contract_problems(
+        {
+            "identity": {},
+            "crawler_only": {},
+            "storefront_only": {},
+            "parameters": {"resultset": {}},
+        }
+    )
+    assert any("resultset" in problem for problem in problems), problems
+
+
+def test_the_contract_of_the_tool_is_consistent_with_itself():
+    assert generate_proposal.contract_problems(generate_proposal.CONTRACTS["storefront-catalog-search"]) == []
+
+
+def test_an_endpoint_that_cannot_be_read_as_a_url_is_refused(world, tmp_path):
+    # `urlsplit` raises for a malformed authority, and a record that holds such an
+    # endpoint is a record the tool refuses — not one that crashes it: a traceback
+    # is not a way to tell a reviewer that the record does not earn a proposal.
+    world.add_candidate("https://[invalid/search")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "cannot be read as a URL" in str(refusal.value), str(refusal.value)
+
+
+def test_a_placeholder_is_recognised_as_the_whole_value(world, tmp_path):
+    # One predicate recognises a placeholder, and it asks whether the placeholder
+    # is the whole value: a value that begins with one and goes on is not a
+    # placeholder but a value nobody judged.
+    assert generate_proposal.is_placeholder("<redacted:token>")
+    assert not generate_proposal.is_placeholder("<redacted:token>alice@example.com")
+    assert not generate_proposal.is_placeholder("alice@example.com")
+
+
 def test_a_parameter_sent_twice_is_refused(world, tmp_path):
     # A parameter that occurs twice says two things about the request, and a query
     # read as a map keeps only the last value: the proposal would advertise one

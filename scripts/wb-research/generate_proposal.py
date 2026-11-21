@@ -46,7 +46,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, urlsplit, urlunsplit
+from urllib.parse import SplitResult, parse_qsl, urlsplit, urlunsplit
 
 import yaml
 
@@ -212,6 +212,17 @@ SEARCH_TOKEN = "menu_v3_9467 карты памяти"
 # behind instead of the value, and the generator publishes it as it is.
 PLACEHOLDER = re.compile(r"<redacted:[^>]+>")
 
+
+def is_placeholder(value: Any) -> bool:
+    """Whether the value is the placeholder the redactor left behind.
+
+    The placeholder is the whole value: a value that begins with one and goes on is
+    not a placeholder but a value nobody judged. So the rule is asked in one place,
+    and every place that recognises a placeholder asks it the same way.
+    """
+    return bool(PLACEHOLDER.fullmatch(str(value if value is not None else "")))
+
+
 # A committed value is either a placeholder or a value that carries no secret shape.
 # The rule is the one the record's own redactor applies, kept to what a query
 # parameter can be: a name, a number, a flag, a path.
@@ -320,6 +331,20 @@ def claim_problems(claim: dict[str, Any]) -> list[str]:
     return []
 
 
+def url_parts(url: str) -> SplitResult:
+    """The parts of a URL — refused when the URL cannot be read as one.
+
+    `urlsplit` raises for a malformed authority — an IPv6 bracket that is not
+    closed, for example. A record that holds such a URL is a record the tool
+    refuses, not one that crashes it: a traceback is not a way to tell a reviewer
+    that the record does not earn a proposal.
+    """
+    try:
+        return urlsplit(str(url or ""))
+    except ValueError as error:
+        raise Refused(f"the URL '{url}' cannot be read as a URL ({error})") from error
+
+
 def published_endpoint(endpoint: str) -> str:
     """The endpoint as the proposal may name it — the place, without its query.
 
@@ -334,7 +359,7 @@ def published_endpoint(endpoint: str) -> str:
     be vouched for is not published; it is not published in a rewritten form
     either, because the record is what says what the request was.
     """
-    parts = urlsplit(str(endpoint or ""))
+    parts = url_parts(endpoint)
     return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
@@ -360,9 +385,9 @@ def endpoint_problems(endpoint: str) -> list[str]:
     carries credentials is refused outright.
     """
     problems: list[str] = []
-    parts = urlsplit(str(endpoint or ""))
+    parts = url_parts(endpoint)
     for name, value in parse_qsl(parts.query, keep_blank_values=True):
-        if PLACEHOLDER.fullmatch(value):
+        if is_placeholder(value):
             continue
         if REDACTOR.redact_query_value(name, value) != value:
             problems.append(f"the parameter '{name}' carries a value the record's own redactor would replace")
@@ -694,7 +719,7 @@ def evidence_index(directory: Path) -> dict[str, dict[str, Any]]:
 
 def query_of(url: str) -> dict[str, str]:
     """The query of a URL, decoded — the request as it was made."""
-    return dict(parse_qsl(urlsplit(url).query, keep_blank_values=True))
+    return dict(parse_qsl(url_parts(url).query, keep_blank_values=True))
 
 
 def query_pairs_of(url: str) -> list[tuple[str, str]]:
@@ -704,7 +729,7 @@ def query_pairs_of(url: str) -> list[tuple[str, str]]:
     reading a query and wrong for checking one: a request that names a parameter
     twice is a request that says two things about it.
     """
-    return list(parse_qsl(urlsplit(url).query, keep_blank_values=True))
+    return list(parse_qsl(url_parts(url).query, keep_blank_values=True))
 
 
 def crawl_url_carries_search(crawl_url: str) -> bool:
@@ -715,7 +740,7 @@ def crawl_url_carries_search(crawl_url: str) -> bool:
     the endpoint answers 200 with the unfiltered popular list — so the record has
     to name one before the proposal is written.
     """
-    parts = urlsplit(crawl_url)
+    parts = url_parts(crawl_url)
     names = [chunk.split("=", 1)[0] for chunk in parts.query.split("&") if chunk]
     return "search" in names
 
@@ -743,7 +768,7 @@ def publishable_query_value(name: str, value: Any) -> bool:
     a value anybody types.
     """
     text = str(value if value is not None else "")
-    if PLACEHOLDER.fullmatch(text):
+    if is_placeholder(text):
         return True
     if not SAFE_QUERY_VALUE.fullmatch(text):
         return False
@@ -784,7 +809,7 @@ def parameter_problems(contract: dict[str, Any], pairs: list[tuple[str, Any]]) -
         elif "range" in rule:
             allowed = within_range(text, rule["range"])
         elif rule.get("free_text"):
-            allowed = bool(PLACEHOLDER.fullmatch(text))
+            allowed = is_placeholder(text)
         else:
             allowed = False
         if not allowed:
@@ -834,7 +859,7 @@ def duplicate_parameter_problems(pairs: list[tuple[str, Any]]) -> list[str]:
 
 def query_problems(contract: dict[str, Any], url: str) -> list[str]:
     """The parameters of a URL that may not be committed."""
-    return parameter_problems(contract, list(parse_qsl(urlsplit(url).query, keep_blank_values=True)))
+    return parameter_problems(contract, list(parse_qsl(url_parts(url).query, keep_blank_values=True)))
 
 
 def fixture_dir_of(candidate_id: str) -> str:
@@ -933,6 +958,12 @@ import ru.wbparser.infra.json.wbJson
 import java.net.URI
 import java.net.URLDecoder
 import java.util.UUID
+
+// A placeholder is the whole value the redactor left behind. A value that begins
+// with one and goes on is not a placeholder but a value nobody judged — so the
+// pattern is the generator's own, and the test asks the same question the
+// generator asks.
+private val REDACTED_VALUE = Regex("%%REDACTED_PATTERN%%")
 
 /**
  * The seller-catalog contract, pinned to the evidence of one investigation.
@@ -1154,7 +1185,7 @@ class %%TEST_CLASS%% :
                 // The search token was redacted in the record: only its name can be
                 // compared, its value is the crawler's own token. The storefront-only
                 // parameters are not compared at all — the crawler does not send them.
-                if (value.startsWith("<redacted:") || name in storefrontOnly) return@forEach
+                if (REDACTED_VALUE.matches(value) || name in storefrontOnly) return@forEach
                 productionQuery[name] shouldBe value
             }
         }
@@ -1394,6 +1425,7 @@ def render_kotlin(
         "%%TOKEN%%": SEARCH_TOKEN,
         "%%CRAWL_URL%%": crawl_url,
         "%%CATALOG_ID%%": catalog.group(1),
+        "%%REDACTED_PATTERN%%": PLACEHOLDER.pattern,
         "%%CRAWLER_ONLY%%": kotlin_set(sorted(contract["crawler_only"])),
         "%%CRAWLER_ONLY_VALUES%%": kotlin_map(
             {
@@ -1660,6 +1692,36 @@ def existing_proposal_for(output_root: Path, candidate_id: str, investigation_id
     return None
 
 
+def contract_problems(contract: dict[str, Any]) -> list[str]:
+    """Why a contract declaration is not consistent with itself.
+
+    The table answers three questions about the parameters of the request — which
+    request this is, who sends the parameter, and what value it may hold — and the
+    answers are kept apart on purpose. But they answer about the same names: a name
+    that one declaration names and another does not is a parameter the contract
+    cannot judge, and a parameter the contract declares without a rule is a
+    parameter whose value nobody may publish.
+
+    The check is on the table, not on the record: the table is the tool's own
+    declaration, and a declaration that contradicts itself is a bug of the tool.
+    """
+    problems: list[str] = []
+    declared = contract.get("parameters") or {}
+    for section in ("identity", "crawler_only", "storefront_only"):
+        for name in contract.get(section) or {}:
+            if name not in declared:
+                problems.append(f"'{name}' is named as {section} but no value is declared for it")
+    for name, spec in declared.items():
+        if not isinstance(spec, dict):
+            problems.append(f"'{name}' is declared as a parameter of the request but declares no rule")
+            continue
+        if not any(key in spec for key in ("value", "values", "range")) and not spec.get("free_text"):
+            problems.append(
+                f"'{name}' is declared as a parameter of the request but no rule says what its value may be"
+            )
+    return problems
+
+
 def generate(
     investigation_id: str,
     output_root: Path,
@@ -1685,6 +1747,14 @@ def generate(
     if candidate_id not in CONTRACTS:
         raise Refused(f"this tool does not know the contract '{candidate_id}' — it knows {sorted(CONTRACTS)}")
     contract = CONTRACTS[candidate_id]
+
+    # The table answers three questions about the parameters of the request, and the
+    # answers are kept apart on purpose — but they answer about the same names. A
+    # name one declaration names and another does not is a parameter the contract
+    # cannot judge, so the table is checked against itself before it is used.
+    inconsistent = contract_problems(contract)
+    if inconsistent:
+        raise Refused(f"the contract '{candidate_id}' is not consistent with itself: {'; '.join(inconsistent)}")
 
     candidate = candidate_of(investigation, candidate_id)
     evidence = evidence_index(directory)
@@ -1797,9 +1867,7 @@ def generate(
     # same value in a query and in a header has leaked one into the other, and the
     # query is the place it would be committed.
     header_values = {
-        str(value)
-        for value in (candidate.get("headers") or {}).values()
-        if value and not str(value).startswith("<redacted:")
+        str(value) for value in (candidate.get("headers") or {}).values() if value and not is_placeholder(value)
     }
     leaked = sorted(name for name, value in (candidate.get("query") or {}).items() if str(value) in header_values)
     if leaked:

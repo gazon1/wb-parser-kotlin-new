@@ -292,6 +292,14 @@ twice, and a gate that read the query as a map would keep the last value of the
 name and say nothing about the first — the very disagreement the generator
 refuses to publish.
 
+The gate binds a fixture to its capture on every dimension, and a dimension
+that is missing on either side is not a dimension that matches: the comparison
+of two absent values would pass, and a capture that says nothing about the
+answer would witness anything. The names of the headers and the top-level keys
+of the answer are sets — the generated test asks whether a name is there, not
+in which order the names came — so a capture that lists the same names in
+another order records the same request.
+
 The gate reads every nested object it walks into, and names the one that is not
 an object. The request of a capture and the order of its answer are read to be
 compared with the fixture, so a request that is a list has to be a finding and
@@ -309,6 +317,23 @@ A placeholder is the whole value. The redactor leaves a placeholder behind
 instead of the value it removed, and a placeholder with something appended to
 it is not that: `<redacted:token>alice@example.com` is an address the redactor
 would replace, and a value that starts with a placeholder is not a placeholder.
+The question is asked in one place, and the generated test asks it with the
+generator's own pattern: a second rule that recognises a placeholder by its
+prefix would drift from the first.
+
+A URL that cannot be read as one is refused, not raised on. `urlsplit` raises
+for a malformed authority — an IPv6 bracket that is not closed — and a record
+that holds such a URL is a record the tool cannot judge. A traceback is not a
+way to tell a reviewer that the record does not earn a proposal, so the
+generator refuses such a URL and the gate reports it as a finding and keeps
+checking the other fixtures.
+
+The contract table is checked against itself. It answers three questions about
+the same names — which request this is, who sends the parameter and what value
+it may hold — so a name one of its declarations names and another does not is
+a parameter the contract cannot judge, and a parameter it declares without a
+rule is a parameter whose value nobody may publish. Both are bugs of the tool
+rather than of the record, and the tool names them.
 
 And what cannot be vouched for is not published at all. The redactor has a rule
 for every name it knows and none for a name it has never seen, and `customer=Alice`
@@ -439,6 +464,19 @@ deleted file would otherwise pass.
   names has to be one the evidence holds, with the experiment, the run, the
   request, the query, the order of the products and the order of the answer the
   capture recorded — a fixture cannot be its own witness.
+- **Never** let a missing dimension count as a match: a dimension that is
+  missing on either side of the comparison is a dimension the record does not
+  speak about, and the capture cannot witness what it does not hold.
+- **Never** read the names of the headers or the top-level keys of the answer as
+  an order: the generated test asks whether a name is there.
+- **Never** let a malformed URL raise out of the tool: a URL that cannot be read
+  is a record the tool refuses and a finding the gate names.
+- **Never** recognise a placeholder by its prefix: one predicate asks whether the
+  placeholder is the whole value, and the generated test uses the generator's
+  own pattern.
+- **Never** let the contract table contradict itself: a name one of its
+  declarations names and another does not is a parameter the contract cannot
+  judge.
 - **Never** let the drift gate die on a malformed record: a bundle that is not
   JSON, a bundle whose captures are not a list and a capture id that two bundles
   hold are findings, not crashes — the gate reports what is wrong and keeps

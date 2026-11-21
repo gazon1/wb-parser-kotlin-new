@@ -1144,7 +1144,16 @@ typed is refused, not published.
 leave the value alone, and it matches the value as a whole: a value that begins
 with a placeholder and then goes on — `<redacted:token>alice@example.com` — is
 not a sanitized value but a sanitized prefix in front of a value nobody judged,
-so it is refused rather than published as if the placeholder covered it.
+so it is refused rather than published as if the placeholder covered it. The
+question is asked in one place, and the generated test asks it with the
+generator's own pattern: a second rule that recognises a placeholder by its
+prefix would drift from the first.
+
+**A URL that cannot be read is refused, not raised on.** A malformed authority —
+an IPv6 bracket that is not closed — is a record the tool cannot judge, and a
+traceback is not a way to tell a reviewer that the record does not earn a
+proposal. So the generator refuses such a URL, and the gate reports it as a
+finding and keeps checking the other fixtures.
 
 **The rule reaches the words of the record.** The text of a claim is a value like
 any other: a claim that names a person's mail or a token is committed into a
@@ -1168,6 +1177,13 @@ what their values may be — a fixed value, a closed set of values, a number
 within the bounds the endpoint itself names, or a phrase somebody typed, which
 only the placeholder that stands for it may be published. A parameter the
 contract does not declare never reaches a committed file.
+
+The table is checked against itself before it is used: it answers three
+questions about the same names — which request this is, who sends the parameter
+and what value it may hold — so a name one of its declarations names and
+another does not is a parameter the contract cannot judge, and a parameter it
+declares without a rule is a parameter whose value nobody may publish. Both are
+bugs of the tool rather than of the record, and the tool names them.
 
 **A number the site chose is named by its value or its bounds.** A number the
 site chose is named by its value or its bounds, never by its shape:
@@ -1283,7 +1299,13 @@ the shape of that answer — its top-level keys, the number of its products and
 their total. A fixture that keeps the query and the product order but restates
 the shape of the answer it answers with is a fixture of another answer, so the
 gate compares each of those fields with the capture and names the one that
-differs. The query is read as the pairs it carries, so a name that occurs
+differs. A dimension that is missing on either side is not a dimension that
+matches: the comparison of two absent values would pass, and a capture that says
+nothing about the answer would witness anything. And the names of the headers
+and the top-level keys of the answer are sets — the generated test asks whether
+a name is there, not in which order the names came — so a capture that lists
+the same names in another order records the same request. The query is read as
+the pairs it carries, so a name that occurs
 twice is named on its own: the generator refuses such a request, and a map
 would keep only the last value and hide the first. A bundle that cannot be read
 — a file that is not JSON, a bundle without captures, a captures field that is
