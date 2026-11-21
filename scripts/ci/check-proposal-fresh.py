@@ -93,6 +93,32 @@ def proposal_directories(proposals: Path) -> list[Path]:
     return sorted(path for path in proposals.iterdir() if path.is_dir())
 
 
+def inventory_findings(entries: dict[str, str], root: Path, suffix: str) -> list[str]:
+    """The files of a generated directory that the manifest does not name.
+
+    The manifest is the inventory of what the proposal added. A file that is on the
+    disk and not in the manifest is a leftover of an earlier generation: nobody
+    removed it, and it is still committed as if it were evidence. The same holds
+    for the evidence: a bundle added under the proposal changes what the generator
+    would read, and the gate has to say so.
+    """
+    findings: list[str] = []
+    directories = {str(Path(path).parent) for path in entries if path.endswith(suffix)}
+    for directory in sorted(directories):
+        folder = root / directory
+        if not folder.is_dir():
+            continue
+        named = {path for path in entries if str(Path(path).parent) == directory}
+        for path in sorted(folder.glob(f"*{suffix}")):
+            relative = f"{directory}/{path.name}"
+            if relative not in named:
+                findings.append(
+                    f"{relative}: a file the manifest does not name — regenerate the proposal, "
+                    f"so the inventory says what is on the disk"
+                )
+    return findings
+
+
 def check_one(manifest_path: Path, root: Path) -> list[str]:
     """The findings of one proposal. An empty list means it is current."""
     findings: list[str] = []
@@ -129,6 +155,9 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
     compare(sections["sources"], "the record changed after this proposal was generated")
     compare(sections["generator"], "the generator changed after this proposal was generated")
     compare(sections["generated"], "a generated file was changed by hand")
+
+    findings += inventory_findings(sections["generated"], root, ".json")
+    findings += inventory_findings(sections["sources"], root, ".json")
 
     if not sections["sources"]:
         findings.append(f"{relative_manifest}: the manifest names no source of the proposal")
@@ -206,6 +235,9 @@ def self_test() -> None:
         fixture = root / "wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json"
         fixture.parent.mkdir(parents=True)
         fixture.write_text("{}\n", encoding="utf-8")
+        bundle = record / "evidence" / "validation.json"
+        bundle.parent.mkdir(parents=True)
+        bundle.write_text("{}\n", encoding="utf-8")
 
         def write_proposal() -> None:
             (proposal / "proposal.md").write_text(
@@ -223,7 +255,8 @@ def self_test() -> None:
             "candidate": "storefront-catalog-search",
             "generator": {"scripts/wb-research/generate_proposal.py": digest(generator)},
             "sources": {
-                "devtools/wb-research/investigations/demo/investigation.yaml": digest(record / "investigation.yaml")
+                "devtools/wb-research/investigations/demo/investigation.yaml": digest(record / "investigation.yaml"),
+                "devtools/wb-research/investigations/demo/evidence/validation.json": digest(bundle),
             },
             "generated": {
                 "devtools/wb-research/proposals/demo/proposal.md": digest(proposal / "proposal.md"),
@@ -278,6 +311,22 @@ def self_test() -> None:
         write_manifest()
         assert check(proposals, root) == [], "a proposal with every file in the manifest must pass"
 
+        # A fixture left over from an earlier generation: on the disk, not in the
+        # manifest. The manifest is the inventory, so the file must be named or gone.
+        obsolete = fixture.parent / "obsolete.json"
+        obsolete.write_text("{}\n", encoding="utf-8")
+        findings = check(proposals, root)
+        assert any("the manifest does not name" in finding for finding in findings), findings
+        obsolete.unlink()
+
+        # An evidence bundle added under the proposal: the generator would read it.
+        extra_bundle = bundle.parent / "extra.json"
+        extra_bundle.write_text("{}\n", encoding="utf-8")
+        findings = check(proposals, root)
+        assert any("the manifest does not name" in finding for finding in findings), findings
+        extra_bundle.unlink()
+        assert check(proposals, root) == [], "a proposal whose inventory is complete must pass"
+
         # A manifest that is not a mapping of paths to hashes is a finding, not a crash.
         manifest["generated"] = ["wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json"]
         write_manifest()
@@ -313,7 +362,8 @@ def self_test() -> None:
             "candidate": "storefront-catalog-search",
             "generator": {"scripts/wb-research/generate_proposal.py": digest(generator)},
             "sources": {
-                "devtools/wb-research/investigations/demo/investigation.yaml": digest(record / "investigation.yaml")
+                "devtools/wb-research/investigations/demo/investigation.yaml": digest(record / "investigation.yaml"),
+                "devtools/wb-research/investigations/demo/evidence/validation.json": digest(bundle),
             },
             "generated": {
                 "devtools/wb-research/proposals/demo-2/proposal.md": digest(second / "proposal.md"),

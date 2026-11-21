@@ -44,13 +44,13 @@ The generated test pins the crawler's header set to the replay's set, so a heade
 
 ## Traceability — claim → evidence → assertion
 
-The table lists the claims the record proves in a validated state. A claim is *about this contract* when the capture it names asked this endpoint — that is what the eligibility rule counts, and it is why a validated claim about another endpoint is not enough.
+The table lists the claims the record proves in a validated state. A claim is *about this contract* when the candidate's own controlled experiments established it — the claim names one of their observations, and that observation asked this endpoint. That is what the eligibility rule counts, and it is why a validated claim about another endpoint, or one that only the first page load supports, is not enough.
 
 | Claim | State | About this contract | Evidence | Where it is pinned |
 | --- | --- | --- | --- | --- |
-| the storefront reads the seller catalog with GET /__internal/u-search/exactmatch/ru/common/v18/search and resultset=catalog | `reproduced` | yes | `initial-load-004`, `next-page-008` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
-| the catalog answer is a JSON object with metadata, products and total, even though the content type says text/plain | `reproduced` | yes | `initial-load-004`, `next-page-008` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
-| the catalog request carries deviceid, x-requested-with, x-spa-version, x-queryid and x-userid | `reproduced` | yes | `initial-load-004`, `next-page-008` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
+| the storefront reads the seller catalog with GET /__internal/u-search/exactmatch/ru/common/v18/search and resultset=catalog | `reproduced` | no | `initial-load-004`, `next-page-008` | — |
+| the catalog answer is a JSON object with metadata, products and total, even though the content type says text/plain | `reproduced` | no | `initial-load-004`, `next-page-008` | — |
+| the catalog request carries deviceid, x-requested-with, x-spa-version, x-queryid and x-userid | `reproduced` | no | `initial-load-004`, `next-page-008` | — |
 | the catalog request repeats byte for byte when it is replayed from the same page with the same parameters | `reproduced` | yes | `baseline-1`, `baseline-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
 | the parameter sort changes the order of the catalog answer | `validated` | yes | `baseline-1`, `sort-priceup-1`, `sort-priceup-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
 | the parameter page changes the page of the catalog answer | `validated` | yes | `baseline-1`, `page-2-1`, `page-2-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |

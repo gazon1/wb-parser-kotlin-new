@@ -164,7 +164,14 @@ def world(tmp_path):
         validation = directory / "validation.yaml"
         if with_validation:
             validation.write_text(
-                yaml.safe_dump({"candidate": candidate, "experiments": experiments()}, allow_unicode=True),
+                yaml.safe_dump(
+                    {
+                        "candidate": candidate,
+                        "page": "https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E",
+                        "experiments": experiments(),
+                    },
+                    allow_unicode=True,
+                ),
                 encoding="utf-8",
             )
         else:
@@ -182,6 +189,28 @@ class SimpleWorld:
         self.write = write
         self.captures = captures
         self.write_evidence = write_evidence
+
+    def patch_observation(self, **changes) -> None:
+        """Change the baseline observation of the summary and of the evidence."""
+        validation = self.directory / "validation.yaml"
+        document = yaml.safe_load(validation.read_text(encoding="utf-8"))
+        observation = document["experiments"][0]["observations"][0]
+        for name, value in changes.items():
+            if name == "url":
+                observation["request"]["url"] = value
+            else:
+                observation[name] = value
+        validation.write_text(yaml.safe_dump(document, allow_unicode=True), encoding="utf-8")
+
+        captures = self.captures()
+        for capture in captures:
+            if capture["id"] == "baseline-1":
+                for name, value in changes.items():
+                    if name == "url":
+                        capture["request"]["url"] = value
+                    else:
+                        capture[name] = value
+        self.write_evidence(captures)
 
     def generate(self, output_root: Path) -> list[Path]:
         return generate_proposal.generate("2026-01-01-demo", output_root, investigations_root=self.investigations)
@@ -220,6 +249,55 @@ def test_a_validated_claim_of_another_candidate_is_not_enough(world, tmp_path):
                 "ordering": {"orderHash": "hash", "productIds": []},
             }
         ]
+    )
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_claim_only_the_first_page_load_supports_is_not_enough(world, tmp_path):
+    # The capture asked the right endpoint, but it is not one of the controlled
+    # experiments: the record has not established the claim about this contract.
+    world.write(evidence=["initial-load-004"])
+    world.write_evidence(
+        [
+            *world.captures(),
+            {
+                "id": "initial-load-004",
+                "request": {"method": "GET", "url": f"{ENDPOINT}?resultset=catalog&sort=popular"},
+                "ordering": {"orderHash": "hash", "productIds": []},
+            },
+        ]
+    )
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_an_experiment_of_another_endpoint_is_not_evidence_of_this_contract(world, tmp_path):
+    # The endpoint is shared: the filters search is the same path with another
+    # resultset. A capture of it is not a capture of the catalog search.
+    world.patch_observation(url=f"{ENDPOINT}?resultset=filters&sort=popular")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_an_observation_id_that_names_another_file_is_refused(world, tmp_path):
+    # The id becomes a fixture file name. An id with a path in it would point at a
+    # file outside the fixture directory, and the repository holds files a
+    # generator must never rewrite.
+    world.patch_observation(id="../../../../.betterleaks-baseline")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_two_bundles_with_the_same_capture_are_refused(world, tmp_path):
+    # Which of the two bundles is the one that was recorded? The record has to say.
+    (world.directory / "evidence" / "second.json").write_text(
+        json.dumps({"schema": "wb-research/validation/v1", "captures": world.captures()[:1]}),
+        encoding="utf-8",
     )
 
     with pytest.raises(generate_proposal.Refused):

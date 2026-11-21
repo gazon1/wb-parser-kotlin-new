@@ -62,6 +62,27 @@ the claims that were held back and why — a claim that did not reach a validate
 state is not an assertion, and a candidate the record did not validate is not a
 contract.
 
+The eligibility rule binds at the level of the observation, not only of the
+claim. A claim is supported only when the evidence it names was produced by an
+experiment of *this* contract that reached `validated` or `reproduced`, and when
+that observation asked the candidate's own request: the same method, the same
+endpoint, and the identity parameters the contract declares — the catalog search
+and the filters search share one path and differ only in `resultset`, so the
+path alone does not identify a contract. An observation of another endpoint is
+not evidence of this one, and a claim of an old capture is not evidence of a
+contract that was validated by later experiments.
+
+The generator writes where the record points, so the record must not be able to
+point outside: an observation id names a fixture file and has to be a plain file
+name, and a fixture is written only inside the fixture directory — the output
+root alone is not a boundary, because a name like `../../baseline` resolves
+inside the repository. The evidence index refuses two bundles that carry the same
+capture id, because the second bundle would silently shadow the first.
+
+The drift gate inventories the disk and not only the manifest: a fixture or an
+evidence bundle that no manifest names is drift too, because the manifest is an
+inventory someone can edit.
+
 The known differences between the recorded request and the production request
 are declared in the generator (`crawler_only` / `storefront_only`), so the
 generated test compares the two and treats any difference that is not listed as
@@ -149,12 +170,22 @@ deleted file would otherwise pass.
   human reviews.
 - **Never** let an investigation id name anything but a single directory name;
   the generator writes only inside the repository.
+- **Never** let an observation id name anything but a plain fixture file name,
+  and write a fixture only inside the fixture directory — the output root alone
+  is not a boundary.
+- **Never** accept an observation that did not ask the candidate's own request:
+  the method, the endpoint and the identity parameters the contract declares.
+- **Never** accept a claim whose evidence does not come from an experiment of
+  this contract that reached `validated` or `reproduced`.
+- **Never** accept two evidence bundles that carry the same capture id.
 - **Always** declare the known differences between the recorded request and the
   production request in the `CONTRACTS` table, so an undeclared difference
   fails the generated test — and pin the value of the differences the crawler
   adds, since the record holds no value for them.
 - **Always** regenerate and commit the proposal when the record changes; the
   drift gate fails otherwise.
+- **Always** let the drift gate inventory the disk as well as the manifest: a
+  file no manifest names is drift too.
 - **Never** add a production dependency on the research tooling; the generator
   writes into a test source set and a development directory.
 - A new contract family is a new entry in `CONTRACTS`, not a new framework.

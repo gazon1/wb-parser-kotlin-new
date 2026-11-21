@@ -53,6 +53,12 @@ class WbCatalogSearchContractTest :
         /** The token the crawler asks with; the record redacted the one it saw. */
         val token = "menu_v3_9467 карты памяти"
 
+        /** The crawl URL of the record — the page the crawl starts from. */
+        val crawlUrl = "https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E"
+
+        /** The catalog the record crawled. */
+        val catalogId = "131954"
+
         /** The parameters the crawler sends and the storefront did not. */
         val crawlerOnly = setOf("ffeedbackpoints", "page")
 
@@ -210,8 +216,16 @@ class WbCatalogSearchContractTest :
         }
 
         test("the next page is the same request with the page parameter incremented") {
-            val page = queryOf(WbCatalogApi.buildWbApiUrl(page = 2, searchQuery = token))
+            // The page is not a literal here: the crawl URL names it, the URL algebra
+            // advances it and the request builder reads it back. A pagination that
+            // stopped incrementing would ask for the first page forever, and the
+            // endpoint would answer 200 with the same products every time.
+            val next = WbCatalogRequest.nextPageUrl(crawlUrl)!!
+            val parsed = WbCatalogRequest.parseCatalogUrl(next)
+            parsed.page shouldBe 2
+            parsed.catalogId shouldBe catalogId
 
+            val page = queryOf(WbCatalogApi.buildWbApiUrl(page = parsed.page, searchQuery = token))
             page["page"] shouldBe "2"
             page.keys shouldBe productionQuery.keys
             nextPage.request.query["page"] shouldBe "2"

@@ -67,9 +67,21 @@ GENERATOR_PATH = "scripts/wb-research/generate_proposal.py"
 # for the same reason.
 INVESTIGATION_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 
+# The id of an observation names a fixture file. The same rule applies to it: an id
+# with a separator in it would name a file outside the fixture directory, and a
+# containment check that only asks "is this still inside the repository?" would accept
+# it — the repository holds files that must never be rewritten by a generator.
+OBSERVATION_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
 # The contract family this tool knows. It is one family on purpose: a generator that
 # promises every endpoint of every site is a framework, and a framework nobody can
 # verify is worse than no framework. A new family is a new entry here.
+#
+# `identity` — the parameters that tell two requests of one path apart. The catalog
+# search and the filters search share the path `/__internal/u-search/exactmatch/...`
+# and differ only in `resultset`, so the path alone does not say which request a
+# capture holds. Without the identity parameters, a capture of the filters search
+# passes for a capture of the catalog search.
 #
 # `crawler_only` — parameters the crawler sends and the storefront did not.
 # `storefront_only` — parameters the storefront sent and the crawler does not.
@@ -88,6 +100,7 @@ CONTRACTS: dict[str, dict[str, Any]] = {
         "test_class": "WbCatalogSearchContractTest",
         "endpoint": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search",
         "method": "GET",
+        "identity": {"resultset": "catalog"},
         "crawler_only": {
             "ffeedbackpoints": {
                 "value": "1",
@@ -150,28 +163,62 @@ def candidate_of(investigation: dict[str, Any], candidate_id: str) -> dict[str, 
     raise Refused(f"the record has no candidate '{candidate_id}'")
 
 
+def candidate_request_matches(
+    candidate: dict[str, Any],
+    contract: dict[str, Any],
+    method: Any,
+    url: Any,
+) -> bool:
+    """Whether a recorded request asked this candidate's endpoint.
+
+    The endpoint alone is not enough: the record holds several candidates that share
+    a path — the catalog search and the filters search are the same URL with a
+    different `resultset`. So a request is this candidate's when it asks the same
+    method, the same endpoint and the same identity parameters.
+    """
+    text = str(url or "")
+    if text.split("?", 1)[0] != str(candidate.get("endpoint") or ""):
+        return False
+    if str(method or "").upper() != str(candidate.get("method") or "GET").upper():
+        return False
+    query = query_of(text)
+    return all(query.get(name) == value for name, value in (contract.get("identity") or {}).items())
+
+
 def claims_about_candidate(
     investigation: dict[str, Any],
     evidence: dict[str, dict[str, Any]],
-    endpoint: str,
+    candidate: dict[str, Any],
+    contract: dict[str, Any],
+    experiment_observations: set[str],
 ) -> list[dict[str, Any]]:
-    """The claims whose evidence captured this candidate's endpoint.
+    """The claims the candidate's own controlled experiments established.
 
     A record holds the claims of every endpoint it saw, so a claim in a validated
     state may be about another endpoint entirely — the card list, the antibot
-    service, an analytics call. The link is the capture: the claim names it, and
-    the capture asked the candidate's endpoint.
+    service, an analytics call. Two things tie a claim to this contract:
+
+    - the claim names an observation of the candidate's controlled experiments, not
+      an old capture of the page load;
+    - that observation's capture asked the candidate's endpoint.
+
+    A capture of the right endpoint from the first page load is not enough on its
+    own: it says what the storefront does, not what the controlled experiments
+    established.
     """
     earned: list[dict[str, Any]] = []
     for claim in claims_of(investigation):
         if claim.get("state") not in VALIDATED_STATES:
             continue
         for observation_id in claim.get("evidence") or []:
-            capture = evidence.get(str(observation_id))
+            name = str(observation_id)
+            if name not in experiment_observations:
+                continue
+            capture = evidence.get(name)
             if capture is None:
                 continue
-            url = str((capture.get("request") or {}).get("url") or "")
-            if url.split("?", 1)[0] == endpoint:
+            request = capture.get("request") or {}
+            if candidate_request_matches(candidate, contract, request.get("method"), request.get("url")):
                 earned.append(claim)
                 break
     return earned
@@ -205,8 +252,8 @@ def check_eligible(
     if not earned:
         states = sorted({str(claim.get("state")) for claim in claims_of(investigation)})
         raise Refused(
-            f"no claim about the candidate '{candidate_id}' reached a validated state — "
-            f"the record holds {states or ['no claims at all']}"
+            f"no claim about the candidate '{candidate_id}' reached a validated state in the "
+            f"candidate's own experiments — the record holds {states or ['no claims at all']}"
         )
 
 
@@ -221,6 +268,25 @@ def eligible_experiments(validation: dict[str, Any]) -> list[dict[str, Any]]:
 
 def observations_of(experiments: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [observation for experiment in experiments for observation in experiment["observations"]]
+
+
+def observation_ids(experiments: list[dict[str, Any]]) -> set[str]:
+    """The ids of the observations of these experiments."""
+    return {str(observation.get("id")) for observation in observations_of(experiments)}
+
+
+def safe_observation(value: Any) -> str:
+    """The id of an observation, checked to be a single safe file name.
+
+    The id becomes a fixture file name. A name that carries a separator or a `..`
+    would point at another file than the operator named — the containment check
+    below would accept it as long as it stays inside the repository, and the
+    repository holds files a generator must never rewrite.
+    """
+    text = str(value or "").strip()
+    if not text or ".." in text or not OBSERVATION_NAME.fullmatch(text):
+        raise Refused(f"the observation id must be a single name, not a path: {value!r}")
+    return text
 
 
 def evidence_index(directory: Path) -> dict[str, dict[str, Any]]:
@@ -239,7 +305,13 @@ def evidence_index(directory: Path) -> dict[str, dict[str, Any]]:
             bundle = json.load(handle)
         for capture in bundle.get("captures") or []:
             if isinstance(capture, dict) and capture.get("id"):
-                index[str(capture["id"])] = capture
+                name = str(capture["id"])
+                if name in index:
+                    raise Refused(
+                        f"two evidence bundles carry the capture '{name}' — the record would "
+                        f"have to say which of them is the one that was recorded"
+                    )
+                index[name] = capture
     return index
 
 
@@ -398,6 +470,12 @@ class %%TEST_CLASS%% :
         /** The token the crawler asks with; the record redacted the one it saw. */
         val token = "%%TOKEN%%"
 
+        /** The crawl URL of the record — the page the crawl starts from. */
+        val crawlUrl = "%%CRAWL_URL%%"
+
+        /** The catalog the record crawled. */
+        val catalogId = "%%CATALOG_ID%%"
+
         /** The parameters the crawler sends and the storefront did not. */
         val crawlerOnly = setOf(%%CRAWLER_ONLY%%)
 
@@ -555,8 +633,16 @@ class %%TEST_CLASS%% :
         }
 
         test("the next page is the same request with the page parameter incremented") {
-            val page = queryOf(WbCatalogApi.buildWbApiUrl(page = 2, searchQuery = token))
+            // The page is not a literal here: the crawl URL names it, the URL algebra
+            // advances it and the request builder reads it back. A pagination that
+            // stopped incrementing would ask for the first page forever, and the
+            // endpoint would answer 200 with the same products every time.
+            val next = WbCatalogRequest.nextPageUrl(crawlUrl)!!
+            val parsed = WbCatalogRequest.parseCatalogUrl(next)
+            parsed.page shouldBe 2
+            parsed.catalogId shouldBe catalogId
 
+            val page = queryOf(WbCatalogApi.buildWbApiUrl(page = parsed.page, searchQuery = token))
             page["page"] shouldBe "2"
             page.keys shouldBe productionQuery.keys
             nextPage.request.query["page"] shouldBe "2"
@@ -654,9 +740,19 @@ def render_kotlin(
     investigation_id: str,
     candidate_id: str,
     fixtures: dict[str, list[str]],
+    validation: dict[str, Any],
 ) -> str:
     """The Kotlin test, with the contract's names and the evidence's fixture names."""
     experiments = contract["experiments"]
+
+    # The crawl URL of the record: the pagination of the contract is the pagination of
+    # this URL, so the test walks the production URL algebra instead of a literal.
+    crawl_url = str(validation.get("page") or "").strip()
+    if not crawl_url:
+        raise Refused("the record names no crawl URL — the page the crawl starts from is part of the contract")
+    catalog = re.search(r"/catalog/(\d+)", crawl_url)
+    if catalog is None:
+        raise Refused(f"the crawl URL '{crawl_url}' carries no catalog id")
 
     def names(role: str) -> list[str]:
         if role not in fixtures:
@@ -684,6 +780,8 @@ def render_kotlin(
         "%%CANDIDATE%%": candidate_id,
         "%%TEST_CLASS%%": contract["test_class"],
         "%%TOKEN%%": SEARCH_TOKEN,
+        "%%CRAWL_URL%%": crawl_url,
+        "%%CATALOG_ID%%": catalog.group(1),
         "%%CRAWLER_ONLY%%": kotlin_set(sorted(contract["crawler_only"])),
         "%%CRAWLER_ONLY_VALUES%%": kotlin_map(
             {
@@ -729,11 +827,13 @@ def render_proposal(
     evidence: dict[str, dict[str, Any]],
 ) -> str:
     validated = validated_claims(investigation)
+    wanted = set(contract["experiments"].values())
+    experiments = [experiment for experiment in eligible_experiments(validation) if experiment.get("name") in wanted]
     about = {
         str(claim.get("claim"))
-        for claim in claims_about_candidate(investigation, evidence, str(candidate.get("endpoint") or ""))
+        for claim in claims_about_candidate(investigation, evidence, candidate, contract, observation_ids(experiments))
     }
-    evidence_of = {observation["id"] for observation in observations_of(eligible_experiments(validation))}
+    evidence_of = {observation["id"] for observation in observations_of(experiments)}
 
     lines: list[str] = []
     lines.append(f"# Proposal — `{candidate_id}`")
@@ -768,7 +868,7 @@ def render_proposal(
     lines.append("| Header | The storefront's request | The validated replay |")
     lines.append("| --- | --- | --- |")
     storefront_headers = list(candidate.get("headers") or {})
-    replay_headers = header_names_of(observations_of(eligible_experiments(validation))[0])
+    replay_headers = header_names_of(observations_of(experiments)[0])
     for name in sorted(set(storefront_headers) | set(replay_headers)):
         lines.append(
             f"| `{name}` | {'yes' if name in storefront_headers else 'no'} "
@@ -787,9 +887,10 @@ def render_proposal(
     lines.append("")
     lines.append(
         "The table lists the claims the record proves in a validated state. A claim is *about "
-        "this contract* when the capture it names asked this endpoint — that is what the "
-        "eligibility rule counts, and it is why a validated claim about another endpoint is not "
-        "enough."
+        "this contract* when the candidate's own controlled experiments established it — the "
+        "claim names one of their observations, and that observation asked this endpoint. That "
+        "is what the eligibility rule counts, and it is why a validated claim about another "
+        "endpoint, or one that only the first page load supports, is not enough."
     )
     lines.append("")
     lines.append("| Claim | State | About this contract | Evidence | Where it is pinned |")
@@ -797,7 +898,8 @@ def render_proposal(
     for claim in validated:
         evidence = ", ".join(f"`{item}`" for item in (claim.get("evidence") or []))
         seen = "yes" if str(claim.get("claim")) in about else "no"
-        lines.append(f"| {claim.get('claim')} | `{claim.get('state')}` | {seen} | {evidence} | `{TEST_FILE}` |")
+        pinned = f"`{TEST_FILE}`" if seen == "yes" else "—"
+        lines.append(f"| {claim.get('claim')} | `{claim.get('state')}` | {seen} | {evidence} | {pinned} |")
     lines.append("")
     lines.append(
         "The fixtures carry the evidence itself: the request as it was made, the shape of the "
@@ -945,15 +1047,43 @@ def generate(
     if not candidate_id:
         raise Refused("the validation.yaml names no candidate — the record does not say which contract it validated")
 
-    experiments = eligible_experiments(validation)
-    candidate = candidate_of(investigation, candidate_id)
-    evidence = evidence_index(directory)
-    earned = claims_about_candidate(investigation, evidence, str(candidate.get("endpoint") or ""))
-    check_eligible(investigation, validation, candidate_id, experiments, earned)
-
     if candidate_id not in CONTRACTS:
         raise Refused(f"this tool does not know the contract '{candidate_id}' — it knows {sorted(CONTRACTS)}")
     contract = CONTRACTS[candidate_id]
+
+    candidate = candidate_of(investigation, candidate_id)
+    evidence = evidence_index(directory)
+
+    # Only the experiments of this contract produce fixtures, so only they can earn the
+    # proposal. Every observation of them must have asked the candidate's endpoint: an
+    # experiment of another endpoint would otherwise be pinned as this contract's
+    # evidence.
+    wanted = set(contract["experiments"].values())
+    experiments = []
+    for experiment in eligible_experiments(validation):
+        if experiment.get("name") not in wanted:
+            continue
+        for observation in experiment["observations"]:
+            # The id becomes a file name, and the request becomes the claim the
+            # fixture pins. Both are checked before anything is written.
+            safe_observation(observation.get("id"))
+            request = observation.get("request") or {}
+            if not candidate_request_matches(candidate, contract, request.get("method"), request.get("url")):
+                raise Refused(
+                    f"the observation '{observation.get('id')}' of the '{experiment.get('name')}' "
+                    f"experiment asked another endpoint — a fixture of this contract must be "
+                    f"built from a request of this contract"
+                )
+        experiments.append(experiment)
+
+    earned = claims_about_candidate(
+        investigation,
+        evidence,
+        candidate,
+        contract,
+        observation_ids(experiments),
+    )
+    check_eligible(investigation, validation, candidate_id, experiments, earned)
 
     owner = existing_proposal_for(output_root, candidate_id, investigation_id)
     if owner:
@@ -974,12 +1104,18 @@ def generate(
             continue
         names: list[str] = []
         for observation in experiment["observations"]:
-            observation_id = str(observation.get("id"))
+            observation_id = safe_observation(observation.get("id"))
             capture = evidence.get(observation_id)
             if capture is None:
                 raise Refused(
                     f"the observation '{observation_id}' has no capture in the evidence bundle — "
                     f"a fixture cannot be rebuilt from a shape nobody recorded"
+                )
+            captured = capture.get("request") or {}
+            if not candidate_request_matches(candidate, contract, captured.get("method"), captured.get("url")):
+                raise Refused(
+                    f"the capture of the observation '{observation_id}' asked another endpoint — "
+                    f"a fixture of this contract must be built from a request of this contract"
                 )
             ids = product_ids_of(observation, capture)
             recorded = (observation.get("schema") or {}).get("productCount")
@@ -1000,10 +1136,13 @@ def generate(
     written: list[Path] = []
     root = output_root.resolve()
 
-    def write(relative: str, content: str) -> None:
+    def write(relative: str, content: str, within: str | None = None) -> None:
         path = output_root / relative
-        if not path.resolve().is_relative_to(root):
+        resolved = path.resolve()
+        if not resolved.is_relative_to(root):
             raise Refused(f"the generator would write outside the output root: {relative}")
+        if within is not None and not resolved.is_relative_to((output_root / within).resolve()):
+            raise Refused(f"the generator would write outside {within}: {relative}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         written.append(path)
@@ -1012,9 +1151,10 @@ def generate(
         write(
             f"{FIXTURE_DIR}/{document['observation']}.json",
             json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            within=FIXTURE_DIR,
         )
 
-    write(TEST_FILE, render_kotlin(contract, investigation_id, candidate_id, fixtures))
+    write(TEST_FILE, render_kotlin(contract, investigation_id, candidate_id, fixtures, validation))
 
     proposal_file = f"{PROPOSAL_DIR}/{investigation_id}/proposal.md"
     proposal = render_proposal(
@@ -1157,7 +1297,7 @@ def self_test() -> None:
             encoding="utf-8",
         )
 
-        def write_record(state: str, with_validation: bool = True) -> None:
+        def write_record(state: str, with_validation: bool = True, claim_evidence: list[str] | None = None) -> None:
             record = {
                 "id": "2026-01-01-demo",
                 "status": "concluded",
@@ -1177,7 +1317,7 @@ def self_test() -> None:
                     {
                         "claim": "the catalog is read with resultset=catalog",
                         "state": state,
-                        "evidence": ["baseline-1"],
+                        "evidence": claim_evidence or ["baseline-1"],
                     },
                 ],
             }
@@ -1187,7 +1327,11 @@ def self_test() -> None:
             if with_validation:
                 (investigation_dir / "validation.yaml").write_text(
                     yaml.safe_dump(
-                        {"candidate": "storefront-catalog-search", "experiments": experiments},
+                        {
+                            "candidate": "storefront-catalog-search",
+                            "page": "https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E",
+                            "experiments": experiments,
+                        },
                         allow_unicode=True,
                     ),
                     encoding="utf-8",
@@ -1215,6 +1359,70 @@ def self_test() -> None:
             assert "validation.yaml" in str(refusal), str(refusal)
         else:
             raise AssertionError("a record without validation.yaml must not produce a proposal")
+
+        # A claim that only an old capture supports is not a claim of the experiments.
+        write_record("validated", claim_evidence=["initial-load-004"])
+        try:
+            run(root)
+        except Refused as refusal:
+            assert "no claim about the candidate" in str(refusal), str(refusal)
+        else:
+            raise AssertionError("a claim outside the controlled experiments must not produce a proposal")
+
+        # An observation of another endpoint is not evidence of this contract.
+        other = observation("baseline", 1, [1, 2], 7)
+        other["request"]["url"] = "https://www.wildberries.ru/y?resultset=catalog"
+        experiments[0]["observations"][0] = other
+        write_record("validated")
+        try:
+            run(root)
+        except Refused as refusal:
+            assert "another endpoint" in str(refusal), str(refusal)
+        else:
+            raise AssertionError("an observation of another endpoint must not produce a proposal")
+        experiments[0]["observations"][0] = observation("baseline", 1, [1, 2], 7)
+
+        # The same path with another resultset is another request.
+        other = observation("baseline", 1, [1, 2], 7)
+        other["request"]["url"] = "https://www.wildberries.ru/x?resultset=filters&sort=popular"
+        experiments[0]["observations"][0] = other
+        write_record("validated")
+        try:
+            run(root)
+        except Refused as refusal:
+            assert "another endpoint" in str(refusal), str(refusal)
+        else:
+            raise AssertionError("a request with another resultset must not produce a proposal")
+        experiments[0]["observations"][0] = observation("baseline", 1, [1, 2], 7)
+
+        # An observation id that names another file is refused before anything is written.
+        escaping = observation("baseline", 1, [1, 2], 7)
+        escaping["id"] = "../../../../.betterleaks-baseline"
+        experiments[0]["observations"][0] = escaping
+        write_record("validated")
+        try:
+            run(root)
+        except Refused as refusal:
+            assert "single name" in str(refusal), str(refusal)
+        else:
+            raise AssertionError("an observation id with a path in it must not produce a proposal")
+        experiments[0]["observations"][0] = observation("baseline", 1, [1, 2], 7)
+
+        # Two bundles that carry the same capture leave the record ambiguous.
+        write_record("validated")
+        run(root)
+        bundle = json.loads((investigation_dir / "evidence" / "validation.json").read_text(encoding="utf-8"))
+        (investigation_dir / "evidence" / "second.json").write_text(
+            json.dumps({"schema": "wb-research/validation/v1", "captures": bundle["captures"][:1]}),
+            encoding="utf-8",
+        )
+        try:
+            run(root)
+        except Refused as refusal:
+            assert "two evidence bundles" in str(refusal), str(refusal)
+        else:
+            raise AssertionError("two bundles with the same capture must not produce a proposal")
+        (investigation_dir / "evidence" / "second.json").unlink()
 
         # A validated claim produces the files, and produces them the same way twice.
         write_record("validated")
