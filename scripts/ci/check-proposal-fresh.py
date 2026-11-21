@@ -423,6 +423,33 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
                 f"{relative}: the fixture holds the order '{order}', the evidence records "
                 f"'{recorded}' for the observation '{observation}'"
             )
+        # The rest of the fixture is copied from the capture as well, and the
+        # generated test reads it: the names of the headers the request sent, the
+        # metadata of the answer and the shape of the answer. A fixture that
+        # changed one of them changed the test, and the capture is the witness.
+        headers = request.get("headerNames")
+        recorded_headers = recorded_request.get("headerNames")
+        if not isinstance(headers, list) or not isinstance(recorded_headers, list) or headers != recorded_headers:
+            findings.append(
+                f"{relative}: the fixture holds the header names {headers}, the evidence records "
+                f"{recorded_headers} for the observation '{observation}'"
+            )
+        response = object_field(document, "response")
+        recorded_response = object_field(capture, "response")
+        for name in ("status", "contentType", "bodyBytes", "isJson"):
+            if response.get(name) != recorded_response.get(name):
+                findings.append(
+                    f"{relative}: the fixture holds the response {name} '{response.get(name)}', the "
+                    f"evidence records '{recorded_response.get(name)}' for the observation '{observation}'"
+                )
+        answer = object_field(document, "answer")
+        recorded_answer = object_field(capture, "schema")
+        for name in ("topLevelKeys", "productCount", "total"):
+            if answer.get(name) != recorded_answer.get(name):
+                findings.append(
+                    f"{relative}: the fixture holds the answer {name} '{answer.get(name)}', the "
+                    f"evidence records '{recorded_answer.get(name)}' for the observation '{observation}'"
+                )
     return findings
 
 
@@ -596,6 +623,8 @@ def self_test() -> None:
             query: dict | None = None,
             product_ids: list | None = None,
             url: str | None = None,
+            header_names: list | None = None,
+            total: int | None = None,
         ) -> str:
             """The fixture as the generator writes it — the fields it writes."""
             return (
@@ -609,6 +638,18 @@ def self_test() -> None:
                             "method": request["method"],
                             "url": request["url"] if url is None else url,
                             "query": {"resultset": "catalog"} if query is None else query,
+                            "headerNames": ["deviceid"] if header_names is None else header_names,
+                        },
+                        "response": {
+                            "status": 200,
+                            "contentType": "text/plain",
+                            "bodyBytes": 1487,
+                            "isJson": True,
+                        },
+                        "answer": {
+                            "topLevelKeys": ["metadata", "products", "total"],
+                            "productCount": 100,
+                            "total": 113593 if total is None else total,
                         },
                         "ordering": {
                             "productIds": [1, 2, 3] if product_ids is None else product_ids,
@@ -626,6 +667,8 @@ def self_test() -> None:
             run: int = 1,
             product_ids: list | None = None,
             url: str | None = None,
+            header_names: list | None = None,
+            total: int | None = None,
         ) -> dict:
             """The capture as the record keeps it — the fields the gate compares."""
             return {
@@ -635,6 +678,18 @@ def self_test() -> None:
                 "request": {
                     "method": request["method"],
                     "url": request["url"] if url is None else url,
+                    "headerNames": ["deviceid"] if header_names is None else header_names,
+                },
+                "response": {
+                    "status": 200,
+                    "contentType": "text/plain",
+                    "bodyBytes": 1487,
+                    "isJson": True,
+                },
+                "schema": {
+                    "topLevelKeys": ["metadata", "products", "total"],
+                    "productCount": 100,
+                    "total": 113593 if total is None else total,
                 },
                 "ordering": {
                     "productIds": [1, 2, 3] if product_ids is None else product_ids,
@@ -857,6 +912,31 @@ def self_test() -> None:
         manifest["generated"][fixture_relative] = digest(fixture)
         write_manifest()
         assert check(proposals, root) == [], "a fixture with the recorded order must pass"
+
+        # A fixture whose header names were edited: the generated test reads them
+        # as the header set the request has to carry, and the capture is the only
+        # thing that says which headers it sent.
+        fixture.write_text(fixture_document(header_names=["deviceid", "x-userid"]), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("the fixture holds the header names" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture with the recorded header names must pass"
+
+        # A fixture whose answer was edited: the generated test rebuilds the
+        # answer from these values, so a changed one is a changed test.
+        fixture.write_text(fixture_document(total=1), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("the fixture holds the answer" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture with the recorded answer must pass"
 
         # An evidence bundle whose captures are not a list: a finding, not a crash.
         bundle.write_text(json.dumps({"captures": 42}) + "\n", encoding="utf-8")

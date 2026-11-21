@@ -1140,6 +1140,12 @@ asks the redactor instead of keeping a second, weaker copy of the rules, so the
 two cannot drift apart. A session token, an account id or a phrase somebody
 typed is refused, not published.
 
+**A placeholder is a whole value.** The rule asks whether the redactor would
+leave the value alone, and it matches the value as a whole: a value that begins
+with a placeholder and then goes on — `<redacted:token>alice@example.com` — is
+not a sanitized value but a sanitized prefix in front of a value nobody judged,
+so it is refused rather than published as if the placeholder covered it.
+
 **The rule reaches the words of the record.** The text of a claim is a value like
 any other: a claim that names a person's mail or a token is committed into a
 proposal that a human reads and a machine hashes. So the text of every claim —
@@ -1246,6 +1252,13 @@ every endpoint is read as the pairs of its query and as the segments of its
 path, and a value the record's own redactor would replace is refused — the
 record's rule, asked of the endpoints as well as of the values.
 
+**An endpoint is published as a place, not as a request.** The redactor has a
+rule for every parameter name it knows and none for a name it has never seen,
+so the query of a candidate that did not become a contract cannot be judged by
+value — and its parameters are not part of any contract either. So the proposal
+publishes the place of the endpoint, `scheme://host/path`, and the parameters of
+such a candidate never reach a committed file.
+
 **The proposals cannot drift away from the record.** The manifest holds the
 hashes of what was read and what was written, and the gate
 `scripts/ci/check-proposal-fresh.py` compares them with the files on disk. A
@@ -1263,7 +1276,14 @@ is bound to that capture by the two things the test reads out of it: the query
 the request carried and the order of the products it answered with. A fixture
 whose query or whose product order was edited by hand fails the gate even when
 the manifest was regenerated over it — the capture is the witness, not the
-manifest. The query is read as the pairs it carries, so a name that occurs
+manifest. And the fixture is bound to that capture by every other field the
+generated test reads out of it as well: the names of the headers the request
+carried, the status, the content type, the size and the kind of the answer, and
+the shape of that answer — its top-level keys, the number of its products and
+their total. A fixture that keeps the query and the product order but restates
+the shape of the answer it answers with is a fixture of another answer, so the
+gate compares each of those fields with the capture and names the one that
+differs. The query is read as the pairs it carries, so a name that occurs
 twice is named on its own: the generator refuses such a request, and a map
 would keep only the last value and hide the first. A bundle that cannot be read
 — a file that is not JSON, a bundle without captures, a captures field that is

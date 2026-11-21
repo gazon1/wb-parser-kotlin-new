@@ -46,7 +46,7 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qsl, urlsplit
+from urllib.parse import parse_qsl, urlsplit, urlunsplit
 
 import yaml
 
@@ -320,6 +320,24 @@ def claim_problems(claim: dict[str, Any]) -> list[str]:
     return []
 
 
+def published_endpoint(endpoint: str) -> str:
+    """The endpoint as the proposal may name it — the place, without its query.
+
+    The proposal names the candidates the record held besides the one it made a
+    contract of, and their parameters are not the contract's: the record holds
+    them in its own `query` field, where a reviewer of the record can read
+    them. So the proposal repeats the place and not the parameters.
+
+    The reason is the redactor's rule, not a rule of its own: the redactor has
+    no rule for a name it has never seen, and `customer=Alice` is an ordinary
+    word under such a name — a person's name all the same. A value that cannot
+    be vouched for is not published; it is not published in a rewritten form
+    either, because the record is what says what the request was.
+    """
+    parts = urlsplit(str(endpoint or ""))
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+
+
 def endpoint_problems(endpoint: str) -> list[str]:
     """Why an endpoint may not be published.
 
@@ -331,15 +349,20 @@ def endpoint_problems(endpoint: str) -> list[str]:
 
     The rule is the redactor's, not a copy of it: the query of an endpoint is
     read as the pairs it carries, and each value is asked the same question the
-    values of the contract are asked. The path is read as the segments it is
-    made of — a segment is a name of a thing, and a long opaque one is a value
-    that may not be committed. The host is a name of a service, so it is not
-    judged as a note — but a host that carries credentials is refused outright.
+    values of the contract are asked. A value that is a placeholder is the one
+    the redactor left behind, and a placeholder is the whole value — a
+    placeholder with something appended to it is a value the redactor would
+    replace, and it is refused.
+
+    The path is read as the segments it is made of — a segment is a name of a
+    thing, and a long opaque one is a value that may not be committed. The host
+    is a name of a service, so it is not judged as a note — but a host that
+    carries credentials is refused outright.
     """
     problems: list[str] = []
     parts = urlsplit(str(endpoint or ""))
     for name, value in parse_qsl(parts.query, keep_blank_values=True):
-        if PLACEHOLDER.match(value):
+        if PLACEHOLDER.fullmatch(value):
             continue
         if REDACTOR.redact_query_value(name, value) != value:
             problems.append(f"the parameter '{name}' carries a value the record's own redactor would replace")
@@ -1547,7 +1570,7 @@ def render_proposal(
         )
         lines.append("")
         for candidate in others:
-            lines.append(f"- `{candidate.get('id')}` — `{candidate.get('endpoint')}`")
+            lines.append(f"- `{candidate.get('id')}` — `{published_endpoint(str(candidate.get('endpoint') or ''))}`")
         lines.append("")
     lines.append("## Known differences from the storefront's request")
     lines.append("")

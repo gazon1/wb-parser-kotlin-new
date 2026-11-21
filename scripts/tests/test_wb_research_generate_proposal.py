@@ -892,6 +892,30 @@ def test_the_endpoint_of_another_candidate_may_not_carry_a_secret(world, tmp_pat
     assert "may not be published" in str(refusal.value), str(refusal.value)
 
 
+def test_a_value_appended_to_a_placeholder_is_refused(world, tmp_path):
+    # A placeholder is the whole value the redactor left behind: a placeholder
+    # with something appended to it is a value the redactor would replace, and it
+    # is refused like any other.
+    world.add_candidate("https://example.test/search?token=<redacted:token>alice@example.com")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "may not be published" in str(refusal.value), str(refusal.value)
+
+
+def test_the_parameters_of_another_candidate_are_not_published(world, tmp_path):
+    # The redactor has no rule for a name it has never seen, and `customer=Alice`
+    # is an ordinary word under such a name — a person's name all the same. The
+    # parameters of a candidate that is not a contract are not the contract's, so
+    # the proposal names the place and not the parameters.
+    world.add_candidate("https://example.test/search?customer=Alice")
+
+    written = world.generate(tmp_path)
+    proposal = next(path for path in written if path.name == "proposal.md").read_text(encoding="utf-8")
+    assert "Alice" not in proposal, proposal
+    assert "https://example.test/search" in proposal, proposal
+
+
 def test_a_parameter_sent_twice_is_refused(world, tmp_path):
     # A parameter that occurs twice says two things about the request, and a query
     # read as a map keeps only the last value: the proposal would advertise one

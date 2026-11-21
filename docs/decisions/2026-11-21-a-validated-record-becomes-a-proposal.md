@@ -246,7 +246,9 @@ The house pattern from `scripts/ci/check-catalog-models.py` is reused: a
 generator, a committed artifact, an offline drift gate. `scripts/ci/check-proposal-fresh.py`
 compares the manifest's hashes with the files on disk and fails when the record,
 the evidence bundles, the generator or a generated file changed under it. It
-reads hashes only — no regeneration, no YAML, no network — and it is registered
+reads hashes and does targeted consistency checks on the JSON of the evidence
+bundles and of the generated fixtures — no regeneration, no YAML, no network —
+and it is registered
 in `scripts/ci/static-gates.sh` as `gate blocking "the generated proposals are
 current" …`, so it runs in `./check.sh` and in CI alike. The gate also compares
 the manifest with the file list the proposal itself carries: a file deleted from
@@ -274,7 +276,11 @@ fixture is compared with the URL of its capture for the same reason: a fixture
 that asks another request still matches every hash. The query of the fixture and
 the order of its products are compared with the capture as well — those are the
 two fields the generated test reads, so a fixture that changed either of them
-changed the test while every hash still matched. A file that is gone is a
+changed the test while every hash still matched. So are the rest of the fields
+the fixture copies from the capture: the names of the headers the request sent,
+the metadata of the answer and the shape of the answer. The generated test reads
+all of them, and a fixture that changed one of them changed the test while every
+hash still matched. A file that is gone is a
 finding, not a crash: the gate reports what is wrong with the proposal and keeps
 going, and so is an evidence bundle that is malformed or a capture id that two
 bundles hold — the generator refuses a duplicate id, so the gate has to read the
@@ -298,6 +304,18 @@ a line of a committed file. So its endpoint is read as the pairs of its query
 and as the segments of its path, and a value the record's own redactor would
 replace is refused there as well. The host is a name of a service and is not
 judged as a note, but a host that carries credentials is refused outright.
+
+A placeholder is the whole value. The redactor leaves a placeholder behind
+instead of the value it removed, and a placeholder with something appended to
+it is not that: `<redacted:token>alice@example.com` is an address the redactor
+would replace, and a value that starts with a placeholder is not a placeholder.
+
+And what cannot be vouched for is not published at all. The redactor has a rule
+for every name it knows and none for a name it has never seen, and `customer=Alice`
+is an ordinary word under a name nobody declared — a person's name all the same.
+The parameters of a candidate that is not a contract are not the contract's:
+the record holds them in its own `query` field, where the reviewer of the
+record reads them. So the proposal names the place and not the parameters.
 
 ## Rationale
 
@@ -432,6 +450,17 @@ deleted file would otherwise pass.
 - **Never** publish an endpoint the record's own redactor would change: the
   proposal names the endpoint of every candidate the record holds, and a
   candidate that did not become a contract is still a line of a committed file.
+- **Never** take a value for a placeholder when it only starts like one: a
+  placeholder is the whole value the redactor left behind, and a value with
+  something appended to it is a value the redactor would replace.
+- **Never** publish the parameters of a candidate that is not a contract: the
+  redactor has no rule for a name it has never seen, so a value it cannot vouch
+  for is not published — the proposal names the place, and the record holds the
+  parameters.
+- **Never** let the drift gate bind a fixture to the record on some of its
+  fields: every field the fixture copies from the capture — the request, the
+  header names, the metadata of the answer, the shape of the answer and the
+  order of the products — is what the generated test reads.
 - **Never** add a production dependency on the research tooling; the generator
   writes into a test source set and a development directory.
 - A new contract family is a new entry in `CONTRACTS`, not a new framework.
