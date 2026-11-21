@@ -876,14 +876,18 @@ def evidence_index(directory: Path) -> dict[str, dict[str, Any]]:
                 f"the captures of the evidence bundle '{path.name}' are {shown} — a bundle holds a list of captures"
             )
         for capture in listed:
-            if isinstance(capture, dict) and capture.get("id"):
-                name = str(capture["id"])
-                if name in index:
-                    raise Refused(
-                        f"two evidence bundles carry the capture '{name}' — the record would "
-                        f"have to say which of them is the one that was recorded"
-                    )
-                index[name] = capture
+            if not isinstance(capture, dict) or not capture.get("id"):
+                raise Refused(
+                    f"a capture of the evidence bundle '{path.name}' names no id — a capture is filed "
+                    f"under the id of its observation, and a capture without one is not a capture"
+                )
+            name = str(capture["id"])
+            if name in index:
+                raise Refused(
+                    f"two evidence bundles carry the capture '{name}' — the record would "
+                    f"have to say which of them is the one that was recorded"
+                )
+            index[name] = capture
     return index
 
 
@@ -2013,6 +2017,20 @@ def generate(
                     f"committed in the fixture, so a committed parameter is one the contract "
                     f"declares and one the record's own redactor would leave alone"
                 )
+            # The counts of the answer are numbers. The generated test asserts the
+            # number of the products the answer carried and the total it reported,
+            # and a count the site did not give cannot be asserted — so an
+            # observation that does not count is refused here, by name, instead of
+            # being compared as a dimension that is missing.
+            counted = object_field(observation, "schema", f"the observation '{observation_id}': ")
+            for name in ("productCount", "total"):
+                value = counted.get(name)
+                if not isinstance(value, int) or isinstance(value, bool):
+                    raise Refused(
+                        f"the observation '{observation_id}' records no {name} of the answer — the "
+                        f"generated test asserts the number of the products the answer carried, and a "
+                        f"count the site did not give is not a count"
+                    )
             # The capture has to be the capture of this observation: the bundle is
             # filed under the id, and a bundle of another run of the same endpoint
             # would put its products into this fixture.

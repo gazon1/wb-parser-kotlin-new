@@ -525,11 +525,20 @@ deleted file would otherwise pass.
   neither.
 - **Never** let the generator skip an evidence bundle in silence: a bundle that
   names no captures is a malformed bundle, and it is refused by name — a bundle
-  nobody reads is a bundle nobody watches.
+  nobody reads is a bundle nobody watches. A capture that is not an object, or
+  that names no id, is refused the same way: the drift gate names it, and the
+  two tools have to agree on what a bundle may hold.
 - **Never** write a dimension of the wrong type into a fixture: the size of the
   body is a number and the kind of the body is a boolean, and a boolean is not a
   number. The generator checks the types the drift gate expects before it
   writes, so a malformed record is refused before it reaches a fixture.
+- **Never** publish an answer that was not counted: the generated test asserts
+  the number of the products the answer carried, so an observation that records
+  no count is refused by name, and the drift gate asks the same question of the
+  fixture and of the capture.
+- **Never** take a source on its word: the path is normalized and resolved
+  before it is judged, so a name that reaches out of the record with `..`, or
+  that points at a file of another investigation, is not a file of this record.
 - **Never** publish an answer the evidence did not record: the status, the
   content type and the keys of the body come from the candidate's own summary,
   so the summary has to agree with the capture, and the published values are the

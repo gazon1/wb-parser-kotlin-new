@@ -1169,6 +1169,14 @@ the capture before it is published, and the values that reach the proposal are
 the ones the capture holds. The types are asked for as well: a status that
 became the text `200` is not the status the request came with.
 
+**The answer of a contract is counted.** The generated test asserts the number
+of the products the answer carried and the total it reported, so an observation
+that records no count is refused by name — a count the site did not give is not
+a count, and a test that asserts nothing is not a test. The drift gate asks the
+same question of the fixture and of the capture: a count is a number on both
+sides. A probe capture of the evidence may record no count — a probe is not a
+contract, and it produces no fixture.
+
 **The rule reaches the words of the record.** The text of a claim is a value like
 any other: a claim that names a person's mail or a token is committed into a
 proposal that a human reads and a machine hashes. So the text of every claim —
@@ -1374,7 +1382,10 @@ is the half that may change unnoticed. The identity of the record is the same
 on all three sides: the manifest names the investigation, the proposal lives in
 the directory of that investigation and says in its own words which record it
 was produced from — a proposal that points at two records is a proposal that
-witnesses neither. A fixture
+witnesses neither. A source is not taken on its word either: the path is
+normalized and resolved before it is judged, so a name that reaches out of the
+record with `..`, or that points at a file of another investigation, is not a
+file of this record. A fixture
 has to name the investigation of the
 proposal that holds it, next to the candidate and the observation: a fixture of
 another investigation is a fixture of another record, and the gate names it even

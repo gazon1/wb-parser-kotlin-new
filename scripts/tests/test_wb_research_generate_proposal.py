@@ -1182,3 +1182,49 @@ def test_a_bundle_that_names_no_captures_is_refused(world, tmp_path):
     with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
     assert "the evidence bundle 'broken.json' names no captures" in str(refusal.value), str(refusal.value)
+
+
+def test_a_capture_that_is_not_an_object_is_refused(world, tmp_path):
+    # A bundle holds a list of captures, and a capture is an object. A malformed
+    # entry is refused by name — the drift gate names it too, and the two tools
+    # have to agree on what a bundle may hold.
+    bundle = world.directory / "evidence" / "validation.json"
+    document = json.loads(bundle.read_text(encoding="utf-8"))
+    document["captures"].append("not an object")
+    bundle.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "names no id" in str(refusal.value), str(refusal.value)
+
+
+def test_a_capture_that_names_no_id_is_refused(world, tmp_path):
+    # A capture is filed under the id of its observation. A capture without one is
+    # not a capture, and a bundle that holds one is not a bundle of captures.
+    bundle = world.directory / "evidence" / "validation.json"
+    document = json.loads(bundle.read_text(encoding="utf-8"))
+    document["captures"].append({"experiment": "baseline", "run": 9})
+    bundle.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "names no id" in str(refusal.value), str(refusal.value)
+
+
+def test_a_count_the_site_did_not_give_is_refused(world, tmp_path):
+    # The counts of the answer are numbers. The generated test asserts the number
+    # of the products the answer carried, so a count the site did not give cannot
+    # be asserted — and the record is refused by name instead of being published
+    # with a count nobody gave.
+    world.patch_observation(
+        schema={
+            "jsonType": "object",
+            "topLevelKeys": ["metadata", "products", "total"],
+            "productCount": None,
+            "total": None,
+        }
+    )
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "records no productCount of the answer" in str(refusal.value), str(refusal.value)
