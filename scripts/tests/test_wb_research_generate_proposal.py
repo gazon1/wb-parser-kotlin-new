@@ -108,6 +108,20 @@ def experiments() -> list[dict]:
 
 
 @pytest.fixture
+def outside_record(tmp_path):
+    """A file that looks like a record's own, written outside the record.
+
+    It is what a link points at: the content is a plausible summary, so a
+    generator that follows the link would read it without complaint.
+    """
+    place = tmp_path / "elsewhere"
+    place.mkdir()
+    target = place / "record.yaml"
+    target.write_text(yaml.safe_dump({"candidate": CANDIDATE, "experiments": []}, allow_unicode=True), encoding="utf-8")
+    return target
+
+
+@pytest.fixture
 def world(tmp_path):
     """An investigation directory the tests write their record into."""
     investigations = tmp_path / "investigations"
@@ -419,8 +433,32 @@ def test_a_validation_that_names_no_candidate_is_refused(world, tmp_path):
 
 
 def test_an_investigation_id_that_is_a_path_is_refused(world, tmp_path):
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         generate_proposal.generate("../../../../tmp/target", tmp_path, investigations_root=world.investigations)
+    assert "single name" in str(refusal.value), str(refusal.value)
+
+
+def test_a_record_file_that_is_a_link_to_another_record_is_refused(world, tmp_path, outside_record):
+    # The directory of the record is checked, but a *file* inside it can still be a
+    # link: a `validation.yaml` that points at another investigation is another
+    # record's summary, and the proposal would be built from evidence nobody named.
+    # The drift gate asks the same question about every source it hashes, so a
+    # generator that skipped it would write a proposal its own gate refuses.
+    (world.directory / "validation.yaml").unlink()
+    (world.directory / "validation.yaml").symlink_to(outside_record)
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "is not a file of this record" in str(refusal.value), str(refusal.value)
+
+
+def test_a_record_whose_summary_is_a_link_to_another_record_is_refused(world, tmp_path, outside_record):
+    (world.directory / "investigation.yaml").unlink()
+    (world.directory / "investigation.yaml").symlink_to(outside_record)
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "is not a file of this record" in str(refusal.value), str(refusal.value)
 
 
 def test_an_observation_without_a_capture_is_refused(world, tmp_path):

@@ -1040,6 +1040,26 @@ def inside(path: Path, root: Path) -> bool:
     return resolved == base or base in resolved.parents
 
 
+def record_file(directory: Path, name: str, record: Path) -> Path:
+    """A file of the record, refused when it resolves to a file of another one.
+
+    The directory of the record is checked before anything in it is read, but a
+    *file* inside it can still be a link: `investigation.yaml` that points at the
+    record of another investigation is not this record's summary, and the proposal
+    would be built from evidence nobody named. The drift gate makes the same
+    question about every source it hashes — this is the generator asking it before
+    it reads, so the two cannot disagree about whether a record is a record.
+    """
+    path = directory / name
+    if not inside(path, record):
+        raise Refused(
+            f"the record's '{name}' is not a file of this record — it resolves outside the "
+            f"record of the investigation, and a file that is a link to another record is not "
+            f"the record this proposal names"
+        )
+    return path
+
+
 def evidence_index(directory: Path, record: Path) -> dict[str, dict[str, Any]]:
     """Every capture of the investigation's evidence, by its id.
 
@@ -2186,8 +2206,8 @@ def generate(
             f"a link to another record is not the record this proposal names"
         )
 
-    investigation = load_yaml(directory / "investigation.yaml") or {}
-    validation_path = directory / "validation.yaml"
+    investigation = load_yaml(record_file(directory, "investigation.yaml", resolved)) or {}
+    validation_path = record_file(directory, "validation.yaml", resolved)
     validation = load_yaml(validation_path) if validation_path.is_file() else None
 
     if validation is None:
