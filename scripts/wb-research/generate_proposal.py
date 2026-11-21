@@ -1459,7 +1459,10 @@ class %%TEST_CLASS%% :
         fun queryOf(url: String): Map<String, String> = queryPairsOf(url).toMap()
 
         fun fetched(body: String): Fetched {
-            val url = CrawlUrl.of("https://www.wildberries.ru/catalog/131954/list.aspx").getOrNull()!!
+            // The task the answer arrives for is the crawl of *this* record: a literal
+            // here would name the catalog of one investigation in the test of another,
+            // and the test would exercise a context its fixtures never recorded.
+            val url = CrawlUrl.of(runtimeCrawlUrl).getOrNull()!!
             return Fetched(
                 task = Crawling("task-1", url, 0, UUID.randomUUID()),
                 statusCode = CrawlHttpStatusCode(200),
@@ -1674,6 +1677,18 @@ class %%TEST_CLASS%% :
             page["query"] shouldBe token
             page.keys shouldBe productionQuery.keys
             nextPage.request.query["page"] shouldBe "2"
+
+            // The page-2 fixture recorded the *whole* request of the second page, not just
+            // its number: the values the crawl carries on page 2 are the ones the record
+            // saw. Comparing only the keys would let the builder change `dest`, `sort` or
+            // `resultset` from the second page on and still pass — a crawl that walks a
+            // different catalog after the first page, reported green. The rule is the
+            // baseline rule: a redacted value is the crawler's own, and a storefront-only
+            // parameter is not compared at all.
+            nextPage.request.query.forEach { (name, value) ->
+                if (REDACTED_VALUE.matches(value) || name in storefrontOnly) return@forEach
+                page[name] shouldBe value
+            }
         }
 
         test("the next page is another window of the same catalog") {
@@ -2650,7 +2665,10 @@ def self_test() -> None:
                 yaml.safe_dump(
                     {
                         "candidate": "storefront-catalog-search",
-                        "page": "https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E",
+                        # A catalog id the committed proposal does *not* use: a literal left
+                        # in the template would then name the wrong catalog here, and the
+                        # assertions below would catch it.
+                        "page": "https://www.wildberries.ru/catalog/4242/list.aspx?search=%3Credacted%3Aquery-param%3E",
                         "experiments": experiments,
                     },
                     allow_unicode=True,
@@ -2681,6 +2699,20 @@ def self_test() -> None:
         test_source = (root / TEST_FILE).read_text(encoding="utf-8")
         assert "%%" not in test_source, "a template token was left in the generated test"
         assert "<redacted:deviceid>" not in test_source, "a redacted value must not be committed"
+
+        # The test names the catalog of *its own* record and never a second one: the crawl URL
+        # it parses and the task it builds both come from the record, so a template that
+        # hardcoded an id would pin another proposal's catalog inside this one. Every catalog
+        # literal in the file must therefore be the record's own id — and the task must be
+        # built from the crawl URL rather than from a literal.
+        catalog_literals = set(re.findall(r"/catalog/(\d+)/list\.aspx", test_source))
+        assert catalog_literals == {"4242"}, f"the test names another record's catalog: {catalog_literals}"
+        assert "CrawlUrl.of(runtimeCrawlUrl)" in test_source, "the task must be built from the record"
+
+        # The pagination assertion compares the page-2 request with the recorded page-2 query,
+        # not only the number of the page: a builder that changed another parameter from the
+        # second page on would still pass a page-only assertion.
+        assert "nextPage.request.query.forEach" in test_source, "the page-2 request is not compared as a whole"
 
         fixture = json.loads(
             (root / f"{fixture_dir_of('storefront-catalog-search')}/baseline-1.json").read_text(encoding="utf-8")

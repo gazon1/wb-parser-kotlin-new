@@ -120,7 +120,10 @@ class WbCatalogSearchContractTest :
         fun queryOf(url: String): Map<String, String> = queryPairsOf(url).toMap()
 
         fun fetched(body: String): Fetched {
-            val url = CrawlUrl.of("https://www.wildberries.ru/catalog/131954/list.aspx").getOrNull()!!
+            // The task the answer arrives for is the crawl of *this* record: a literal
+            // here would name the catalog of one investigation in the test of another,
+            // and the test would exercise a context its fixtures never recorded.
+            val url = CrawlUrl.of(runtimeCrawlUrl).getOrNull()!!
             return Fetched(
                 task = Crawling("task-1", url, 0, UUID.randomUUID()),
                 statusCode = CrawlHttpStatusCode(200),
@@ -335,6 +338,18 @@ class WbCatalogSearchContractTest :
             page["query"] shouldBe token
             page.keys shouldBe productionQuery.keys
             nextPage.request.query["page"] shouldBe "2"
+
+            // The page-2 fixture recorded the *whole* request of the second page, not just
+            // its number: the values the crawl carries on page 2 are the ones the record
+            // saw. Comparing only the keys would let the builder change `dest`, `sort` or
+            // `resultset` from the second page on and still pass — a crawl that walks a
+            // different catalog after the first page, reported green. The rule is the
+            // baseline rule: a redacted value is the crawler's own, and a storefront-only
+            // parameter is not compared at all.
+            nextPage.request.query.forEach { (name, value) ->
+                if (REDACTED_VALUE.matches(value) || name in storefrontOnly) return@forEach
+                page[name] shouldBe value
+            }
         }
 
         test("the next page is another window of the same catalog") {
