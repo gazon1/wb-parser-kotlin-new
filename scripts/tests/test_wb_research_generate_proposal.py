@@ -982,3 +982,60 @@ def test_a_parameter_sent_twice_is_refused(world, tmp_path):
     with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
     assert "sent twice" in str(refusal.value), str(refusal.value)
+
+
+def test_a_candidate_that_names_another_status_is_refused(world, tmp_path):
+    # The proposal publishes the status the answer came with, and the candidate's
+    # own summary is where that value comes from — a summary is written by hand, so
+    # the evidence has to agree with it before it is published.
+    world.patch_candidate(observed_status=500)
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the evidence recorded" in str(refusal.value), str(refusal.value)
+
+
+def test_a_candidate_that_names_another_content_type_is_refused(world, tmp_path):
+    world.patch_candidate(response_content_type="application/json")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the evidence recorded" in str(refusal.value), str(refusal.value)
+
+
+def test_a_candidate_that_names_another_shape_of_the_answer_is_refused(world, tmp_path):
+    world.patch_candidate(response_schema={"top_level_keys": ["products"]})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the evidence recorded" in str(refusal.value), str(refusal.value)
+
+
+def test_a_status_that_is_text_is_refused(world, tmp_path):
+    # A status that became the text `200` is not the status the request came with,
+    # and the types are asked for: a number that reads as a number is not a number.
+    world.patch_candidate(observed_status="200")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the evidence recorded" in str(refusal.value), str(refusal.value)
+
+
+def test_the_proposal_publishes_the_answer_the_evidence_recorded(world, tmp_path):
+    written = world.generate(tmp_path)
+    proposal = next(path for path in written if path.name == "proposal.md").read_text(encoding="utf-8")
+
+    assert "**Observed status**: `200`" in proposal, proposal
+    assert "**Answer**: `text/plain`" in proposal, proposal
+    assert "top-level keys `metadata, products, total`" in proposal, proposal
+
+
+def test_an_endpoint_that_names_no_host_is_refused(world, tmp_path):
+    # `urlsplit` is permissive: a string without a scheme and without a host is
+    # read as a path. A request that names no host is not a request the record
+    # could have made, so it is refused rather than published.
+    world.add_candidate("/search")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "names no host" in str(refusal.value), str(refusal.value)

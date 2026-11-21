@@ -335,14 +335,29 @@ def url_parts(url: str) -> SplitResult:
     """The parts of a URL — refused when the URL cannot be read as one.
 
     `urlsplit` raises for a malformed authority — an IPv6 bracket that is not
-    closed, for example. A record that holds such a URL is a record the tool
+    closed, for example — and it is permissive about the rest: it accepts a string
+    without a scheme and without a host, and it keeps an invalid port until
+    somebody asks for it. A record that holds such a URL is a record the tool
     refuses, not one that crashes it: a traceback is not a way to tell a reviewer
     that the record does not earn a proposal.
+
+    So the scheme and the host are asked for as well: a request that names no
+    host is not a request, and a URL that reads as one is the address the record
+    saw.
     """
+    text = str(url or "")
     try:
-        return urlsplit(str(url or ""))
+        parts = urlsplit(text)
+        # The port is asked for: `urlsplit` keeps an invalid port until somebody
+        # asks for it, and a URL with a port nobody could dial is not a URL.
+        _ = parts.port
     except ValueError as error:
         raise Refused(f"the URL '{url}' cannot be read as a URL ({error})") from error
+    if parts.scheme not in ("http", "https") or not parts.netloc:
+        raise Refused(
+            f"the URL '{url}' names no host — a request that names no host is not a request the record could have made"
+        )
+    return parts
 
 
 def published_endpoint(endpoint: str) -> str:
@@ -570,6 +585,71 @@ def candidate_agrees_with_evidence(
                 f"the recorded request sent '{name}', the candidate's query does not name it — "
                 f"the proposal's parameter table would omit a parameter of the request it pins"
             )
+
+
+def answer_of_the_evidence(candidate: dict[str, Any], capture: dict[str, Any]) -> dict[str, Any]:
+    """The answer the evidence recorded — and the refusal when the candidate disagrees.
+
+    The proposal publishes three things about the answer: the status it came with,
+    the content type it had and the keys its body carried. All three are the
+    candidate's own summary, and a summary is written by hand — so it can name an
+    answer the evidence never saw, or an answer of another contract.
+
+    The evidence is the witness, so the summary has to agree with it before the
+    summary is published. And the values that reach the proposal are the ones the
+    capture holds: when the two agree they are the same value, and the capture is
+    the one a reader can check.
+
+    The types are asked for as well: a status that became the text `200` is not
+    the status the request came with.
+    """
+    recorded = capture.get("response") or {}
+    schema = capture.get("schema") or {}
+    status = recorded.get("status")
+    content_type = recorded.get("contentType")
+    keys = schema.get("topLevelKeys")
+
+    if not isinstance(status, int) or isinstance(status, bool):
+        raise Refused(
+            "the evidence records no status of the answer — the proposal publishes the status the "
+            "request came with, and a status nobody recorded cannot be published"
+        )
+    if not isinstance(content_type, str) or not content_type:
+        raise Refused(
+            "the evidence records no content type of the answer — the proposal publishes the content "
+            "type the answer had, and a content type nobody recorded cannot be published"
+        )
+    if not isinstance(keys, list) or not all(isinstance(key, str) for key in keys):
+        raise Refused(
+            "the evidence records no shape of the answer — the proposal publishes the keys the body "
+            "carried, and a shape nobody recorded cannot be published"
+        )
+
+    if candidate.get("observed_status") != status:
+        raise Refused(
+            f"the candidate names the status '{candidate.get('observed_status')}', the evidence "
+            f"recorded '{status}' — the proposal would publish an answer the record never saw"
+        )
+    if candidate.get("response_content_type") != content_type:
+        raise Refused(
+            f"the candidate names the content type '{candidate.get('response_content_type')}', the "
+            f"evidence recorded '{content_type}' — the proposal would publish an answer the record "
+            f"never saw"
+        )
+    named = (candidate.get("response_schema") or {}).get("top_level_keys")
+    if named is not None:
+        if not isinstance(named, list) or not all(isinstance(key, str) for key in named):
+            raise Refused(
+                f"the candidate names the keys {named!r} of the answer, which is not a list of names — "
+                f"the keys of the body are names, and a name that is not a name is not a name"
+            )
+        if set(named) != set(keys):
+            raise Refused(
+                f"the candidate names the keys {sorted(named)} of the answer, the evidence recorded "
+                f"{sorted(keys)} — the proposal would publish a shape the record never saw"
+            )
+
+    return {"status": status, "contentType": content_type, "topLevelKeys": list(keys)}
 
 
 def claims_about_candidate(
@@ -1469,6 +1549,7 @@ def render_proposal(
     fixtures: dict[str, list[str]],
     generated_files: list[str],
     earned: list[dict[str, Any]],
+    answer: dict[str, Any],
 ) -> str:
     validated = validated_claims(investigation)
     wanted = set(contract["experiments"].values())
@@ -1502,11 +1583,8 @@ def render_proposal(
     lines.append("")
     lines.append(f"- **Endpoint**: `{candidate.get('endpoint')}`")
     lines.append(f"- **Method**: `{candidate.get('method')}`")
-    lines.append(
-        f"- **Answer**: `{candidate.get('response_content_type')}`, "
-        f"top-level keys `{', '.join((candidate.get('response_schema') or {}).get('top_level_keys') or [])}`"
-    )
-    lines.append(f"- **Observed status**: `{candidate.get('observed_status')}`")
+    lines.append(f"- **Answer**: `{answer['contentType']}`, top-level keys `{', '.join(answer['topLevelKeys'])}`")
+    lines.append(f"- **Observed status**: `{answer['status']}`")
     lines.append("")
     lines.append("### Parameters")
     lines.append("")
@@ -1894,7 +1972,21 @@ def generate(
     # query as the parameters of the contract. A candidate that contradicts the
     # recorded request would leave the proposal advertising one request and pinning
     # another.
-    candidate_agrees_with_evidence(contract, candidate, baseline_observation(contract, experiments))
+    baseline = baseline_observation(contract, experiments)
+    candidate_agrees_with_evidence(contract, candidate, baseline)
+
+    # The proposal publishes three things about the answer — the status, the content
+    # type and the keys of the body — and the candidate's own summary is where they
+    # come from. A summary is written by hand, so the evidence has to agree with it
+    # before it is published; the values that reach the proposal are the ones the
+    # capture holds.
+    baseline_capture = evidence.get(str(baseline.get("id") or ""))
+    if baseline_capture is None:
+        raise Refused(
+            f"the baseline observation '{baseline.get('id')}' has no capture in the evidence bundle — "
+            f"the answer the proposal publishes has to be one the record saw"
+        )
+    answer = answer_of_the_evidence(candidate, baseline_capture)
 
     fixtures: dict[str, list[str]] = {}
     fixture_documents: list[dict[str, Any]] = []
@@ -2006,6 +2098,7 @@ def generate(
         + [f"{fixture_dir}/{document['observation']}.json" for document in fixture_documents]
         + [proposal_file],
         earned,
+        answer,
     )
     plan(proposal_file, proposal)
 

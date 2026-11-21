@@ -467,10 +467,20 @@ deleted file would otherwise pass.
 - **Never** let a missing dimension count as a match: a dimension that is
   missing on either side of the comparison is a dimension the record does not
   speak about, and the capture cannot witness what it does not hold.
+- **Never** let a dimension of the wrong type count as a match: a status that
+  became the text `200` is not the status the capture recorded, and a comparison
+  that reads both sides as text would call them equal.
 - **Never** read the names of the headers or the top-level keys of the answer as
-  an order: the generated test asks whether a name is there.
+  an order: the generated test asks whether a name is there — and a name that
+  appears twice is named on its own, because a set hides the repetition.
 - **Never** let a malformed URL raise out of the tool: a URL that cannot be read
-  is a record the tool refuses and a finding the gate names.
+  is a record the tool refuses and a finding the gate names; a URL that reads
+  but names no host is refused as well, because a request that names no host is
+  not a request the record could have made.
+- **Never** publish an answer the evidence did not record: the status, the
+  content type and the keys of the body come from the candidate's own summary,
+  so the summary has to agree with the capture, and the published values are the
+  ones the capture holds.
 - **Never** recognise a placeholder by its prefix: one predicate asks whether the
   placeholder is the whole value, and the generated test uses the generator's
   own pattern.

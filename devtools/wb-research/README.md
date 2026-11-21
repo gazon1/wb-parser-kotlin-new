@@ -1153,7 +1153,19 @@ prefix would drift from the first.
 an IPv6 bracket that is not closed — is a record the tool cannot judge, and a
 traceback is not a way to tell a reviewer that the record does not earn a
 proposal. So the generator refuses such a URL, and the gate reports it as a
-finding and keeps checking the other fixtures.
+finding and keeps checking the other fixtures. A URL that reads but names no
+host is refused as well: `urlsplit` is permissive and reads
+`/search?resultset=catalog` as a path, and a request that names no host is not a
+request the record could have made.
+
+**The answer the proposal publishes is the answer the evidence recorded.** The
+proposal says three things about the answer: the status it came with, the
+content type it had and the keys its body carried. All three are the candidate's
+own summary, and a summary is written by hand — so it can name an answer the
+record never saw. The evidence is the witness, so the summary has to agree with
+the capture before it is published, and the values that reach the proposal are
+the ones the capture holds. The types are asked for as well: a status that
+became the text `200` is not the status the request came with.
 
 **The rule reaches the words of the record.** The text of a claim is a value like
 any other: a claim that names a person's mail or a token is committed into a
@@ -1222,9 +1234,20 @@ anything is written, and so is one that leaves a parameter of the request out.
 same run twice, and every dimension that tells one run from another — the
 experiment, the run, the method, the URL and the order of the answer — has to be
 there on both sides and to agree. A dimension that is missing is not a dimension
-that matches. The observation has to belong to the experiment that holds it too:
-the bundle and the summary may agree with each other while both disagree with
-the experiment around them.
+that matches, and neither is a dimension that is there but of the wrong type: a
+status that became the text `200` is not the status the capture recorded, and a
+comparison that reads both sides as text would call them equal. The observation
+has to belong to the experiment that holds it too: the bundle and the summary
+may agree with each other while both disagree with the experiment around them.
+
+**The names are sets, and a name that appears twice is said on its own.** The
+generated test asks whether a header was sent and whether the answer carries a
+key — not in which order the names came, so the names of the headers and the
+top-level keys of the answer are compared as sets. A set hides a repetition,
+though, and a record that names a header twice is a malformed record: it is
+named on its own, in the fixture and in the evidence alike. The order of the
+products is not a set: the test rebuilds the body of the answer from it, so the
+same ids in another order are another answer.
 
 **A refusal leaves nothing behind.** The whole proposal is rendered and checked
 before the first byte reaches the disk, so a record that is refused half way
