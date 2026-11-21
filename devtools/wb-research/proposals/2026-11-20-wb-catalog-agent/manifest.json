@@ -1,0 +1,29 @@
+{
+  "candidate": "storefront-catalog-search",
+  "generated": {
+    "devtools/wb-research/proposals/2026-11-20-wb-catalog-agent/proposal.md": "2d5d2dec6bc266448664541b428c38e398870fe02cac60c2efb00ebb5dd354a6",
+    "wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt": "727ba647425b307619208ea4857dda66e36b35288b4981b0206ab278482d672d",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-1.json": "649d70eccd57cf91ac958e4c333236e01084ed7ac7473ff023e63b86994af9dc",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-2.json": "31f5b703641ae7c3303f5438d055cfd5abfb5ff5333fb892284e14ec858d4a9b",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/baseline-1.json": "dd4c58dcbc2fafd413f2bff03914efc97a9dc9a6fca373368769af8248494e23",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/baseline-2.json": "b7826e1c5ba541d753de0d71057575ef8c351859d45ee0be78d761e6dcaa75a1",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/page-2-1.json": "39dc83cd817fc095e255a93e76c45ebf3dea295f8e50860dc4a94b449ef3d0e9",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/page-2-2.json": "ffe5c14fd49c69663f1c88acd4074444ada2f4881338577cc9f473652e2b164f",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-1.json": "7670988cdd2fce0ee7d7851f1b9d1aa2fefd0b80cfb8e11fa67067fd3f581687",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-2.json": "1b4c04eef53492893036a1c890f6eb26b63be3acc3405b88c6e422abb73bc3f5"
+  },
+  "generator": {
+    "scripts/wb-research/generate_proposal.py": "695314424da8842d2ec8fdde61187e2fa522267c1a8e9fd2a91aa3303c6b1c6c",
+    "scripts/wb-research/redact.py": "0611c354d9393a1e7a1291d6d02c18e74382b62d4c6aff49321cd04feb22c6c7"
+  },
+  "investigation": "2026-11-20-wb-catalog-agent",
+  "schema": "wb-research/proposal-manifest/v1",
+  "sources": {
+    "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/evidence/initial-load.json": "7d225a453b031239a41537fa2e6aa1eb5921f390d7529fd08408f44bd9eea45d",
+    "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/evidence/next-page.json": "0c44b8c9ab5a02e39cad42e8aeae3a1324d3e538bdc1be15c3952cedc5d80757",
+    "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/evidence/sort-by-rating.json": "8180d288c74e44e298a35f344a7906ebf88f4be3edcbb494ec2417c0fa83371c",
+    "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/evidence/validation.json": "c53dba787b027417f9a4569f45ea0f109881472e36a9797dc5664e661d68c741",
+    "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/investigation.yaml": "fcf42eb272b52bb1480485954d3c477fe412d3567b6ec1d834de97715547d7ae",
+    "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/validation.yaml": "9484c11740d7fae436f63d139617b92d24f3899c9fb3272419736800bc38933b"
+  }
+}

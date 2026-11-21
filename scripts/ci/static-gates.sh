@@ -101,6 +101,14 @@ gate blocking "the catalog YAML agrees with the measurement artifact" python3 sc
 # It needs no generator and no network — see scripts/ci/check-catalog-models.py.
 gate blocking "the generated catalog models are current" python3 scripts/ci/check-catalog-models.py
 
+# --- the generated proposals -----------------------------------------------------
+# A proposal is generated from a research record, and the record keeps moving. The
+# manifest next to the proposal holds the hashes of the record, of the generator and
+# of every file the proposal wrote; this compares them with the files on disk. A
+# proposal whose evidence moved under it is a proposal that no longer says what it
+# says, and nothing else in the repository would notice.
+gate blocking "the generated proposals are current" python3 scripts/ci/check-proposal-fresh.py
+
 # --- the egress measurement blocks --------------------------------------------
 # The report of a measurement block is what a decision rests on, and a report is prose:
 # a number in a table can be edited and a rule can be written as met without anything

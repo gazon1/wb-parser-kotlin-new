@@ -18,6 +18,10 @@ devtools/wb-research/
       investigation.yaml               ← the record
       evidence/
         <bundle>.json                  ← sanitized evidence
+  proposals/
+    <investigation-id>/
+      proposal.md                      ← the generated proposal a human reviews
+      manifest.json                    ← the hashes of the record and the files
 ```
 
 `<investigation-id>` is `<YYYY-MM-DD>-<slug>`: the date the investigation started
@@ -1078,3 +1082,389 @@ secrets, no scope the user did not approve.
 
 The agent does not add anything to the crawler: no chrome-use and no AI
 credential enters a Gradle module or the runtime.
+
+## From a validated record to a Kotlin proposal
+
+A record knows *what the site sends*. The crawler needs *code that asks for
+exactly that*. Writing that code by hand from a record is where the two drift: a
+parameter is dropped, a header is invented, a page boundary is guessed.
+
+`scripts/wb-research/generate_proposal.py` reads the record and writes the code
+that pins it, so the code and the evidence carry the same claim.
+
+```bash
+just research::proposal 2026-11-20-wb-catalog-agent
+```
+
+**Only a validated contract is eligible.** The record must be `concluded`, it
+must carry a `validation.yaml` for the candidate, at least one of that
+candidate's experiments must have reached `validated` or `reproduced`, and at
+least one claim *those experiments observed* must have reached `validated` or
+`reproduced` — with at least one of them reaching `validated` strictly. A
+`reproduced` claim is a fact the record earned, but a contract needs a claim a
+controlled experiment confirmed, so a record whose claims are only `reproduced`
+is refused. A claim that is merely `observed`, `inconclusive`, `rejected` or
+`open` is a hypothesis, and code generated from a hypothesis is a guess with a
+confident shape — so the tool refuses the record and says which state it holds
+instead. A validated claim about *another* endpoint is not enough either: a
+record holds the claims of every endpoint it saw, and only the ones this
+candidate's own experiments observed are about this candidate's contract.
+Experiments below the bar produce no fixture and no assertion, and the proposal
+names what was held back.
+
+**What it writes**
+
+| File | What it is |
+|---|---|
+| `wbparser/src/test/resources/fixtures/catalog-search/<contract>/<observation>.json` | the sanitized observation: the request as it was made, the shape of the answer and the order of the products |
+| `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` | the regression test: it pins the crawler's request to the fixtures |
+| `devtools/wb-research/proposals/<id>/proposal.md` | the proposal a human reads: the contract, the claim→evidence→assertion table, the known differences, the reviewer's checklist |
+| `devtools/wb-research/proposals/<id>/manifest.json` | the hashes of the record, of the evidence bundles, of the generator, of the redactor and of every written file |
+
+The fixtures live in the module that owns the contract, so the ordinary
+`./gradlew :wbparser:test` runs them — offline, with no browser and no live
+site. A fixture that is not on the classpath is not a fixture. The directory
+belongs to the contract: two contract families never share one inventory, and
+the generator refuses to write when the directory holds a file it does not
+produce.
+
+**The record is the boundary of sanitization.** The query of the candidate is
+published in the proposal, the request of the observation is committed in the
+fixture and the crawl URL is committed in the test, so every value that reaches
+one of them has to hold to the record's own rule: a committed value is a
+placeholder or a value that the record's own redactor (`redact.py`) would leave
+alone. The name of the parameter is part of the rule: a value of `session` is a
+credential whatever it looks like, and a value of `query` is a phrase somebody
+typed — `Alice` is short, and it is a person's name all the same. The generator
+asks the redactor instead of keeping a second, weaker copy of the rules, so the
+two cannot drift apart. A session token, an account id or a phrase somebody
+typed is refused, not published.
+
+**A placeholder is a whole value.** The rule asks whether the redactor would
+leave the value alone, and it matches the value as a whole: a value that begins
+with a placeholder and then goes on — `<redacted:token>alice@example.com` — is
+not a sanitized value but a sanitized prefix in front of a value nobody judged,
+so it is refused rather than published as if the placeholder covered it. The
+question is asked in one place, and the generated test asks it with the
+generator's own pattern: a second rule that recognises a placeholder by its
+prefix would drift from the first.
+
+**A URL that cannot be read is refused, not raised on.** A malformed authority —
+an IPv6 bracket that is not closed — is a record the tool cannot judge, and a
+traceback is not a way to tell a reviewer that the record does not earn a
+proposal. So the generator refuses such a URL, and the gate reports it as a
+finding and keeps checking the other fixtures. A URL that reads but names no
+host is refused as well: `urlsplit` is permissive and reads
+`/search?resultset=catalog` as a path, and a request that names no host is not a
+request the record could have made. The host is read as the host and not as the
+whole authority: `http://:80/path` carries a port and no host, and an authority
+that names a port alone is not a place the request could have been made to.
+
+**The answer the proposal publishes is the answer the evidence recorded.** The
+proposal says three things about the answer: the status it came with, the
+content type it had and the keys its body carried. All three are the candidate's
+own summary, and a summary is written by hand — so it can name an answer the
+record never saw. The evidence is the witness, so the summary has to agree with
+the capture before it is published, and the values that reach the proposal are
+the ones the capture holds. The types are asked for as well: a status that
+became the text `200` is not the status the request came with.
+
+**The answer of a contract is counted.** The generated test asserts the number
+of the products the answer carried and the total it reported, so an observation
+that records no count is refused by name — a count the site did not give is not
+a count, and a test that asserts nothing is not a test. The drift gate asks the
+same question of the fixture and of the capture: a count is a number on both
+sides. A probe capture of the evidence may record no count — a probe is not a
+contract, and it produces no fixture.
+
+**The rule reaches the words of the record.** The text of a claim is a value like
+any other: a claim that names a person's mail or a token is committed into a
+proposal that a human reads and a machine hashes. So the text of every claim —
+the validated ones and the ones still only earned — is asked the same question
+the values are asked: would the record's own redactor leave it alone? A claim
+the redactor would rewrite is refused, not published in a rewritten form: the
+caller changes the record, and the next run says so.
+
+**The record is read as it is written.** A YAML file may hold the same key
+twice, and the parser keeps the last one and says nothing — a record whose
+second `dest` differs from its first is a record with two answers, and the
+generator would publish one of them. So a duplicate key is refused on reading,
+and so is a file that is not YAML at all. A nested field that is not an object
+is a malformed record too: an answer, a request or an ordering written as a
+list or a string is refused by name — an optional field that is not there is a
+field the record does not speak about, and a field that is there and is not an
+object is a broken declaration, and reading it as an empty one would make the
+answer publish itself over a declaration nobody could read. The record is
+refused, not crashed on: a traceback is not a way to tell a reviewer that the
+record does not earn a proposal. The evidence bundle is read the same way: a
+bundle that is not an object, or whose captures are not a list, is refused by
+name — a bundle that holds no captures holds no evidence.
+
+**The contract declares the parameters of its request.** The redactor has a rule
+for every name it knows and none for a name it has never seen: `customer=Alice`
+is an ordinary word under a name nobody declared, and every shape check walks it
+through. So the contract table declares which parameters the request carries and
+what their values may be — a fixed value, a closed set of values, a number
+within the bounds the endpoint itself names, or a phrase somebody typed, which
+only the placeholder that stands for it may be published. A parameter the
+contract does not declare never reaches a committed file.
+
+The table is checked against itself before it is used: it answers three
+questions about the same names — which request this is, who sends the parameter
+and what value it may hold — so a name one of its declarations names and
+another does not is a parameter the contract cannot judge, and a parameter it
+declares without a rule is a parameter whose value nobody may publish. Both are
+bugs of the tool rather than of the record, and the tool names them.
+
+**A number the site chose is named by its value or its bounds.** A number the
+site chose is named by its value or its bounds, never by its shape:
+`dest=9123456789` looks like a phone number and a catalog id to the redactor
+all the same, so the contract names the one id the site's own code sends. The
+bounds come from the endpoint itself: the catalog endpoint paginates from the
+first page, so `page` is a number within `1..60` — the last page the API
+offers — and not from zero. A page below the first one is another envelope, an
+answer without the products the page is made of, so it is not a page.
+
+**A parameter the crawler adds is not a parameter the storefront sends.** The
+contract table tells the three apart, because they answer three different
+questions: `identity` names the parameters the site identifies the request
+with, `crawler_only` the ones the crawler adds on top, `storefront_only` the
+ones the storefront sends and the crawler does not, and `parameters` the values
+the request may carry. A storefront request that carries a parameter the
+contract declares `crawler_only` says the two requests are the same request, and
+the generated test would compare two different ones and fail on a record that
+was accepted.
+
+**A parameter that is sent twice is refused.** A request that names a parameter
+twice says two things about it, and a query read as a map keeps only the last
+value — the proposal would advertise one request and the fixture would pin
+another. The generated test reads the query as the pairs it carries and asserts
+that every parameter is named once, so the repetition cannot come back through
+the test itself.
+
+**The candidate and the evidence have to say the same thing.** The proposal
+publishes the query of the candidate as the parameters of the contract, and the
+fixture pins the request that was recorded. So the candidate has to name the
+identity parameters the contract declares, with the values the contract
+declares, and its query has to be the query of the recorded request — the same
+parameters with the same values, in both directions. A candidate that says
+`resultset=filters` while the record says `resultset=catalog` is refused before
+anything is written, and so is one that leaves a parameter of the request out.
+
+**A capture has to describe its run.** The bundle and the summary describe the
+same run twice, and every dimension that tells one run from another — the
+experiment, the run, the method, the URL, the names of the headers the request
+carried and the order of the answer — has to be there on both sides and to
+agree. The names of the headers are a part of the request: the fixture takes
+them from the summary, the proposal publishes the capture, and the gate
+compares the two — so a capture that names other headers than the summary
+would write a fixture the gate turns down. A dimension that is missing is not a
+dimension that matches, and neither is a dimension that is there but of the
+wrong type: a
+status that became the text `200` is not the status the capture recorded, and a
+comparison that reads both sides as text would call them equal. The observation
+has to belong to the experiment that holds it too: the bundle and the summary
+may agree with each other while both disagree with the experiment around them.
+
+**The answer has to be the same answer on both sides.** The fixture is built from
+the summary of the observation and the proposal publishes the capture, so the
+two descriptions of the answer have to agree as well: the status, the content
+type, the size and the kind of the answer, and the shape of that answer — its
+top-level keys, the number of its products and their total. A summary that
+says the request came with 200 while the bundle says 498 would write a fixture
+and a proposal that describe two different answers, and the record would earn
+neither. Every one of them is compared, not only the two the proposal renders:
+the size of the body and the kind of the answer are dimensions of the answer
+too, and the gate asks the capture for them — so a summary and a bundle that
+disagree about them would write a proposal that the gate of this repository
+turns down.
+
+**The counts of the answer are numbers on both sides.** A boolean is not a
+number, and in Python `True == 1` — so a capture that recorded `true` where
+the summary recorded `1` would look like a match to the generator and be a
+finding to the gate that reads the same record. The counts are therefore
+checked for what they are before they are compared, and a capture that records
+no count at all is refused by name: the capture is the witness of the fixture,
+and a count it does not hold cannot witness one.
+
+**The names are sets, and a name that appears twice is said on its own.** The
+generated test asks whether a header was sent and whether the answer carries a
+key — not in which order the names came, so the names of the headers and the
+top-level keys of the answer are compared as sets. A set hides a repetition,
+though, and a record that names a header twice is a malformed record: it is
+named on its own, in the fixture and in the evidence alike. The repetition of a
+top-level key is refused by the generator as well — the same reason the gate
+refuses it, and the same reason a repetition of a header is: a set of names
+hides the repetition, and a record that names a key twice is a record with two
+answers. The order of the products is not a set: the test rebuilds the body of
+the answer from it, so the same ids in another order are another answer.
+
+**A request that names no header names nothing.** The two descriptions of one run
+have to name the same headers, and a list that is empty names none: a request
+that carries no header records nothing about the headers it carried, so it
+cannot witness a fixture that pins them — and the fixture would pin the
+production request to an empty set of headers, which the generated test would
+then hold the crawler to. So both the generator and the gate refuse an empty
+list of header names, by name, and a repetition is refused by the generator as
+well: the gate already calls a repeated header a malformed record, and a
+generator that accepted one would write a proposal its own gate turns down.
+
+**The record of an investigation is the directory of that name.** The generator
+resolves the directory of the investigation and compares it with the place its
+name says it is, before it reads a byte of the record: a directory that is a
+link to the record of another investigation is a record of something else, and
+the captures of the other record would witness the fixtures of this one. The
+gate asks the same question, and the two tools ask it at the same moment — the
+generator before it reads, the gate before it reads the sources.
+
+**A source is judged before it is read.** The gate says whether a source
+belongs to the record the manifest names before it hashes that source: a file of
+another record is not read in order to find out that it is a file of another
+record. A manifest that names no record at all accepts no source: without the
+identity of the record there is no way to tell a source of this record from a
+source of another one, so nothing is hashed and nothing is read.
+
+**Every dimension is checked for what it is, on both sides.** A run is a
+number, an experiment is a name, a status is a number, a content type is text,
+the size of the body is a number, the kind of the answer is a boolean, and the
+top-level keys are a list of names. A dimension of the wrong type is not a
+dimension that matches — and in Python `True == 1`, so a record that holds
+`true` where the site recorded `1` would pass a comparison that only asks
+whether the two sides are equal. The generator checks every dimension it
+compares, on the capture and on the summary, and refuses a dimension of the
+wrong type by name.
+
+**The bundles of the evidence are the record.** A bundle that is a link to the
+evidence of another investigation is the evidence of another record, and the
+captures of another record would witness the fixtures of this one. So every
+bundle is resolved and judged against the record before it is opened — the
+directory of the investigation being the record is not enough, because a bundle
+inside it may point anywhere.
+
+**The identity of the record is a line.** The generator writes the sentence that
+names the record alone on its line, and the gate reads the whole line: a line
+that carries more text after the sentence says something else about the record
+the proposal was produced from. The name of an investigation is a name and not a
+path as well, and both tools hold the same grammar for it — the name the
+generator accepts is the name the gate accepts.
+
+**A refusal leaves nothing behind.** The whole proposal is rendered and checked
+before the first byte reaches the disk, so a record that is refused half way
+through never leaves a fixture without its test on the disk.
+
+**A fixture carries no captured payload.** The capture kept the shape of the
+answer and the ids of the products, not the body — a body is where a price, a
+name and a session live. The body the test decodes is rebuilt by the test itself
+from the recorded shape: the products it names, in the order it recorded them,
+and nothing else. The fixture holds that order once, so it cannot say two
+different things about it. Header *names* are part of the contract; header
+*values* never enter a file.
+
+**It writes files and nothing else.** No commit, no branch, no merge: the
+proposal is a diff a human reviews.
+
+**It does not add a second adapter.** The endpoint, the parameters and the
+shape of the answer of the seller catalog are the ones the crawler already
+knows (`WbCatalogApi`, `WbCatalogRequest`, `WbCatalogParser`), so the proposal
+pins the existing one to the evidence instead of writing a parallel
+implementation. The differences the record does show — the parameters the
+crawler adds, the ones the storefront sends and the crawler does not — are
+declared in the generator's contract table, and the generated test fails on any
+difference that is not declared there.
+
+**The contract table is the tool's boundary.** The generator knows one contract
+family, `storefront-catalog-search`. A new family is a new entry in that table,
+not a framework: a generator that promises every endpoint of every site is a
+framework nobody can verify.
+
+**One contract has one proposal.** The test and the fixtures belong to the
+contract, not to the investigation that found it, so a second investigation of the
+same contract is refused: it would write the same files and silently invalidate
+the first proposal. The investigation that supersedes the old one removes the old
+proposal first.
+
+**Every endpoint the proposal names is judged.** The proposal names the endpoint
+of every candidate the record holds, not only the one that became a contract: a
+candidate that did not become a contract is still a line of a committed file. So
+every endpoint is read as the pairs of its query and as the segments of its
+path, and a value the record's own redactor would replace is refused — the
+record's rule, asked of the endpoints as well as of the values.
+
+**An endpoint is published as a place, not as a request.** The redactor has a
+rule for every parameter name it knows and none for a name it has never seen,
+so the query of a candidate that did not become a contract cannot be judged by
+value — and its parameters are not part of any contract either. So the proposal
+publishes the place of the endpoint, `scheme://host/path`, and the parameters of
+such a candidate never reach a committed file.
+
+**The proposals cannot drift away from the record.** The manifest holds the
+hashes of what was read and what was written, and the gate
+`scripts/ci/check-proposal-fresh.py` compares them with the files on disk. A
+record that changed after the proposal, an evidence bundle that changed, a
+generator that changed, a redactor that changed, or a generated file edited by
+hand each fail the gate, and the fix is to regenerate. The gate also compares
+the manifest with the file list the proposal itself carries, so a file deleted
+from the disk and from the manifest together still fails, and it checks that
+every fixture is named after the observation it holds and lives in the directory
+of its contract, so a fixture renamed on the disk, in the manifest and in the
+proposal together still fails. A fixture cannot be its own witness either: the
+observation it names has to be one the evidence holds, with the experiment, the
+run, the request and the order of the answer the capture recorded. The fixture
+is bound to that capture by the two things the test reads out of it: the query
+the request carried and the order of the products it answered with. A fixture
+whose query or whose product order was edited by hand fails the gate even when
+the manifest was regenerated over it — the capture is the witness, not the
+manifest. And the fixture is bound to that capture by every other field the
+generated test reads out of it as well: the names of the headers the request
+carried, the status, the content type, the size and the kind of the answer, and
+the shape of that answer — its top-level keys, the number of its products and
+their total. A fixture that keeps the query and the product order but restates
+the shape of the answer it answers with is a fixture of another answer, so the
+gate compares each of those fields with the capture and names the one that
+differs. A dimension that is missing on either side is not a dimension that
+matches: the comparison of two absent values would pass, and a capture that says
+nothing about the answer would witness anything. And the names of the headers
+and the top-level keys of the answer are sets — the generated test asks whether
+a name is there, not in which order the names came — so a capture that lists
+the same names in another order records the same request. The query is read as
+the pairs it carries, so a name that occurs
+twice is named on its own: the generator refuses such a request, and a map
+would keep only the last value and hide the first. A bundle that cannot be read
+— a file that is not JSON, a bundle without captures, a captures field that is
+not a list, a capture without an id — is a finding of the gate and not a crash
+of it, and so is a nested object that is not an object: a capture whose request
+is a list, a fixture whose ordering is a list. So is the same capture id in two
+bundles: two bundles that answer for one capture make the witness ambiguous. The manifest has to name every tool the proposal was produced by —
+the generator and the redactor — because a dependency nobody names is a
+dependency nobody watches. The manifest has to name the investigation it was
+produced from: a proposal that names none cannot be bound to anything, and a
+check that runs only when the manifest helps it is a check the manifest can
+switch off. The sources of the proposal have to be the sources of that
+investigation: a source of another investigation is a source of another
+record, and the captures of another record cannot witness the fixtures of this
+one — so the gate names such a source and does not read its bundles. A source
+outside the record altogether is named as well: a manifest that may point
+anywhere is a manifest that watches nothing. And the record itself has to be
+named in full — the investigation and its validation — because a manifest that
+leaves one of them out watches half of the record, and the half it leaves out
+is the half that may change unnoticed. The identity of the record is the same
+on all three sides: the manifest names the investigation, the proposal lives in
+the directory of that investigation and says in its own words which record it
+was produced from — a proposal that points at two records is a proposal that
+witnesses neither. A source is not taken on its word either: the path is
+normalized and resolved before it is judged, so a name that reaches out of the
+record with `..`, or that points at a file of another investigation, is not a
+file of this record. And the record itself is not taken on its word: the
+directory of the investigation is resolved and compared with the place its name
+points at, so a record that is a link to the record of another investigation is
+named before any of its sources is read — the sources would resolve into the
+other record, and the captures of the other record would witness the fixtures of
+this one. A fixture
+has to name the investigation of the
+proposal that holds it, next to the candidate and the observation: a fixture of
+another investigation is a fixture of another record, and the gate names it even
+when everything else about the fixture is right — a fixture that names no
+investigation at all is named too. And the query a fixture holds
+has to be a map of text to text, because that is how the generated test reads
+it: a name or a value of another type is a query the test would read
+differently than the request that was made.
