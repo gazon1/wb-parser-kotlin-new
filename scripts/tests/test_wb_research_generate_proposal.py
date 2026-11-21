@@ -329,6 +329,12 @@ class SimpleWorld:
         record["api_candidates"] = value
         (self.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
 
+    def write_experiments(self, value) -> None:
+        """Put something that is not a list of experiments into `validation.yaml`."""
+        document = yaml.safe_load((self.directory / "validation.yaml").read_text(encoding="utf-8"))
+        document["experiments"] = value
+        (self.directory / "validation.yaml").write_text(yaml.safe_dump(document, allow_unicode=True), encoding="utf-8")
+
     def write_claims(self, value) -> None:
         """Put something that is not a list of claims into `validation`."""
         record = yaml.safe_load((self.directory / "investigation.yaml").read_text(encoding="utf-8"))
@@ -497,6 +503,22 @@ def test_a_record_whose_claims_are_not_claims_is_refused(world, tmp_path):
     with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
     assert "not a list of claims" in str(refusal.value), str(refusal.value)
+
+
+def test_a_validation_whose_experiments_are_not_experiments_is_refused(world, tmp_path):
+    world.write_experiments([None])
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "not a list of experiments" in str(refusal.value), str(refusal.value)
+
+
+def test_an_experiment_whose_observations_are_not_observations_is_refused(world, tmp_path):
+    world.write_experiments([{"name": "baseline", "state": "reproduced", "observations": [None]}])
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "observations that are not" in str(refusal.value), str(refusal.value)
 
 
 def test_an_observation_without_a_capture_is_refused(world, tmp_path):

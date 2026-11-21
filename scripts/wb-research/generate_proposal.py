@@ -1040,11 +1040,41 @@ def check_eligible(
         )
 
 
+def experiments_of(validation: dict[str, Any]) -> list[dict[str, Any]]:
+    """The experiments the validation states, refused when they are not experiments.
+
+    The same rule the claims and the candidates get, one level deeper: an experiment
+    is a set of named fields, its observations are a list of them, and a file that
+    says otherwise is readable YAML and not a validation. `experiments: [null]` used
+    to reach `None.get("state")` and end in a traceback; it is refused here, where the
+    name of the field that is wrong is still at hand.
+    """
+    experiments = validation.get("experiments")
+    if experiments is None:
+        return []
+    if not isinstance(experiments, list) or not all(isinstance(item, dict) for item in experiments):
+        raise Refused(
+            "the validation's 'experiments' is not a list of experiments — every experiment of a "
+            "record is a set of named fields, and an experiment that is not one states nothing"
+        )
+    for experiment in experiments:
+        observations = experiment.get("observations")
+        if observations is None:
+            continue
+        if not isinstance(observations, list) or not all(isinstance(item, dict) for item in observations):
+            raise Refused(
+                f"the experiment '{experiment.get('name')}' holds observations that are not "
+                f"observations — every observation of an experiment is a set of named fields, and "
+                f"an observation that is not one names no request"
+            )
+    return experiments
+
+
 def eligible_experiments(validation: dict[str, Any]) -> list[dict[str, Any]]:
     """The experiments whose state is a fact the record earned."""
     return [
         experiment
-        for experiment in validation.get("experiments") or []
+        for experiment in experiments_of(validation)
         if experiment.get("state") in VALIDATED_STATES and experiment.get("observations")
     ]
 
