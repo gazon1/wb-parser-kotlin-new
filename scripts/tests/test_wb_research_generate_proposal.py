@@ -316,22 +316,25 @@ class SimpleWorld:
 def test_a_record_that_is_not_concluded_is_refused(world, tmp_path):
     world.write(status="open")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "not 'concluded'" in str(refusal.value), str(refusal.value)
 
 
 def test_a_record_without_a_validation_is_refused(world, tmp_path):
     world.write(with_validation=False)
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "validation.yaml" in str(refusal.value), str(refusal.value)
 
 
 def test_a_claim_that_is_only_observed_is_refused(world, tmp_path):
     world.write(state="observed")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "reached a validated state" in str(refusal.value), str(refusal.value)
 
 
 def test_a_validated_claim_of_another_candidate_is_not_enough(world, tmp_path):
@@ -340,16 +343,18 @@ def test_a_validated_claim_of_another_candidate_is_not_enough(world, tmp_path):
     world.write(evidence=["initial-load-004"])
     world.write_evidence(
         [
+            *world.captures(),
             {
                 "id": "initial-load-004",
                 "request": {"method": "GET", "url": "https://www.wildberries.ru/__internal/u-card/cards/v4/list"},
                 "ordering": {"orderHash": "hash", "productIds": []},
-            }
+            },
         ]
     )
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "in the candidate's own experiments" in str(refusal.value), str(refusal.value)
 
 
 def test_a_claim_only_the_first_page_load_supports_is_not_enough(world, tmp_path):
@@ -367,8 +372,9 @@ def test_a_claim_only_the_first_page_load_supports_is_not_enough(world, tmp_path
         ]
     )
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "reached a validated state" in str(refusal.value), str(refusal.value)
 
 
 def test_an_experiment_of_another_endpoint_is_not_evidence_of_this_contract(world, tmp_path):
@@ -376,8 +382,9 @@ def test_an_experiment_of_another_endpoint_is_not_evidence_of_this_contract(worl
     # resultset. A capture of it is not a capture of the catalog search.
     world.patch_observation(url=f"{ENDPOINT}?resultset=filters&sort=popular")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "asked another endpoint" in str(refusal.value), str(refusal.value)
 
 
 def test_an_observation_id_that_names_another_file_is_refused(world, tmp_path):
@@ -386,8 +393,9 @@ def test_an_observation_id_that_names_another_file_is_refused(world, tmp_path):
     # generator must never rewrite.
     world.patch_observation(id="../../../../.betterleaks-baseline")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "single name" in str(refusal.value), str(refusal.value)
 
 
 def test_two_bundles_with_the_same_capture_are_refused(world, tmp_path):
@@ -397,15 +405,17 @@ def test_two_bundles_with_the_same_capture_are_refused(world, tmp_path):
         encoding="utf-8",
     )
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "two evidence bundles carry the capture" in str(refusal.value), str(refusal.value)
 
 
 def test_a_validation_that_names_no_candidate_is_refused(world, tmp_path):
     world.write(candidate=None)
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "names no candidate" in str(refusal.value), str(refusal.value)
 
 
 def test_an_investigation_id_that_is_a_path_is_refused(world, tmp_path):
@@ -416,8 +426,9 @@ def test_an_investigation_id_that_is_a_path_is_refused(world, tmp_path):
 def test_an_observation_without_a_capture_is_refused(world, tmp_path):
     world.write_evidence([capture for capture in world.captures() if capture["id"] != "baseline-1"])
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "capture" in str(refusal.value), str(refusal.value)
 
 
 def test_a_capture_that_lost_its_products_is_refused(world, tmp_path):
@@ -427,8 +438,9 @@ def test_a_capture_that_lost_its_products_is_refused(world, tmp_path):
     ]
     world.write_evidence(lost)
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "products" in str(refusal.value), str(refusal.value)
 
 
 def test_a_second_investigation_of_the_same_contract_is_refused(world, tmp_path):
@@ -549,15 +561,17 @@ def test_a_candidate_that_names_another_endpoint_is_refused(world, tmp_path):
     # its evidence would pin a request nobody authorized.
     world.patch_candidate(endpoint="https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v19/search")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "endpoint" in str(refusal.value), str(refusal.value)
 
 
 def test_a_candidate_that_names_another_method_is_refused(world, tmp_path):
     world.patch_candidate(method="POST")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "method" in str(refusal.value), str(refusal.value)
 
 
 def test_a_capture_that_asks_another_request_is_refused(world, tmp_path):
@@ -569,26 +583,31 @@ def test_a_capture_that_asks_another_request_is_refused(world, tmp_path):
         url=f"{ENDPOINT}?resultset=catalog&sort=priceup&query=%3Credacted%3Aquery-param%3E",
     )
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "another run" in str(refusal.value), str(refusal.value)
 
 
 def test_a_capture_of_another_experiment_is_refused(world, tmp_path):
     world.patch_capture("baseline-1", experiment="sort-priceup")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "another run" in str(refusal.value), str(refusal.value)
 
 
-def test_a_repeated_identity_parameter_is_refused(world, tmp_path):
-    # A request that names the identity parameter twice says two things about
-    # which request it is.
+def test_a_parameter_the_request_names_twice_is_refused(world, tmp_path):
+    # A request that names a parameter twice says two things about it, and a query read
+    # as a map keeps only the last — so the proposal would advertise one request and pin
+    # another. The parameter is not an identity one: a repeated `resultset` stops being
+    # the contract's identity and is refused earlier, as another endpoint.
     world.patch_observation(
-        url=f"{ENDPOINT}?resultset=catalog&resultset=filters&sort=popular&query=%3Credacted%3Aquery-param%3E"
+        url=f"{ENDPOINT}?resultset=catalog&sort=popular&sort=priceup&query=%3Credacted%3Aquery-param%3E"
     )
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "is sent twice" in str(refusal.value), str(refusal.value)
 
 
 def test_a_record_without_a_validated_claim_is_refused(world, tmp_path):
@@ -596,8 +615,9 @@ def test_a_record_without_a_validated_claim_is_refused(world, tmp_path):
     # a controlled experiment confirmed.
     world.write(state="reproduced")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "reached the `validated` state" in str(refusal.value), str(refusal.value)
 
 
 def test_a_query_value_the_record_did_not_sanitize_is_refused(world, tmp_path):
@@ -605,8 +625,9 @@ def test_a_query_value_the_record_did_not_sanitize_is_refused(world, tmp_path):
     # value in it would be committed in the Markdown of the proposal.
     world.patch_candidate(query={"session": "8f14e45fceea167a5a36dedd4bea2543"})
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "did not sanitize" in str(refusal.value), str(refusal.value)
 
 
 def test_a_crawl_url_that_is_not_the_crawler_s_url_is_refused(world, tmp_path):
@@ -614,23 +635,26 @@ def test_a_crawl_url_that_is_not_the_crawler_s_url_is_refused(world, tmp_path):
     # shape is a page the crawler never asks with.
     world.patch_page("https://www.wildberries.ru/catalog/131954/search.aspx?search=%3Credacted%3Aquery-param%3E")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "the contract declares" in str(refusal.value), str(refusal.value)
 
 
 def test_a_crawl_url_without_a_search_parameter_is_refused(world, tmp_path):
     # A crawl without the token asks for the unfiltered popular list.
     world.patch_page("https://www.wildberries.ru/catalog/131954/list.aspx")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "search" in str(refusal.value), str(refusal.value)
 
 
 def test_a_crawl_url_with_an_unsanitized_value_is_refused(world, tmp_path):
     world.patch_page("https://www.wildberries.ru/catalog/131954/list.aspx?search=8f14e45fceea167a5a36dedd4bea2543")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "did not sanitize" in str(refusal.value), str(refusal.value)
 
 
 def test_the_fixtures_live_in_the_directory_of_their_contract(world, tmp_path):
@@ -647,8 +671,9 @@ def test_a_leftover_fixture_in_the_contract_directory_is_refused(world, tmp_path
     folder.mkdir(parents=True)
     (folder / "obsolete.json").write_text("{}\n", encoding="utf-8")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "fixture" in str(refusal.value), str(refusal.value)
 
 
 @pytest.mark.parametrize(
@@ -705,8 +730,9 @@ def test_a_capture_that_does_not_describe_its_run_is_refused(world, tmp_path, pa
     # that is missing is not a dimension that matches.
     world.drop_from_capture("baseline-1", *path)
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "another run" in str(refusal.value), str(refusal.value)
 
 
 @pytest.mark.parametrize(
@@ -723,8 +749,9 @@ def test_a_capture_whose_nested_objects_are_not_objects_is_refused(world, tmp_pa
     # malformed, and a malformed record is a refusal, not a traceback.
     world.patch_capture("baseline-1", **changes)
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "not an object" in str(refusal.value), str(refusal.value)
 
 
 @pytest.mark.parametrize(
@@ -740,8 +767,9 @@ def test_an_observation_whose_nested_objects_are_not_objects_is_refused(world, t
     # be read as objects, and one that is not an object says nothing about the run.
     world.patch_observation(**changes)
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "not an object" in str(refusal.value), str(refusal.value)
 
 
 def test_a_candidate_whose_query_is_not_an_object_is_refused(world, tmp_path):
@@ -752,8 +780,9 @@ def test_a_candidate_whose_query_is_not_an_object_is_refused(world, tmp_path):
     record["api_candidates"][0]["query"] = "resultset=catalog"
     (world.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
 
-    with pytest.raises(generate_proposal.Refused):
+    with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
+    assert "not an object" in str(refusal.value), str(refusal.value)
 
 
 def test_a_candidate_whose_response_schema_is_not_an_object_is_refused(world, tmp_path):

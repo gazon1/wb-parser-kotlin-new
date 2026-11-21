@@ -47,6 +47,20 @@ private val REDACTED_VALUE = Regex("<redacted:[^>]+>")
  * decodes is reconstructed from the recorded shape, so a fixture can never carry
  * something that was captured.
  *
+ * ## What this test does *not* check
+ *
+ * It is a request-and-shape regression test, not a wire-payload compatibility test.
+ * The body it decodes carries the keys, the count, the total and the ids a product
+ * needs to be mapped — nothing else. So a change inside a product object that keeps
+ * the recorded top-level shape is invisible here: a field WB renames, retypes or
+ * adds, a nested `metadata` object that changes, a price that moves to another key.
+ * The parser would still read the reconstructed body, and the test would still pass.
+ *
+ * That is the price of never committing a captured payload — a price this record
+ * chooses, because a payload is where the price, the name and the session live. What
+ * covers that gap is a captured payload replayed where it can be held without
+ * committing it, not a fixture in this repository.
+ *
  * ## Why it is worth having
  *
  * The endpoint answers 200 with a plausible page of products when the request is
