@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -1463,3 +1464,65 @@ def test_the_top_level_keys_of_the_answer_are_a_set(world, tmp_path):
 
     proposal = next(path for path in written if path.name == "proposal.md").read_text(encoding="utf-8")
     assert "metadata" in proposal
+
+
+# --------------------------------------------------------------------------------------
+# The committed proposal is reproducible from its own evidence
+# --------------------------------------------------------------------------------------
+
+# The investigation the committed proposal came from, and the files it wrote. The gate
+# proves the manifest and the files on disk agree with each other; this proves the files
+# on disk are the ones the generator writes from the evidence — the two levels of trust
+# the gate cannot cover, because a manifest can agree with a file that is not what the
+# record says.
+COMMITTED_INVESTIGATION = "2026-11-20-wb-catalog-agent"
+REPOSITORY = Path(__file__).resolve().parents[2]
+
+
+def test_the_committed_proposal_is_reproducible_from_its_evidence(tmp_path):
+    # Generated into a temporary root, never over the working tree: a test that rewrites
+    # the tracked files cannot be trusted to notice that they changed.
+    written = generate_proposal.generate(
+        COMMITTED_INVESTIGATION, tmp_path, investigations_root=REPOSITORY / "devtools/wb-research/investigations"
+    )
+
+    assert written, "the committed investigation must produce a proposal"
+
+    # The authority is `git ls-files`, not the disk: an untracked file under the fixture
+    # directory would make the set of files look smaller than the one the manifest lists,
+    # and the comparison below would then pass on a proposal that is missing a fixture.
+    committed = set(
+        subprocess.run(
+            [
+                "git",
+                "ls-files",
+                f"{generate_proposal.PROPOSAL_DIR}/{COMMITTED_INVESTIGATION}",
+                generate_proposal.FIXTURE_ROOT,
+                generate_proposal.TEST_FILE,
+            ],
+            cwd=REPOSITORY,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+    )
+    generated = {path.relative_to(tmp_path).as_posix() for path in written}
+
+    # The proposal writes its own directory, the fixture directory and the test. Every
+    # file the generator wrote is tracked, and every tracked file of those directories is
+    # one the generator wrote: a file added by hand is a file the record does not explain.
+    manifest_path = f"{generate_proposal.PROPOSAL_DIR}/{COMMITTED_INVESTIGATION}/manifest.json"
+    manifest = json.loads((tmp_path / manifest_path).read_text(encoding="utf-8"))
+    listed = set(manifest["generated"])
+    # The manifest does not hash itself — a file cannot hold its own digest.
+    assert listed == generated - {manifest_path}, (
+        f"the manifest and the generator disagree: {listed ^ (generated - {manifest_path})}"
+    )
+    assert committed == generated, f"the committed files and the generator disagree: {committed ^ generated}"
+
+    changed = [
+        relative
+        for relative in sorted(generated)
+        if (tmp_path / relative).read_bytes() != (REPOSITORY / relative).read_bytes()
+    ]
+    assert not changed, f"the committed files are not what the generator writes: {changed}"
