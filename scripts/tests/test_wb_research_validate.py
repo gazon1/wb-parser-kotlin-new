@@ -1,0 +1,776 @@
+"""Tests for the contract-validation tool.
+
+The tool decides what a sample of one proves and what it does not, so the rules
+are what is tested here: one variation per experiment, a plan that runs only
+what the operator approved, a refusal that is never a validation, and header
+values that never reach a file the repository holds.
+
+Everything runs offline. The browser is replaced by a function that returns the
+answer the test asks for, because a live site is not a test dependency.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import shutil
+import subprocess
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import yaml
+
+VALIDATE = Path(__file__).resolve().parents[1] / "wb-research" / "validate.py"
+INVESTIGATION = "2026-11-21-wb-catalog-contract"
+ENDPOINT = "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search"
+PAGE = "https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки"
+BASE_QUERY = {"page": "1", "query": "колонки", "resultset": "catalog", "sort": "popular"}
+HEADERS = ["deviceid", "x-requested-with"]
+
+
+def load_validator():
+    spec = importlib.util.spec_from_file_location("wb_research_validate", VALIDATE)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+validate = load_validator()
+
+
+def baseline(repeat: int = 2) -> dict:
+    return {"name": "baseline", "kind": "replay", "repeat": repeat}
+
+
+def variant(name: str, **fields) -> dict:
+    return {"name": name, "repeat": 2, **fields}
+
+
+def answer(
+    status: int = 200,
+    ids=(1, 2),
+    total: int = 10,
+    error: str | None = None,
+    is_json: bool = True,
+    json_type: str | None = "object",
+) -> dict:
+    """What the page script reports for one request."""
+    return {
+        "status": status,
+        "contentType": "application/json" if status == 200 else "text/plain",
+        "bodyBytes": 233 if status == 200 else 0,
+        "isJson": status == 200 and is_json,
+        "jsonType": json_type if status == 200 and is_json else None,
+        "topLevelKeys": ["products", "total"] if status == 200 and is_json and json_type == "object" else None,
+        "productCount": len(ids) if status == 200 and is_json else None,
+        "total": total if status == 200 and is_json else None,
+        "productIds": list(ids) if status == 200 and is_json else [],
+        "droppedByBrowser": [],
+        "error": error,
+    }
+
+
+@pytest.fixture
+def world(tmp_path, monkeypatch):
+    """An investigation, an approved capture config and a local request file."""
+    monkeypatch.setattr(validate, "INVESTIGATIONS", tmp_path / "investigations")
+    monkeypatch.setattr(validate, "RAW_ROOT", tmp_path / "raw")
+    monkeypatch.setattr(validate.time, "sleep", lambda seconds: None)
+    config = tmp_path / "capture-config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "allowedOrigins": ["www.wildberries.ru"],
+                "allowedPages": ["https://www.wildberries.ru/catalog/"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(validate, "CONFIG_PATH", config)
+
+    def make(experiments: list[dict] | None = None, request: dict | None = None, query: dict | None = None):
+        directory = tmp_path / "investigations" / INVESTIGATION
+        (directory / "evidence").mkdir(parents=True, exist_ok=True)
+        record = {
+            "id": INVESTIGATION,
+            "api_candidates": [
+                {
+                    "id": "storefront-catalog-search",
+                    "method": "GET",
+                    "endpoint": ENDPOINT,
+                    "query": BASE_QUERY,
+                    "headers": {"deviceid": "<redacted:deviceid>", "x-requested-with": "XMLHttpRequest"},
+                }
+            ],
+        }
+        (directory / "investigation.yaml").write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+        plan = {
+            "schema": validate.PLAN_SCHEMA,
+            "id": INVESTIGATION,
+            "candidate": "storefront-catalog-search",
+            "page": PAGE,
+            "request": {"query": query or {}, "headers": HEADERS, "credentials": "include", **(request or {})},
+            "min_interval_seconds": 1,
+            "experiments": experiments or [baseline()],
+        }
+        (directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+        raw = tmp_path / "raw" / INVESTIGATION
+        raw.mkdir(parents=True, exist_ok=True)
+        (raw / "request.json").write_text(
+            json.dumps(
+                {
+                    "headers": {"deviceid": "site_test_value", "x-requested-with": "XMLHttpRequest"},
+                    "query": {"query": "колонки"},
+                }
+            ),
+            encoding="utf-8",
+        )
+        return SimpleNamespace(directory=directory, raw=raw)
+
+    return make
+
+
+def fake_browser(monkeypatch, results: list[dict]) -> dict:
+    """A browser that answers the probes in order and records their requests."""
+    calls: dict[str, object] = {"probes": [], "reloads": 0, "opened": []}
+
+    def probe(request, session):
+        calls["probes"].append(request)
+        return results[len(calls["probes"]) - 1]
+
+    def open_page(page, session, config):
+        calls["opened"].append(page)
+
+    def reload_page(session, config):
+        calls["reloads"] += 1
+        return True, ""
+
+    monkeypatch.setattr(validate, "probe", probe)
+    monkeypatch.setattr(validate, "open_page", open_page)
+    monkeypatch.setattr(validate, "reload_page", reload_page)
+    return calls
+
+
+def read_summary(directory: Path) -> dict:
+    return yaml.safe_load((directory / validate.RECORD_FILE).read_text(encoding="utf-8"))
+
+
+def test_the_reference_cannot_vary(world, monkeypatch):
+    world([variant("first", vary={"sort": "priceup"})])
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="cannot vary"):
+        validate.approve(INVESTIGATION)
+
+
+def test_a_variant_that_changes_two_things_is_refused(world, monkeypatch):
+    world([baseline(), variant("both", vary={"sort": "priceup"}, remove=["page"])])
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="more than one thing"):
+        validate.approve(INVESTIGATION)
+
+
+def test_a_variant_that_changes_nothing_is_refused(world, monkeypatch):
+    world([baseline(), variant("noop", vary={"sort": "popular"})])
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="does not change"):
+        validate.approve(INVESTIGATION)
+
+
+def test_an_unknown_field_to_compare_is_refused(world, monkeypatch):
+    world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["colour"])])
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="unknown fields"):
+        validate.approve(INVESTIGATION)
+
+
+def test_a_plan_without_a_pause_is_refused(world, monkeypatch):
+    place = world([baseline()])
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["min_interval_seconds"] = 0
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="always pauses"):
+        validate.approve(INVESTIGATION)
+
+
+def test_a_plan_that_asks_for_too_many_requests_is_refused(world, monkeypatch):
+    world([baseline()] + [variant(f"sorted-{index}", vary={"sort": f"v{index}"}) for index in range(30)])
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="limited to"):
+        validate.approve(INVESTIGATION)
+
+
+def test_a_repeated_query_parameter_is_refused(world, monkeypatch):
+    place = world([baseline()])
+    record = yaml.safe_load((place.directory / "investigation.yaml").read_text(encoding="utf-8"))
+    record["api_candidates"][0]["endpoint"] = ENDPOINT + "?filter=a&filter=b"
+    (place.directory / "investigation.yaml").write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="repeats the query parameter"):
+        validate.approve(INVESTIGATION)
+
+
+def test_the_suggested_plan_uses_the_field_the_tool_reads():
+    # A suggested plan that spells the field another way is a plan that silently
+    # compares everything, because YAML accepts the unknown key.
+    assert "compare: [order]" in validate.SUGGESTED_PLAN
+    assert "on:" not in validate.SUGGESTED_PLAN
+
+
+def test_an_unapproved_plan_does_not_run(world, monkeypatch):
+    place = world([baseline()])
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["status"] = "draft"
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    calls = fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="not approved"):
+        validate.run(INVESTIGATION, None, False)
+
+    assert calls["probes"] == []
+
+
+def test_a_changed_scope_needs_a_new_approval(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["experiments"][1]["vary"] = {"sort": "benefit"}
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    calls = fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="approve it again"):
+        validate.run(INVESTIGATION, None, False)
+
+    assert calls["probes"] == []
+
+
+def test_a_changed_base_query_value_needs_a_new_approval(world, monkeypatch):
+    place = world([baseline()])
+    validate.approve(INVESTIGATION)
+
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["request"]["query"] = {"sort": "priceup"}
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    calls = fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="approve it again"):
+        validate.run(INVESTIGATION, None, False)
+
+    assert calls["probes"] == []
+
+
+def test_a_page_outside_the_config_is_refused(world, monkeypatch):
+    place = world([baseline()])
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["page"] = "https://example.com/catalog/"
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="not approved"):
+        validate.approve(INVESTIGATION)
+
+
+def test_a_missing_header_value_stops_the_run(world, monkeypatch):
+    place = world([baseline()])
+    validate.approve(INVESTIGATION)
+    (place.raw / "request.json").write_text(
+        json.dumps({"headers": {"x-requested-with": "XMLHttpRequest"}}), encoding="utf-8"
+    )
+    fake_browser(monkeypatch, [answer()])
+
+    with pytest.raises(SystemExit, match="deviceid"):
+        validate.run(INVESTIGATION, None, False)
+
+
+def test_a_request_file_inside_the_repository_is_refused(world, monkeypatch):
+    place = world([baseline()])
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["request_file"] = str(Path(validate.REPO_ROOT) / "headers.json")
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer()])
+
+    with pytest.raises(SystemExit, match="outside the repository"):
+        validate.run(INVESTIGATION, None, False)
+
+
+def test_a_baseline_reproduced_and_a_variant_validated(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    calls = fake_browser(
+        monkeypatch,
+        [answer(ids=(1, 2)), answer(ids=(1, 2)), answer(ids=(2, 1)), answer(ids=(2, 1))],
+    )
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_OK
+
+    summary = read_summary(place.directory)
+    assert summary["baseline_reproduced"] is True
+    assert summary["experiments"][0]["state"] == validate.REPRODUCED
+    assert summary["experiments"][1]["state"] == validate.VALIDATED
+    assert summary["checks"][0]["met"] == [True, True]
+    assert summary["not_validated"] == []
+    assert len(calls["probes"]) == 4
+
+
+def test_the_replay_changes_one_parameter_and_keeps_the_rest(world, monkeypatch):
+    world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    calls = fake_browser(monkeypatch, [answer(), answer(), answer(ids=(2, 1)), answer(ids=(2, 1))])
+
+    validate.run(INVESTIGATION, None, False)
+
+    first, third = calls["probes"][0], calls["probes"][2]
+    assert "sort=popular" in first["url"]
+    assert "sort=priceup" in third["url"]
+    assert "page=1" in third["url"] and "resultset=catalog" in third["url"]
+    assert third["headers"] == {"deviceid": "site_test_value", "x-requested-with": "XMLHttpRequest"}
+
+
+def test_a_single_sample_does_not_validate(world, monkeypatch):
+    place = world(
+        [baseline(repeat=1), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"], repeat=1)]
+    )
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(ids=(1, 2)), answer(ids=(2, 1))])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["state"] == validate.OBSERVED
+    assert "sorted" in [item["experiment"] for item in summary["not_validated"]]
+    sorted_entry = next(item for item in summary["not_validated"] if item["experiment"] == "sorted")
+    assert "one sample" in sorted_entry["reason"]
+
+
+def test_a_stable_contradiction_is_rejected(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(), answer(), answer(), answer()])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["state"] == validate.REJECTED
+
+
+def test_a_blocked_variant_is_not_a_validation(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(), answer(), answer(status=403), answer(status=403)])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_BLOCKED
+
+    summary = read_summary(place.directory)
+    blocked = summary["experiments"][1]
+    assert blocked["outcome"] == validate.BLOCKED
+    assert blocked["state"] == validate.INCONCLUSIVE
+    assert "refused" in blocked["reason"]
+    assert summary["experiments"][1]["state"] != validate.VALIDATED
+    assert [item["experiment"] for item in summary["not_validated"]] == ["sorted"]
+
+
+def test_a_failed_probe_is_not_a_result(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(), answer(), answer(error="fetch_failed")])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["outcome"] == validate.FAILED
+    assert summary["experiments"][1]["state"] == validate.INCONCLUSIVE
+
+
+def test_a_next_page_is_validated_by_being_distinct(world, monkeypatch):
+    place = world(
+        [baseline(), variant("page-2", vary={"page": "2"}, expect="changed", compare=["order"], distinct=True)]
+    )
+    validate.approve(INVESTIGATION)
+    fake_browser(
+        monkeypatch,
+        [answer(ids=(1, 2)), answer(ids=(1, 2)), answer(ids=(3, 4)), answer(ids=(3, 4))],
+    )
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_OK
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["state"] == validate.VALIDATED
+    assert summary["experiments"][1]["comparisons"][0]["details"]["sharedIds"] == 0
+
+
+def test_a_next_page_that_overlaps_is_not_a_next_page(world, monkeypatch):
+    place = world(
+        [baseline(), variant("page-2", vary={"page": "2"}, expect="changed", compare=["order"], distinct=True)]
+    )
+    validate.approve(INVESTIGATION)
+    # The order changed, but it is the same products: not another page.
+    fake_browser(
+        monkeypatch,
+        [answer(ids=(1, 2)), answer(ids=(1, 2)), answer(ids=(2, 1)), answer(ids=(2, 1))],
+    )
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["state"] == validate.REJECTED
+
+
+def test_a_changed_request_file_needs_a_new_approval(world, monkeypatch, tmp_path):
+    place = world([baseline()])
+    validate.approve(INVESTIGATION)
+
+    other = tmp_path / "other-request.json"
+    other.write_text(
+        json.dumps({"headers": {"deviceid": "site_test_value", "x-requested-with": "XMLHttpRequest"}}),
+        encoding="utf-8",
+    )
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["request_file"] = str(other)
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    calls = fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="approve it again"):
+        validate.run(INVESTIGATION, None, False)
+
+    assert calls["probes"] == []
+
+
+def test_a_changed_json_shape_is_a_change(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="same", compare=["json"])])
+    validate.approve(INVESTIGATION)
+    # Same status and media type, but the variant is not JSON: the comparison
+    # has to see it, or an answer that stopped being parsable looks unchanged.
+    fake_browser(
+        monkeypatch,
+        [answer(is_json=True), answer(is_json=True), answer(is_json=False), answer(is_json=False)],
+    )
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+
+    summary = read_summary(place.directory)
+    assert "json" in summary["experiments"][1]["comparisons"][0]["changedFields"]
+    assert summary["experiments"][1]["state"] == validate.REJECTED
+
+
+def test_the_reference_cannot_declare_an_expectation(world, monkeypatch):
+    world([{"name": "baseline", "kind": "replay", "repeat": 2, "expect": "same"}])
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="cannot declare an expectation"):
+        validate.approve(INVESTIGATION)
+
+
+def test_the_probe_script_parses_a_text_plain_json_answer(monkeypatch):
+    """The browser-side script is executed, not replaced: it is the instrument."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+
+    body = json.dumps({"products": [{"id": 1}], "total": 7, "note": "колонки"}, ensure_ascii=False)
+    result, sent = run_probe_script(node, body=body, content_type="text/plain; charset=UTF-8")
+
+    assert result["status"] == 200
+    assert result["isJson"] is True
+    assert result["jsonType"] == "object"
+    assert result["topLevelKeys"] == ["products", "total", "note"]
+    assert result["productCount"] == 1
+    assert result["productIds"] == [1]
+    assert result["total"] == 7
+    assert result["bodyBytes"] == len(body.encode("utf-8"))
+    assert sent["method"] == "GET"
+    assert sent["credentials"] == "include"
+    # A redirect is not followed: the approved origin is the only origin.
+    assert sent["redirect"] == "error"
+
+
+def test_the_probe_script_reports_a_malformed_answer_and_the_dropped_headers(monkeypatch):
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+
+    result, _ = run_probe_script(
+        node,
+        body="not json",
+        content_type="text/plain",
+        headers={"deviceid": "x", "referer": "https://example.test/", "cookie": "a=b", "sec-ch-ua": "y"},
+    )
+
+    assert result["isJson"] is False
+    assert result["topLevelKeys"] is None
+    assert result["productIds"] == []
+    assert set(result["droppedByBrowser"]) == {"referer", "cookie", "sec-ch-ua"}
+
+
+def run_probe_script(node: str, body: str, content_type: str, headers: dict | None = None) -> tuple[dict, dict]:
+    """Execute PROBE_SCRIPT under Node with a fetch that answers the test's body."""
+    runner = """
+const spec = JSON.parse(process.env.PROBE_SPEC);
+const fn = eval('(' + process.env.PROBE_SCRIPT + ')');
+const response = {
+  status: 200,
+  headers: {get: (name) => (name.toLowerCase() === 'content-type' ? process.env.PROBE_TYPE : null)},
+  text: async () => process.env.PROBE_BODY
+};
+let sent = null;
+globalThis.fetch = async (url, init) => {
+  sent = {url: url, method: init.method, credentials: init.credentials, headers: init.headers, redirect: init.redirect};
+  return response;
+};
+fn(spec).then((result) => process.stdout.write(JSON.stringify({result: result, sent: sent})));
+"""
+    spec = {"url": "https://www.wildberries.ru/x", "method": "GET", "headers": headers or {}, "credentials": "include"}
+    env = dict(
+        os.environ,
+        PROBE_SPEC=json.dumps(spec),
+        PROBE_SCRIPT=validate.PROBE_SCRIPT,
+        PROBE_BODY=body,
+        PROBE_TYPE=content_type,
+    )
+    completed = subprocess.run([node, "-"], input=runner, capture_output=True, text=True, check=False, env=env)
+    if completed.returncode != 0:
+        raise AssertionError(f"the probe script failed: {completed.stderr}")
+    payload = json.loads(completed.stdout)
+    return payload["result"], payload["sent"]
+
+
+def test_a_reload_is_a_reload_and_not_another_experiment(world, monkeypatch):
+    world([baseline(), {"name": "after-reload", "kind": "reload", "expect": "same", "repeat": 2}])
+    validate.approve(INVESTIGATION)
+    calls = fake_browser(monkeypatch, [answer(), answer(), answer(), answer()])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_OK
+    assert calls["reloads"] == 2
+
+
+def test_the_runs_of_a_variant_have_to_agree(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    # Both runs are "changed" against the baseline, but they disagree with each
+    # other: the behaviour itself is not reproduced.
+    fake_browser(monkeypatch, [answer(ids=(1, 2)), answer(ids=(1, 2)), answer(ids=(2, 1)), answer(ids=(3, 4))])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["state"] == validate.INCONCLUSIVE
+    assert "disagree" in summary["experiments"][1]["reason"]
+
+
+def test_a_json_root_type_change_is_a_schema_change(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="same", compare=["schema"])])
+    validate.approve(INVESTIGATION)
+    fake_browser(
+        monkeypatch,
+        [
+            answer(json_type="object"),
+            answer(json_type="object"),
+            answer(json_type="array", ids=()),
+            answer(json_type="array", ids=()),
+        ],
+    )
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+    summary = read_summary(place.directory)
+    assert "schema" in summary["experiments"][1]["comparisons"][0]["changedFields"]
+    assert summary["experiments"][1]["state"] == validate.REJECTED
+
+
+def test_reload_page_checks_where_the_session_landed(monkeypatch):
+    config = {"allowedPages": ["https://www.wildberries.ru/catalog/"], "allowedOrigins": []}
+    monkeypatch.setattr(validate, "chrome_use", lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, "", ""))
+
+    monkeypatch.setattr(validate, "session_page", lambda session: "https://example.com/landing")
+    ok, reason = validate.reload_page(None, config)
+    assert ok is False
+    assert "does not approve" in reason
+
+    monkeypatch.setattr(validate, "session_page", lambda session: "https://www.wildberries.ru/catalog/0/search.aspx")
+    assert validate.reload_page(None, config) == (True, "")
+
+    monkeypatch.setattr(validate, "session_page", lambda session: "")
+    ok, reason = validate.reload_page(None, config)
+    assert ok is False
+    assert "did not say" in reason
+
+
+def test_a_reload_that_leaves_the_approved_pages_stops_the_run(world, monkeypatch):
+    world([baseline(), {"name": "after-reload", "kind": "reload", "expect": "same", "repeat": 2}])
+    validate.approve(INVESTIGATION)
+    calls = fake_browser(monkeypatch, [answer(), answer()])
+
+    def reload_page(session, config):
+        calls["reloads"] += 1
+        return False, "the reload landed on a page the capture config does not approve: https://example.com/"
+
+    monkeypatch.setattr(validate, "reload_page", reload_page)
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+    # No probe runs in a context the config does not approve.
+    assert len(calls["probes"]) == 2
+    assert calls["reloads"] == 1
+
+
+def test_a_pause_above_the_maximum_is_refused(world, monkeypatch):
+    place = world([baseline()])
+    plan = yaml.safe_load((place.directory / "experiments.yaml").read_text(encoding="utf-8"))
+    plan["min_interval_seconds"] = 61
+    (place.directory / "experiments.yaml").write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="between"):
+        validate.approve(INVESTIGATION)
+
+
+def test_the_headers_values_never_reach_a_committed_file(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(), answer(), answer(ids=(2, 1)), answer(ids=(2, 1))])
+    validate.run(INVESTIGATION, None, False)
+
+    written = [
+        (place.directory / validate.RECORD_FILE).read_text(encoding="utf-8"),
+        (place.directory / validate.EVIDENCE_FILE).read_text(encoding="utf-8"),
+        (place.directory / validate.REPORT_FILE).read_text(encoding="utf-8"),
+    ]
+    for text in written:
+        assert "site_test_value" not in text
+    evidence = json.loads((place.directory / validate.EVIDENCE_FILE).read_text(encoding="utf-8"))
+    sent = evidence["captures"][0]["request"]["headersSent"]
+    assert "deviceid" in sent
+    assert "x-requested-with" in sent
+
+
+def test_a_dropped_header_is_an_incomplete_replay(world, monkeypatch):
+    place = world([baseline()], request={"headers": ["deviceid", "referer"]})
+    (place.raw / "request.json").write_text(
+        json.dumps({"headers": {"deviceid": "site_test_value", "referer": "https://www.wildberries.ru/catalog/"}}),
+        encoding="utf-8",
+    )
+    validate.approve(INVESTIGATION)
+    result = answer()
+    result["droppedByBrowser"] = ["referer"]
+    calls = fake_browser(monkeypatch, [result, result])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+    # The browser will drop the same header on the next run, so there is no
+    # next run: one incomplete replay is enough to stop.
+    assert len(calls["probes"]) == 1
+
+    evidence = json.loads((place.directory / validate.EVIDENCE_FILE).read_text(encoding="utf-8"))
+    request = evidence["captures"][0]["request"]
+    assert request["headersDroppedByBrowser"] == ["referer"]
+    assert request["headersSent"] == ["deviceid"]
+    assert evidence["captures"][0]["replay"] == {"complete": False, "missingHeaders": ["referer"]}
+    summary = read_summary(place.directory)
+    assert summary["experiments"][0]["state"] == validate.INCONCLUSIVE
+    assert "referer" in summary["not_validated"][0]["reason"]
+
+
+def test_a_redacted_query_value_has_to_be_written_in_the_plan(world, monkeypatch):
+    world([baseline()], query={"query": "<redacted:query-param>"})
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(), answer()])
+
+    with pytest.raises(SystemExit, match="write its value in the plan"):
+        validate.run(INVESTIGATION, None, False)
+
+
+def test_a_non_get_candidate_is_refused(world, monkeypatch):
+    place = world([baseline()])
+    record = yaml.safe_load((place.directory / "investigation.yaml").read_text(encoding="utf-8"))
+    record["api_candidates"][0]["method"] = "POST"
+    (place.directory / "investigation.yaml").write_text(yaml.safe_dump(record, sort_keys=False), encoding="utf-8")
+    fake_browser(monkeypatch, [])
+
+    with pytest.raises(SystemExit, match="read-only"):
+        validate.approve(INVESTIGATION)
+
+
+def test_a_server_error_is_not_a_result(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="same", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(), answer(), answer(status=500), answer(status=502)])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["outcome"] == validate.FAILED
+    assert summary["experiments"][1]["state"] == validate.INCONCLUSIVE
+
+
+def test_a_dry_run_opens_no_browser(world, monkeypatch):
+    world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    calls = fake_browser(monkeypatch, [answer()])
+
+    assert validate.run(INVESTIGATION, None, True) == validate.EXIT_OK
+    assert calls["probes"] == []
+    assert calls["opened"] == []
+
+
+def test_the_report_says_what_was_not_established(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(), answer(), answer(), answer()])
+
+    validate.run(INVESTIGATION, None, False)
+
+    report = (place.directory / validate.REPORT_FILE).read_text(encoding="utf-8")
+    assert "What was not established" in report
+    assert "`sorted`" in report
+    assert "rejected" in report
+    assert "No bypass" in report
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__]))
+
+
+def test_a_variant_without_an_expectation_is_observed_not_judged(world, monkeypatch):
+    place = world([baseline(), variant("page-0", vary={"page": "0"}, repeat=1)])
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(), answer(), answer(ids=(), total=0)])
+
+    assert validate.run(INVESTIGATION, None, False) == validate.EXIT_FAILED
+
+    summary = read_summary(place.directory)
+    assert summary["experiments"][1]["state"] == validate.OBSERVED
+    assert summary["experiments"][1]["comparisons"][0]["status"] == "changed"
+    # One observation is not a result: the report says so.
+    assert [item["experiment"] for item in summary["not_validated"]] == ["page-0"]
+    assert "one observation" in summary["not_validated"][0]["reason"]
+
+
+def test_the_summary_keeps_a_hash_and_the_evidence_keeps_the_ids(world, monkeypatch):
+    place = world([baseline()])
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(ids=(7, 8)), answer(ids=(7, 8))])
+
+    validate.run(INVESTIGATION, None, False)
+
+    summary_observation = read_summary(place.directory)["experiments"][0]["observations"][0]
+    assert "productIds" not in summary_observation["ordering"]
+    assert summary_observation["ordering"]["orderHash"]
+    evidence = json.loads((place.directory / validate.EVIDENCE_FILE).read_text(encoding="utf-8"))
+    assert evidence["captures"][0]["ordering"]["productIds"] == [7, 8]
+
+
+def test_the_summary_has_no_yaml_anchors(world, monkeypatch):
+    place = world([baseline(), variant("sorted", vary={"sort": "priceup"}, expect="changed", compare=["order"])])
+    validate.approve(INVESTIGATION)
+    fake_browser(monkeypatch, [answer(), answer(), answer(ids=(2, 1)), answer(ids=(2, 1))])
+
+    validate.run(INVESTIGATION, None, False)
+
+    text = (place.directory / validate.RECORD_FILE).read_text(encoding="utf-8")
+    assert "&id" not in text
+    assert "*id" not in text

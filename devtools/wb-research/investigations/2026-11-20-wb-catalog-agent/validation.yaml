@@ -1,0 +1,685 @@
+schema: wb-research/validation/v1
+id: 2026-11-20-wb-catalog-agent
+candidate: storefront-catalog-search
+generated: '2026-11-20T23:34:19+00:00'
+plan_scope: 1a7a7cae853d88ac9029cd3251ebbe7e61757cd1f3da5338756730c91648edbd
+page: https://www.wildberries.ru/catalog/131954/list.aspx?search=%3Credacted%3Aquery-param%3E
+request:
+  method: GET
+  url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search
+  query:
+  - ab_testing
+  - appType
+  - curr
+  - dest
+  - hide_vflags
+  - inheritFilters
+  - lang
+  - locale
+  - query
+  - resultset
+  - sort
+  - spp
+  - suppressSpellcheck
+  headers:
+  - deviceid
+  - x-requested-with
+  - x-spa-version
+  - x-userid
+  credentials: include
+baseline: baseline
+baseline_reproduced: true
+session: one browser session
+experiments:
+- name: baseline
+  kind: replay
+  variation:
+    vary: null
+    remove: null
+    credentials: null
+  repeat: 2
+  outcome: completed
+  state: reproduced
+  reason: ''
+  expectation: null
+  observations:
+  - id: baseline-1
+    experiment: baseline
+    run: 1
+    request:
+      method: GET
+      url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false
+      credentials: include
+      headerNames:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersSent:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersDroppedByBrowser: []
+    response:
+      status: 200
+      contentType: text/plain; charset=UTF-8
+      bodyBytes: 148794
+      isJson: true
+      error: null
+    schema:
+      jsonType: object
+      topLevelKeys:
+      - metadata
+      - products
+      - total
+      productCount: 100
+      total: 113593
+    outcome: completed
+    ordering:
+      orderHash: 8c3dc9b5d1657d182257b559e5b518637c3446ab3ea75a8cad2ee70af32cecd3
+  - id: baseline-2
+    experiment: baseline
+    run: 2
+    request:
+      method: GET
+      url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false
+      credentials: include
+      headerNames:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersSent:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersDroppedByBrowser: []
+    response:
+      status: 200
+      contentType: text/plain; charset=UTF-8
+      bodyBytes: 148794
+      isJson: true
+      error: null
+    schema:
+      jsonType: object
+      topLevelKeys:
+      - metadata
+      - products
+      - total
+      productCount: 100
+      total: 113593
+    outcome: completed
+    ordering:
+      orderHash: 8c3dc9b5d1657d182257b559e5b518637c3446ab3ea75a8cad2ee70af32cecd3
+  comparisons:
+  - status: same
+    changedFields: []
+    details:
+      sameOrder: true
+      sameSet: true
+      sharedIds: 100
+- name: sort-priceup
+  kind: replay
+  variation:
+    vary:
+      sort: priceup
+    remove: null
+    credentials: null
+  repeat: 2
+  outcome: completed
+  state: validated
+  reason: ''
+  expectation:
+    expect: changed
+    compare:
+    - order
+    distinct: null
+  observations:
+  - id: sort-priceup-1
+    experiment: sort-priceup
+    run: 1
+    request:
+      method: GET
+      url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=priceup&spp=30&suppressSpellcheck=false
+      credentials: include
+      headerNames:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersSent:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersDroppedByBrowser: []
+    response:
+      status: 200
+      contentType: text/plain; charset=UTF-8
+      bodyBytes: 129871
+      isJson: true
+      error: null
+    schema:
+      jsonType: object
+      topLevelKeys:
+      - metadata
+      - products
+      - total
+      productCount: 100
+      total: 113427
+    outcome: completed
+    ordering:
+      orderHash: 35b9f4f2a3eb970f368aea8bef3f3c3f869fa8e254dc2b504122dafa57e3aa46
+    comparison:
+      status: changed
+      changedFields:
+      - order
+      - total
+      details:
+        sameOrder: false
+        sameSet: false
+        sharedIds: 0
+  - id: sort-priceup-2
+    experiment: sort-priceup
+    run: 2
+    request:
+      method: GET
+      url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=priceup&spp=30&suppressSpellcheck=false
+      credentials: include
+      headerNames:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersSent:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersDroppedByBrowser: []
+    response:
+      status: 200
+      contentType: text/plain; charset=UTF-8
+      bodyBytes: 129871
+      isJson: true
+      error: null
+    schema:
+      jsonType: object
+      topLevelKeys:
+      - metadata
+      - products
+      - total
+      productCount: 100
+      total: 113427
+    outcome: completed
+    ordering:
+      orderHash: 35b9f4f2a3eb970f368aea8bef3f3c3f869fa8e254dc2b504122dafa57e3aa46
+    comparison:
+      status: changed
+      changedFields:
+      - order
+      - total
+      details:
+        sameOrder: false
+        sameSet: false
+        sharedIds: 0
+  comparisons:
+  - status: changed
+    changedFields:
+    - order
+    - total
+    details:
+      sameOrder: false
+      sameSet: false
+      sharedIds: 0
+  - status: changed
+    changedFields:
+    - order
+    - total
+    details:
+      sameOrder: false
+      sameSet: false
+      sharedIds: 0
+- name: page-2
+  kind: replay
+  variation:
+    vary:
+      page: '2'
+    remove: null
+    credentials: null
+  repeat: 2
+  outcome: completed
+  state: validated
+  reason: ''
+  expectation:
+    expect: changed
+    compare:
+    - order
+    distinct: true
+  observations:
+  - id: page-2-1
+    experiment: page-2
+    run: 1
+    request:
+      method: GET
+      url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&page=2&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false
+      credentials: include
+      headerNames:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersSent:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersDroppedByBrowser: []
+    response:
+      status: 200
+      contentType: text/plain; charset=UTF-8
+      bodyBytes: 146321
+      isJson: true
+      error: null
+    schema:
+      jsonType: object
+      topLevelKeys:
+      - metadata
+      - products
+      - total
+      productCount: 100
+      total: 113593
+    outcome: completed
+    ordering:
+      orderHash: 65ec5710294bfdfea6e35ab36f1e0667a10b0b00a0b2bcae0009f6b8c654e0f9
+    comparison:
+      status: changed
+      changedFields:
+      - order
+      details:
+        sameOrder: false
+        sameSet: false
+        sharedIds: 0
+  - id: page-2-2
+    experiment: page-2
+    run: 2
+    request:
+      method: GET
+      url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&page=2&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false
+      credentials: include
+      headerNames:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersSent:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersDroppedByBrowser: []
+    response:
+      status: 200
+      contentType: text/plain; charset=UTF-8
+      bodyBytes: 146321
+      isJson: true
+      error: null
+    schema:
+      jsonType: object
+      topLevelKeys:
+      - metadata
+      - products
+      - total
+      productCount: 100
+      total: 113593
+    outcome: completed
+    ordering:
+      orderHash: 65ec5710294bfdfea6e35ab36f1e0667a10b0b00a0b2bcae0009f6b8c654e0f9
+    comparison:
+      status: changed
+      changedFields:
+      - order
+      details:
+        sameOrder: false
+        sameSet: false
+        sharedIds: 0
+  comparisons:
+  - status: changed
+    changedFields:
+    - order
+    details:
+      sameOrder: false
+      sameSet: false
+      sharedIds: 0
+  - status: changed
+    changedFields:
+    - order
+    details:
+      sameOrder: false
+      sameSet: false
+      sharedIds: 0
+- name: page-0
+  kind: replay
+  variation:
+    vary:
+      page: '0'
+    remove: null
+    credentials: null
+  repeat: 1
+  outcome: completed
+  state: observed
+  reason: ''
+  expectation: null
+  observations:
+  - id: page-0-1
+    experiment: page-0
+    run: 1
+    request:
+      method: GET
+      url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&page=0&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false
+      credentials: include
+      headerNames:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersSent:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersDroppedByBrowser: []
+    response:
+      status: 200
+      contentType: application/json
+      bodyBytes: 224
+      isJson: true
+      error: null
+    schema:
+      jsonType: object
+      topLevelKeys:
+      - filters
+      - name
+      - normQuery
+      - query
+      - rmi
+      - rs
+      - search_result
+      - shardKey
+      productCount: null
+      total: null
+    outcome: completed
+    ordering:
+      orderHash: null
+    comparison:
+      status: changed
+      changedFields:
+      - contentType
+      - schema
+      - count
+      - order
+      - total
+      details:
+        sameOrder: false
+        sameSet: false
+        sharedIds: 0
+  comparisons:
+  - status: changed
+    changedFields:
+    - contentType
+    - schema
+    - count
+    - order
+    - total
+    details:
+      sameOrder: false
+      sameSet: false
+      sharedIds: 0
+- name: after-reload
+  kind: reload
+  variation:
+    vary: null
+    remove: null
+    credentials: null
+  repeat: 2
+  outcome: completed
+  state: validated
+  reason: ''
+  expectation:
+    expect: same
+    compare: null
+    distinct: null
+  observations:
+  - id: after-reload-1
+    experiment: after-reload
+    run: 1
+    request:
+      method: GET
+      url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false
+      credentials: include
+      headerNames:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersSent:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersDroppedByBrowser: []
+    response:
+      status: 200
+      contentType: text/plain; charset=UTF-8
+      bodyBytes: 148794
+      isJson: true
+      error: null
+    schema:
+      jsonType: object
+      topLevelKeys:
+      - metadata
+      - products
+      - total
+      productCount: 100
+      total: 113593
+    outcome: completed
+    ordering:
+      orderHash: 8c3dc9b5d1657d182257b559e5b518637c3446ab3ea75a8cad2ee70af32cecd3
+    comparison:
+      status: same
+      changedFields: []
+      details:
+        sameOrder: true
+        sameSet: true
+        sharedIds: 100
+  - id: after-reload-2
+    experiment: after-reload
+    run: 2
+    request:
+      method: GET
+      url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false
+      credentials: include
+      headerNames:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersSent:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersDroppedByBrowser: []
+    response:
+      status: 200
+      contentType: text/plain; charset=UTF-8
+      bodyBytes: 148794
+      isJson: true
+      error: null
+    schema:
+      jsonType: object
+      topLevelKeys:
+      - metadata
+      - products
+      - total
+      productCount: 100
+      total: 113593
+    outcome: completed
+    ordering:
+      orderHash: 8c3dc9b5d1657d182257b559e5b518637c3446ab3ea75a8cad2ee70af32cecd3
+    comparison:
+      status: same
+      changedFields: []
+      details:
+        sameOrder: true
+        sameSet: true
+        sharedIds: 100
+  comparisons:
+  - status: same
+    changedFields: []
+    details:
+      sameOrder: true
+      sameSet: true
+      sharedIds: 100
+  - status: same
+    changedFields: []
+    details:
+      sameOrder: true
+      sameSet: true
+      sharedIds: 100
+- name: without-cookies
+  kind: replay
+  variation:
+    vary: null
+    remove: null
+    credentials: omit
+  repeat: 2
+  outcome: blocked
+  state: inconclusive
+  reason: the site refused the request — a refusal is not a validation
+  expectation:
+    expect: changed
+    compare:
+    - order
+    distinct: null
+  observations:
+  - id: without-cookies-1
+    experiment: without-cookies
+    run: 1
+    request:
+      method: GET
+      url: https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search?ab_testing=false&appType=1&curr=rub&dest=1259570991&hide_vflags=4294967296&inheritFilters=true&lang=ru&locale=ru&query=%3Credacted%3Aquery-param%3E&resultset=catalog&sort=popular&spp=30&suppressSpellcheck=false
+      credentials: omit
+      headerNames:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersSent:
+      - deviceid
+      - x-requested-with
+      - x-spa-version
+      - x-userid
+      headersDroppedByBrowser: []
+    response:
+      status: 498
+      contentType: text/html
+      bodyBytes: 1132
+      isJson: false
+      error: null
+    schema:
+      jsonType: null
+      topLevelKeys: null
+      productCount: null
+      total: null
+    outcome: blocked
+    ordering:
+      orderHash: null
+    comparison:
+      status: changed
+      changedFields:
+      - status
+      - contentType
+      - json
+      - schema
+      - count
+      - order
+      - total
+      details:
+        sameOrder: false
+        sameSet: false
+        sharedIds: 0
+  - id: without-cookies-2
+    experiment: without-cookies
+    run: 2
+    outcome: inconclusive
+    notRun: the site refused the request
+  comparisons:
+  - status: changed
+    changedFields:
+    - status
+    - contentType
+    - json
+    - schema
+    - count
+    - order
+    - total
+    details:
+      sameOrder: false
+      sameSet: false
+      sharedIds: 0
+checks:
+- experiment: sort-priceup
+  expectation:
+    expect: changed
+    compare:
+    - order
+    distinct: null
+  met:
+  - true
+  - true
+  state: validated
+- experiment: page-2
+  expectation:
+    expect: changed
+    compare:
+    - order
+    distinct: true
+  met:
+  - true
+  - true
+  state: validated
+- experiment: after-reload
+  expectation:
+    expect: same
+    compare: null
+    distinct: null
+  met:
+  - true
+  - true
+  state: validated
+- experiment: without-cookies
+  expectation:
+    expect: changed
+    compare:
+    - order
+    distinct: null
+  met:
+  - true
+  state: inconclusive
+not_validated:
+- experiment: page-0
+  state: observed
+  reason: one observation — reproducibility is not established
+- experiment: without-cookies
+  state: inconclusive
+  reason: the site refused the request — a refusal is not a validation
+evidence: evidence/validation.json
+observations: 11
+outcomes:
+  completed: 9
+  failed: 0
+  blocked: 1
+  inconclusive: 1

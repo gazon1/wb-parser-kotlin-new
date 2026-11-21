@@ -110,9 +110,10 @@ The point of the format: a claim is only as strong as its state.
 |---|---|
 | `observed` | seen once in a capture; not repeated |
 | `reproduced` | seen again in an independent run of the same experiment |
-| `validated` | confirmed against something outside the experiment — the crawler's own code, a second method, a documented behaviour |
+| `validated` | confirmed by a controlled experiment that was repeated, or against something outside the experiment — the crawler's own code, a second method, a documented behaviour |
 | `rejected` | the experiment says it is false |
-| `open` | not settled: the evidence does not answer the question yet |
+| `inconclusive` | the evidence does not settle it, or the environment prevented the experiment: a refusal, a failed request, an unreadable answer |
+| `open` | a hypothesis nobody has tested yet; it belongs in `open_questions` as well |
 
 ```yaml
 validation:
@@ -900,7 +901,175 @@ carries a separator or a `..`, the same rule the capture follows. The name of
 a step is checked the same way: it is the name of a file, so a name the rules
 would reduce is refused rather than quietly changed.
 
-## The agent workflow
+## Validating a candidate
+
+A capture says that a request appeared and what it looked like. It does not say
+whether a parameter is honoured, what a sort order does to the answer, or where
+a page boundary is. `scripts/wb-research/validate.py` answers that: it replays
+one candidate request in the same browser context, varies one thing at a time,
+and writes down what happened.
+
+The plan is `experiments.yaml`, next to the record, and it is approved before
+the run the same way `plan.yaml` is:
+
+```yaml
+schema: wb-research/validation-plan/v1
+id: 2026-11-20-wb-catalog-agent
+candidate: storefront-catalog-search   # an id in investigation.yaml
+page: https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки
+request:
+  query:
+    query: колонки                     # overrides the candidate's query
+    sort: popular
+  headers: [deviceid, x-requested-with, x-spa-version, x-userid]
+  credentials: include
+min_interval_seconds: 2
+experiments:
+  - name: baseline                     # the reference: it varies nothing
+    kind: replay
+    repeat: 2
+  - name: sort-priceup
+    vary: {sort: priceup}              # exactly one thing
+    expect: changed
+    compare: [order]
+    repeat: 2
+  - name: page-2
+    vary: {page: '2'}
+    expect: changed
+    compare: [order]
+    distinct: true                     # a next page shares no product id with this one
+    repeat: 2
+  - name: page-0
+    vary: {page: '0'}                  # no expectation: it says what was seen
+    repeat: 1
+  - name: after-reload
+    kind: reload                       # the page is reloaded before the probe
+    expect: same
+    repeat: 2
+  - name: without-cookies
+    credentials: omit                  # the optional authenticated/unauthenticated check
+    repeat: 1
+```
+
+The candidate contributes its method, endpoint, query and header names; the
+plan overrides the query. Only a `GET` is replayed — the workflow is read-only,
+and the investigation format carries POST candidates (the antibot service is
+one) that must not be repeated. The request is a `fetch` from the page's own
+context, with the browser's cookies unless the plan says otherwise, and a
+redirect is not followed: the approved origin is the only origin.
+
+**One experiment, one variation.** An experiment changes exactly one of: one
+query parameter (`vary`), one removal (`remove`), the credentials mode
+(`credentials`), or a page reload (`kind: reload`). Two differences at once
+prove nothing about either, so the tool refuses such a plan. The first
+experiment is the reference and cannot vary anything.
+
+**The run cannot be a burst.** The plan's pause is at least one second and at
+most sixty, and the whole run is at most forty requests: a validation is a
+handful of requests against a live site, and the issue asks for the site's rate
+limits to be respected. A plan that asks for more is refused before the browser
+opens.
+
+**A page is checked by its products.** `distinct: true` adds the pagination
+expectation to a variation: the answer has to share no product id with the
+reference. An answer that reorders the same products is not another page, and
+the run says so.
+
+**A reload is a navigation too.** The page it lands on is held to the same
+approved pages as the page the run opened: a reload that leaves them is a
+failed experiment, and no probe runs in the page the config does not approve.
+
+**Header values are not committed.** The plan names the headers; the values come
+from a local file outside the repository —
+`~/.cache/wb-research/<id>/request.json`, or the path in `request_file`:
+
+```json
+{
+  "headers": {"deviceid": "…", "x-requested-with": "XMLHttpRequest"}
+}
+```
+
+A path inside the repository is refused, and a header the plan names and the
+file does not carry stops the run: a request replayed without the header it was
+seen with is a different request. The path itself is part of the approval, so
+pointing the plan at another file needs another approval; editing that file is
+the operator's act, and its values are deliberately outside the fingerprint. The browser drops a few header names by
+design (`referer`, `cookie`, `user-agent`, the `sec-*` family); a plan that
+names one gets an **incomplete replay** — the observation is `inconclusive`, the
+run stops, and the report names the header. It is not a validation of the
+request the plan described.
+
+The **query** is part of the plan and part of the approval, so a value the
+record wrote as `<redacted:…>` has to be written in the plan. A query value the
+local file supplied would change what the run asks without changing the
+fingerprint the operator approved; the run refuses it and says so. A URL that
+repeats a query parameter is refused as well: a variation cannot say which of
+the two values it changed.
+
+```bash
+uv run python scripts/wb-research/validate.py approve --investigation <id>
+uv run python scripts/wb-research/validate.py run --investigation <id> --session <name>
+uv run python scripts/wb-research/validate.py run --investigation <id> --dry-run
+```
+
+`approve` writes the fingerprint of the plan into it — the page, the endpoint,
+the query as the plan writes it, the header names, the credentials mode, the
+experiments and the pause — and the run refuses a plan whose scope changed.
+The header **values** are not in the fingerprint: they are the session's.
+`--dry-run` prints the requests and opens nothing.
+
+A refusal ends the run: after a blocked answer the remaining probes are marked
+"not run", because hammering a refusal is not evidence. The run pauses
+`min_interval_seconds` between requests.
+
+### What the run writes
+
+| File | What it is |
+|---|---|
+| `validation.yaml` | the machine-readable summary: every experiment, every observation, the comparison with the reference, the state and the reason |
+| `validation-report.md` | the report a human reads: the table, the observations, what was not established |
+| `evidence/validation.json` | the sanitized observations, one per run — the thing a claim points at |
+
+The evidence keeps the request (method, redacted URL, credentials, the header
+names sent and the names the browser dropped), the response (status, media
+type, size in UTF-8 bytes, whether it was JSON and the root JSON type), the
+shape of the answer (top-level keys, the number of products, the total) and the
+ordered product ids. The body, the
+cookies and the header values are never in it. The summary keeps the order as
+a hash; the ids stay in the evidence.
+
+### States, earned
+
+A state is not a label the operator chooses; the evidence decides it:
+
+| State | Earned when |
+|---|---|
+| `observed` | the request was answered once, or an expectation held once; it is listed as not established |
+| `reproduced` | the same answer came back from independent runs |
+| `validated` | a controlled variation repeated, its expectation held every time, and the reference itself was reproduced |
+| `rejected` | a stable answer contradicts the expectation |
+| `inconclusive` | the site refused, the request failed (a transport error, a 5xx or a redirect), the browser dropped a header the plan names, the answer could not be read, the runs disagree, or one sample is all there is |
+
+`validated` also needs the runs of the variation to agree with each other: two
+different answers that both count as "changed" leave the behaviour itself
+unreproduced, and the experiment is `inconclusive`. The runs share one browser
+session, so `reproduced` means two compatible answers from separate requests —
+not two independent sessions, and not a promise about other accounts or times.
+The report says so.
+
+A refusal, a failure and a single sample are never reported as a validation:
+the report names them, and the run says so in its exit code.
+
+| Exit | Means |
+|---|---|
+| `0` | every experiment was answered and every expectation was established |
+| `1` | an expectation was not established, or a request failed |
+| `2` | the site refused a request — a person decides what to do with that |
+
+The tool is not part of the mandatory CI: it needs a real browser and a live
+site, and the issue that asked for it says no live dependency may enter CI. Its
+own tests replace the browser with a function that returns the answer the test
+asks for.
 
 `.agents/skills/wb-research/SKILL.md` is the same workflow written for an AI
 agent: the plan, the approval, the run, the correlation of every action with

@@ -1,0 +1,50 @@
+schema: wb-research/validation-plan/v1
+id: 2026-11-20-wb-catalog-agent
+candidate: storefront-catalog-search
+page: https://www.wildberries.ru/catalog/131954/list.aspx?search=колонки
+request:
+  query:
+    query: колонки
+    sort: popular
+  headers:
+  - deviceid
+  - x-requested-with
+  - x-spa-version
+  - x-userid
+  credentials: include
+min_interval_seconds: 2
+experiments:
+- name: baseline
+  kind: replay
+  repeat: 2
+- name: sort-priceup
+  vary:
+    sort: priceup
+  expect: changed
+  compare:
+  - order
+  repeat: 2
+- name: page-2
+  vary:
+    page: '2'
+  expect: changed
+  compare:
+  - order
+  repeat: 2
+  distinct: true
+- name: page-0
+  vary:
+    page: '0'
+  repeat: 1
+- name: after-reload
+  kind: reload
+  expect: same
+  repeat: 2
+- name: without-cookies
+  credentials: omit
+  expect: changed
+  compare:
+  - order
+  repeat: 2
+approved_scope: 1a7a7cae853d88ac9029cd3251ebbe7e61757cd1f3da5338756730c91648edbd
+status: approved
