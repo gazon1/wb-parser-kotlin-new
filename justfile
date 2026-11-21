@@ -28,6 +28,7 @@ mod catalog  '.just/catalog'
 mod parser   '.just/parser'
 mod deps     '.just/deps'
 mod lint     '.just/lint'
+mod research '.just/research'
 
 set shell := ["bash", "-uc"]
 set unstable

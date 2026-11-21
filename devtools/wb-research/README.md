@@ -18,6 +18,10 @@ devtools/wb-research/
       investigation.yaml               ← the record
       evidence/
         <bundle>.json                  ← sanitized evidence
+  proposals/
+    <investigation-id>/
+      proposal.md                      ← the generated proposal a human reviews
+      manifest.json                    ← the hashes of the record and the files
 ```
 
 `<investigation-id>` is `<YYYY-MM-DD>-<slug>`: the date the investigation started
@@ -1078,3 +1082,67 @@ secrets, no scope the user did not approve.
 
 The agent does not add anything to the crawler: no chrome-use and no AI
 credential enters a Gradle module or the runtime.
+
+## From a validated record to a Kotlin proposal
+
+A record knows *what the site sends*. The crawler needs *code that asks for
+exactly that*. Writing that code by hand from a record is where the two drift: a
+parameter is dropped, a header is invented, a page boundary is guessed.
+
+`scripts/wb-research/generate_proposal.py` reads the record and writes the code
+that pins it, so the code and the evidence carry the same claim.
+
+```bash
+just research::proposal 2026-11-20-wb-catalog-agent
+```
+
+**Only a validated contract is eligible.** The record must be `concluded`, it
+must carry a `validation.yaml` for the candidate, and at least one of its claims
+must have reached `validated` or `reproduced`. A claim that is merely
+`observed`, `inconclusive`, `rejected` or `open` is a hypothesis, and code
+generated from a hypothesis is a guess with a confident shape — so the tool
+refuses the record and says which state it holds instead. Experiments below the
+bar produce no fixture and no assertion, and the proposal names what was held
+back.
+
+**What it writes**
+
+| File | What it is |
+|---|---|
+| `wbparser/src/test/resources/fixtures/catalog-search/<observation>.json` | the sanitized observation: the request as it was made, the shape of the answer and the order of the products |
+| `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` | the regression test: it pins the crawler's request to the fixtures |
+| `devtools/wb-research/proposals/<id>/proposal.md` | the proposal a human reads: the contract, the claim→evidence→assertion table, the known differences, the reviewer's checklist |
+| `devtools/wb-research/proposals/<id>/manifest.json` | the hashes of the record, of the generator and of every written file |
+
+The fixtures live in the module that owns the contract, so the ordinary
+`./gradlew :wbparser:test` runs them — offline, with no browser and no live
+site. A fixture that is not on the classpath is not a fixture.
+
+**A fixture carries no captured payload.** The capture kept the shape of the
+answer and the ids of the products, not the body — a body is where a price, a
+name and a session live. The body the test decodes is rebuilt from the recorded
+shape: the products it names, in the order it recorded them, and nothing else.
+Header *names* are part of the contract; header *values* never enter a file.
+
+**It writes files and nothing else.** No commit, no branch, no merge: the
+proposal is a diff a human reviews.
+
+**It does not add a second adapter.** The endpoint, the parameters and the
+shape of the answer of the seller catalog are the ones the crawler already
+knows (`WbCatalogApi`, `WbCatalogRequest`, `WbCatalogParser`), so the proposal
+pins the existing one to the evidence instead of writing a parallel
+implementation. The differences the record does show — the parameters the
+crawler adds, the ones the storefront sends and the crawler does not — are
+declared in the generator's contract table, and the generated test fails on any
+difference that is not declared there.
+
+**The contract table is the tool's boundary.** The generator knows one contract
+family, `storefront-catalog-search`. A new family is a new entry in that table,
+not a framework: a generator that promises every endpoint of every site is a
+framework nobody can verify.
+
+**The proposals cannot drift away from the record.** The manifest holds the
+hashes of what was read and what was written, and the gate
+`scripts/ci/check-proposal-fresh.py` compares them with the files on disk. A
+record that changed after the proposal, a generator that changed, or a
+generated file edited by hand each fail the gate, and the fix is to regenerate.
