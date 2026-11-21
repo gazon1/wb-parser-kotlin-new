@@ -440,6 +440,10 @@ deleted file would otherwise pass.
   repetition is a malformed record that a set of names hides — both are refused
   by name in the generator and in the gate, so that neither tool accepts a
   record the other turns down.
+- **Never** accept a record that names a top-level key of the answer twice:
+  the keys of the answer are a set, and a set hides the repetition — so the
+  repetition is refused by name on both sides, in the generator and in the gate,
+  the way a repetition of a header name is.
 - **Never** compare a dimension before it is checked for what it is: a run is a
   number, an experiment is a name, a status is a number, a content type is text,
   the size of the body is a number, the kind of the answer is a boolean and the
@@ -453,6 +457,10 @@ deleted file would otherwise pass.
 - **Never** read a source that does not belong to the record: the gate judges
   the ownership of a source before it hashes it and before it reads it as
   evidence.
+- **Never** accept a source of a manifest that names no record: without the
+  identity of the record there is no way to tell a source of this record from a
+  source of another one — so such a manifest accepts no source, and no source
+  is hashed and none is read.
 - **Never** let the record of an investigation be a link to the record of
   another one: the directory is resolved and compared with the place its name
   points at, and the sources are judged against that place — before any of them

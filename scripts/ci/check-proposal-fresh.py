@@ -498,12 +498,22 @@ def source_investigation_findings(
     """
     findings: list[str] = []
     accepted: dict[str, str] = {}
+    if not investigation:
+        # A manifest that names no record watches nothing: without the identity of
+        # the record there is no way to tell a source of this record from a source
+        # of another one. So no source is accepted — and a source that is not
+        # accepted is not hashed and not read.
+        findings.append(
+            "the manifest names no investigation, so no source of the proposal belongs to a record — "
+            "a source can only be read when the record it belongs to is named"
+        )
+        return findings, accepted
     record = f"{EVIDENCE_DIR}/{investigation}/"
     folder = record_of(investigation, root)
     for relative in sorted(entries):
         normalized = posixpath.normpath(relative)
-        if not investigation or normalized.startswith(record):
-            if investigation and not inside_record(root / normalized, folder):
+        if normalized.startswith(record):
+            if not inside_record(root / normalized, folder):
                 findings.append(
                     f"{relative}: the source does not resolve to a file of the record of the "
                     f"investigation '{investigation}' — a name that points at another file is not a "
@@ -1586,6 +1596,17 @@ def self_test() -> None:
         assert any("belongs to the investigation" in finding for finding in findings), findings
         assert not any("missing" in finding for finding in findings), findings
         del manifest["sources"][absent_relative]
+        write_manifest()
+
+        # A manifest that names no record accepts no source at all: without the
+        # identity of the record there is no way to tell a source of this record
+        # from a source of another one. So no source is hashed and none is read.
+        manifest["investigation"] = ""
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("no source of the proposal belongs to a record" in finding for finding in findings), findings
+        assert not any("missing" in finding for finding in findings), findings
+        manifest["investigation"] = "demo"
         write_manifest()
 
         # The name of an investigation is a name and not a path: the generator

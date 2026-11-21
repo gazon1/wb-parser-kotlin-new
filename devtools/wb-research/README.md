@@ -1273,7 +1273,11 @@ type, the size and the kind of the answer, and the shape of that answer — its
 top-level keys, the number of its products and their total. A summary that
 says the request came with 200 while the bundle says 498 would write a fixture
 and a proposal that describe two different answers, and the record would earn
-neither.
+neither. Every one of them is compared, not only the two the proposal renders:
+the size of the body and the kind of the answer are dimensions of the answer
+too, and the gate asks the capture for them — so a summary and a bundle that
+disagree about them would write a proposal that the gate of this repository
+turns down.
 
 **The counts of the answer are numbers on both sides.** A boolean is not a
 number, and in Python `True == 1` — so a capture that recorded `true` where
@@ -1288,9 +1292,12 @@ generated test asks whether a header was sent and whether the answer carries a
 key — not in which order the names came, so the names of the headers and the
 top-level keys of the answer are compared as sets. A set hides a repetition,
 though, and a record that names a header twice is a malformed record: it is
-named on its own, in the fixture and in the evidence alike. The order of the
-products is not a set: the test rebuilds the body of the answer from it, so the
-same ids in another order are another answer.
+named on its own, in the fixture and in the evidence alike. The repetition of a
+top-level key is refused by the generator as well — the same reason the gate
+refuses it, and the same reason a repetition of a header is: a set of names
+hides the repetition, and a record that names a key twice is a record with two
+answers. The order of the products is not a set: the test rebuilds the body of
+the answer from it, so the same ids in another order are another answer.
 
 **A request that names no header names nothing.** The two descriptions of one run
 have to name the same headers, and a list that is empty names none: a request
@@ -1313,7 +1320,9 @@ generator before it reads, the gate before it reads the sources.
 **A source is judged before it is read.** The gate says whether a source
 belongs to the record the manifest names before it hashes that source: a file of
 another record is not read in order to find out that it is a file of another
-record.
+record. A manifest that names no record at all accepts no source: without the
+identity of the record there is no way to tell a source of this record from a
+source of another one, so nothing is hashed and nothing is read.
 
 **Every dimension is checked for what it is, on both sides.** A run is a
 number, an experiment is a name, a status is a number, a content type is text,

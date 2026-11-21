@@ -1399,3 +1399,67 @@ def test_a_capture_that_records_no_count_is_refused(world, tmp_path):
     with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
     assert "records no productCount of the answer" in str(refusal.value), str(refusal.value)
+
+
+def test_a_capture_whose_body_size_differs_from_the_summary_is_refused(world, tmp_path):
+    # The size of the body is a dimension of the answer, and the gate asks the
+    # capture for it. A capture and a summary that disagree about it would write a
+    # proposal that the gate of this repository turns down.
+    world.patch_capture(
+        "baseline-1",
+        response={"status": 200, "contentType": "text/plain", "bodyBytes": 11, "isJson": True},
+    )
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "describes another run" in str(refusal.value), str(refusal.value)
+
+
+def test_a_capture_whose_kind_of_answer_differs_from_the_summary_is_refused(world, tmp_path):
+    # The kind of the answer is a dimension as well: a body that was JSON in one
+    # description and plain text in the other is two different answers.
+    world.patch_capture(
+        "baseline-1",
+        response={"status": 200, "contentType": "text/plain", "bodyBytes": 10, "isJson": False},
+    )
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "describes another run" in str(refusal.value), str(refusal.value)
+
+
+def test_a_capture_that_names_a_top_level_key_twice_is_refused(world, tmp_path):
+    # The keys of the answer are a set, and a set hides a name that appears
+    # twice — the gate says so on its own, and the generator has to say it too.
+    world.patch_capture(
+        "baseline-1",
+        schema={
+            "jsonType": "object",
+            "topLevelKeys": ["metadata", "products", "products", "total"],
+            "productCount": 2,
+            "total": 7,
+        },
+    )
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "names the top-level key 'products' twice" in str(refusal.value), str(refusal.value)
+
+
+def test_the_top_level_keys_of_the_answer_are_a_set(world, tmp_path):
+    # The order the keys came in is not a dimension: the test asks whether the
+    # answer carries a key, not in which order the keys came.
+    world.patch_capture(
+        "baseline-1",
+        schema={
+            "jsonType": "object",
+            "topLevelKeys": ["total", "metadata", "products"],
+            "productCount": 2,
+            "total": 7,
+        },
+    )
+
+    written = world.generate(tmp_path)
+
+    proposal = next(path for path in written if path.name == "proposal.md").read_text(encoding="utf-8")
+    assert "metadata" in proposal

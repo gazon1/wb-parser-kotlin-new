@@ -633,6 +633,20 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
                 f"{where}the observation records a {name} of the answer that is not a number ({value!r}) "
                 f"— a boolean is not a number, and the count the site gave is a number"
             )
+    # The top-level keys of the answer are a set — the order the keys came in is
+    # not a dimension — and a name that appears twice is a malformed record that
+    # is refused on its own, because a set hides the repetition. The gate reads
+    # the same record and says the same thing about it.
+    for side, holder in (("the capture", captured_schema), ("the observation", observed_schema)):
+        keys = holder.get("topLevelKeys")
+        if not isinstance(keys, list):
+            continue
+        repeated = [key for key in dict.fromkeys(keys) if keys.count(key) > 1]
+        if repeated:
+            raise Refused(
+                f"{where}{side} names the top-level key {repeated[0]!r} twice — an answer that names a "
+                f"key twice is a malformed record, and a set of names hides the repetition"
+            )
     captured_response = object_field(capture, "response", f"{where}the capture: ")
     observed_response = object_field(observation, "response", f"{where}the observation: ")
     # The size of the body and the kind of the answer are read as what they are:
@@ -640,8 +654,12 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
     # recorded. The same question is asked of both sides of the comparison.
     response_dimensions(captured_response, f"{where}the capture: ")
     response_dimensions(observed_response, f"{where}the observation: ")
+    # Every dimension of the answer is compared, not only the two the summary
+    # renders: the gate reads the size of the body and the kind of the answer as
+    # well, so a capture and a summary that disagree about them would write a
+    # proposal that the gate of this repository turns down.
     for field, names in (
-        ("response", ("status", "contentType")),
+        ("response", ("status", "contentType", "bodyBytes", "isJson")),
         ("schema", ("topLevelKeys", "productCount", "total")),
     ):
         captured = object_field(capture, field, f"{where}the capture: ")
@@ -661,7 +679,16 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
                         f"not a dimension that matches"
                     )
             left, right = captured.get(name), observed.get(name)
-            if left is None or right is None or left != right:
+            if left is None or right is None:
+                return False
+            if name == "topLevelKeys":
+                # The top-level keys of the answer are a set: the test asks
+                # whether the answer carries a key, not in which order the keys
+                # came. The order they came in is not a dimension.
+                if set(left) != set(right):
+                    return False
+                continue
+            if left != right:
                 return False
     return True
 
