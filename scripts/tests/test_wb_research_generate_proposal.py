@@ -451,13 +451,24 @@ def test_the_generated_test_pins_the_contract_to_the_evidence(world, tmp_path):
     assert "productionQuery" in test
 
 
-def test_the_fixture_carries_the_order_and_no_captured_body(world, tmp_path):
+def test_the_fixture_carries_the_order_once_and_no_captured_body(world, tmp_path):
     written = world.generate(tmp_path)
 
     fixture = json.loads(next(path for path in written if path.name == "baseline-1.json").read_text(encoding="utf-8"))
     assert fixture["ordering"]["productIds"] == [1, 2]
-    assert fixture["bodySource"] == "synthesized-from-the-recorded-shape"
-    assert fixture["body"]["products"] == [{"id": 1, "name": "Товар 1"}, {"id": 2, "name": "Товар 2"}]
+    # The order is held once: the body is rebuilt by the test from this list, so a
+    # fixture that carried it twice could say two different things about it.
+    assert "body" not in fixture
+    assert "bodySource" not in fixture
+    assert fixture["run"] == 1
+
+
+def test_the_generated_test_rebuilds_the_body_from_the_recorded_order(world, tmp_path):
+    written = world.generate(tmp_path)
+
+    test = next(path for path in written if path.suffix == ".kt").read_text(encoding="utf-8")
+    assert "fun bodyOf(fixture: ContractFixture): String" in test
+    assert "fixture.ordering.productIds.forEach" in test
 
 
 def test_the_same_record_produces_the_same_bytes(world, tmp_path):
@@ -764,3 +775,48 @@ def test_the_manifest_holds_the_redactor_the_generator_loads(world, tmp_path):
     assert manifest["generator"]["scripts/wb-research/redact.py"] == generate_proposal.sha256_of(
         generate_proposal.ROOT / "scripts/wb-research/redact.py"
     )
+
+
+def test_a_number_that_looks_like_a_phone_is_refused(world, tmp_path):
+    # `dest` is the id the site's own code sends, and the contract names that one
+    # value. A rule that accepted any digits would take a phone number for it: the
+    # redactor cannot tell them apart, because `dest=9123456789` is not a shape it
+    # knows — so the contract has to name the value, not the shape.
+    world.patch_candidate(query={"dest": "9123456789"})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the contract does not allow" in str(refusal.value), str(refusal.value)
+
+
+def test_a_page_beyond_the_bounds_of_the_endpoint_is_refused(world, tmp_path):
+    # The endpoint answers sixty pages, so a page beyond that is a request it never
+    # answers with goods. A number the site chose is named by its bounds.
+    world.patch_candidate(query={"page": "61"})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the contract does not allow" in str(refusal.value), str(refusal.value)
+
+
+def test_a_page_within_the_bounds_of_the_endpoint_is_published(world, tmp_path):
+    world.patch_observation(url=f"{ENDPOINT}?resultset=catalog&sort=popular&query=%3Credacted%3Aquery-param%3E&page=2")
+    world.patch_candidate(query={"page": "2"})
+
+    written = world.generate(tmp_path)
+
+    proposal = next(path for path in written if path.name == "proposal.md").read_text(encoding="utf-8")
+    assert "page" in proposal
+
+
+def test_a_parameter_sent_twice_is_refused(world, tmp_path):
+    # A parameter that occurs twice says two things about the request, and a query
+    # read as a map keeps only the last value: the proposal would advertise one
+    # request and the fixture would pin another.
+    world.patch_observation(
+        url=f"{ENDPOINT}?resultset=catalog&sort=popular&sort=priceup&query=%3Credacted%3Aquery-param%3E"
+    )
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "sent twice" in str(refusal.value), str(refusal.value)

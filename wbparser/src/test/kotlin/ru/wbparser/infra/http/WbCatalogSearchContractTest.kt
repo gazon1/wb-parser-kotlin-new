@@ -5,7 +5,9 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.parsing.WbCatalogEnvelope
@@ -119,9 +121,48 @@ class WbCatalogSearchContractTest :
             )
         }
 
-        /** The body of a fixture — rebuilt from the recorded shape, never captured. */
-        fun bodyOf(fixture: ContractFixture): String =
-            requireNotNull(fixture.body) { "the fixture ${fixture.observation} carries no body" }.toString()
+        /**
+         * The body of a fixture — rebuilt from the recorded shape, never captured.
+         *
+         * The record kept the shape of the answer and the order of the products, not
+         * the payload: a payload is where a price, a name and a session live. So the
+         * body is assembled here, from the shape the fixture carries and the ids it
+         * names — the fixture holds the order once, and the body follows it.
+         */
+        fun bodyOf(fixture: ContractFixture): String {
+            require("products" in fixture.answer.topLevelKeys) {
+                "the fixture ${fixture.observation} recorded an answer without products"
+            }
+            val body =
+                buildJsonObject {
+                    if ("metadata" in fixture.answer.topLevelKeys) {
+                        put(
+                            "metadata",
+                            buildJsonObject {
+                                put("catalog_type", "catalog-merger")
+                                put("name", "<redacted:query-param>")
+                            },
+                        )
+                    }
+                    if ("total" in fixture.answer.topLevelKeys) {
+                        put("total", fixture.answer.total ?: 0)
+                    }
+                    put(
+                        "products",
+                        buildJsonArray {
+                            fixture.ordering.productIds.forEach { id ->
+                                add(
+                                    buildJsonObject {
+                                        put("id", id)
+                                        put("name", "Товар $id")
+                                    },
+                                )
+                            }
+                        },
+                    )
+                }
+            return body.toString()
+        }
 
         val baseline = fixture("baseline-1")
         val baselineReplay = fixture("baseline-2")
@@ -318,13 +359,12 @@ private data class ContractFixture(
     val candidate: String,
     val experiment: String,
     val observation: String,
+    val run: Int,
     val evidence: List<String>,
     val request: FixtureRequest,
     val response: FixtureResponse,
     val answer: FixtureAnswer,
     val ordering: FixtureOrdering,
-    val body: JsonObject? = null,
-    val bodySource: String? = null,
 )
 
 @Serializable

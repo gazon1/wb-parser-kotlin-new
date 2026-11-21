@@ -2,18 +2,18 @@
   "candidate": "storefront-catalog-search",
   "generated": {
     "devtools/wb-research/proposals/2026-11-20-wb-catalog-agent/proposal.md": "461d59d0241c514a1ac9adfe3b58f76a7fa91923e586309dff088625065b6579",
-    "wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt": "d3745feecae9704c0611245058ef2bb73e7c05d8f26450b90c41b1df0edf0071",
-    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-1.json": "d88e8ee4de6468b47ae436aa1da2169eb4978bd30571c0f30b079c5dd363751e",
-    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-2.json": "8cba276f11f9bdf86da5d6f5c1b34744dbf4e38eb250269e18562bff19e2bea4",
-    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/baseline-1.json": "7c1f1f84cb71af25b87004799184666a5623bb278a1c4b5e862d3b3749264c92",
-    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/baseline-2.json": "bc86bb8c3d7e2b3591a25ce152135701659556860532fa25cf245c6312ae7c6b",
-    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/page-2-1.json": "d5ff79e8e6b9b55d8e85b25f88d0ff47df33f9729ec2210867692c244366b687",
-    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/page-2-2.json": "a4fe488ad9e1dec7a97d51333e45282d35c396ed2e118bc73c7bc287540b5164",
-    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-1.json": "6091cb95eb6e8f82d6a7257f41314a8e0c894d054896a65093a71552b3c97b63",
-    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-2.json": "40335b1af1758dc3bc3d4c431efdef26df9d5c22aedcae3dbd881a5945d98e65"
+    "wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt": "c881f86c6f6b6ba4c6bfa427a526d28221d17ec3814e7544f3743783785bdad7",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-1.json": "649d70eccd57cf91ac958e4c333236e01084ed7ac7473ff023e63b86994af9dc",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-2.json": "31f5b703641ae7c3303f5438d055cfd5abfb5ff5333fb892284e14ec858d4a9b",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/baseline-1.json": "dd4c58dcbc2fafd413f2bff03914efc97a9dc9a6fca373368769af8248494e23",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/baseline-2.json": "b7826e1c5ba541d753de0d71057575ef8c351859d45ee0be78d761e6dcaa75a1",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/page-2-1.json": "39dc83cd817fc095e255a93e76c45ebf3dea295f8e50860dc4a94b449ef3d0e9",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/page-2-2.json": "ffe5c14fd49c69663f1c88acd4074444ada2f4881338577cc9f473652e2b164f",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-1.json": "7670988cdd2fce0ee7d7851f1b9d1aa2fefd0b80cfb8e11fa67067fd3f581687",
+    "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-2.json": "1b4c04eef53492893036a1c890f6eb26b63be3acc3405b88c6e422abb73bc3f5"
   },
   "generator": {
-    "scripts/wb-research/generate_proposal.py": "08d15bfab0c9a591802ee3fda4ceee406ab360c1bd24fe899adcc07f8e2f7f3a",
+    "scripts/wb-research/generate_proposal.py": "6066f84aa215a9495217523694589b5bc8ec251ce2fadd4f423826c05f6a1ef9",
     "scripts/wb-research/redact.py": "0611c354d9393a1e7a1291d6d02c18e74382b62d4c6aff49321cd04feb22c6c7"
   },
   "investigation": "2026-11-20-wb-catalog-agent",

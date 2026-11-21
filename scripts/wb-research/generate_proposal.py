@@ -22,8 +22,8 @@ What it writes
 For the seller-catalog contract it writes:
 
 - the fixtures — sanitized, committed, offline: the request as it was made, the shape
-  of the answer and the order of the products, with the body reconstructed from the
-  recorded shape (no captured payload ever enters the repository);
+  of the answer and the order of the products (the body is rebuilt by the test from
+  that shape, so no captured payload ever enters the repository);
 - a Kotlin regression test that pins the production request to those fixtures;
 - the proposal — a document that says which claim is behind which assertion, and what
   a reviewer has to look at.
@@ -138,9 +138,16 @@ CONTRACTS: dict[str, dict[str, Any]] = {
         #
         # - `value` — the one value the request carries;
         # - `values` — the closed set of values the request may carry;
-        # - `digits` — a number the site chose (a catalog id, a page);
+        # - `range` — a number within the bounds the endpoint itself names (the
+        #   page it is willing to answer);
         # - `free_text` — a phrase somebody typed, so the record may only publish
         #   the placeholder that stands for it.
+        #
+        # A number the site chose is not a free number: `dest` is the one id the
+        # site's own code sends, and a rule that accepts any digits would accept a
+        # phone number as readily — the redactor cannot tell them apart, because
+        # `dest=9123456789` is not a shape it knows. So a number is named by its
+        # value or by its bounds, never by its shape alone.
         #
         # The reasons are the contract's, not the tool's: a reviewer who disagrees
         # with one of them changes the record, not the list.
@@ -148,13 +155,13 @@ CONTRACTS: dict[str, dict[str, Any]] = {
             "ab_testing": {"value": "false"},
             "appType": {"value": "1"},
             "curr": {"value": "rub"},
-            "dest": {"digits": True},
+            "dest": {"value": "1259570991"},
             "ffeedbackpoints": {"value": "1"},
             "hide_vflags": {"value": "4294967296"},
             "inheritFilters": {"value": "true"},
             "lang": {"value": "ru"},
             "locale": {"value": "ru"},
-            "page": {"digits": True},
+            "page": {"range": {"min": 0, "max": 60}},
             "query": {"free_text": True},
             "resultset": {"value": "catalog"},
             "search": {"free_text": True},
@@ -348,6 +355,10 @@ def candidate_agrees_with_evidence(
     not name is a parameter the proposal's table leaves out while the fixture pins
     it. The comparison is against the baseline, because the baseline is the request
     the other experiments were compared with.
+
+    A parameter the recorded request sends twice is refused before the comparison:
+    read as a map, the second value hides the first, so the proposal would pin one
+    request and the fixture another.
     """
     query = {str(name): str(value) for name, value in (candidate.get("query") or {}).items()}
 
@@ -360,7 +371,15 @@ def candidate_agrees_with_evidence(
                 f"not this contract"
             )
 
-    recorded = query_of(str((observation.get("request") or {}).get("url") or ""))
+    recorded_pairs = query_pairs_of(str((observation.get("request") or {}).get("url") or ""))
+    repeated = duplicate_parameter_problems(recorded_pairs)
+    if repeated:
+        raise Refused(
+            f"the recorded request sends a parameter twice: {repeated} — the proposal would "
+            f"advertise one request and pin another, because a query read as a map keeps only "
+            f"the last value"
+        )
+    recorded = {name: value for name, value in recorded_pairs}
     for name, value in sorted(query.items()):
         if name not in recorded:
             raise Refused(
@@ -601,6 +620,7 @@ def parameter_problems(contract: dict[str, Any], pairs: list[tuple[str, Any]]) -
     """
     problems: list[str] = []
     declared = contract.get("parameters") or {}
+    problems += duplicate_parameter_problems(pairs)
     for name, value in pairs:
         rule = declared.get(name)
         if not publishable_query_value(name, value):
@@ -614,8 +634,8 @@ def parameter_problems(contract: dict[str, Any], pairs: list[tuple[str, Any]]) -
             allowed = text == str(rule["value"])
         elif "values" in rule:
             allowed = text in {str(item) for item in rule["values"]}
-        elif rule.get("digits"):
-            allowed = text.isdigit()
+        elif "range" in rule:
+            allowed = within_range(text, rule["range"])
         elif rule.get("free_text"):
             allowed = bool(PLACEHOLDER.fullmatch(text))
         else:
@@ -623,6 +643,46 @@ def parameter_problems(contract: dict[str, Any], pairs: list[tuple[str, Any]]) -
         if not allowed:
             problems.append(f"{name} holds '{text}', which the contract does not allow")
     return problems
+
+
+def within_range(text: str, bounds: Any) -> bool:
+    """Whether a value is a number within the bounds the contract declares.
+
+    The bounds are the endpoint's own: the API answers sixty pages, so a page
+    beyond that is a request the endpoint never answers with goods. A value that
+    is not a number at all is not within any range — the shape of a number is
+    not a number.
+    """
+    if not isinstance(bounds, dict):
+        return False
+    if not text.isdigit():
+        return False
+    number = int(text)
+    low = bounds.get("min")
+    high = bounds.get("max")
+    if low is not None and number < int(low):
+        return False
+    return high is None or number <= int(high)
+
+
+def duplicate_parameter_problems(pairs: list[tuple[str, Any]]) -> list[str]:
+    """Why a parameter that is sent twice may not be committed.
+
+    A parameter that occurs twice says two different things about the request,
+    and the reader that keeps the last value and the server that keeps the first
+    would disagree about it. The comparison that reads the query as a map cannot
+    see the difference at all: it keeps the last value and loses the first, so a
+    request that sends `sort=popular&sort=priceup` would be compared as if it
+    had sent one of them. So the repetition is refused before anything is read
+    as a map.
+    """
+    seen: set[str] = set()
+    repeated: set[str] = set()
+    for name, _ in pairs:
+        if name in seen:
+            repeated.add(name)
+        seen.add(name)
+    return [f"{name} is sent twice — a parameter sent twice says two different things" for name in sorted(repeated)]
 
 
 def query_problems(contract: dict[str, Any], url: str) -> list[str]:
@@ -644,29 +704,6 @@ def fixture_dir_of(candidate_id: str) -> str:
 def header_names_of(observation: dict[str, Any]) -> list[str]:
     request = observation.get("request") or {}
     return list(request.get("headerNames") or [])
-
-
-def synthesized_body(observation: dict[str, Any], capture: dict[str, Any]) -> dict[str, Any] | None:
-    """The body of the answer, reconstructed from what was recorded.
-
-    The capture kept the shape of the answer and the ids of the products, not the
-    payload — a payload is where a price, a name and a session live. The body the
-    test decodes is rebuilt from the recorded shape: the products it names, in the
-    order it recorded them, and nothing else.
-    """
-    answer = observation.get("schema") or {}
-    keys = list(answer.get("topLevelKeys") or [])
-    if "products" not in keys:
-        return None
-
-    ids = list(product_ids_of(observation, capture))
-    body: dict[str, Any] = {}
-    if "metadata" in keys:
-        body["metadata"] = {"catalog_type": "catalog-merger", "name": "<redacted:query-param>"}
-    if "total" in keys:
-        body["total"] = answer.get("total")
-    body["products"] = [{"id": product_id, "name": f"Товар {product_id}"} for product_id in ids]
-    return body
 
 
 def product_ids_of(observation: dict[str, Any], capture: dict[str, Any]) -> list[int]:
@@ -700,6 +737,7 @@ def fixture_of(
         "candidate": candidate_id,
         "experiment": observation.get("experiment"),
         "observation": observation.get("id"),
+        "run": observation.get("run"),
         "evidence": [observation.get("id")],
         "request": {
             "method": request.get("method"),
@@ -722,8 +760,6 @@ def fixture_of(
             "productIds": product_ids_of(observation, capture),
             "orderHash": ordering.get("orderHash"),
         },
-        "body": synthesized_body(observation, capture),
-        "bodySource": "synthesized-from-the-recorded-shape",
     }
 
 
@@ -738,7 +774,9 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import ru.wbparser.domain.model.Crawling
 import ru.wbparser.domain.model.Fetched
 import ru.wbparser.domain.parsing.WbCatalogEnvelope
@@ -852,9 +890,48 @@ class %%TEST_CLASS%% :
             )
         }
 
-        /** The body of a fixture — rebuilt from the recorded shape, never captured. */
-        fun bodyOf(fixture: ContractFixture): String =
-            requireNotNull(fixture.body) { "the fixture ${fixture.observation} carries no body" }.toString()
+        /**
+         * The body of a fixture — rebuilt from the recorded shape, never captured.
+         *
+         * The record kept the shape of the answer and the order of the products, not
+         * the payload: a payload is where a price, a name and a session live. So the
+         * body is assembled here, from the shape the fixture carries and the ids it
+         * names — the fixture holds the order once, and the body follows it.
+         */
+        fun bodyOf(fixture: ContractFixture): String {
+            require("products" in fixture.answer.topLevelKeys) {
+                "the fixture ${fixture.observation} recorded an answer without products"
+            }
+            val body =
+                buildJsonObject {
+                    if ("metadata" in fixture.answer.topLevelKeys) {
+                        put(
+                            "metadata",
+                            buildJsonObject {
+                                put("catalog_type", "catalog-merger")
+                                put("name", "<redacted:query-param>")
+                            },
+                        )
+                    }
+                    if ("total" in fixture.answer.topLevelKeys) {
+                        put("total", fixture.answer.total ?: 0)
+                    }
+                    put(
+                        "products",
+                        buildJsonArray {
+                            fixture.ordering.productIds.forEach { id ->
+                                add(
+                                    buildJsonObject {
+                                        put("id", id)
+                                        put("name", "Товар $id")
+                                    },
+                                )
+                            }
+                        },
+                    )
+                }
+            return body.toString()
+        }
 
         val baseline = fixture("%%BASELINE%%")
         val baselineReplay = fixture("%%BASELINE_REPLAY%%")
@@ -1051,13 +1128,12 @@ private data class ContractFixture(
     val candidate: String,
     val experiment: String,
     val observation: String,
+    val run: Int,
     val evidence: List<String>,
     val request: FixtureRequest,
     val response: FixtureResponse,
     val answer: FixtureAnswer,
     val ordering: FixtureOrdering,
-    val body: JsonObject? = null,
-    val bodySource: String? = null,
 )
 
 @Serializable
@@ -1613,6 +1689,16 @@ def generate(
                     f"the observation '{observation_id}' recorded {recorded} products, the evidence "
                     f"carries {len(ids)} — the fixture would not be the answer that was recorded"
                 )
+            # The body of the answer is rebuilt by the test from the shape and the
+            # order the record kept, so the shape has to name the products: a record
+            # that saw no products cannot be rebuilt into a page of them.
+            keys = list((observation.get("schema") or {}).get("topLevelKeys") or [])
+            if "products" not in keys:
+                raise Refused(
+                    f"the observation '{observation_id}' recorded an answer without products — "
+                    f"the body of a fixture is rebuilt from the shape the record kept, and a "
+                    f"shape without products rebuilds nothing"
+                )
             document = fixture_of(observation, capture, candidate_id, investigation_id)
             fixture_documents.append(document)
             names.append(document["observation"])
@@ -1903,7 +1989,8 @@ def self_test() -> None:
             (root / f"{fixture_dir_of('storefront-catalog-search')}/baseline-1.json").read_text(encoding="utf-8")
         )
         assert fixture["ordering"]["productIds"] == [1, 2], "the order must come from the evidence"
-        assert len(fixture["body"]["products"]) == 2, "the body must be rebuilt from the recorded order"
+        assert "body" not in fixture, "the fixture holds the order once — the test rebuilds the body from it"
+        assert fixture["run"] == 1, "the fixture names the run it was built from"
 
     print("self-test: an observed claim is refused, a validated one generates the same files twice")
 

@@ -109,11 +109,24 @@ has a rule for every name it knows, and no rule at all for a name it has never
 seen. `customer=Alice` is an ordinary word under a name nobody declared, and
 every shape check walks it through. So the contract declares the parameters of
 its own request and the values they may hold — a fixed value, a closed set of
-values, a number the site chose, or a phrase somebody typed, which the record
-may only publish as the placeholder that stands for it. A name the contract does
-not declare never reaches a committed file, whatever it looks like. The
-declaration is the contract's, not the tool's: a reviewer who disagrees with one
-of the values changes the record, not the list.
+values, a number within the bounds the endpoint itself names, or a phrase
+somebody typed, which the record may only publish as the placeholder that
+stands for it. A name the contract does not declare never reaches a committed
+file, whatever it looks like. The declaration is the contract's, not the tool's:
+a reviewer who disagrees with one of the values changes the record, not the
+list.
+
+A number the site chose is named by its value or by its bounds, never by its
+shape. `dest` is the id the site's own code sends, and a rule that accepted any
+digits would take a phone number for it: the redactor cannot tell the two
+apart, because `dest=9123456789` is not a shape it knows. The page is a number
+the endpoint itself bounds — it answers sixty pages, so a page beyond that is a
+request it never answers with goods.
+
+A parameter that occurs twice is refused wherever the contract reads a request:
+a request that names a parameter twice says two things about it, and a query
+read as a map keeps only the last value — the proposal would advertise one
+request and the fixture would pin another.
 
 The candidate and the evidence have to agree. The proposal publishes the query
 of the candidate as the parameters of the contract, and the fixture pins the
@@ -187,10 +200,12 @@ with the production constructor, parses it back and asks the API with the token
 the parse yields — so the test proves that the token of the crawl URL reaches the
 request, and not that a constant in the test reaches it.
 
-The fixtures carry no captured payload. The body is reconstructed from the
-recorded shape and the ordered product ids; only the *names* of the headers
-are kept; the redacted placeholders stay placeholders. The production
-`deviceid` constant never reaches a fixture or a proposal.
+The fixtures carry no captured payload. The body is rebuilt by the generated
+test from the recorded shape and the ordered product ids, and the fixture holds
+that order once: a fixture that carried it twice could say two different things
+about it. Only the *names* of the headers are kept; the redacted placeholders
+stay placeholders. The production `deviceid` constant never reaches a fixture or
+a proposal.
 
 The output goes where the code lives: the test and the fixtures are in
 `:wbparser`, so CI runs them offline, and the proposal document is next to the
@@ -219,16 +234,24 @@ The manifest holds the hash of the redactor beside the hash of the generator.
 The generator loads the redactor by its path, so the redactor is a generation
 dependency: a change of the sanitization rules has to invalidate the proposal
 exactly as a change of the generator does, or the committed artifacts were never
-checked against the policy that is in force now.
+checked against the policy that is in force now. The gate does not only compare
+those hashes — it requires the manifest to name every tool the proposal was
+produced by. A dependency the manifest leaves out is a dependency nobody
+watches: the redactor could change, the proposal would keep its hashes, and the
+gate would stay green over a proposal that no tool on the disk would produce
+any more.
 
 The gate binds a fixture to the record, not to itself. A fixture names the
 observation it was built from, and the gate checks that the observation is one
-the evidence holds and that the experiment and the order of the answer are the
-ones the capture recorded. The fixture's own fields cannot be the witness: a
-fixture renamed on the disk, renamed inside itself, in the manifest and in the
-proposal together is internally consistent and says nothing the record ever
-said, and only the record can tell. A file that is gone is a finding, not a
-crash: the gate reports what is wrong with the proposal and keeps going.
+the evidence holds and that the experiment, the run, the request and the order
+of the answer are the ones the capture recorded. The fixture's own fields
+cannot be the witness: a fixture renamed on the disk, renamed inside itself, in
+the manifest and in the proposal together is internally consistent and says
+nothing the record ever said, and only the record can tell. The URL of a
+fixture is compared with the URL of its capture for the same reason: a fixture
+that asks another request still matches every hash. A file that is gone is a
+finding, not a crash: the gate reports what is wrong with the proposal and keeps
+going.
 
 ## Rationale
 
@@ -302,11 +325,22 @@ deleted file would otherwise pass.
 - **Never** publish a parameter the contract does not declare, whatever its value
   looks like: the redactor has no rule for a name it has never seen, and a name
   nobody can explain may carry somebody's name. The contract declares the
-  parameters of its request and the values they may hold.
+  parameters of its request and the values they may hold — a fixed value, a
+  closed set of values, a number within the bounds the endpoint names, or a
+  phrase that may only be published as its placeholder. A number the site chose
+  is named by its value or its bounds, never by its shape: a phone number and a
+  catalog id look the same to a redactor.
+- **Never** accept a request that names a parameter twice: it says two things
+  about the request, and a query read as a map keeps only the last value.
 - **Never** keep a second copy of the sanitization rules in the generator: the
   generator asks `redact.py`, so the two cannot drift apart — and the hash of
   the redactor belongs to the manifest beside the hash of the generator, so a
   change of the rules invalidates the proposal.
+- **Never** let a manifest leave a generation dependency out: the gate requires
+  the generator and the redactor to be named, because a dependency nobody names
+  is a dependency nobody watches.
+- **Never** let a fixture hold the order of the products twice: the body is
+  rebuilt by the test from the order the fixture carries.
 - **Never** accept a candidate that contradicts the recorded request: it has to
   name the identity parameters the contract declares, and its query has to be
   the query of the recorded request — the same parameters with the same values,
@@ -330,8 +364,9 @@ deleted file would otherwise pass.
   observation it holds and lives in the directory of its contract: a fixture
   renamed on the disk, in the manifest and in the proposal together still drifts.
 - **Always** let the drift gate bind a fixture to the record: the observation it
-  names has to be one the evidence holds, with the experiment and the order the
-  capture recorded — a fixture cannot be its own witness.
+  names has to be one the evidence holds, with the experiment, the run, the
+  request and the order the capture recorded — a fixture cannot be its own
+  witness.
 - **Never** add a production dependency on the research tooling; the generator
   writes into a test source set and a development directory.
 - A new contract family is a new entry in `CONTRACTS`, not a new framework.

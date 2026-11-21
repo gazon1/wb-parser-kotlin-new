@@ -1144,10 +1144,18 @@ typed is refused, not published.
 for every name it knows and none for a name it has never seen: `customer=Alice`
 is an ordinary word under a name nobody declared, and every shape check walks it
 through. So the contract table declares which parameters the request carries and
-what their values may be — a fixed value, a closed set of values, a number the
-site chose, or a phrase somebody typed, which only the placeholder that stands
-for it may be published. A parameter the contract does not declare never reaches
-a committed file.
+what their values may be — a fixed value, a closed set of values, a number
+within the bounds the endpoint itself names, or a phrase somebody typed, which
+only the placeholder that stands for it may be published. A parameter the
+contract does not declare never reaches a committed file. A number the site
+chose is named by its value or its bounds, never by its shape: `dest=9123456789`
+looks like a phone number and a catalog id to the redactor all the same, so the
+contract names the one id the site's own code sends.
+
+**A parameter that is sent twice is refused.** A request that names a parameter
+twice says two things about it, and a query read as a map keeps only the last
+value — the proposal would advertise one request and the fixture would pin
+another.
 
 **The candidate and the evidence have to say the same thing.** The proposal
 publishes the query of the candidate as the parameters of the contract, and the
@@ -1172,9 +1180,11 @@ through never leaves a fixture without its test on the disk.
 
 **A fixture carries no captured payload.** The capture kept the shape of the
 answer and the ids of the products, not the body — a body is where a price, a
-name and a session live. The body the test decodes is rebuilt from the recorded
-shape: the products it names, in the order it recorded them, and nothing else.
-Header *names* are part of the contract; header *values* never enter a file.
+name and a session live. The body the test decodes is rebuilt by the test itself
+from the recorded shape: the products it names, in the order it recorded them,
+and nothing else. The fixture holds that order once, so it cannot say two
+different things about it. Header *names* are part of the contract; header
+*values* never enter a file.
 
 **It writes files and nothing else.** No commit, no branch, no merge: the
 proposal is a diff a human reviews.
@@ -1210,5 +1220,7 @@ from the disk and from the manifest together still fails, and it checks that
 every fixture is named after the observation it holds and lives in the directory
 of its contract, so a fixture renamed on the disk, in the manifest and in the
 proposal together still fails. A fixture cannot be its own witness either: the
-observation it names has to be one the evidence holds, with the experiment and
-the order of the answer the capture recorded.
+observation it names has to be one the evidence holds, with the experiment, the
+run, the request and the order of the answer the capture recorded. The manifest
+has to name every tool the proposal was produced by — the generator and the
+redactor — because a dependency nobody names is a dependency nobody watches.

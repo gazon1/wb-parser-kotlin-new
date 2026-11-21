@@ -40,8 +40,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PROPOSALS = ROOT / "devtools" / "wb-research" / "proposals"
-GENERATOR = ROOT / "scripts" / "wb-research" / "generate_proposal.py"
+GENERATOR_PATH = "scripts/wb-research/generate_proposal.py"
+REDACTOR_PATH = "scripts/wb-research/redact.py"
+GENERATOR = ROOT / GENERATOR_PATH
 REGENERATE = "uv run python scripts/wb-research/generate_proposal.py --investigation <id>"
+
+# The tools a proposal is produced by: the generator itself, and the redactor it
+# loads to judge a value. A manifest has to name all of them — a dependency it does
+# not name cannot be watched, so the tool behind the proposal could have changed
+# without anybody noticing.
+GENERATOR_DEPENDENCIES = (GENERATOR_PATH, REDACTOR_PATH)
 
 MANIFEST_SCHEMA = "wb-research/proposal-manifest/v1"
 FILE_SECTION = "## The files this proposal adds"
@@ -218,11 +226,11 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
     contract of the file against the directory it lives in.
 
     The name inside the file is checked against the record as well: the observation
-    it names has to be one the evidence holds, and the experiment and the order of
-    the answer have to be the ones the capture recorded. A fixture whose identity was
-    changed together with its name — on the disk, in the manifest and in the proposal
-    — is internally consistent and says nothing the record ever said, and only the
-    record can tell.
+    it names has to be one the evidence holds, and the experiment, the run, the
+    request and the order of the answer have to be the ones the capture recorded. A
+    fixture whose identity was changed together with its name — on the disk, in the
+    manifest and in the proposal — is internally consistent and says nothing the
+    record ever said, and only the record can tell.
     """
     findings: list[str] = []
     for relative in sorted(entries):
@@ -275,6 +283,20 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
                 f"the evidence records the observation '{observation}' in the experiment "
                 f"'{capture.get('experiment')}'"
             )
+        if str(document.get("run")) != str(capture.get("run")):
+            findings.append(
+                f"{relative}: the fixture names the run '{document.get('run')}', the evidence records "
+                f"the observation '{observation}' in the run '{capture.get('run')}'"
+            )
+        request = document.get("request") or {}
+        recorded_request = capture.get("request") or {}
+        for name in ("method", "url"):
+            if str(request.get(name)) != str(recorded_request.get(name)):
+                findings.append(
+                    f"{relative}: the fixture holds the request {name} '{request.get(name)}', the "
+                    f"evidence records '{recorded_request.get(name)}' for the observation "
+                    f"'{observation}'"
+                )
         order = (document.get("ordering") or {}).get("orderHash")
         recorded = (capture.get("ordering") or {}).get("orderHash")
         if str(order) != str(recorded):
@@ -322,8 +344,25 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
                 findings.append(f"{relative}: {message} (recorded {expected[:12]}, on disk {actual[:12]})")
 
     compare(sections["sources"], "the record changed after this proposal was generated")
-    compare(sections["generator"], "the generator changed after this proposal was generated")
     compare(sections["generated"], "a generated file was changed by hand")
+
+    # The generator and the tools it reads are the tool the proposal was produced by.
+    # A dependency that changed has to be reported as what it is — the tool behind
+    # the proposal moved — and a dependency the manifest does not name cannot be
+    # watched at all.
+    for relative, expected in sorted(sections["generator"].items()):
+        path = root / relative
+        if not path.is_file():
+            findings.append(f"{relative}: missing — the generator changed after this proposal was generated")
+            continue
+        actual = digest(path)
+        if actual != expected:
+            message = (
+                "a dependency of the generator changed after this proposal was generated"
+                if relative in GENERATOR_DEPENDENCIES and relative != GENERATOR_PATH
+                else "the generator changed after this proposal was generated"
+            )
+            findings.append(f"{relative}: {message} (recorded {expected[:12]}, on disk {actual[:12]})")
 
     findings += inventory_findings(sections["generated"], root, ".json")
     findings += inventory_findings(sections["sources"], root, ".json")
@@ -336,6 +375,17 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
         findings.append(f"{relative_manifest}: the manifest names no generator of the proposal")
     if not sections["generated"]:
         findings.append(f"{relative_manifest}: the manifest names no generated file")
+
+    # The manifest has to name every tool the proposal was produced by. A dependency
+    # it leaves out is a dependency nobody watches: the redactor could change, the
+    # proposal would keep its hashes, and the gate would stay green over a proposal
+    # that no tool on the disk would produce any more.
+    for relative in GENERATOR_DEPENDENCIES:
+        if relative not in sections["generator"]:
+            findings.append(
+                f"{relative_manifest}: the manifest does not name '{relative}' — the proposal names "
+                f"the tool it was produced by, and a tool it does not name may have changed since"
+            )
 
     # The manifest must hold every file the proposal says the proposal adds. Otherwise
     # a deleted file and a deleted entry would pass together, and the gate would guard
@@ -403,6 +453,8 @@ def self_test() -> None:
         generator.parent.mkdir(parents=True)
         (record / "investigation.yaml").write_text("status: concluded\n", encoding="utf-8")
         generator.write_text("# the generator\n", encoding="utf-8")
+        redactor = root / REDACTOR_PATH
+        redactor.write_text("# the redactor\n", encoding="utf-8")
 
         proposal = proposals / "demo"
         proposal.mkdir(parents=True)
@@ -413,29 +465,52 @@ def self_test() -> None:
         )
         fixture = root / fixture_relative
         fixture.parent.mkdir(parents=True)
-        fixture.write_text(
-            json.dumps(
-                {
-                    "observation": "baseline-1",
-                    "candidate": "storefront-catalog-search",
-                    "experiment": "baseline",
-                    "ordering": {"orderHash": "hash-baseline"},
-                }
+        request = {"method": "GET", "url": "https://example.test/search?resultset=catalog"}
+
+        def fixture_document(
+            observation: str = "baseline-1",
+            experiment: str = "baseline",
+            order_hash: str = "hash-baseline",
+            run: int = 1,
+        ) -> str:
+            """The fixture as the generator writes it — the fields it writes."""
+            return (
+                json.dumps(
+                    {
+                        "observation": observation,
+                        "candidate": "storefront-catalog-search",
+                        "experiment": experiment,
+                        "run": run,
+                        "request": request,
+                        "ordering": {"orderHash": order_hash},
+                    }
+                )
+                + "\n"
             )
-            + "\n",
-            encoding="utf-8",
-        )
+
+        def capture_document(
+            observation: str = "baseline-1",
+            experiment: str = "baseline",
+            order_hash: str = "hash-baseline",
+            run: int = 1,
+        ) -> dict:
+            """The capture as the record keeps it — the fields the gate compares."""
+            return {
+                "id": observation,
+                "experiment": experiment,
+                "run": run,
+                "request": request,
+                "ordering": {"orderHash": order_hash},
+            }
+
+        fixture.write_text(fixture_document(), encoding="utf-8")
         bundle = record / "evidence" / "validation.json"
         bundle.parent.mkdir(parents=True)
         bundle.write_text(
             json.dumps(
                 {
                     "captures": [
-                        {
-                            "id": "baseline-1",
-                            "experiment": "baseline",
-                            "ordering": {"orderHash": "hash-baseline"},
-                        }
+                        capture_document(),
                     ]
                 }
             )
@@ -457,7 +532,10 @@ def self_test() -> None:
             "schema": "wb-research/proposal-manifest/v1",
             "investigation": "demo",
             "candidate": "storefront-catalog-search",
-            "generator": {"scripts/wb-research/generate_proposal.py": digest(generator)},
+            "generator": {
+                GENERATOR_PATH: digest(generator),
+                REDACTOR_PATH: digest(redactor),
+            },
             "sources": {
                 "devtools/wb-research/investigations/demo/investigation.yaml": digest(record / "investigation.yaml"),
                 "devtools/wb-research/investigations/demo/evidence/validation.json": digest(bundle),
@@ -487,6 +565,26 @@ def self_test() -> None:
         assert "the generator changed" in findings[0], findings
 
         generator.write_text("# the generator\n", encoding="utf-8")
+
+        # A dependency of the generator that changed: the redactor is loaded to judge
+        # every value, so a redactor that moved behind the proposal's back makes the
+        # proposal a thing nobody would produce today.
+        redactor.write_text("# a different redactor\n", encoding="utf-8")
+        findings = check(proposals, root)
+        assert findings, "a changed dependency of the generator must fail"
+        assert any("a dependency of the generator changed" in finding for finding in findings), findings
+        redactor.write_text("# the redactor\n", encoding="utf-8")
+
+        # A manifest that names no redactor at all: a dependency nobody watches is a
+        # dependency that may change without anybody noticing.
+        manifest["generator"].pop(REDACTOR_PATH)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("does not name" in finding for finding in findings), findings
+        manifest["generator"][REDACTOR_PATH] = digest(redactor)
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal that names every tool it was produced by must pass"
+
         write_proposal()
         (proposal / "proposal.md").write_text("# an edited proposal\n", encoding="utf-8")
         findings = check(proposals, root)
@@ -568,18 +666,7 @@ def self_test() -> None:
         # file, its own field, the manifest and the proposal all agree, so every
         # internal check passes. Only the record can tell, and it never held an
         # observation of that name.
-        renamed.write_text(
-            json.dumps(
-                {
-                    "observation": "renamed-1",
-                    "candidate": "storefront-catalog-search",
-                    "experiment": "baseline",
-                    "ordering": {"orderHash": "hash-baseline"},
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        renamed.write_text(fixture_document(observation="renamed-1"), encoding="utf-8")
         manifest["generated"].pop(fixture_relative)
         manifest["generated"][renamed_relative] = digest(renamed)
         write_proposal(renamed_relative)
@@ -587,18 +674,7 @@ def self_test() -> None:
         findings = check(proposals, root)
         assert any("the evidence does not record" in finding for finding in findings), findings
         renamed.rename(fixture)
-        fixture.write_text(
-            json.dumps(
-                {
-                    "observation": "baseline-1",
-                    "candidate": "storefront-catalog-search",
-                    "experiment": "baseline",
-                    "ordering": {"orderHash": "hash-baseline"},
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        fixture.write_text(fixture_document(), encoding="utf-8")
         manifest["generated"].pop(renamed_relative)
         manifest["generated"][fixture_relative] = digest(fixture)
         write_proposal()
@@ -607,34 +683,12 @@ def self_test() -> None:
 
         # A fixture whose order the record never recorded: the file agrees with
         # itself, but not with the capture it was built from.
-        fixture.write_text(
-            json.dumps(
-                {
-                    "observation": "baseline-1",
-                    "candidate": "storefront-catalog-search",
-                    "experiment": "baseline",
-                    "ordering": {"orderHash": "hash-somewhere-else"},
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        fixture.write_text(fixture_document(order_hash="hash-somewhere-else"), encoding="utf-8")
         manifest["generated"][fixture_relative] = digest(fixture)
         write_manifest()
         findings = check(proposals, root)
         assert any("the evidence records" in finding for finding in findings), findings
-        fixture.write_text(
-            json.dumps(
-                {
-                    "observation": "baseline-1",
-                    "candidate": "storefront-catalog-search",
-                    "experiment": "baseline",
-                    "ordering": {"orderHash": "hash-baseline"},
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        fixture.write_text(fixture_document(), encoding="utf-8")
         manifest["generated"][fixture_relative] = digest(fixture)
         write_manifest()
         assert check(proposals, root) == [], "a fixture built from the recorded order must pass"
@@ -645,18 +699,7 @@ def self_test() -> None:
         findings = check(proposals, root)
         assert findings, "a missing generated file must fail"
         assert any("missing" in finding for finding in findings), findings
-        fixture.write_text(
-            json.dumps(
-                {
-                    "observation": "baseline-1",
-                    "candidate": "storefront-catalog-search",
-                    "experiment": "baseline",
-                    "ordering": {"orderHash": "hash-baseline"},
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+        fixture.write_text(fixture_document(), encoding="utf-8")
         manifest["generated"][fixture_relative] = digest(fixture)
         write_manifest()
         assert check(proposals, root) == [], "a proposal with every file on the disk must pass"
@@ -702,7 +745,10 @@ def self_test() -> None:
             "schema": "wb-research/proposal-manifest/v1",
             "investigation": "demo-2",
             "candidate": "storefront-catalog-search",
-            "generator": {"scripts/wb-research/generate_proposal.py": digest(generator)},
+            "generator": {
+                GENERATOR_PATH: digest(generator),
+                REDACTOR_PATH: digest(redactor),
+            },
             "sources": {
                 "devtools/wb-research/investigations/demo/investigation.yaml": digest(record / "investigation.yaml"),
                 "devtools/wb-research/investigations/demo/evidence/validation.json": digest(bundle),
@@ -728,8 +774,9 @@ def self_test() -> None:
         assert findings, "a proposal directory without a manifest must fail"
 
     print(
-        "self-test: a changed record, a changed generator, an edited file, an incomplete "
-        "manifest and two proposals claiming one file each fail"
+        "self-test: a changed record, a changed generator, a changed dependency of the generator, "
+        "a manifest that names no dependency, an edited file, an incomplete manifest and two "
+        "proposals claiming one file each fail"
     )
 
 
