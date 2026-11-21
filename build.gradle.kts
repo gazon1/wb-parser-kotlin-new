@@ -5,7 +5,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm") apply false
     id("org.jetbrains.kotlin.plugin.spring") apply false
     id("org.jetbrains.kotlin.plugin.serialization") apply false
-    id("org.springframework.boot") version "3.4.1" apply false
+    id("org.springframework.boot") version "4.1.1" apply false
     id("io.gitlab.arturbosch.detekt") version "1.23.8" apply false
     // The Gradle plugin's own version is independent of the ktlint CLI version pinned in
     // the version catalogue (`ktlint = "1.3.0"`), which the ktlint extension below reuses.
