@@ -771,6 +771,11 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
                     f"{relative}: {side} names the header '{name}' twice — a request that names a "
                     f"header twice is a malformed record"
                 )
+            if isinstance(values, list) and not values:
+                findings.append(
+                    f"{relative}: {side} names no header of the request — a request that names no header "
+                    f"records nothing about the headers it carried, so the fixture cannot pin them"
+                )
         response = object_field(document, "response")
         recorded_response = object_field(capture, "response")
         for name, expect in (("status", int), ("contentType", str), ("bodyBytes", int), ("isJson", bool)):
@@ -870,6 +875,11 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
             if actual != expected:
                 findings.append(f"{relative}: {message} (recorded {expected[:12]}, on disk {actual[:12]})")
 
+    # The sources are judged before they are read: a source that does not belong to
+    # the record the manifest names is not hashed at all. The gate does not read a
+    # file of another record in order to find out that it is a file of another
+    # record.
+    findings += source_investigation_findings(investigation, sections["sources"], root)
     compare(sections["sources"], "the record changed after this proposal was generated")
     compare(sections["generated"], "a generated file was changed by hand")
 
@@ -936,7 +946,6 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
     findings += inventory_findings(sections["generated"], root, ".json")
     findings += inventory_findings(sections["sources"], root, ".json")
     findings += evidence_findings(investigation, sections["sources"], root)
-    findings += source_investigation_findings(investigation, sections["sources"], root)
     captures, capture_findings = evidence_captures(sections["sources"], root, investigation)
     findings += capture_findings
     findings += fixture_findings(sections["generated"], captures, root, investigation)
@@ -1467,6 +1476,23 @@ def self_test() -> None:
         write_manifest()
         assert check(proposals, root) == [], "a capture that names a header once must pass"
 
+        # A request that names no header records nothing about the headers it
+        # carried: the two descriptions of the run agree on nothing, and the
+        # fixture would pin the production request to an empty set of headers.
+        fixture.write_text(fixture_document(header_names=[]), encoding="utf-8")
+        bundle.write_text(json.dumps({"captures": [capture_document(header_names=[])]}) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("names no header of the request" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        bundle.write_text(json.dumps({"captures": [capture_document()]}) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        assert check(proposals, root) == [], "a request that names a header must pass"
+
         # A fixture of another investigation: the proposal names the investigation,
         # and a fixture that names another one is a fixture of another record.
         other_investigation = json.loads(fixture_document())
@@ -1868,8 +1894,8 @@ def self_test() -> None:
 
     print(
         "self-test: a changed record, a changed generator, a changed dependency of the generator, "
-        "a manifest that names no dependency, an edited file, an incomplete manifest and two "
-        "proposals claiming one file each fail"
+        "a manifest that names no dependency, an edited file, an incomplete manifest, a request that "
+        "names no header and two proposals claiming one file each fail"
     )
 
 

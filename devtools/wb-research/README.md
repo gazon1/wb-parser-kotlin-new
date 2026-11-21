@@ -1292,6 +1292,29 @@ named on its own, in the fixture and in the evidence alike. The order of the
 products is not a set: the test rebuilds the body of the answer from it, so the
 same ids in another order are another answer.
 
+**A request that names no header names nothing.** The two descriptions of one run
+have to name the same headers, and a list that is empty names none: a request
+that carries no header records nothing about the headers it carried, so it
+cannot witness a fixture that pins them — and the fixture would pin the
+production request to an empty set of headers, which the generated test would
+then hold the crawler to. So both the generator and the gate refuse an empty
+list of header names, by name, and a repetition is refused by the generator as
+well: the gate already calls a repeated header a malformed record, and a
+generator that accepted one would write a proposal its own gate turns down.
+
+**The record of an investigation is the directory of that name.** The generator
+resolves the directory of the investigation and compares it with the place its
+name says it is, before it reads a byte of the record: a directory that is a
+link to the record of another investigation is a record of something else, and
+the captures of the other record would witness the fixtures of this one. The
+gate asks the same question, and the two tools ask it at the same moment — the
+generator before it reads, the gate before it reads the sources.
+
+**A source is judged before it is read.** The gate says whether a source
+belongs to the record the manifest names before it hashes that source: a file of
+another record is not read in order to find out that it is a file of another
+record.
+
 **A refusal leaves nothing behind.** The whole proposal is rendered and checked
 before the first byte reaches the disk, so a record that is refused half way
 through never leaves a fixture without its test on the disk.

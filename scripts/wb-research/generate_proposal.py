@@ -540,6 +540,23 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
             )
         if not all(isinstance(name, str) for name in names):
             raise Refused(f"{where}{side} holds a header name that is not a name — the names of the headers are names")
+        # A request that names no header records nothing about the headers it
+        # carried, and a fixture that pins the request to an empty set of headers
+        # would publish that nothing as though the site had said so. A name that
+        # appears twice is a malformed record as well, and a set of names hides the
+        # repetition — so both are refused here, by name, before the two sets are
+        # compared. The gate reads the same record and says the same thing.
+        if not names:
+            raise Refused(
+                f"{where}{side} names no header of the request — a request that names no header says "
+                f"nothing about the headers it carried, so it cannot witness a fixture that pins them"
+            )
+        repeated = [name for name in dict.fromkeys(names) if names.count(name) > 1]
+        if repeated:
+            raise Refused(
+                f"{where}{side} names the header {repeated[0]!r} twice — a request that names a header "
+                f"twice is a malformed record, and a set of names hides the repetition"
+            )
     if set(capture_headers) != set(observation_headers):
         raise Refused(
             f"{where}the capture names the headers {sorted(set(capture_headers))} of the request and the "
@@ -1970,6 +1987,23 @@ def generate(
     directory = investigations_root / investigation_id
     if not directory.is_dir():
         raise Refused(f"there is no investigation '{investigation_id}' in {investigations_root}")
+    # The record of an investigation is the directory of that name, and a directory
+    # that is a link to the record of another investigation is a record of something
+    # else: the captures of the other record would witness the fixtures of this one,
+    # and the proposal would name a record nobody read. So the directory is resolved
+    # and compared with the place its name says it is — the same question the gate
+    # asks, before anything is read.
+    try:
+        canonical = (investigations_root.resolve()) / investigation_id
+        resolved = directory.resolve()
+    except OSError as error:
+        raise Refused(f"the investigation '{investigation_id}' cannot be resolved: {error}") from error
+    if resolved != canonical:
+        raise Refused(
+            f"the record of the investigation '{investigation_id}' is not the record of that investigation — "
+            f"'{investigation_id}' resolves to '{resolved}' and not to '{canonical}', and a record that is "
+            f"a link to another record is not the record this proposal names"
+        )
 
     investigation = load_yaml(directory / "investigation.yaml") or {}
     validation_path = directory / "validation.yaml"

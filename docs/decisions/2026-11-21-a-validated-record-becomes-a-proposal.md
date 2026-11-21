@@ -434,6 +434,12 @@ deleted file would otherwise pass.
   fixture takes the headers from the summary, the proposal publishes the
   capture, and the gate compares the two — so the two descriptions of one run
   have to name the same headers.
+- **Never** accept a request that names no header, and never accept one that
+  names a header twice: a request that names no header records nothing about
+  the headers it carried, so it cannot witness a fixture that pins them, and a
+  repetition is a malformed record that a set of names hides — both are refused
+  by name in the generator and in the gate, so that neither tool accepts a
+  record the other turns down.
 - **Never** compare the counts of the answer before they are checked for what
   they are: a boolean is not a number, and `True == 1` in Python — so a count
   of the wrong type is refused by name on both sides of the comparison, and a
@@ -441,7 +447,10 @@ deleted file would otherwise pass.
 - **Never** let the record of an investigation be a link to the record of
   another one: the directory is resolved and compared with the place its name
   points at, and the sources are judged against that place — before any of them
-  is read.
+  is read. The generator asks the same question before it reads the record, and
+  the gate judges a source against the record it names before it hashes that
+  source: a file of another record is not read in order to find out that it is a
+  file of another record.
 - **Never** commit a value the record did not sanitize: a query value, a request
   URL and a crawl URL that reach a proposal, a fixture or a test carry a
   placeholder or a value the record's own redactor would leave alone — and the

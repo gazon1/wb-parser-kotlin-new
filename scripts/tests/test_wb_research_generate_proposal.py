@@ -245,6 +245,17 @@ class SimpleWorld:
                 capture["request"].update(changes)
         self.write_evidence(captures)
 
+    def patch_observation_request(self, **changes) -> None:
+        """Change the request of the baseline observation, leaving the capture as it is.
+
+        The request of the summary is the request the capture describes: the names
+        of the headers it carried are a part of it, and the two have to agree.
+        """
+        validation = self.directory / "validation.yaml"
+        document = yaml.safe_load(validation.read_text(encoding="utf-8"))
+        document["experiments"][0]["observations"][0]["request"].update(changes)
+        validation.write_text(yaml.safe_dump(document, allow_unicode=True), encoding="utf-8")
+
     def drop_from_capture(self, capture_id: str, *path: str) -> None:
         """Remove a field of a capture of the evidence, leaving the summary as it is.
 
@@ -1254,10 +1265,77 @@ def test_a_capture_that_names_other_headers_than_the_summary_is_refused(world, t
     assert "have to name the same headers" in str(refusal.value), str(refusal.value)
 
 
+def test_a_capture_that_names_no_header_is_refused(world, tmp_path):
+    # A request that names no header records nothing about the headers it carried,
+    # so it cannot witness a fixture that pins them. Two descriptions that both
+    # name no header agree on an empty set, and the fixture would pin the
+    # production request to no headers at all.
+    world.patch_capture_request("baseline-1", headerNames=[])
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "names no header of the request" in str(refusal.value), str(refusal.value)
+
+
+def test_an_observation_that_names_no_header_is_refused(world, tmp_path):
+    # The same question of the summary: a request that names no header says
+    # nothing about the headers it carried.
+    world.patch_observation_request(headerNames=[])
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "names no header of the request" in str(refusal.value), str(refusal.value)
+
+
+def test_a_capture_that_names_a_header_twice_is_refused(world, tmp_path):
+    # A set of names hides the repetition, and a request that names a header twice
+    # is a malformed record — the gate says so about the evidence, so the generator
+    # says it about the capture too, instead of writing a proposal the gate turns
+    # down.
+    world.patch_capture_request("baseline-1", headerNames=["deviceid", "deviceid"])
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "names the header 'deviceid' twice" in str(refusal.value), str(refusal.value)
+
+
+def test_an_observation_that_names_a_header_twice_is_refused(world, tmp_path):
+    # The summary is read as strictly as the capture: a repetition in it is a
+    # repetition in the record.
+    world.patch_observation_request(headerNames=["deviceid", "deviceid"])
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "names the header 'deviceid' twice" in str(refusal.value), str(refusal.value)
+
+
+def test_a_record_that_is_a_link_to_another_record_is_refused(world, tmp_path):
+    # The record of an investigation is the directory of that name. A directory
+    # that is a link to the record of another investigation is a record of
+    # something else, and the gate says so — so the generator says it before it
+    # reads a byte of it.
+    real = world.investigations / "real-record"
+    world.directory.rename(real)
+    world.directory.symlink_to(real, target_is_directory=True)
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "is not the record of that investigation" in str(refusal.value), str(refusal.value)
+
+
 def test_a_capture_whose_count_is_a_boolean_is_refused(world, tmp_path):
     # A boolean is not a number: `True == 1` in Python, so a capture that recorded
-    # `true` where the summary recorded `2` looks like a match to the generator
+    # `true` where the summary recorded `1` looks like a match to the generator
     # and is a finding to the gate that reads the same record.
+    world.patch_observation(
+        schema={
+            "jsonType": "object",
+            "topLevelKeys": ["metadata", "products", "total"],
+            "productCount": 1,
+            "total": 7,
+        },
+        ordering={"orderHash": "hash-baseline", "productIds": [1]},
+    )
     world.patch_capture(
         "baseline-1",
         schema={
@@ -1266,6 +1344,7 @@ def test_a_capture_whose_count_is_a_boolean_is_refused(world, tmp_path):
             "productCount": True,
             "total": 7,
         },
+        ordering={"orderHash": "hash-baseline", "productIds": [1]},
     )
 
     with pytest.raises(generate_proposal.Refused) as refusal:
