@@ -440,10 +440,19 @@ deleted file would otherwise pass.
   repetition is a malformed record that a set of names hides — both are refused
   by name in the generator and in the gate, so that neither tool accepts a
   record the other turns down.
-- **Never** compare the counts of the answer before they are checked for what
-  they are: a boolean is not a number, and `True == 1` in Python — so a count
-  of the wrong type is refused by name on both sides of the comparison, and a
-  capture that records no count cannot witness a fixture.
+- **Never** compare a dimension before it is checked for what it is: a run is a
+  number, an experiment is a name, a status is a number, a content type is text,
+  the size of the body is a number, the kind of the answer is a boolean and the
+  top-level keys are a list of names — and `True == 1` in Python, so a
+  dimension of the wrong type is refused by name on both sides of the
+  comparison, in the generator and in the gate.
+- **Never** read a bundle of the evidence that is not a file of the record: the
+  bundles are the record, and a bundle that is a link to the evidence of another
+  investigation is the evidence of another record — so every bundle is resolved
+  and judged against the record before it is opened.
+- **Never** read a source that does not belong to the record: the gate judges
+  the ownership of a source before it hashes it and before it reads it as
+  evidence.
 - **Never** let the record of an investigation be a link to the record of
   another one: the directory is resolved and compared with the place its name
   points at, and the sources are judged against that place — before any of them

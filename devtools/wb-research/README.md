@@ -1315,6 +1315,30 @@ belongs to the record the manifest names before it hashes that source: a file of
 another record is not read in order to find out that it is a file of another
 record.
 
+**Every dimension is checked for what it is, on both sides.** A run is a
+number, an experiment is a name, a status is a number, a content type is text,
+the size of the body is a number, the kind of the answer is a boolean, and the
+top-level keys are a list of names. A dimension of the wrong type is not a
+dimension that matches — and in Python `True == 1`, so a record that holds
+`true` where the site recorded `1` would pass a comparison that only asks
+whether the two sides are equal. The generator checks every dimension it
+compares, on the capture and on the summary, and refuses a dimension of the
+wrong type by name.
+
+**The bundles of the evidence are the record.** A bundle that is a link to the
+evidence of another investigation is the evidence of another record, and the
+captures of another record would witness the fixtures of this one. So every
+bundle is resolved and judged against the record before it is opened — the
+directory of the investigation being the record is not enough, because a bundle
+inside it may point anywhere.
+
+**The identity of the record is a line.** The generator writes the sentence that
+names the record alone on its line, and the gate reads the whole line: a line
+that carries more text after the sentence says something else about the record
+the proposal was produced from. The name of an investigation is a name and not a
+path as well, and both tools hold the same grammar for it — the name the
+generator accepts is the name the gate accepts.
+
 **A refusal leaves nothing behind.** The whole proposal is rendered and checked
 before the first byte reaches the disk, so a record that is refused half way
 through never leaves a fixture without its test on the disk.

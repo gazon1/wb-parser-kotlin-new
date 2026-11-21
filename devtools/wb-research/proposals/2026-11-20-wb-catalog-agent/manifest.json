@@ -1,7 +1,7 @@
 {
   "candidate": "storefront-catalog-search",
   "generated": {
-    "devtools/wb-research/proposals/2026-11-20-wb-catalog-agent/proposal.md": "461d59d0241c514a1ac9adfe3b58f76a7fa91923e586309dff088625065b6579",
+    "devtools/wb-research/proposals/2026-11-20-wb-catalog-agent/proposal.md": "2d5d2dec6bc266448664541b428c38e398870fe02cac60c2efb00ebb5dd354a6",
     "wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt": "2477a4c3856567cd64c2f5b30db7035d76f4a33e4f9595339d2edf3de4d5f1fc",
     "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-1.json": "649d70eccd57cf91ac958e4c333236e01084ed7ac7473ff023e63b86994af9dc",
     "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/after-reload-2.json": "31f5b703641ae7c3303f5438d055cfd5abfb5ff5333fb892284e14ec858d4a9b",
@@ -13,7 +13,7 @@
     "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-2.json": "1b4c04eef53492893036a1c890f6eb26b63be3acc3405b88c6e422abb73bc3f5"
   },
   "generator": {
-    "scripts/wb-research/generate_proposal.py": "ae2268e88e69ecc1548cce2d239685e573d6db739e06392f45b2de2a1db0742c",
+    "scripts/wb-research/generate_proposal.py": "744c74c23d377aa338ded46909bbe1475c4613b6e19d2531062a8a1c6b62c94a",
     "scripts/wb-research/redact.py": "0611c354d9393a1e7a1291d6d02c18e74382b62d4c6aff49321cd04feb22c6c7"
   },
   "investigation": "2026-11-20-wb-catalog-agent",

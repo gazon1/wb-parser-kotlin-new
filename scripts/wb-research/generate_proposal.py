@@ -512,6 +512,21 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
     generator that passed a record the gate would refuse would write a proposal
     that its own gate turns down.
     """
+    # Every dimension is checked for what it is before it is compared. A boolean
+    # is not a number and `True == 1` in Python, so a record that holds `true`
+    # where the record of the site holds `1` would pass the comparison below —
+    # and the gate, which asks the same question of the same record, would turn
+    # the fixture down. A dimension of the wrong type is refused by name.
+    for name, expected in (("experiment", str), ("run", int)):
+        for side, document in (("the capture", capture), ("the observation", observation)):
+            value = document.get(name)
+            if value is None:
+                continue
+            if not isinstance(value, expected) or (expected is int and isinstance(value, bool)):
+                raise Refused(
+                    f"{where}{side} holds a {name} that is not a {'name' if expected is str else 'number'} "
+                    f"({value!r}) — a dimension of the wrong type is not a dimension that matches"
+                )
     for name in ("experiment", "run"):
         left, right = capture.get(name), observation.get(name)
         if left is None or right is None or left != right:
@@ -519,8 +534,17 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
     capture_request = object_field(capture, "request", f"{where}the capture: ")
     observation_request = object_field(observation, "request", f"{where}the observation: ")
     for name in ("method", "url"):
+        for side, request in (("the capture", capture_request), ("the observation", observation_request)):
+            value = request.get(name)
+            if value is None:
+                continue
+            if not isinstance(value, str):
+                raise Refused(
+                    f"{where}{side} holds a {name} of the request that is not text ({value!r}) — a "
+                    f"dimension of the wrong type is not a dimension that matches"
+                )
         left, right = capture_request.get(name), observation_request.get(name)
-        if left is None or right is None or str(left) != str(right):
+        if left is None or right is None or left != right:
             return False
     # The names of the headers the request carried are part of the request: the
     # fixture takes them from the summary, the proposal publishes the capture, and
@@ -565,6 +589,12 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
         )
     capture_order = object_field(capture, "ordering", f"{where}the capture: ").get("orderHash")
     observation_order = object_field(observation, "ordering", f"{where}the observation: ").get("orderHash")
+    for side, value in (("the capture", capture_order), ("the observation", observation_order)):
+        if value is not None and not isinstance(value, str):
+            raise Refused(
+                f"{where}{side} holds an order hash that is not text ({value!r}) — a dimension of the "
+                f"wrong type is not a dimension that matches"
+            )
     if capture_order is None or observation_order is None or capture_order != observation_order:
         return False
     # The fixture is built from the summary and the proposal publishes the capture,
@@ -590,17 +620,83 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
                 f"{where}the capture records a {name} of the answer that is not a number ({value!r}) — a "
                 f"boolean is not a number, and the count the site gave is a number"
             )
+    observed_schema = object_field(observation, "schema", f"{where}the observation: ")
+    for name in ("productCount", "total"):
+        value = observed_schema.get(name)
+        if value is None:
+            raise Refused(
+                f"{where}the observation records no {name} of the answer — the summary is the source "
+                f"of the fixture, and a count it does not hold cannot be published"
+            )
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise Refused(
+                f"{where}the observation records a {name} of the answer that is not a number ({value!r}) "
+                f"— a boolean is not a number, and the count the site gave is a number"
+            )
+    captured_response = object_field(capture, "response", f"{where}the capture: ")
+    observed_response = object_field(observation, "response", f"{where}the observation: ")
+    # The size of the body and the kind of the answer are read as what they are:
+    # a boolean is not a number, and a size that became `true` is a size nobody
+    # recorded. The same question is asked of both sides of the comparison.
+    response_dimensions(captured_response, f"{where}the capture: ")
+    response_dimensions(observed_response, f"{where}the observation: ")
     for field, names in (
-        ("response", ("status", "contentType", "bodyBytes", "isJson")),
+        ("response", ("status", "contentType")),
         ("schema", ("topLevelKeys", "productCount", "total")),
     ):
         captured = object_field(capture, field, f"{where}the capture: ")
         observed = object_field(observation, field, f"{where}the observation: ")
         for name in names:
+            # The type of every dimension of the answer is checked on both sides
+            # before the two are compared: a boolean is not a number, and a
+            # comparison that reads both sides as text would call them equal.
+            for side, holder in (("the capture", captured), ("the observation", observed)):
+                value = holder.get(name)
+                if value is None or name in ("productCount", "total"):
+                    continue
+                if not dimension_of_type(name, value):
+                    raise Refused(
+                        f"{where}{side} holds a {name} of the answer that is not a "
+                        f"{dimension_type_name(name)} ({value!r}) — a dimension of the wrong type is "
+                        f"not a dimension that matches"
+                    )
             left, right = captured.get(name), observed.get(name)
             if left is None or right is None or left != right:
                 return False
     return True
+
+
+def dimension_of_type(name: str, value: Any) -> bool:
+    """Whether a value of the answer holds what the dimension of that name holds.
+
+    The dimensions of the answer are known: a status is a number, a content type
+    is text, the size of the body is a number, the kind of the answer is a
+    boolean and the top-level keys are a list of names. A boolean is not a
+    number — `True == 1` in Python — so the kind of the answer is the only
+    dimension a boolean may hold.
+    """
+    if name == "status" or name == "bodyBytes":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if name == "isJson":
+        return isinstance(value, bool)
+    if name == "contentType":
+        return isinstance(value, str)
+    if name == "topLevelKeys":
+        return isinstance(value, list) and all(isinstance(key, str) for key in value)
+    return True
+
+
+def dimension_type_name(name: str) -> str:
+    """What the dimension of that name holds, in the words of a refusal."""
+    if name == "status" or name == "bodyBytes":
+        return "number"
+    if name == "isJson":
+        return "boolean"
+    if name == "contentType":
+        return "text"
+    if name == "topLevelKeys":
+        return "list of names"
+    return "value of that kind"
 
 
 def baseline_observation(contract: dict[str, Any], experiments: list[dict[str, Any]]) -> dict[str, Any]:
@@ -905,18 +1001,47 @@ def safe_observation(value: Any) -> str:
     return text
 
 
-def evidence_index(directory: Path) -> dict[str, dict[str, Any]]:
+def inside(path: Path, root: Path) -> bool:
+    """Whether a path stays inside the root it is read against.
+
+    Both sides are resolved before they are compared: a path that reaches out of
+    the root with `..` names a file outside it, whatever it looks like, and a
+    path that is a link to another place names the file the link points at.
+    """
+    resolved = path.resolve()
+    base = root.resolve()
+    return resolved == base or base in resolved.parents
+
+
+def evidence_index(directory: Path, record: Path) -> dict[str, dict[str, Any]]:
     """Every capture of the investigation's evidence, by its id.
 
     The summary (`validation.yaml`) keeps the shape of the answer and a hash of the
     order; the evidence bundle keeps the order itself. The fixture needs both, so it
     reads both.
+
+    The bundles are the record itself: a bundle that is a link to the evidence of
+    another investigation is the evidence of another record, and the captures of
+    another record would witness the fixtures of this one. So every bundle is
+    resolved and judged against the record before it is opened.
     """
     index: dict[str, dict[str, Any]] = {}
     evidence = directory / "evidence"
     if not evidence.is_dir():
         return index
+    if not inside(evidence, record):
+        raise Refused(
+            f"the evidence of the investigation is not the evidence of this record — "
+            f"'{evidence}' resolves outside the record of the investigation, and the evidence of "
+            f"another record cannot witness the fixtures of this one"
+        )
     for path in sorted(evidence.glob("*.json")):
+        if not inside(path, record):
+            raise Refused(
+                f"the evidence bundle '{path.name}' is not a file of this record — it resolves outside "
+                f"the record of the investigation, and the evidence of another record cannot witness "
+                f"the fixtures of this one"
+            )
         try:
             with path.open(encoding="utf-8") as handle:
                 bundle = json.load(handle)
@@ -1751,10 +1876,10 @@ def render_proposal(
     lines.append(f"# Proposal — `{candidate_id}`")
     lines.append("")
     lines.append(
-        f"Generated by `scripts/wb-research/generate_proposal.py` from the investigation "
-        f"`{investigation_id}`. Nothing here is merged by the tool: the tool writes files, "
-        f"and a human reads the diff."
+        f"Generated by `scripts/wb-research/generate_proposal.py` from the investigation `{investigation_id}`."
     )
+    lines.append("")
+    lines.append("Nothing here is merged by the tool: the tool writes files, and a human reads the diff.")
     lines.append("")
     lines.append("## The contract")
     lines.append("")
@@ -2029,7 +2154,7 @@ def generate(
         raise Refused(f"the contract '{candidate_id}' is not consistent with itself: {'; '.join(inconsistent)}")
 
     candidate = candidate_of(investigation, candidate_id)
-    evidence = evidence_index(directory)
+    evidence = evidence_index(directory, canonical)
 
     # The contract table is what the generated test pins, so it is the authority on the
     # endpoint: a record that names another endpoint is not this contract, however

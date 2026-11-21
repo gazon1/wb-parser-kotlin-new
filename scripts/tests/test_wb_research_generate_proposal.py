@@ -1253,6 +1253,45 @@ def test_a_count_the_site_did_not_give_is_refused(world, tmp_path):
     assert "records no productCount of the answer" in str(refusal.value), str(refusal.value)
 
 
+def test_a_run_that_is_a_boolean_is_refused(world, tmp_path):
+    # A dimension of the wrong type is not a dimension that matches: `True == 1`
+    # in Python, so a record that holds `true` where the site recorded `1` would
+    # pass the comparison — and the gate, which reads the same record, would turn
+    # the fixture down.
+    world.patch_observation(run=True)
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "holds a run that is not a number" in str(refusal.value), str(refusal.value)
+
+
+def test_a_status_that_is_a_boolean_is_refused(world, tmp_path):
+    # The same question of the answer: a status that became `true` is not the
+    # status the site gave, and the fixture would carry it to the test.
+    world.patch_observation(response={"status": True, "contentType": "text/plain", "bodyBytes": 10, "isJson": True})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "holds a status of the answer that is not a number" in str(refusal.value), str(refusal.value)
+
+
+def test_an_evidence_bundle_that_is_a_link_to_another_record_is_refused(world, tmp_path):
+    # The bundles are the record: a bundle that is a link to the evidence of
+    # another investigation is the evidence of another record, and the captures
+    # of another record would witness the fixtures of this one.
+    other = world.investigations / "other-record"
+    (other / "evidence").mkdir(parents=True)
+    bundle = world.directory / "evidence" / "validation.json"
+    foreign = other / "evidence" / "validation.json"
+    foreign.write_text(bundle.read_text(encoding="utf-8"), encoding="utf-8")
+    bundle.unlink()
+    bundle.symlink_to(foreign)
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "is not a file of this record" in str(refusal.value), str(refusal.value)
+
+
 def test_a_capture_that_names_other_headers_than_the_summary_is_refused(world, tmp_path):
     # The fixture takes the headers from the summary, the proposal publishes the
     # capture and the gate compares the two — so the two descriptions of the run
