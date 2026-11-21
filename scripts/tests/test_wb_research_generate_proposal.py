@@ -279,6 +279,12 @@ class SimpleWorld:
         record["validation"][0]["claim"] = claim
         (self.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
 
+    def add_candidate(self, endpoint: str) -> None:
+        """Add a candidate the record holds next to the one it validates."""
+        record = yaml.safe_load((self.directory / "investigation.yaml").read_text(encoding="utf-8"))
+        record["api_candidates"].append({"id": "another-candidate", "method": "GET", "endpoint": endpoint})
+        (self.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
+
     def generate(self, output_root: Path) -> list[Path]:
         return generate_proposal.generate("2026-01-01-demo", output_root, investigations_root=self.investigations)
 
@@ -872,6 +878,18 @@ def test_a_claim_that_carries_personal_data_is_refused(world, tmp_path):
     with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
     assert "redactor" in str(refusal.value), str(refusal.value)
+
+
+def test_the_endpoint_of_another_candidate_may_not_carry_a_secret(world, tmp_path):
+    # The proposal names the endpoint of every candidate the record holds, not only
+    # the one it makes a contract of: a candidate that did not become a contract is
+    # still a line of a committed file. A value the record's own redactor would
+    # replace is refused there as well.
+    world.add_candidate("https://example.test/search?token=secret")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "may not be published" in str(refusal.value), str(refusal.value)
 
 
 def test_a_parameter_sent_twice_is_refused(world, tmp_path):

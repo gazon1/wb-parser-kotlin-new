@@ -280,6 +280,25 @@ going, and so is an evidence bundle that is malformed or a capture id that two
 bundles hold — the generator refuses a duplicate id, so the gate has to read the
 same record the generator read.
 
+The gate reads the query as the pairs it carries, not as a map. A name that
+occurs twice is named: the generator refuses a request that names a parameter
+twice, and a gate that read the query as a map would keep the last value of the
+name and say nothing about the first — the very disagreement the generator
+refuses to publish.
+
+The gate reads every nested object it walks into, and names the one that is not
+an object. The request of a capture and the order of its answer are read to be
+compared with the fixture, so a request that is a list has to be a finding and
+not a crash on the next line that asks it for its method.
+
+Every endpoint the proposal names is judged by the record's own rule — and the
+proposal names the endpoint of *every* candidate the record holds, not only the
+one that became a contract. A candidate that did not become a contract is still
+a line of a committed file. So its endpoint is read as the pairs of its query
+and as the segments of its path, and a value the record's own redactor would
+replace is refused there as well. The host is a name of a service and is not
+judged as a note, but a host that carries credentials is refused outright.
+
 ## Rationale
 
 Option 1 is a framework: it would be built for contracts that do not exist yet,
@@ -406,6 +425,13 @@ deleted file would otherwise pass.
   JSON, a bundle whose captures are not a list and a capture id that two bundles
   hold are findings, not crashes — the gate reports what is wrong and keeps
   going.
+- **Never** let the drift gate die on a malformed nested object: a capture or a
+  fixture whose request or ordering is not an object is a finding, not a crash.
+- **Never** let the drift gate read a query as a map: a name that occurs twice is
+  named, because the map would keep only the last value and hide the first.
+- **Never** publish an endpoint the record's own redactor would change: the
+  proposal names the endpoint of every candidate the record holds, and a
+  candidate that did not become a contract is still a line of a committed file.
 - **Never** add a production dependency on the research tooling; the generator
   writes into a test source set and a development directory.
 - A new contract family is a new entry in `CONTRACTS`, not a new framework.

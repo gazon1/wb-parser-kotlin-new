@@ -1239,6 +1239,13 @@ same contract is refused: it would write the same files and silently invalidate
 the first proposal. The investigation that supersedes the old one removes the old
 proposal first.
 
+**Every endpoint the proposal names is judged.** The proposal names the endpoint
+of every candidate the record holds, not only the one that became a contract: a
+candidate that did not become a contract is still a line of a committed file. So
+every endpoint is read as the pairs of its query and as the segments of its
+path, and a value the record's own redactor would replace is refused — the
+record's rule, asked of the endpoints as well as of the values.
+
 **The proposals cannot drift away from the record.** The manifest holds the
 hashes of what was read and what was written, and the gate
 `scripts/ci/check-proposal-fresh.py` compares them with the files on disk. A
@@ -1256,10 +1263,13 @@ is bound to that capture by the two things the test reads out of it: the query
 the request carried and the order of the products it answered with. A fixture
 whose query or whose product order was edited by hand fails the gate even when
 the manifest was regenerated over it — the capture is the witness, not the
-manifest. A bundle that cannot be read — a file that is not JSON, a bundle
-without captures, a captures field that is not a list, a capture without an id —
-is a finding of the gate and not a crash of it, and so is the same capture id
-in two bundles: two bundles that answer for one capture make the witness
-ambiguous. The manifest has to name every tool the proposal was produced by —
+manifest. The query is read as the pairs it carries, so a name that occurs
+twice is named on its own: the generator refuses such a request, and a map
+would keep only the last value and hide the first. A bundle that cannot be read
+— a file that is not JSON, a bundle without captures, a captures field that is
+not a list, a capture without an id — is a finding of the gate and not a crash
+of it, and so is a nested object that is not an object: a capture whose request
+is a list, a fixture whose ordering is a list. So is the same capture id in two
+bundles: two bundles that answer for one capture make the witness ambiguous. The manifest has to name every tool the proposal was produced by —
 the generator and the redactor — because a dependency nobody names is a
 dependency nobody watches.

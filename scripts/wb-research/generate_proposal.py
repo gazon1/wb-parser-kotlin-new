@@ -320,6 +320,40 @@ def claim_problems(claim: dict[str, Any]) -> list[str]:
     return []
 
 
+def endpoint_problems(endpoint: str) -> list[str]:
+    """Why an endpoint may not be published.
+
+    The proposal names the endpoint of every candidate the record holds, not only
+    the one it makes a contract of: a candidate that did not become a contract is
+    still a line of the proposal, and a line of a committed file. So every
+    endpoint is judged by the record's own rule — a committed value is either a
+    placeholder or a value the record's own redactor would leave alone.
+
+    The rule is the redactor's, not a copy of it: the query of an endpoint is
+    read as the pairs it carries, and each value is asked the same question the
+    values of the contract are asked. The path is read as the segments it is
+    made of — a segment is a name of a thing, and a long opaque one is a value
+    that may not be committed. The host is a name of a service, so it is not
+    judged as a note — but a host that carries credentials is refused outright.
+    """
+    problems: list[str] = []
+    parts = urlsplit(str(endpoint or ""))
+    for name, value in parse_qsl(parts.query, keep_blank_values=True):
+        if PLACEHOLDER.match(value):
+            continue
+        if REDACTOR.redact_query_value(name, value) != value:
+            problems.append(f"the parameter '{name}' carries a value the record's own redactor would replace")
+    for segment in parts.path.split("/"):
+        if not segment:
+            continue
+        if REDACTOR.redact_note(segment) != segment:
+            problems.append("the path carries a value the record's own redactor would replace")
+            break
+    if "@" in parts.netloc:
+        problems.append("the host carries credentials")
+    return problems
+
+
 def candidate_of(investigation: dict[str, Any], candidate_id: str) -> dict[str, Any]:
     for candidate in investigation.get("api_candidates") or []:
         if candidate.get("id") == candidate_id:
@@ -1646,6 +1680,16 @@ def generate(
             f"the candidate '{candidate_id}' names the method '{candidate.get('method')}', "
             f"the contract declares '{contract.get('method')}'"
         )
+
+    # The proposal names the endpoint of every candidate the record holds, so every
+    # one of them is a committed value and holds to the record's own rule: a value
+    # the record's own redactor would replace is refused here as well.
+    for other in investigation.get("api_candidates") or []:
+        problems = endpoint_problems(str(other.get("endpoint") or ""))
+        if problems:
+            raise Refused(
+                f"the candidate '{other.get('id')}' names an endpoint that may not be published: {'; '.join(problems)}"
+            )
 
     # Only the experiments of this contract produce fixtures, so only they can earn the
     # proposal. Every observation of them must have asked the candidate's endpoint: an

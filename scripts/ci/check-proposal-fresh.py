@@ -36,6 +36,7 @@ import json
 import re
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 from urllib.parse import parse_qsl, urlsplit
 
@@ -187,9 +188,27 @@ def evidence_findings(investigation: str, entries: dict[str, str], root: Path) -
     return findings
 
 
-def query_of(url: str) -> dict[str, str]:
-    """The query of a URL, decoded — the parameters the request carried."""
-    return dict(parse_qsl(urlsplit(url).query, keep_blank_values=True))
+def query_pairs_of(url: str) -> list[tuple[str, str]]:
+    """The query of a URL as pairs — every parameter the request carried, in order.
+
+    A query read as a map keeps only the last value of a name that appears twice,
+    and a request that names a parameter twice says two things about it. The
+    generator refuses such a request; the gate has to name it as well, so the
+    pairs are kept and the names that appear twice are a finding of their own.
+    """
+    return [(name, value) for name, value in parse_qsl(urlsplit(url).query, keep_blank_values=True)]
+
+
+def duplicate_names(pairs: list[tuple[str, str]]) -> list[str]:
+    """The names that appear more than once among the pairs, each of them once."""
+    counted = Counter(name for name, _ in pairs)
+    return list(dict.fromkeys(name for name, _ in pairs if counted[name] > 1))
+
+
+def object_field(container: dict, field: str) -> dict:
+    """A field of a document, when it is an object — an empty one otherwise."""
+    value = container.get(field)
+    return value if isinstance(value, dict) else {}
 
 
 def evidence_captures(sources: dict[str, str], root: Path) -> tuple[dict[str, dict], list[str]]:
@@ -252,7 +271,21 @@ def evidence_captures(sources: dict[str, str], root: Path) -> tuple[dict[str, di
                     f"one capture under one id, and the gate would read whichever bundle came last"
                 )
                 continue
-            captures[identifier] = capture
+            # The nested objects of a capture are read too, so their types are
+            # checked: a request that is a list is a finding, not a crash of the
+            # gate on the next line that asks it for its method.
+            for field in ("request", "ordering"):
+                nested = capture.get(field)
+                if nested is not None and not isinstance(nested, dict):
+                    findings.append(
+                        f"{relative}: the {field} of the capture '{identifier}' is not an object — a capture holds "
+                        f"the request and the order of the answer it recorded"
+                    )
+            captures[identifier] = {
+                **capture,
+                "request": object_field(capture, "request"),
+                "ordering": object_field(capture, "ordering"),
+            }
     return captures, findings
 
 
@@ -332,8 +365,21 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
                 f"{relative}: the fixture names the run '{document.get('run')}', the evidence records "
                 f"the observation '{observation}' in the run '{capture.get('run')}'"
             )
-        request = document.get("request") or {}
-        recorded_request = capture.get("request") or {}
+        request = document.get("request")
+        if not isinstance(request, dict):
+            findings.append(
+                f"{relative}: the request of the fixture is not an object — a fixture holds the request it was built from"
+            )
+            request = {}
+        ordering = document.get("ordering")
+        if not isinstance(ordering, dict):
+            findings.append(
+                f"{relative}: the ordering of the fixture is not an object — a fixture holds the order of the "
+                f"answer it was built from"
+            )
+            ordering = {}
+        recorded_request = object_field(capture, "request")
+        recorded_ordering = object_field(capture, "ordering")
         for name in ("method", "url"):
             if str(request.get(name)) != str(recorded_request.get(name)):
                 findings.append(
@@ -346,22 +392,32 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
         # recorded ones and rebuilds the body of the answer from the recorded
         # order. A fixture that changed either of them changed the test, and the
         # record is the only thing that can tell.
+        #
+        # The query is read as pairs: a request that names a parameter twice says
+        # two things about it, and the map a query is usually read as keeps only
+        # the last value — so a name that appears twice is named on its own.
+        recorded_pairs = query_pairs_of(str(recorded_request.get("url") or ""))
+        for name in duplicate_names(recorded_pairs):
+            findings.append(
+                f"{relative}: the evidence records the parameter '{name}' twice for the observation "
+                f"'{observation}' — a request that names a parameter twice says two things about it"
+            )
+        recorded_query = dict(recorded_pairs)
         query = request.get("query")
-        recorded_query = query_of(str(recorded_request.get("url") or ""))
         if not isinstance(query, dict) or {str(name): str(value) for name, value in query.items()} != recorded_query:
             findings.append(
                 f"{relative}: the fixture holds the query {query}, the evidence records "
                 f"{recorded_query} for the observation '{observation}'"
             )
-        ids = (document.get("ordering") or {}).get("productIds")
-        recorded_ids = (capture.get("ordering") or {}).get("productIds")
+        ids = ordering.get("productIds")
+        recorded_ids = recorded_ordering.get("productIds")
         if not isinstance(ids, list) or not isinstance(recorded_ids, list) or ids != recorded_ids:
             findings.append(
                 f"{relative}: the fixture holds the order {ids}, the evidence records "
                 f"{recorded_ids} for the observation '{observation}'"
             )
-        order = (document.get("ordering") or {}).get("orderHash")
-        recorded = (capture.get("ordering") or {}).get("orderHash")
+        order = ordering.get("orderHash")
+        recorded = recorded_ordering.get("orderHash")
         if str(order) != str(recorded):
             findings.append(
                 f"{relative}: the fixture holds the order '{order}', the evidence records "
@@ -539,6 +595,7 @@ def self_test() -> None:
             run: int = 1,
             query: dict | None = None,
             product_ids: list | None = None,
+            url: str | None = None,
         ) -> str:
             """The fixture as the generator writes it — the fields it writes."""
             return (
@@ -550,7 +607,7 @@ def self_test() -> None:
                         "run": run,
                         "request": {
                             "method": request["method"],
-                            "url": request["url"],
+                            "url": request["url"] if url is None else url,
                             "query": {"resultset": "catalog"} if query is None else query,
                         },
                         "ordering": {
@@ -568,13 +625,17 @@ def self_test() -> None:
             order_hash: str = "hash-baseline",
             run: int = 1,
             product_ids: list | None = None,
+            url: str | None = None,
         ) -> dict:
             """The capture as the record keeps it — the fields the gate compares."""
             return {
                 "id": observation,
                 "experiment": experiment,
                 "run": run,
-                "request": request,
+                "request": {
+                    "method": request["method"],
+                    "url": request["url"] if url is None else url,
+                },
                 "ordering": {
                     "productIds": [1, 2, 3] if product_ids is None else product_ids,
                     "orderHash": order_hash,
@@ -807,6 +868,52 @@ def self_test() -> None:
         manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
         write_manifest()
         assert check(proposals, root) == [], "a bundle with a list of captures must pass"
+
+        # A capture whose nested objects are not objects: a finding, not a crash.
+        # The gate reads the request and the order of the answer of every capture,
+        # so a request that is a list has to be named rather than raised on.
+        broken_capture = capture_document()
+        broken_capture["request"] = ["not", "an", "object"]
+        bundle.write_text(json.dumps({"captures": [broken_capture]}) + "\n", encoding="utf-8")
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("is not an object" in finding for finding in findings), findings
+        bundle.write_text(json.dumps({"captures": [capture_document()]}) + "\n", encoding="utf-8")
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        assert check(proposals, root) == [], "a capture with an object for a request must pass"
+
+        # The same on the side of the fixture: a finding, not a crash.
+        broken_fixture = json.loads(fixture_document())
+        broken_fixture["request"] = ["not", "an", "object"]
+        fixture.write_text(json.dumps(broken_fixture) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("is not an object" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture with an object for a request must pass"
+
+        # A request that names a parameter twice: the generator refuses such a
+        # request, and the gate reads the query as pairs for the same reason — a
+        # map would keep only the last value and say nothing about the first.
+        twice = "https://example.test/search?resultset=catalog&sort=popular&sort=priceup"
+        fixture.write_text(fixture_document(url=twice), encoding="utf-8")
+        bundle.write_text(json.dumps({"captures": [capture_document(url=twice)]}) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("twice" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        bundle.write_text(json.dumps({"captures": [capture_document()]}) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        assert check(proposals, root) == [], "a request that names a parameter once must pass"
 
         # The same capture id in two bundles: the record holds one capture under
         # one id, and a gate that kept the last one would read a record the
