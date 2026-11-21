@@ -37,6 +37,7 @@ import re
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import parse_qsl, urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 PROPOSALS = ROOT / "devtools" / "wb-research" / "proposals"
@@ -186,30 +187,73 @@ def evidence_findings(investigation: str, entries: dict[str, str], root: Path) -
     return findings
 
 
-def evidence_captures(sources: dict[str, str], root: Path) -> dict[str, dict]:
+def query_of(url: str) -> dict[str, str]:
+    """The query of a URL, decoded — the parameters the request carried."""
+    return dict(parse_qsl(urlsplit(url).query, keep_blank_values=True))
+
+
+def evidence_captures(sources: dict[str, str], root: Path) -> tuple[dict[str, dict], list[str]]:
     """The captures of the evidence bundles the manifest names, by their id.
 
     The bundles are the record the fixtures were built from, so they are the only
     independent truth about what a fixture holds. The gate reads them as JSON and
     needs no YAML: the bundles are JSON by construction.
+
+    A bundle that is malformed is a finding and not a crash: the gate has to say
+    what is wrong with the proposal, not die on it. And a capture id that two
+    bundles hold is a finding as well — the generator refuses a duplicate id, so
+    the record holds one capture under one id, and a gate that quietly kept the
+    last one would read a record the generator would never have read.
     """
     captures: dict[str, dict] = {}
+    findings: list[str] = []
     for relative in sorted(sources):
         if not EVIDENCE_BUNDLE.match(relative):
             continue
         text = read_text(root / relative)
         if text is None:
+            findings.append(
+                f"{relative}: not readable as text — the evidence bundle holds the captures the fixtures were built from"
+            )
             continue
         try:
             bundle = json.loads(text)
         except json.JSONDecodeError:
+            findings.append(
+                f"{relative}: not readable as JSON — the evidence bundle holds the captures the fixtures were built from"
+            )
             continue
         if not isinstance(bundle, dict):
+            findings.append(
+                f"{relative}: the evidence bundle is not an object — the captures it holds are what the fixtures were built from"
+            )
             continue
-        for capture in bundle.get("captures") or []:
-            if isinstance(capture, dict) and capture.get("id"):
-                captures[str(capture["id"])] = capture
-    return captures
+        listed = bundle.get("captures")
+        if listed is None:
+            findings.append(
+                f"{relative}: the evidence bundle names no captures — a bundle without captures holds no evidence"
+            )
+            continue
+        if not isinstance(listed, list):
+            findings.append(
+                f"{relative}: the captures of the evidence bundle are not a list — the bundle holds a list of captures"
+            )
+            continue
+        for capture in listed:
+            if not isinstance(capture, dict) or not capture.get("id"):
+                findings.append(
+                    f"{relative}: a capture of the evidence bundle names no id — a capture is filed under the id of its observation"
+                )
+                continue
+            identifier = str(capture["id"])
+            if identifier in captures:
+                findings.append(
+                    f"{relative}: the capture '{identifier}' is in two evidence bundles — the record holds "
+                    f"one capture under one id, and the gate would read whichever bundle came last"
+                )
+                continue
+            captures[identifier] = capture
+    return captures, findings
 
 
 def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: Path) -> list[str]:
@@ -297,6 +341,25 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
                     f"evidence records '{recorded_request.get(name)}' for the observation "
                     f"'{observation}'"
                 )
+        # The query of the request and the order of the products are what the
+        # generated test reads: it compares the crawler's parameters with the
+        # recorded ones and rebuilds the body of the answer from the recorded
+        # order. A fixture that changed either of them changed the test, and the
+        # record is the only thing that can tell.
+        query = request.get("query")
+        recorded_query = query_of(str(recorded_request.get("url") or ""))
+        if not isinstance(query, dict) or {str(name): str(value) for name, value in query.items()} != recorded_query:
+            findings.append(
+                f"{relative}: the fixture holds the query {query}, the evidence records "
+                f"{recorded_query} for the observation '{observation}'"
+            )
+        ids = (document.get("ordering") or {}).get("productIds")
+        recorded_ids = (capture.get("ordering") or {}).get("productIds")
+        if not isinstance(ids, list) or not isinstance(recorded_ids, list) or ids != recorded_ids:
+            findings.append(
+                f"{relative}: the fixture holds the order {ids}, the evidence records "
+                f"{recorded_ids} for the observation '{observation}'"
+            )
         order = (document.get("ordering") or {}).get("orderHash")
         recorded = (capture.get("ordering") or {}).get("orderHash")
         if str(order) != str(recorded):
@@ -367,7 +430,9 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
     findings += inventory_findings(sections["generated"], root, ".json")
     findings += inventory_findings(sections["sources"], root, ".json")
     findings += evidence_findings(str(manifest.get("investigation") or ""), sections["sources"], root)
-    findings += fixture_findings(sections["generated"], evidence_captures(sections["sources"], root), root)
+    captures, capture_findings = evidence_captures(sections["sources"], root)
+    findings += capture_findings
+    findings += fixture_findings(sections["generated"], captures, root)
 
     if not sections["sources"]:
         findings.append(f"{relative_manifest}: the manifest names no source of the proposal")
@@ -472,6 +537,8 @@ def self_test() -> None:
             experiment: str = "baseline",
             order_hash: str = "hash-baseline",
             run: int = 1,
+            query: dict | None = None,
+            product_ids: list | None = None,
         ) -> str:
             """The fixture as the generator writes it — the fields it writes."""
             return (
@@ -481,8 +548,15 @@ def self_test() -> None:
                         "candidate": "storefront-catalog-search",
                         "experiment": experiment,
                         "run": run,
-                        "request": request,
-                        "ordering": {"orderHash": order_hash},
+                        "request": {
+                            "method": request["method"],
+                            "url": request["url"],
+                            "query": {"resultset": "catalog"} if query is None else query,
+                        },
+                        "ordering": {
+                            "productIds": [1, 2, 3] if product_ids is None else product_ids,
+                            "orderHash": order_hash,
+                        },
                     }
                 )
                 + "\n"
@@ -493,6 +567,7 @@ def self_test() -> None:
             experiment: str = "baseline",
             order_hash: str = "hash-baseline",
             run: int = 1,
+            product_ids: list | None = None,
         ) -> dict:
             """The capture as the record keeps it — the fields the gate compares."""
             return {
@@ -500,7 +575,10 @@ def self_test() -> None:
                 "experiment": experiment,
                 "run": run,
                 "request": request,
-                "ordering": {"orderHash": order_hash},
+                "ordering": {
+                    "productIds": [1, 2, 3] if product_ids is None else product_ids,
+                    "orderHash": order_hash,
+                },
             }
 
         fixture.write_text(fixture_document(), encoding="utf-8")
@@ -692,6 +770,60 @@ def self_test() -> None:
         manifest["generated"][fixture_relative] = digest(fixture)
         write_manifest()
         assert check(proposals, root) == [], "a fixture built from the recorded order must pass"
+
+        # A fixture whose query was changed by hand: the request still points at
+        # the recorded URL, so the URL comparison has nothing to say — but the
+        # generated test reads the query, and it is what the request carried.
+        fixture.write_text(fixture_document(query={"resultset": "filters"}), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("the fixture holds the query" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture with the recorded query must pass"
+
+        # A fixture whose product order was made up: the hash of the order still
+        # matches, but the body the test rebuilds is not the answer that was
+        # recorded.
+        fixture.write_text(fixture_document(product_ids=[9, 9, 9]), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("the fixture holds the order" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture with the recorded order must pass"
+
+        # An evidence bundle whose captures are not a list: a finding, not a crash.
+        bundle.write_text(json.dumps({"captures": 42}) + "\n", encoding="utf-8")
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("are not a list" in finding for finding in findings), findings
+        bundle.write_text(json.dumps({"captures": [capture_document()]}) + "\n", encoding="utf-8")
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/validation.json"] = digest(bundle)
+        write_manifest()
+        assert check(proposals, root) == [], "a bundle with a list of captures must pass"
+
+        # The same capture id in two bundles: the record holds one capture under
+        # one id, and a gate that kept the last one would read a record the
+        # generator never read.
+        second_bundle = bundle.parent / "second.json"
+        second_bundle.write_text(
+            json.dumps({"captures": [capture_document(order_hash="hash-elsewhere")]}) + "\n",
+            encoding="utf-8",
+        )
+        manifest["sources"]["devtools/wb-research/investigations/demo/evidence/second.json"] = digest(second_bundle)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("is in two evidence bundles" in finding for finding in findings), findings
+        second_bundle.unlink()
+        manifest["sources"].pop("devtools/wb-research/investigations/demo/evidence/second.json")
+        write_manifest()
+        assert check(proposals, root) == [], "a record with one capture under one id must pass"
 
         # A fixture that was deleted while the manifest still names it: a finding,
         # not a crash.

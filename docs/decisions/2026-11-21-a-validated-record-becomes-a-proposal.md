@@ -104,6 +104,14 @@ even though both are short and made of ordinary characters. A second, weaker
 copy of the rules inside the generator would be a second policy, and the weaker
 one is the one that decides what a proposal commits.
 
+The claim is published too, and it is prose — the easiest way to smuggle a value
+into a committed file, because it is not a header, not a URL and not a body. So
+the claim is judged by the record's own rule for a note: the redactor replaces
+an e-mail address, a phone number, an account id and a token in it. A claim the
+redactor would change is refused, and not rewritten: the wording of a claim is
+what makes it traceable to the observation it names, so the record rewords it,
+the tool does not.
+
 The redactor alone is not enough, and the reason is the same name: the redactor
 has a rule for every name it knows, and no rule at all for a name it has never
 seen. `customer=Alice` is an ordinary word under a name nobody declared, and
@@ -121,12 +129,26 @@ shape. `dest` is the id the site's own code sends, and a rule that accepted any
 digits would take a phone number for it: the redactor cannot tell the two
 apart, because `dest=9123456789` is not a shape it knows. The page is a number
 the endpoint itself bounds — it answers sixty pages, so a page beyond that is a
-request it never answers with goods.
+request it never answers with goods, and the pagination is one-based: the record
+saw that `page=0` is answered with another envelope, the search result without
+products. So the page is bounded from one.
+
+The page is also the crawler's own parameter: the storefront's first request does
+not send it. A record whose baseline sends it is not the storefront's first
+request, and the generated test compares the crawler's request with that
+baseline — so such a record would produce a test that fails on a proposal the
+tool accepted. A parameter the contract declares as the crawler's own is refused
+in the storefront's request.
 
 A parameter that occurs twice is refused wherever the contract reads a request:
 a request that names a parameter twice says two things about it, and a query
 read as a map keeps only the last value — the proposal would advertise one
 request and the fixture would pin another.
+
+The record is read by a loader that refuses a key written twice. PyYAML keeps
+the last value of a duplicated key and says nothing about it, so a record whose
+candidate names `sort` twice reads as a record that names it once — and every
+check that runs afterwards sees a request nobody sent.
 
 The candidate and the evidence have to agree. The proposal publishes the query
 of the candidate as the parameters of the contract, and the fixture pins the
@@ -249,9 +271,14 @@ cannot be the witness: a fixture renamed on the disk, renamed inside itself, in
 the manifest and in the proposal together is internally consistent and says
 nothing the record ever said, and only the record can tell. The URL of a
 fixture is compared with the URL of its capture for the same reason: a fixture
-that asks another request still matches every hash. A file that is gone is a
+that asks another request still matches every hash. The query of the fixture and
+the order of its products are compared with the capture as well — those are the
+two fields the generated test reads, so a fixture that changed either of them
+changed the test while every hash still matched. A file that is gone is a
 finding, not a crash: the gate reports what is wrong with the proposal and keeps
-going.
+going, and so is an evidence bundle that is malformed or a capture id that two
+bundles hold — the generator refuses a duplicate id, so the gate has to read the
+same record the generator read.
 
 ## Rationale
 
@@ -332,6 +359,14 @@ deleted file would otherwise pass.
   catalog id look the same to a redactor.
 - **Never** accept a request that names a parameter twice: it says two things
   about the request, and a query read as a map keeps only the last value.
+- **Never** accept a record that writes a key twice: the duplicate is gone before
+  anybody can refuse it, and every check after that sees a request nobody sent.
+- **Never** publish a claim the record's own redactor would change: the claim is
+  prose, and prose is the easiest way to smuggle a value into a committed file.
+  The wording of a claim is the record's to change, not the tool's.
+- **Never** accept a storefront request that carries a parameter the contract
+  declares as the crawler's own: the baseline would not be the storefront's first
+  request, and the generated test would compare two different requests.
 - **Never** keep a second copy of the sanitization rules in the generator: the
   generator asks `redact.py`, so the two cannot drift apart — and the hash of
   the redactor belongs to the manifest beside the hash of the generator, so a
@@ -365,8 +400,12 @@ deleted file would otherwise pass.
   renamed on the disk, in the manifest and in the proposal together still drifts.
 - **Always** let the drift gate bind a fixture to the record: the observation it
   names has to be one the evidence holds, with the experiment, the run, the
-  request and the order the capture recorded — a fixture cannot be its own
-  witness.
+  request, the query, the order of the products and the order of the answer the
+  capture recorded — a fixture cannot be its own witness.
+- **Never** let the drift gate die on a malformed record: a bundle that is not
+  JSON, a bundle whose captures are not a list and a capture id that two bundles
+  hold are findings, not crashes — the gate reports what is wrong and keeps
+  going.
 - **Never** add a production dependency on the research tooling; the generator
   writes into a test source set and a development directory.
 - A new contract family is a new entry in `CONTRACTS`, not a new framework.

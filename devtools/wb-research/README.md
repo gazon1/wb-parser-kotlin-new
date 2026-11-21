@@ -1140,6 +1140,20 @@ asks the redactor instead of keeping a second, weaker copy of the rules, so the
 two cannot drift apart. A session token, an account id or a phrase somebody
 typed is refused, not published.
 
+**The rule reaches the words of the record.** The text of a claim is a value like
+any other: a claim that names a person's mail or a token is committed into a
+proposal that a human reads and a machine hashes. So the text of every claim —
+the validated ones and the ones still only earned — is asked the same question
+the values are asked: would the record's own redactor leave it alone? A claim
+the redactor would rewrite is refused, not published in a rewritten form: the
+caller changes the record, and the next run says so.
+
+**The record is read as it is written.** A YAML file may hold the same key
+twice, and the parser keeps the last one and says nothing — a record whose
+second `dest` differs from its first is a record with two answers, and the
+generator would publish one of them. So a duplicate key is refused on reading,
+and so is a file that is not YAML at all.
+
 **The contract declares the parameters of its request.** The redactor has a rule
 for every name it knows and none for a name it has never seen: `customer=Alice`
 is an ordinary word under a name nobody declared, and every shape check walks it
@@ -1147,10 +1161,26 @@ through. So the contract table declares which parameters the request carries and
 what their values may be — a fixed value, a closed set of values, a number
 within the bounds the endpoint itself names, or a phrase somebody typed, which
 only the placeholder that stands for it may be published. A parameter the
-contract does not declare never reaches a committed file. A number the site
-chose is named by its value or its bounds, never by its shape: `dest=9123456789`
-looks like a phone number and a catalog id to the redactor all the same, so the
-contract names the one id the site's own code sends.
+contract does not declare never reaches a committed file.
+
+**A number the site chose is named by its value or its bounds.** A number the
+site chose is named by its value or its bounds, never by its shape:
+`dest=9123456789` looks like a phone number and a catalog id to the redactor
+all the same, so the contract names the one id the site's own code sends. The
+bounds come from the endpoint itself: the catalog endpoint paginates from the
+first page, so `page` is a number within `1..60` — the last page the API
+offers — and not from zero. A page below the first one is another envelope, an
+answer without the products the page is made of, so it is not a page.
+
+**A parameter the crawler adds is not a parameter the storefront sends.** The
+contract table tells the three apart, because they answer three different
+questions: `identity` names the parameters the site identifies the request
+with, `crawler_only` the ones the crawler adds on top, `storefront_only` the
+ones the storefront sends and the crawler does not, and `parameters` the values
+the request may carry. A storefront request that carries a parameter the
+contract declares `crawler_only` says the two requests are the same request, and
+the generated test would compare two different ones and fail on a record that
+was accepted.
 
 **A parameter that is sent twice is refused.** A request that names a parameter
 twice says two things about it, and a query read as a map keeps only the last
@@ -1221,6 +1251,15 @@ every fixture is named after the observation it holds and lives in the directory
 of its contract, so a fixture renamed on the disk, in the manifest and in the
 proposal together still fails. A fixture cannot be its own witness either: the
 observation it names has to be one the evidence holds, with the experiment, the
-run, the request and the order of the answer the capture recorded. The manifest
-has to name every tool the proposal was produced by — the generator and the
-redactor — because a dependency nobody names is a dependency nobody watches.
+run, the request and the order of the answer the capture recorded. The fixture
+is bound to that capture by the two things the test reads out of it: the query
+the request carried and the order of the products it answered with. A fixture
+whose query or whose product order was edited by hand fails the gate even when
+the manifest was regenerated over it — the capture is the witness, not the
+manifest. A bundle that cannot be read — a file that is not JSON, a bundle
+without captures, a captures field that is not a list, a capture without an id —
+is a finding of the gate and not a crash of it, and so is the same capture id
+in two bundles: two bundles that answer for one capture make the witness
+ambiguous. The manifest has to name every tool the proposal was produced by —
+the generator and the redactor — because a dependency nobody names is a
+dependency nobody watches.

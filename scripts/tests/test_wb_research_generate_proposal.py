@@ -273,6 +273,12 @@ class SimpleWorld:
         document["page"] = page
         validation.write_text(yaml.safe_dump(document, allow_unicode=True), encoding="utf-8")
 
+    def patch_claim(self, claim: str) -> None:
+        """Change the wording of the claim of the record."""
+        record = yaml.safe_load((self.directory / "investigation.yaml").read_text(encoding="utf-8"))
+        record["validation"][0]["claim"] = claim
+        (self.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
+
     def generate(self, output_root: Path) -> list[Path]:
         return generate_proposal.generate("2026-01-01-demo", output_root, investigations_root=self.investigations)
 
@@ -799,14 +805,73 @@ def test_a_page_beyond_the_bounds_of_the_endpoint_is_refused(world, tmp_path):
     assert "the contract does not allow" in str(refusal.value), str(refusal.value)
 
 
-def test_a_page_within_the_bounds_of_the_endpoint_is_published(world, tmp_path):
+def test_a_page_below_the_first_page_is_refused(world, tmp_path):
+    # The pagination of the catalog is one-based, and the record saw that `page=0`
+    # is answered with another envelope — the search result, without products. So
+    # the lower bound of the page is one, and a request for the page zero is a
+    # request the endpoint does not answer with goods.
+    world.patch_candidate(query={"page": "0"})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the contract does not allow" in str(refusal.value), str(refusal.value)
+
+
+def test_the_storefront_request_may_not_carry_the_page_the_crawler_asks_for(world, tmp_path):
+    # The page is the crawler's own parameter: the storefront's first request does
+    # not send it. A record whose baseline sends it is not the storefront's first
+    # request — and the generated test would compare the crawler's request with
+    # that baseline and fail on a record the tool accepted.
     world.patch_observation(url=f"{ENDPOINT}?resultset=catalog&sort=popular&query=%3Credacted%3Aquery-param%3E&page=2")
     world.patch_candidate(query={"page": "2"})
 
-    written = world.generate(tmp_path)
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the storefront's own request carries" in str(refusal.value), str(refusal.value)
 
-    proposal = next(path for path in written if path.name == "proposal.md").read_text(encoding="utf-8")
-    assert "page" in proposal
+
+def test_a_key_written_twice_in_the_record_is_refused(world, tmp_path):
+    # PyYAML keeps the last value of a duplicated key and says nothing about it, so
+    # a record that names `sort` twice reads as a record that names it once — and
+    # every check after that sees a request nobody sent.
+    (world.directory / "investigation.yaml").write_text(
+        "id: 2026-01-01-demo\n"
+        "status: concluded\n"
+        "api_candidates:\n"
+        "  - id: storefront-catalog-search\n"
+        "    method: GET\n"
+        f"    endpoint: {ENDPOINT}\n"
+        "    query:\n"
+        "      resultset: catalog\n"
+        "      sort: popular\n"
+        "      sort: priceup\n"
+        "    headers: {}\n"
+        "    observed_status: 200\n"
+        "    response_content_type: text/plain\n"
+        "    response_schema: {top_level_keys: [metadata, products, total]}\n"
+        "validation:\n"
+        "  - claim: the catalog is read with resultset=catalog\n"
+        "    state: validated\n"
+        "    evidence: [baseline-1]\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "twice" in str(refusal.value), str(refusal.value)
+
+
+def test_a_claim_that_carries_personal_data_is_refused(world, tmp_path):
+    # The claim is published in the proposal, and the record's own redactor already
+    # knows the rule for a note: an e-mail address, a phone number, an account id
+    # and a token are replaced in it. A claim the redactor would change is refused
+    # — the wording of a claim is what makes it traceable, so the record rewords
+    # it, the tool does not.
+    world.patch_claim("the request of alice@example.com returned the catalog")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "redactor" in str(refusal.value), str(refusal.value)
 
 
 def test_a_parameter_sent_twice_is_refused(world, tmp_path):

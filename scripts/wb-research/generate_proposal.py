@@ -151,6 +151,26 @@ CONTRACTS: dict[str, dict[str, Any]] = {
         #
         # The reasons are the contract's, not the tool's: a reviewer who disagrees
         # with one of them changes the record, not the list.
+        #
+        # Three declarations above answer three different questions about a
+        # parameter, and they are kept apart on purpose:
+        #
+        # - `identity` answers *which request this is* — the parameters that tell
+        #   two requests of one path apart (`resultset=catalog` against
+        #   `resultset=filters`);
+        # - `crawler_only` and `storefront_only` answer *who sends it* — the
+        #   parameters the crawler adds and the ones the storefront adds;
+        # - `parameters` answers *what may be committed* — the value a name may
+        #   hold when it reaches a fixture or a proposal.
+        #
+        # So a name may appear in more than one of them, and it is the same name
+        # with a different question asked of it: `resultset=catalog` identifies
+        # the request and is also the one value the name may hold.
+        #
+        # The page is bounded from one: the pagination of the catalog is
+        # one-based, and the record saw that `page=0` is answered with another
+        # envelope — the search result, without products. The upper bound is the
+        # number of pages the endpoint answers.
         "parameters": {
             "ab_testing": {"value": "false"},
             "appType": {"value": "1"},
@@ -161,7 +181,7 @@ CONTRACTS: dict[str, dict[str, Any]] = {
             "inheritFilters": {"value": "true"},
             "lang": {"value": "ru"},
             "locale": {"value": "ru"},
-            "page": {"range": {"min": 0, "max": 60}},
+            "page": {"range": {"min": 1, "max": 60}},
             "query": {"free_text": True},
             "resultset": {"value": "catalog"},
             "search": {"free_text": True},
@@ -232,9 +252,43 @@ REDACTOR = load_redactor()
 # --------------------------------------------------------------------------------------
 
 
+class UniqueKeyLoader(yaml.SafeLoader):
+    """A loader that refuses a mapping that names the same key twice.
+
+    PyYAML keeps the last value of a duplicated key and says nothing about it. So
+    a record whose candidate names `sort` twice reads as a candidate that names it
+    once, and every check that runs afterwards sees a request nobody sent: the
+    duplicate is gone before anybody can refuse it. The record is written by
+    hand, and a key written twice is a mistake in the record — so it is refused
+    where it is read.
+    """
+
+
+def _construct_unique_mapping(loader: UniqueKeyLoader, node: Any, deep: bool = False) -> dict:
+    mapping: dict = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise Refused(
+                f"the record holds '{key}' twice — a key written twice is a key nobody can read, "
+                f"and the value that is kept is the one nobody meant"
+            )
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+UniqueKeyLoader.add_constructor(
+    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+    _construct_unique_mapping,
+)
+
+
 def load_yaml(path: Path) -> Any:
     with path.open(encoding="utf-8") as handle:
-        return yaml.safe_load(handle)
+        try:
+            return yaml.load(handle, Loader=UniqueKeyLoader)
+        except yaml.YAMLError as error:
+            raise Refused(f"the record '{path.name}' is not readable YAML: {error}") from error
 
 
 def claims_of(investigation: dict[str, Any]) -> list[dict[str, Any]]:
@@ -243,6 +297,27 @@ def claims_of(investigation: dict[str, Any]) -> list[dict[str, Any]]:
 
 def validated_claims(investigation: dict[str, Any]) -> list[dict[str, Any]]:
     return [claim for claim in claims_of(investigation) if claim.get("state") in VALIDATED_STATES]
+
+
+def claim_problems(claim: dict[str, Any]) -> list[str]:
+    """Why a claim may not be published.
+
+    A claim is free text the record wrote about the request, and the proposal
+    publishes it. The record's own redactor already knows the rule for a note:
+    an e-mail address, a phone number, an account id, a token and a URL are
+    replaced in it. So the claim is judged by that rule — the generator keeps no
+    second, weaker copy of it — and a claim the redactor would change is refused.
+
+    It is refused, and not rewritten: the wording of a claim is what makes it
+    traceable to the observation it names, so a claim that carries something
+    personal is reworded by the record, not silently edited here.
+    """
+    text = str(claim.get("claim") or "")
+    if not text:
+        return []
+    if REDACTOR.redact_note(text) != text:
+        return ["the claim carries a value the record's own redactor would replace"]
+    return []
 
 
 def candidate_of(investigation: dict[str, Any], candidate_id: str) -> dict[str, Any]:
@@ -380,6 +455,21 @@ def candidate_agrees_with_evidence(
             f"the last value"
         )
     recorded = {name: value for name, value in recorded_pairs}
+
+    # The storefront's own request is its first one: the contract declares the
+    # parameters the crawler adds, and the storefront does not send them. A
+    # baseline that carries one of them is not the storefront's first request —
+    # and the generated test compares the crawler's request with the baseline's
+    # one, so it would compare two different requests and fail on a record that
+    # was accepted.
+    crawler_only = sorted(set(recorded) & set(contract.get("crawler_only") or {}))
+    if crawler_only:
+        raise Refused(
+            f"the storefront's own request carries {crawler_only} — the contract declares "
+            f"{sorted(contract.get('crawler_only') or {})} as the parameters the crawler adds "
+            f"and the storefront does not send, so this is not the storefront's first request"
+        )
+
     for name, value in sorted(query.items()):
         if name not in recorded:
             raise Refused(
@@ -1296,6 +1386,19 @@ def render_proposal(
     experiments = [experiment for experiment in eligible_experiments(validation) if experiment.get("name") in wanted]
     about = {str(claim.get("claim")) for claim in earned}
     evidence_of = {observation["id"] for observation in observations_of(experiments)}
+
+    # Every claim of the record is published — the validated ones in the table of
+    # traceability, the others in the table of what the generator held back. A
+    # claim that carries personal data or a captured secret is therefore refused
+    # before the first word of the proposal is written.
+    for claim in claims_of(investigation):
+        problems = claim_problems(claim)
+        if problems:
+            raise Refused(
+                f"a claim of the record in the state '{claim.get('state')}' carries something the "
+                f"record's own redactor would replace: {problems} — the proposal publishes the "
+                f"claim, so a claim with personal data in it is a file that must not be written"
+            )
 
     lines: list[str] = []
     lines.append(f"# Proposal — `{candidate_id}`")
