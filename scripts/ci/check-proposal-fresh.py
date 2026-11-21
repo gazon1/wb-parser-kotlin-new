@@ -472,11 +472,12 @@ def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: P
                 f"{relative}: the fixture holds the observation '{document.get('observation')}' — "
                 f"the generator names a fixture after the observation it was built from"
             )
-        if investigation and str(document.get("investigation")) != investigation:
+        if str(document.get("investigation") or "") != investigation:
             findings.append(
-                f"{relative}: the fixture names the investigation '{document.get('investigation')}' — "
-                f"the proposal names the investigation '{investigation}', and a fixture of another "
-                f"investigation is a fixture of another record"
+                f"{relative}: the fixture names the investigation "
+                f"'{document.get('investigation') or ''}' — the proposal names the investigation "
+                f"'{investigation}', and a fixture of another investigation is a fixture of another "
+                f"record"
             )
         if str(document.get("candidate")) != candidate:
             findings.append(
@@ -656,6 +657,19 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
     if manifest.get("schema") != MANIFEST_SCHEMA:
         findings.append(f"{relative_manifest}: the schema is not '{MANIFEST_SCHEMA}'")
 
+    # The proposal names the investigation it was produced from. The field is not
+    # optional: a manifest that names none would leave the gate with nothing to
+    # bind the fixtures to, and a check that runs only when the manifest helps it
+    # is a check that a manifest can switch off.
+    investigation = manifest.get("investigation")
+    if not isinstance(investigation, str) or not investigation:
+        findings.append(
+            f"{relative_manifest}: the manifest names no investigation of the proposal — the "
+            f"fixtures and the evidence are the ones of one investigation, and the proposal has "
+            f"to say which"
+        )
+        investigation = ""
+
     sections = {name: section(manifest, name) for name in ("sources", "generator", "generated")}
     for name, entries in sections.items():
         if entries is None:
@@ -696,10 +710,10 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
 
     findings += inventory_findings(sections["generated"], root, ".json")
     findings += inventory_findings(sections["sources"], root, ".json")
-    findings += evidence_findings(str(manifest.get("investigation") or ""), sections["sources"], root)
+    findings += evidence_findings(investigation, sections["sources"], root)
     captures, capture_findings = evidence_captures(sections["sources"], root)
     findings += capture_findings
-    findings += fixture_findings(sections["generated"], captures, root, str(manifest.get("investigation") or ""))
+    findings += fixture_findings(sections["generated"], captures, root, investigation)
 
     if not sections["sources"]:
         findings.append(f"{relative_manifest}: the manifest names no source of the proposal")
@@ -1236,6 +1250,35 @@ def self_test() -> None:
         manifest["generated"][fixture_relative] = digest(fixture)
         write_manifest()
         assert check(proposals, root) == [], "a fixture of the proposal's investigation must pass"
+
+        # A fixture that names no investigation: the proposal names one, and a
+        # fixture that names none is a fixture of an unknown record.
+        nameless_investigation = json.loads(fixture_document())
+        nameless_investigation.pop("investigation")
+        fixture.write_text(json.dumps(nameless_investigation) + "\n", encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("names the investigation" in finding for finding in findings), findings
+        fixture.write_text(fixture_document(), encoding="utf-8")
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture that names the investigation must pass"
+
+        # A manifest that names no investigation: the check of the fixtures is
+        # bound to the investigation the proposal names, so a proposal that names
+        # none has to fail — a check a manifest can switch off is not a check.
+        manifest["investigation"] = ""
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("names no investigation" in finding for finding in findings), findings
+        del manifest["investigation"]
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("names no investigation" in finding for finding in findings), findings
+        manifest["investigation"] = "demo"
+        write_manifest()
+        assert check(proposals, root) == [], "a manifest that names the investigation must pass"
 
         # A query whose values are not text: the test reads the query as a map of
         # names to values, so a value of another type is a query the test reads

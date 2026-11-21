@@ -1181,7 +1181,12 @@ caller changes the record, and the next run says so.
 twice, and the parser keeps the last one and says nothing — a record whose
 second `dest` differs from its first is a record with two answers, and the
 generator would publish one of them. So a duplicate key is refused on reading,
-and so is a file that is not YAML at all.
+and so is a file that is not YAML at all. A nested field that is not an object
+is a malformed record too: an answer, a request or an ordering written as a
+list or a string is read as nothing at all, so the dimension it should carry is
+missing — and a missing dimension does not match. The record is refused, not
+crashed on: a traceback is not a way to tell a reviewer that the record does not
+earn a proposal.
 
 **The contract declares the parameters of its request.** The redactor has a rule
 for every name it knows and none for a name it has never seen: `customer=Alice`
@@ -1350,10 +1355,14 @@ of it, and so is a nested object that is not an object: a capture whose request
 is a list, a fixture whose ordering is a list. So is the same capture id in two
 bundles: two bundles that answer for one capture make the witness ambiguous. The manifest has to name every tool the proposal was produced by —
 the generator and the redactor — because a dependency nobody names is a
-dependency nobody watches. A fixture has to name the investigation of the
+dependency nobody watches. The manifest has to name the investigation it was
+produced from: a proposal that names none cannot be bound to anything, and a
+check that runs only when the manifest helps it is a check the manifest can
+switch off. A fixture has to name the investigation of the
 proposal that holds it, next to the candidate and the observation: a fixture of
 another investigation is a fixture of another record, and the gate names it even
-when everything else about the fixture is right. And the query a fixture holds
+when everything else about the fixture is right — a fixture that names no
+investigation at all is named too. And the query a fixture holds
 has to be a map of text to text, because that is how the generated test reads
 it: a name or a value of another type is a query the test would read
 differently than the request that was made.

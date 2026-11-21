@@ -493,7 +493,15 @@ deleted file would otherwise pass.
   was made.
 - **Always** let the drift gate check that a fixture names the investigation of
   the proposal that holds it: a fixture of another investigation is a fixture of
-  another record.
+  another record — and a fixture that names no investigation is named too.
+- **Never** let the drift gate bind a fixture to the investigation only when the
+  manifest names one: the manifest has to name the investigation it was produced
+  from, and a check that runs only when the manifest helps it is a check the
+  manifest can switch off.
+- **Never** let a malformed record raise out of the tool: a nested field that is
+  not an object is read as nothing at all, so the dimension it should carry is
+  missing — and a missing dimension does not match. The record is refused, not
+  crashed on.
 - **Never** publish an answer the evidence did not record: the status, the
   content type and the keys of the body come from the candidate's own summary,
   so the summary has to agree with the capture, and the published values are the

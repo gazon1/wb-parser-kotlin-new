@@ -685,6 +685,53 @@ def test_a_capture_that_does_not_describe_its_run_is_refused(world, tmp_path, pa
         world.generate(tmp_path)
 
 
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"response": ["status", "contentType"]},
+        {"schema": "the shape of the answer"},
+        {"request": "the request that was made"},
+        {"ordering": 3},
+    ],
+)
+def test_a_capture_whose_nested_objects_are_not_objects_is_refused(world, tmp_path, changes):
+    # A field that holds a list or a string is not an answer: the record is
+    # malformed, and a malformed record is a refusal, not a traceback.
+    world.patch_capture("baseline-1", **changes)
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"response": "the answer"},
+        {"schema": ["topLevelKeys"]},
+        {"request": 7},
+    ],
+)
+def test_an_observation_whose_nested_objects_are_not_objects_is_refused(world, tmp_path, changes):
+    # The same on the side of the summary: the two descriptions of a run have to
+    # be read as objects, and one that is not an object says nothing about the run.
+    world.patch_observation(**changes)
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_candidate_whose_query_is_not_an_object_is_refused(world, tmp_path):
+    # The query of a candidate is read as a map of names to values. A query that
+    # is not a map is a record the tool cannot judge, and it is refused rather
+    # than read as an empty query.
+    record = yaml.safe_load((world.directory / "investigation.yaml").read_text(encoding="utf-8"))
+    record["api_candidates"][0]["query"] = "resultset=catalog"
+    (world.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
 def test_a_candidate_with_another_identity_parameter_is_refused(world, tmp_path):
     # The catalog search and the filters search share the path and differ only in
     # `resultset`. A candidate that names the other one is not this contract, and a

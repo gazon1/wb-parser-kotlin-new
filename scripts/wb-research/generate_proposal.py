@@ -456,6 +456,18 @@ def candidate_request_matches(
     return True
 
 
+def object_field(document: dict[str, Any], name: str) -> dict[str, Any]:
+    """The nested object of a document — or an empty one when it is not an object.
+
+    A field that holds a list or a string is not an answer: the record is malformed,
+    and a malformed record is a refusal, not a traceback. So the field is read as
+    the object it is or as nothing at all — and a dimension that is nothing at all
+    is a dimension that is missing, and a missing dimension does not match.
+    """
+    value = document.get(name)
+    return value if isinstance(value, dict) else {}
+
+
 def capture_matches_observation(capture: dict[str, Any], observation: dict[str, Any]) -> bool:
     """Whether the capture is the capture of this observation.
 
@@ -479,14 +491,14 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
         left, right = capture.get(name), observation.get(name)
         if left is None or right is None or left != right:
             return False
-    capture_request = capture.get("request") or {}
-    observation_request = observation.get("request") or {}
+    capture_request = object_field(capture, "request")
+    observation_request = object_field(observation, "request")
     for name in ("method", "url"):
         left, right = capture_request.get(name), observation_request.get(name)
         if left is None or right is None or str(left) != str(right):
             return False
-    capture_order = (capture.get("ordering") or {}).get("orderHash")
-    observation_order = (observation.get("ordering") or {}).get("orderHash")
+    capture_order = object_field(capture, "ordering").get("orderHash")
+    observation_order = object_field(observation, "ordering").get("orderHash")
     if capture_order is None or observation_order is None or capture_order != observation_order:
         return False
     # The fixture is built from the summary and the proposal publishes the capture,
@@ -497,8 +509,8 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
         ("response", ("status", "contentType", "bodyBytes", "isJson")),
         ("schema", ("topLevelKeys", "productCount", "total")),
     ):
-        captured = capture.get(field) or {}
-        observed = observation.get(field) or {}
+        captured = object_field(capture, field)
+        observed = object_field(observation, field)
         for name in names:
             left, right = captured.get(name), observed.get(name)
             if left is None or right is None or left != right:
@@ -550,7 +562,7 @@ def candidate_agrees_with_evidence(
     read as a map, the second value hides the first, so the proposal would pin one
     request and the fixture another.
     """
-    query = {str(name): str(value) for name, value in (candidate.get("query") or {}).items()}
+    query = {str(name): str(value) for name, value in object_field(candidate, "query").items()}
 
     for name, value in (contract.get("identity") or {}).items():
         if query.get(str(name)) != str(value):
@@ -561,7 +573,7 @@ def candidate_agrees_with_evidence(
                 f"not this contract"
             )
 
-    recorded_pairs = query_pairs_of(str((observation.get("request") or {}).get("url") or ""))
+    recorded_pairs = query_pairs_of(str(object_field(observation, "request").get("url") or ""))
     repeated = duplicate_parameter_problems(recorded_pairs)
     if repeated:
         raise Refused(
@@ -621,8 +633,8 @@ def answer_of_the_evidence(candidate: dict[str, Any], capture: dict[str, Any]) -
     The types are asked for as well: a status that became the text `200` is not
     the status the request came with.
     """
-    recorded = capture.get("response") or {}
-    schema = capture.get("schema") or {}
+    recorded = object_field(capture, "response")
+    schema = object_field(capture, "schema")
     status = recorded.get("status")
     content_type = recorded.get("contentType")
     keys = schema.get("topLevelKeys")
@@ -654,7 +666,7 @@ def answer_of_the_evidence(candidate: dict[str, Any], capture: dict[str, Any]) -
             f"evidence recorded '{content_type}' — the proposal would publish an answer the record "
             f"never saw"
         )
-    named = (candidate.get("response_schema") or {}).get("top_level_keys")
+    named = object_field(candidate, "response_schema").get("top_level_keys")
     if named is not None:
         if not isinstance(named, list) or not all(isinstance(key, str) for key in named):
             raise Refused(
@@ -705,7 +717,7 @@ def claims_about_candidate(
                 continue
             if not capture_matches_observation(capture, observation):
                 continue
-            request = capture.get("request") or {}
+            request = object_field(capture, "request")
             if candidate_request_matches(contract, request.get("method"), request.get("url")):
                 earned.append(claim)
                 break
@@ -972,7 +984,7 @@ def fixture_dir_of(candidate_id: str) -> str:
 
 
 def header_names_of(observation: dict[str, Any]) -> list[str]:
-    request = observation.get("request") or {}
+    request = object_field(observation, "request")
     return list(request.get("headerNames") or [])
 
 
@@ -983,7 +995,7 @@ def product_ids_of(observation: dict[str, Any], capture: dict[str, Any]) -> list
     read, and the evidence wins when both have it.
     """
     for source in (capture, observation):
-        ordering = source.get("ordering") or {}
+        ordering = object_field(source, "ordering")
         ids = ordering.get("productIds")
         if ids:
             return list(ids)
@@ -996,10 +1008,10 @@ def fixture_of(
     candidate_id: str,
     investigation_id: str,
 ) -> dict[str, Any]:
-    request = observation.get("request") or {}
-    response = observation.get("response") or {}
-    answer = observation.get("schema") or {}
-    ordering = observation.get("ordering") or {}
+    request = object_field(observation, "request")
+    response = object_field(observation, "response")
+    answer = object_field(observation, "schema")
+    ordering = object_field(observation, "ordering")
 
     return {
         "schema": "wb-research/contract-fixture/v1",
@@ -1619,7 +1631,7 @@ def render_proposal(
     lines.append("")
     lines.append("| Parameter | Value |")
     lines.append("| --- | --- |")
-    for name, value in (candidate.get("query") or {}).items():
+    for name, value in object_field(candidate, "query").items():
         lines.append(f"| `{name}` | `{value}` |")
     lines.append("")
     lines.append("### Headers")
@@ -1628,7 +1640,7 @@ def render_proposal(
     lines.append("")
     lines.append("| Header | The storefront's request | The validated replay |")
     lines.append("| --- | --- | --- |")
-    storefront_headers = list(candidate.get("headers") or {})
+    storefront_headers = list(object_field(candidate, "headers"))
     replay_headers = header_names_of(observations_of(experiments)[0])
     for name in sorted(set(storefront_headers) | set(replay_headers)):
         lines.append(
@@ -1917,7 +1929,7 @@ def generate(
                     f"'{experiment.get('name')}' — an observation has to belong to the "
                     f"experiment it is filed under"
                 )
-            request = observation.get("request") or {}
+            request = object_field(observation, "request")
             if not candidate_request_matches(contract, request.get("method"), request.get("url")):
                 raise Refused(
                     f"the observation '{observation_id}' of the '{experiment.get('name')}' "
@@ -1974,9 +1986,9 @@ def generate(
     # same value in a query and in a header has leaked one into the other, and the
     # query is the place it would be committed.
     header_values = {
-        str(value) for value in (candidate.get("headers") or {}).values() if value and not is_placeholder(value)
+        str(value) for value in object_field(candidate, "headers").values() if value and not is_placeholder(value)
     }
-    leaked = sorted(name for name, value in (candidate.get("query") or {}).items() if str(value) in header_values)
+    leaked = sorted(name for name, value in object_field(candidate, "query").items() if str(value) in header_values)
     if leaked:
         raise Refused(
             f"the candidate's query carries the value of a header for {leaked} — a captured "
@@ -1988,7 +2000,7 @@ def generate(
     # parameter: a session token, an account id or a search phrase in the query
     # would be committed in the Markdown of the proposal, and a name nobody can
     # explain may carry somebody's name.
-    unpublishable = parameter_problems(contract, list((candidate.get("query") or {}).items()))
+    unpublishable = parameter_problems(contract, list(object_field(candidate, "query").items()))
     if unpublishable:
         raise Refused(
             f"the candidate's query holds parameters the contract does not allow to be "
