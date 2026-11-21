@@ -52,6 +52,13 @@ LISTED_FILE = re.compile(r"^- `([^`]+)`$")
 # at the evidence even when the manifest names none of it.
 EVIDENCE_DIR = "devtools/wb-research/investigations"
 
+# A generated fixture: a file under a directory of fixtures, in the directory of its
+# contract, named after the observation it holds. The generator names a fixture after
+# the observation it was built from, so the name on the disk and the name inside the
+# file have to be the same — a fixture that was renamed on the disk, in the manifest
+# and in the proposal together still says something the generator would never say.
+FIXTURE_PATH = re.compile(r"^(?P<directory>.+/fixtures/[^/]+/(?P<candidate>[^/]+))/(?P<name>[^/]+)\.json$")
+
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -164,6 +171,55 @@ def evidence_findings(investigation: str, entries: dict[str, str], root: Path) -
     return findings
 
 
+def fixture_findings(entries: dict[str, str], root: Path) -> list[str]:
+    """The generated fixtures whose name does not say what they hold.
+
+    The generator names a fixture after the observation it was built from and puts it
+    in the directory of the contract it belongs to. A file whose name says something
+    else is a file the generator would never have written: a fixture renamed on the
+    disk, in the manifest and in the proposal together still passes every hash
+    comparison, and the proposal points at a fixture that holds another observation's
+    answer.
+
+    So the name on the disk is checked against the name inside the file, and the
+    contract of the file against the directory it lives in.
+    """
+    findings: list[str] = []
+    for relative in sorted(entries):
+        match = FIXTURE_PATH.match(relative)
+        if match is None:
+            continue
+        text = read_text(root / relative)
+        if text is None:
+            # A file that is not text is reported by the hash comparison.
+            continue
+        try:
+            document = json.loads(text)
+        except json.JSONDecodeError as error:
+            findings.append(
+                f"{relative}: not readable as JSON ({error}) — a fixture has to name the observation it holds"
+            )
+            continue
+        if not isinstance(document, dict):
+            findings.append(
+                f"{relative}: the fixture is not an object — a fixture has to name the observation it holds"
+            )
+            continue
+        name = match.group("name")
+        candidate = match.group("candidate")
+        if str(document.get("observation")) != name:
+            findings.append(
+                f"{relative}: the fixture holds the observation '{document.get('observation')}' — "
+                f"the generator names a fixture after the observation it was built from"
+            )
+        if str(document.get("candidate")) != candidate:
+            findings.append(
+                f"{relative}: the fixture names the candidate '{document.get('candidate')}' — "
+                f"the fixture lives in the directory of its contract, '{candidate}'"
+            )
+    return findings
+
+
 def check_one(manifest_path: Path, root: Path) -> list[str]:
     """The findings of one proposal. An empty list means it is current."""
     findings: list[str] = []
@@ -207,6 +263,7 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
     findings += inventory_findings(sections["generated"], root, ".json")
     findings += inventory_findings(sections["sources"], root, ".json")
     findings += evidence_findings(str(manifest.get("investigation") or ""), sections["sources"], root)
+    findings += fixture_findings(sections["generated"], root)
 
     if not sections["sources"]:
         findings.append(f"{relative_manifest}: the manifest names no source of the proposal")
@@ -284,19 +341,27 @@ def self_test() -> None:
 
         proposal = proposals / "demo"
         proposal.mkdir(parents=True)
-        fixture = root / "wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json"
+        # A fixture lives in the directory of its contract and is named after the
+        # observation it holds — the same shape the generator writes.
+        fixture_relative = (
+            "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/baseline-1.json"
+        )
+        fixture = root / fixture_relative
         fixture.parent.mkdir(parents=True)
-        fixture.write_text("{}\n", encoding="utf-8")
+        fixture.write_text(
+            json.dumps({"observation": "baseline-1", "candidate": "storefront-catalog-search"}) + "\n",
+            encoding="utf-8",
+        )
         bundle = record / "evidence" / "validation.json"
         bundle.parent.mkdir(parents=True)
         bundle.write_text("{}\n", encoding="utf-8")
 
-        def write_proposal() -> None:
+        def write_proposal(fixture_path: str = fixture_relative) -> None:
             (proposal / "proposal.md").write_text(
                 "# a proposal\n\n"
                 "## The files this proposal adds\n\n"
                 "- `devtools/wb-research/proposals/demo/proposal.md`\n"
-                "- `wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json`\n",
+                f"- `{fixture_path}`\n",
                 encoding="utf-8",
             )
 
@@ -312,7 +377,7 @@ def self_test() -> None:
             },
             "generated": {
                 "devtools/wb-research/proposals/demo/proposal.md": digest(proposal / "proposal.md"),
-                "wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json": digest(fixture),
+                fixture_relative: digest(fixture),
             },
         }
         manifest_path = proposal / "manifest.json"
@@ -353,13 +418,13 @@ def self_test() -> None:
 
         # A file that was deleted from the disk and from the manifest together: the
         # proposal still names it, so the gate still catches it.
-        manifest["generated"].pop("wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json")
+        manifest["generated"].pop(fixture_relative)
         write_manifest()
         findings = check(proposals, root)
         assert findings, "a generated file dropped from the manifest must fail"
         assert "not in the manifest" in findings[0], findings
 
-        manifest["generated"]["wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json"] = digest(fixture)
+        manifest["generated"][fixture_relative] = digest(fixture)
         write_manifest()
         assert check(proposals, root) == [], "a proposal with every file in the manifest must pass"
 
@@ -392,6 +457,26 @@ def self_test() -> None:
         write_manifest()
         assert check(proposals, root) == [], "a proposal whose inventory is complete must pass"
 
+        # A fixture renamed on the disk, in the manifest and in the proposal together:
+        # every hash still matches and the proposal still points at a file — but the
+        # name no longer says which observation the file holds, and the generator
+        # would never have written such a fixture.
+        renamed_relative = fixture_relative.replace("baseline-1.json", "renamed-1.json")
+        renamed = root / renamed_relative
+        fixture.rename(renamed)
+        manifest["generated"].pop(fixture_relative)
+        manifest["generated"][renamed_relative] = digest(renamed)
+        write_proposal(renamed_relative)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("names a fixture after the observation" in finding for finding in findings), findings
+        renamed.rename(fixture)
+        manifest["generated"].pop(renamed_relative)
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_proposal()
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture named after its observation must pass"
+
         # A manifest that is not text at all is a finding, not a crash.
         manifest_path.write_bytes(b"\xff\xfe not utf-8")
         findings = check(proposals, root)
@@ -401,7 +486,7 @@ def self_test() -> None:
         assert check(proposals, root) == [], "a proposal whose manifest is text must pass"
 
         # A manifest that is not a mapping of paths to hashes is a finding, not a crash.
-        manifest["generated"] = ["wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json"]
+        manifest["generated"] = [fixture_relative]
         write_manifest()
         findings = check(proposals, root)
         assert findings, "a malformed manifest must fail"
@@ -414,7 +499,7 @@ def self_test() -> None:
 
         manifest["generated"] = {
             "devtools/wb-research/proposals/demo/proposal.md": digest(proposal / "proposal.md"),
-            "wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json": digest(fixture),
+            fixture_relative: digest(fixture),
         }
         write_manifest()
 
@@ -426,7 +511,7 @@ def self_test() -> None:
             "# another proposal\n\n"
             "## The files this proposal adds\n\n"
             "- `devtools/wb-research/proposals/demo-2/proposal.md`\n"
-            "- `wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json`\n",
+            f"- `{fixture_relative}`\n",
             encoding="utf-8",
         )
         second_manifest = {
@@ -440,7 +525,7 @@ def self_test() -> None:
             },
             "generated": {
                 "devtools/wb-research/proposals/demo-2/proposal.md": digest(second / "proposal.md"),
-                "wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json": digest(fixture),
+                fixture_relative: digest(fixture),
             },
         }
         (second / "manifest.json").write_text(json.dumps(second_manifest, indent=2, sort_keys=True), encoding="utf-8")

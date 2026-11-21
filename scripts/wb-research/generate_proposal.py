@@ -40,6 +40,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
@@ -153,6 +154,31 @@ class Refused(Exception):
     """The record does not earn a proposal."""
 
 
+def load_redactor():
+    """The record's own redactor, loaded from the file that sits next to this one.
+
+    The generator does not keep a second, weaker copy of the sanitization rules: the
+    rules that decide what may be committed live in `redact.py`, and a second copy is a
+    second policy — the two drift, and the weaker one decides what a proposal commits.
+    So the generator asks the redactor itself, and the redactor answers for the name of
+    the parameter as well as for its value.
+
+    The module is loaded by its path rather than imported by name: the tool is run as a
+    script, tested by its path, and lives in a directory whose modules are called by
+    what they do (`plan.py`, `redact.py`, `validate.py`), not by a package.
+    """
+    path = Path(__file__).resolve().parent / "redact.py"
+    spec = importlib.util.spec_from_file_location("wb_research_redact", path)
+    if spec is None or spec.loader is None:
+        raise Refused(f"the redactor '{path}' could not be loaded — the sanitization rules are not optional")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+REDACTOR = load_redactor()
+
+
 # --------------------------------------------------------------------------------------
 # The record
 # --------------------------------------------------------------------------------------
@@ -217,21 +243,92 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
     twice. A bundle filed under the id of another observation — the same endpoint,
     another experiment — would put the products of one run into the fixture of
     another, and the fixture would look perfectly plausible. So the two descriptions
-    have to agree: the experiment, the run, the request and the order of the answer.
+    have to agree on every dimension that tells one run from another: the
+    experiment, the run, the method, the URL and the order of the answer.
+
+    Every dimension has to be *there* on both sides. A dimension that is missing is
+    not a dimension that matches: a capture that says nothing about the experiment it
+    belongs to cannot be told apart from a capture of another experiment, and a
+    bundle that has lost the order hash cannot be checked against the summary at all.
+    So an incomplete capture is refused rather than accepted on the dimensions that
+    happen to be present.
     """
     for name in ("experiment", "run"):
         left, right = capture.get(name), observation.get(name)
-        if left is not None and right is not None and left != right:
+        if left is None or right is None or left != right:
             return False
     capture_request = capture.get("request") or {}
     observation_request = observation.get("request") or {}
-    if str(capture_request.get("method") or "") != str(observation_request.get("method") or ""):
-        return False
-    if str(capture_request.get("url") or "") != str(observation_request.get("url") or ""):
-        return False
+    for name in ("method", "url"):
+        left, right = capture_request.get(name), observation_request.get(name)
+        if left is None or right is None or str(left) != str(right):
+            return False
     capture_order = (capture.get("ordering") or {}).get("orderHash")
     observation_order = (observation.get("ordering") or {}).get("orderHash")
-    return capture_order is None or observation_order is None or capture_order == observation_order
+    return capture_order is not None and observation_order is not None and capture_order == observation_order
+
+
+def baseline_observation(contract: dict[str, Any], experiments: list[dict[str, Any]]) -> dict[str, Any]:
+    """The first observation of the baseline experiment of this contract.
+
+    The baseline is the request the other experiments are compared with: it is the
+    one the record replayed, so it is the one that says what the endpoint was asked
+    for when nothing was changed.
+    """
+    wanted = str((contract.get("experiments") or {}).get("baseline") or "")
+    for experiment in experiments:
+        if str(experiment.get("name")) != wanted:
+            continue
+        observations = experiment.get("observations") or []
+        if observations:
+            return observations[0]
+    raise Refused(f"the evidence has no observation of the '{wanted}' experiment")
+
+
+def candidate_agrees_with_evidence(
+    contract: dict[str, Any],
+    candidate: dict[str, Any],
+    observation: dict[str, Any],
+) -> None:
+    """Refuse a candidate that contradicts the evidence of its own contract.
+
+    The candidate is the summary of the request the storefront sent, and the proposal
+    publishes its query as the parameters of the contract. The evidence is the request
+    that was actually made. When the two disagree, the proposal advertises one
+    request and pins another: the Markdown says `resultset=filters` while the fixture
+    and the test say `resultset=catalog`, and the reader of the proposal is left
+    with two truths.
+
+    So the candidate has to name the identity parameters the contract declares, with
+    the values the contract declares, and every parameter it advertises has to be one
+    the recorded request sent, with the same value. The baseline is the request the
+    other experiments were compared with, so it is the one the candidate is compared
+    with.
+    """
+    query = {str(name): str(value) for name, value in (candidate.get("query") or {}).items()}
+
+    for name, value in (contract.get("identity") or {}).items():
+        if query.get(str(name)) != str(value):
+            raise Refused(
+                f"the candidate's query holds '{name}={query.get(str(name))}', the contract "
+                f"declares '{name}={value}' — the parameters that tell two requests of one "
+                f"path apart are the contract, and a candidate that names another one is "
+                f"not this contract"
+            )
+
+    recorded = query_of(str((observation.get("request") or {}).get("url") or ""))
+    for name, value in sorted(query.items()):
+        if name not in recorded:
+            raise Refused(
+                f"the candidate's query holds '{name}', the recorded request did not send it — "
+                f"the proposal would advertise a parameter the evidence does not have"
+            )
+        if str(recorded[name]) != value:
+            raise Refused(
+                f"the candidate's query holds '{name}={value}', the recorded request sent "
+                f"'{name}={recorded[name]}' — the proposal would advertise one request and "
+                f"pin another"
+            )
 
 
 def claims_about_candidate(
@@ -407,34 +504,34 @@ def crawl_url_carries_search(crawl_url: str) -> bool:
     return "search" in names
 
 
-def publishable_query_value(value: Any) -> bool:
+def publishable_query_value(name: str, value: Any) -> bool:
     """Whether a query value may be committed as it is.
 
-    The record's rule: a committed value is either a placeholder or a value that
-    carries no secret shape. The generator publishes the query of the candidate in
-    the proposal, so it has to hold the record to that rule — a session token, an
-    account id or a search phrase that somebody typed would otherwise be committed
-    in the Markdown of the proposal.
+    The record's rule: a committed value is either a placeholder or a value the
+    record's own redactor would leave alone. The generator publishes the query of the
+    candidate in the proposal, so it has to hold the record to that rule — a session
+    token, an account id or a search phrase that somebody typed would otherwise be
+    committed in the Markdown of the proposal.
 
-    The shapes that are refused: a value with a space in it (a phrase somebody
-    typed), a value that is a URL (a URL carries its own secrets in its query), a
-    value that is longer than a parameter name and a number may be, and a value
-    that looks like an opaque token — letters and digits mixed, long enough to be
-    random rather than written.
+    The rule is the redactor's, not the generator's, and the name of the parameter is
+    part of it. The shape of a value says little on its own: `123456789012` and
+    `YWJjZGVmZ2hp` are short, they are made of ordinary characters, and they are a
+    session id and a token all the same. The name says more: `session` is a credential
+    whatever its value looks like, and `query` carries what somebody typed — `Alice` is
+    a name and a phrase, and it is short too. So the value is judged by the name it was
+    sent under, by the same rules the record used to sanitize it in the first place.
+
+    The shape is checked as well, for what the redactor does not judge: a value with a
+    space in it is a phrase (the redactor replaces those, but only when it reads the
+    name), and a value that is longer than a parameter name and a number may be is not
+    a value anybody types.
     """
     text = str(value if value is not None else "")
     if PLACEHOLDER.fullmatch(text):
         return True
     if not SAFE_QUERY_VALUE.fullmatch(text):
         return False
-    if text.isdigit() and len(text) > 12:
-        # A long number is an identifier — a catalog, an account, a session.
-        return False
-    return not (
-        len(text) >= 16
-        and any(character.isdigit() for character in text)
-        and any(character.isalpha() for character in text)
-    )
+    return str(REDACTOR.redact_query_value(name, text)) == text
 
 
 def fixture_dir_of(candidate_id: str) -> str:
@@ -453,12 +550,14 @@ def unpublishable_query_values(url: str) -> list[str]:
 
     The URL of a request is committed in the fixture and the crawl URL is
     committed in the test, so the record's sanitization rule applies to the values
-    inside them. The values are read as the server reads them: decoded.
+    inside them. The values are read as the server reads them: decoded. The name of
+    the parameter travels with the value, because the name is what decides whether a
+    value is a secret.
     """
     return sorted(
         name
         for name, value in parse_qsl(urlsplit(url).query, keep_blank_values=True)
-        if not publishable_query_value(value)
+        if not publishable_query_value(name, value)
     )
 
 
@@ -961,7 +1060,7 @@ def render_kotlin(
         raise Refused(
             f"the crawl URL holds a value the record did not sanitize for {unsafe} — the URL "
             f"is committed in the test, so a committed value is a placeholder or a value that "
-            f"carries no secret shape"
+            f"would leave the record's own redactor alone"
         )
 
     def names(role: str) -> list[str]:
@@ -1192,6 +1291,19 @@ def sha256_of(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def sha256_of_text(content: str) -> str:
+    """The hash of the bytes a file will hold when it is written.
+
+    The manifest is written from the content the generator is about to write, not
+    from the files it has already written: the proposal is rendered in full before
+    anything reaches the disk, so the hashes are of the same bytes the disk will
+    hold.
+    """
+    import hashlib
+
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
 def safe_investigation(value: Any) -> str:
     """The id of an investigation, checked to be a single safe path component.
 
@@ -1304,7 +1416,8 @@ def generate(
                 raise Refused(
                     f"the observation '{observation_id}' holds a request with a value the record "
                     f"did not sanitize for {unsafe} — the request is committed in the fixture, so "
-                    f"a committed value is a placeholder or a value that carries no secret shape"
+                    f"a committed value is a placeholder or a value the record's own "
+                    f"redactor would leave alone"
                 )
             # The capture has to be the capture of this observation: the bundle is
             # filed under the id, and a bundle of another run of the same endpoint
@@ -1357,17 +1470,24 @@ def generate(
         )
 
     # The query of the candidate is published in the proposal, so the record has to
-    # hold to its own sanitization rule: a committed value is a placeholder or a
-    # value that carries no secret shape. A session token, an account id or a search
-    # phrase in the query would be committed in the Markdown of the proposal.
+    # hold to its own sanitization rule: a committed value is a placeholder or a value
+    # the record's own redactor would leave alone. A session token, an account id or a
+    # search phrase in the query would be committed in the Markdown of the proposal.
     unpublishable = sorted(
-        name for name, value in (candidate.get("query") or {}).items() if not publishable_query_value(value)
+        name for name, value in (candidate.get("query") or {}).items() if not publishable_query_value(str(name), value)
     )
     if unpublishable:
         raise Refused(
             f"the candidate's query holds a value the record did not sanitize for {unpublishable} — "
-            f"a committed query value is a placeholder or a value that carries no secret shape"
+            f"a committed query value is a placeholder or a value the record's own "
+            f"redactor would leave alone"
         )
+
+    # The candidate is the summary of the request, and the proposal publishes its
+    # query as the parameters of the contract. A candidate that contradicts the
+    # recorded request would leave the proposal advertising one request and pinning
+    # another.
+    candidate_agrees_with_evidence(contract, candidate, baseline_observation(contract, experiments))
 
     fixtures: dict[str, list[str]] = {}
     fixture_documents: list[dict[str, Any]] = []
@@ -1412,17 +1532,25 @@ def generate(
     written: list[Path] = []
     root = output_root.resolve()
     fixture_dir = fixture_dir_of(candidate_id)
+    planned: dict[str, str] = {}
 
-    def write(relative: str, content: str, within: str | None = None) -> None:
+    def plan(relative: str, content: str, within: str | None = None) -> None:
+        """Put a file on the list of files this generation writes.
+
+        Nothing is written here: the file is only checked and remembered. The whole
+        proposal is rendered and checked before the first byte reaches the disk, so a
+        refusal never leaves half a proposal behind — a fixture without its test, a
+        test without its proposal. A generator that leaves a mess behind is a
+        generator whose output has to be cleaned by hand before anybody can look at
+        it.
+        """
         path = output_root / relative
         resolved = path.resolve()
         if not resolved.is_relative_to(root):
             raise Refused(f"the generator would write outside the output root: {relative}")
         if within is not None and not resolved.is_relative_to((output_root / within).resolve()):
             raise Refused(f"the generator would write outside {within}: {relative}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
-        written.append(path)
+        planned[relative] = content
 
     # The fixture directory belongs to the contract: everything in it is written by
     # this generator, and a file that this generation does not produce is a leftover
@@ -1440,13 +1568,13 @@ def generate(
         )
 
     for document in fixture_documents:
-        write(
+        plan(
             f"{fixture_dir}/{document['observation']}.json",
             json.dumps(document, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
             within=fixture_dir,
         )
 
-    write(TEST_FILE, render_kotlin(contract, investigation_id, candidate_id, fixtures, validation))
+    plan(TEST_FILE, render_kotlin(contract, investigation_id, candidate_id, fixtures, validation))
 
     proposal_file = f"{PROPOSAL_DIR}/{investigation_id}/proposal.md"
     proposal = render_proposal(
@@ -1462,7 +1590,7 @@ def generate(
         + [proposal_file],
         earned,
     )
-    write(proposal_file, proposal)
+    plan(proposal_file, proposal)
 
     sources = {
         f"devtools/wb-research/investigations/{investigation_id}/{name}": sha256_of(directory / name)
@@ -1485,12 +1613,21 @@ def generate(
         # compares this number with the tool on disk.
         "generator": {GENERATOR_PATH: sha256_of(Path(__file__).resolve())},
         "sources": sources,
-        "generated": {path.relative_to(output_root).as_posix(): sha256_of(path) for path in written},
+        # The hashes are of the content that is about to be written, so the manifest
+        # says what the disk holds even if the writing itself fails half way.
+        "generated": {relative: sha256_of_text(content) for relative, content in sorted(planned.items())},
     }
-    write(
+    plan(
         f"{PROPOSAL_DIR}/{investigation_id}/manifest.json",
         json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
     )
+
+    # Everything is rendered and checked: now the files may be written.
+    for relative, content in planned.items():
+        path = output_root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        written.append(path)
 
     return written
 

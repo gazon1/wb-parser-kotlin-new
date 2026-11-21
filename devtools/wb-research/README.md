@@ -1132,8 +1132,31 @@ produce.
 published in the proposal, the request of the observation is committed in the
 fixture and the crawl URL is committed in the test, so every value that reaches
 one of them has to hold to the record's own rule: a committed value is a
-placeholder or a value that carries no secret shape. A session token, an account
-id or a phrase somebody typed is refused, not published.
+placeholder or a value that the record's own redactor (`redact.py`) would leave
+alone. The name of the parameter is part of the rule: a value of `session` is a
+credential whatever it looks like, and a value of `query` is a phrase somebody
+typed — `Alice` is short, and it is a person's name all the same. The generator
+asks the redactor instead of keeping a second, weaker copy of the rules, so the
+two cannot drift apart. A session token, an account id or a phrase somebody
+typed is refused, not published.
+
+**The candidate and the evidence have to say the same thing.** The proposal
+publishes the query of the candidate as the parameters of the contract, and the
+fixture pins the request that was recorded. So the candidate has to name the
+identity parameters the contract declares, with the values the contract
+declares, and every parameter it advertises has to be one the recorded request
+sent, with the same value. A candidate that says `resultset=filters` while the
+record says `resultset=catalog` is refused before anything is written.
+
+**A capture has to describe its run.** The bundle and the summary describe the
+same run twice, and every dimension that tells one run from another — the
+experiment, the run, the method, the URL and the order of the answer — has to be
+there on both sides and to agree. A dimension that is missing is not a dimension
+that matches.
+
+**A refusal leaves nothing behind.** The whole proposal is rendered and checked
+before the first byte reaches the disk, so a record that is refused half way
+through never leaves a fixture without its test on the disk.
 
 **A fixture carries no captured payload.** The capture kept the shape of the
 answer and the ids of the products, not the body — a body is where a price, a
@@ -1171,4 +1194,6 @@ record that changed after the proposal, an evidence bundle that changed, a
 generator that changed, or a generated file edited by hand each fail the gate,
 and the fix is to regenerate. The gate also compares the manifest with the file
 list the proposal itself carries, so a file deleted from the disk and from the
-manifest together still fails.
+manifest together still fails, and it checks that every fixture is named after
+the observation it holds, so a fixture renamed on the disk, in the manifest and
+in the proposal together still fails.

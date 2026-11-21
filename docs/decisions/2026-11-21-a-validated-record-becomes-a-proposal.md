@@ -94,6 +94,41 @@ one of them has to hold to the record's own rule: a committed value is a
 placeholder or a value that carries no secret shape. A session token, an account
 id or a phrase somebody typed in the query is refused, not published.
 
+The rules that decide that are the record's own, and they are not copied into
+the generator. The generator asks `redact.py` — the redactor that sanitized the
+evidence in the first place — and the redactor judges the value together with
+the name of the parameter it was sent under. The name is what carries the rule:
+a value of `session` is a credential whatever it looks like, and a value of
+`query` is a phrase somebody typed, so `Alice` and `123456789012` are refused
+even though both are short and made of ordinary characters. A second, weaker
+copy of the rules inside the generator would be a second policy, and the weaker
+one is the one that decides what a proposal commits.
+
+The candidate and the evidence have to agree. The proposal publishes the query
+of the candidate as the parameters of the contract, and the fixture pins the
+request that was recorded — so the candidate has to name the identity
+parameters the contract declares, with the values the contract declares, and
+every parameter it advertises has to be one the recorded request sent, with the
+same value. A candidate that says `resultset=filters` while the record says
+`resultset=catalog` would leave the proposal advertising one request and
+pinning another.
+
+The capture has to describe its run. The bundle and the summary describe the
+same run twice, and every dimension that tells one run from another — the
+experiment, the run, the method, the URL and the order of the answer — has to
+be there on both sides and to agree. A dimension that is missing is not a
+dimension that matches: a capture that says nothing about the experiment it
+belongs to cannot be told apart from a capture of another one, so an incomplete
+capture is refused rather than accepted on the dimensions that happen to be
+present.
+
+The whole proposal is rendered and checked before the first byte reaches the
+disk. A refusal never leaves half a proposal behind — a fixture without its
+test, a test without its proposal — because a generator that leaves a mess
+behind is a generator whose output has to be cleaned by hand before anybody can
+look at it. The manifest records the hashes of the content that was written, so
+the manifest says what the disk holds even when the writing itself fails.
+
 The generator writes where the record points, so the record must not be able to
 point outside: an observation id names a fixture file and has to be a plain file
 name, and a fixture is written only inside the fixture directory — the output
@@ -222,10 +257,20 @@ deleted file would otherwise pass.
 - **Never** accept a candidate whose endpoint or method disagrees with the
   contract table: the contract is what the generated test pins.
 - **Never** accept a capture that does not match the observation it is filed
-  under: the experiment, the run, the request and the order have to agree.
+  under: the experiment, the run, the request and the order have to agree, and
+  every one of them has to be there — a dimension that is missing is not a
+  dimension that matches.
 - **Never** commit a value the record did not sanitize: a query value, a request
   URL and a crawl URL that reach a proposal, a fixture or a test carry a
-  placeholder or a value that has no secret shape.
+  placeholder or a value the record's own redactor would leave alone — and the
+  redactor judges the value by the name of the parameter it was sent under.
+- **Never** keep a second copy of the sanitization rules in the generator: the
+  generator asks `redact.py`, so the two cannot drift apart.
+- **Never** accept a candidate that contradicts the recorded request: it has to
+  name the identity parameters the contract declares, and every parameter it
+  advertises has to be one the recorded request sent, with the same value.
+- **Never** write a file before the whole proposal is rendered and checked: a
+  refusal leaves nothing behind.
 - **Never** let the fixtures of two contracts share one directory, and never
   leave a file in the fixture directory that the generator does not produce.
 - **Never** accept a claim whose evidence does not come from an experiment of
@@ -239,6 +284,9 @@ deleted file would otherwise pass.
   drift gate fails otherwise.
 - **Always** let the drift gate inventory the disk as well as the manifest: a
   file no manifest names is drift too.
+- **Always** let the drift gate check that a fixture is named after the
+  observation it holds and lives in the directory of its contract: a fixture
+  renamed on the disk, in the manifest and in the proposal together still drifts.
 - **Never** add a production dependency on the research tooling; the generator
   writes into a test source set and a development directory.
 - A new contract family is a new entry in `CONTRACTS`, not a new framework.

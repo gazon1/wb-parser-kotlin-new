@@ -229,6 +229,22 @@ class SimpleWorld:
                         capture[name] = value
         self.write_evidence(captures)
 
+    def drop_from_capture(self, capture_id: str, *path: str) -> None:
+        """Remove a field of a capture of the evidence, leaving the summary as it is.
+
+        A dimension the capture does not describe is a dimension the generator cannot
+        check the capture against: the bundle has to say which run it is, which
+        request it made and in which order the answer came.
+        """
+        captures = self.captures()
+        for capture in captures:
+            if capture["id"] == capture_id:
+                target = capture
+                for name in path[:-1]:
+                    target = target[name]
+                target.pop(path[-1], None)
+        self.write_evidence(captures)
+
     def patch_candidate(self, **changes) -> None:
         """Change the candidate of the record."""
         record = yaml.safe_load((self.directory / "investigation.yaml").read_text(encoding="utf-8"))
@@ -576,3 +592,101 @@ def test_a_leftover_fixture_in_the_contract_directory_is_refused(world, tmp_path
 
     with pytest.raises(generate_proposal.Refused):
         world.generate(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("session", "123456789012"),
+        ("session", "YWJjZGVmZ2hp"),
+        ("query", "Alice"),
+        ("search", "John"),
+        ("access_token", "abc123"),
+        ("x-auth-token", "abc123"),
+    ],
+)
+def test_a_short_value_the_record_would_have_redacted_is_refused(world, tmp_path, name, value):
+    # The shape of a value says little on its own: a session id and a token are
+    # short and made of ordinary characters. The name of the parameter is what the
+    # record's own redactor judges by, and the generator has to judge by it too — a
+    # policy of its own would be a second, weaker policy.
+    world.patch_candidate(query={name: value})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "did not sanitize" in str(refusal.value), str(refusal.value)
+
+
+def test_a_value_the_record_left_alone_is_published(world, tmp_path):
+    # The catalog id of the record is evidence: the site chose it, it is a run of
+    # digits the site asks with, and the redactor keeps it.
+    world.patch_observation(url=f"{ENDPOINT}?resultset=catalog&sort=popular&dest=1259570991")
+    world.patch_candidate(query={"dest": "1259570991"})
+
+    written = world.generate(tmp_path)
+
+    proposal = next(path for path in written if path.name == "proposal.md").read_text(encoding="utf-8")
+    assert "1259570991" in proposal
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("experiment",),
+        ("run",),
+        ("request", "method"),
+        ("request", "url"),
+        ("ordering", "orderHash"),
+    ],
+)
+def test_a_capture_that_does_not_describe_its_run_is_refused(world, tmp_path, path):
+    # The bundle and the summary describe the same run twice, and every dimension
+    # that tells one run from another has to be there on both sides. A dimension
+    # that is missing is not a dimension that matches.
+    world.drop_from_capture("baseline-1", *path)
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_candidate_with_another_identity_parameter_is_refused(world, tmp_path):
+    # The catalog search and the filters search share the path and differ only in
+    # `resultset`. A candidate that names the other one is not this contract, and a
+    # proposal that advertised it would pin a request nobody made.
+    world.patch_candidate(query={"resultset": "filters"})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the contract declares" in str(refusal.value), str(refusal.value)
+
+
+def test_a_candidate_that_contradicts_the_recorded_request_is_refused(world, tmp_path):
+    # The proposal publishes the query of the candidate as the parameters of the
+    # contract, and the fixture pins the request that was recorded. The two must
+    # say the same thing.
+    world.patch_candidate(query={"resultset": "catalog", "sort": "priceup"})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "would advertise one request" in str(refusal.value), str(refusal.value)
+
+
+def test_a_candidate_that_advertises_a_parameter_nobody_sent_is_refused(world, tmp_path):
+    world.patch_candidate(query={"resultset": "catalog", "dest": "1259570991"})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the evidence does not have" in str(refusal.value), str(refusal.value)
+
+
+def test_a_refusal_leaves_no_file_behind(world, tmp_path):
+    # The whole proposal is rendered and checked before the first byte reaches the
+    # disk: a refusal never leaves half a proposal on the disk for a human to
+    # clean up.
+    world.patch_page("https://www.wildberries.ru/catalog/131954/list.aspx")
+    output = tmp_path / "out"
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(output)
+
+    assert [path for path in output.rglob("*") if path.is_file()] == []
