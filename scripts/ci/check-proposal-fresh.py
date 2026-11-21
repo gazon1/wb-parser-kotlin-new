@@ -75,6 +75,17 @@ FIXTURE_PATH = re.compile(r"^(?P<directory>.+/fixtures/[^/]+/(?P<candidate>[^/]+
 # fixtures are checked against the record and not against themselves.
 EVIDENCE_BUNDLE = re.compile(rf"^{re.escape(EVIDENCE_DIR)}/(?P<investigation>[^/]+)/evidence/[^/]+\.json$")
 
+# The record of an investigation is two files: the investigation that declares the
+# contract and the validation that records what was seen. A proposal is produced
+# from both, so a manifest that names one of them watches half of the record — and
+# the half it leaves out is the half that may change unnoticed.
+REQUIRED_SOURCES = ("investigation.yaml", "validation.yaml")
+
+# The proposal says which investigation it was produced from, in the line the
+# generator writes above it. The manifest says the same thing in a field; the two
+# have to name the same record.
+PROPOSAL_INVESTIGATION = re.compile(r"from the investigation `([^`]+)`")
+
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -342,27 +353,52 @@ def object_field(container: dict, field: str) -> dict:
     return value if isinstance(value, dict) else {}
 
 
+def proposal_investigation(proposal_path: Path) -> str | None:
+    """The investigation the proposal says it was produced from.
+
+    `None` means the proposal does not say — the file is missing, is not text, or
+    carries no line that names an investigation. The caller tells the two apart: a
+    proposal that is not readable is already a finding about the file, and a second
+    finding about it would say the same thing twice.
+    """
+    text = read_text(proposal_path)
+    if text is None:
+        return None
+    match = PROPOSAL_INVESTIGATION.search(text)
+    return match.group(1) if match else None
+
+
 def source_investigation_findings(investigation: str, entries: dict[str, str]) -> list[str]:
-    """The sources of the proposal that belong to another investigation.
+    """The sources of the proposal that are not part of the record it names.
 
     A proposal is produced from one record: the record of the investigation the
     manifest names and the evidence of that investigation. A source of another
     investigation is a source of another record — and the captures of another
     record would witness the fixtures of this one, which is a fixture built from a
     record nobody named.
+
+    A source outside the record altogether is the same thing with a shorter path:
+    a file that is not part of the record cannot witness it either, and a manifest
+    that may point anywhere is a manifest that watches nothing.
     """
     findings: list[str] = []
+    record = f"{EVIDENCE_DIR}/{investigation}/"
     for relative in sorted(entries):
-        parts = Path(relative).parts
-        if len(parts) < 4 or parts[:3] != ("devtools", "wb-research", "investigations"):
+        if not investigation or relative.startswith(record):
             continue
-        owner = parts[3]
-        if owner != investigation:
+        parts = Path(relative).parts
+        if len(parts) >= 4 and parts[:3] == ("devtools", "wb-research", "investigations"):
             findings.append(
-                f"{relative}: the source belongs to the investigation '{owner}' — the proposal names "
-                f"the investigation '{investigation}', and the record of another investigation is not "
-                f"the record this proposal was produced from"
+                f"{relative}: the source belongs to the investigation '{parts[3]}' — the proposal "
+                f"names the investigation '{investigation}', and the record of another investigation "
+                f"is not the record this proposal was produced from"
             )
+            continue
+        findings.append(
+            f"{relative}: the source is not part of the record of the investigation '{investigation}' "
+            f"— the proposal names the record it was produced from, and a source outside that record "
+            f"is a source of something else"
+        )
     return findings
 
 
@@ -721,6 +757,48 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
     compare(sections["sources"], "the record changed after this proposal was generated")
     compare(sections["generated"], "a generated file was changed by hand")
 
+    # The proposal is produced from one investigation, and it lives in the directory
+    # of that investigation. A manifest that names another one would bind the
+    # fixtures of this proposal to the record of another investigation — and the
+    # proposal could be aimed at a record nobody read.
+    directory = manifest_path.parent.name
+    if investigation and investigation != directory:
+        findings.append(
+            f"{relative_manifest}: the manifest names the investigation '{investigation}' but the "
+            f"proposal lives in the directory '{directory}' — a proposal is produced from the "
+            f"record of the investigation it is named after"
+        )
+
+    # The proposal says in its own words which investigation it was produced from.
+    # The manifest says the same thing in a field, and a manifest that names one
+    # record while the proposal names another is a proposal that points at two.
+    proposal_path = manifest_path.parent / "proposal.md"
+    named = proposal_investigation(proposal_path)
+    if named is None and proposal_path.is_file() and read_text(proposal_path) is not None:
+        findings.append(
+            f"{proposal_path.relative_to(root)}: the proposal names no investigation — a proposal "
+            f"says which record it was produced from, so the gate can tell whose record it is"
+        )
+    elif named is not None and named != investigation:
+        findings.append(
+            f"{proposal_path.relative_to(root)}: the proposal names the investigation '{named}' and "
+            f"the manifest names '{investigation}' — the proposal and the manifest have to name the "
+            f"same record"
+        )
+
+    # The record of an investigation is two files, and the proposal is produced from
+    # both of them. A manifest that leaves one out watches half the record: the
+    # contract, the validation, or the claims of the proposal could change and the
+    # gate would stay green.
+    for name in REQUIRED_SOURCES:
+        relative = f"{EVIDENCE_DIR}/{investigation}/{name}"
+        if investigation and relative not in sections["sources"]:
+            findings.append(
+                f"{relative_manifest}: the manifest names no source of the proposal for '{relative}' — "
+                f"the proposal is produced from the record of the investigation, and the record is "
+                f"the investigation and its validation"
+            )
+
     # The generator and the tools it reads are the tool the proposal was produced by.
     # A dependency that changed has to be reported as what it is — the tool behind
     # the proposal moved — and a dependency the manifest does not name cannot be
@@ -830,6 +908,7 @@ def self_test() -> None:
         record.mkdir(parents=True)
         generator.parent.mkdir(parents=True)
         (record / "investigation.yaml").write_text("status: concluded\n", encoding="utf-8")
+        (record / "validation.yaml").write_text("status: validated\n", encoding="utf-8")
         generator.write_text("# the generator\n", encoding="utf-8")
         redactor = root / REDACTOR_PATH
         redactor.write_text("# the redactor\n", encoding="utf-8")
@@ -950,6 +1029,8 @@ def self_test() -> None:
         def write_proposal(fixture_path: str = fixture_relative) -> None:
             (proposal / "proposal.md").write_text(
                 "# a proposal\n\n"
+                "Generated by `scripts/wb-research/generate_proposal.py` from the investigation "
+                "`demo`.\n\n"
                 "## The files this proposal adds\n\n"
                 "- `devtools/wb-research/proposals/demo/proposal.md`\n"
                 f"- `{fixture_path}`\n",
@@ -967,6 +1048,7 @@ def self_test() -> None:
             },
             "sources": {
                 "devtools/wb-research/investigations/demo/investigation.yaml": digest(record / "investigation.yaml"),
+                "devtools/wb-research/investigations/demo/validation.yaml": digest(record / "validation.yaml"),
                 "devtools/wb-research/investigations/demo/evidence/validation.json": digest(bundle),
             },
             "generated": {
@@ -1508,6 +1590,7 @@ def self_test() -> None:
             },
             "sources": {
                 "devtools/wb-research/investigations/demo/investigation.yaml": digest(record / "investigation.yaml"),
+                "devtools/wb-research/investigations/demo/validation.yaml": digest(record / "validation.yaml"),
                 "devtools/wb-research/investigations/demo/evidence/validation.json": digest(bundle),
             },
             "generated": {
@@ -1521,6 +1604,79 @@ def self_test() -> None:
         (second / "manifest.json").unlink()
         (second / "proposal.md").unlink()
         second.rmdir()
+
+        # A manifest that leaves the validation of the record out of its sources:
+        # the proposal is produced from the investigation and from its validation,
+        # and a manifest that watches one of them watches half of the record.
+        manifest["sources"].pop("devtools/wb-research/investigations/demo/validation.yaml")
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("names no source of the proposal" in finding for finding in findings), findings
+        manifest["sources"]["devtools/wb-research/investigations/demo/validation.yaml"] = digest(
+            record / "validation.yaml"
+        )
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal that names the whole record must pass"
+
+        # A source outside the record of the investigation: a manifest that may
+        # point anywhere is a manifest that watches nothing, and the file it names
+        # cannot witness the record it replaces.
+        outside = root / "devtools" / "wb-research" / "README.md"
+        outside.parent.mkdir(parents=True, exist_ok=True)
+        outside.write_text("# the readme\n", encoding="utf-8")
+        manifest["sources"]["devtools/wb-research/README.md"] = digest(outside)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("is not part of the record" in finding for finding in findings), findings
+        manifest["sources"].pop("devtools/wb-research/README.md")
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal whose sources are the record must pass"
+
+        # A manifest that names another investigation: the proposal lives in the
+        # directory of one investigation, and it cannot be produced from another.
+        manifest["investigation"] = "another"
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("lives in the directory" in finding for finding in findings), findings
+        manifest["investigation"] = "demo"
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal that names its own investigation must pass"
+
+        # A proposal that names another investigation than the manifest does: the
+        # two point at two records, and neither of them is the record on the disk.
+        write_proposal()
+        (proposal / "proposal.md").write_text(
+            (proposal / "proposal.md")
+            .read_text(encoding="utf-8")
+            .replace("from the investigation `demo`", "from the investigation `another`"),
+            encoding="utf-8",
+        )
+        manifest["generated"]["devtools/wb-research/proposals/demo/proposal.md"] = digest(proposal / "proposal.md")
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("the proposal names the investigation" in finding for finding in findings), findings
+        write_proposal()
+        manifest["generated"]["devtools/wb-research/proposals/demo/proposal.md"] = digest(proposal / "proposal.md")
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal and a manifest that name the same record must pass"
+
+        # A proposal that names no investigation at all: the gate cannot tell whose
+        # record it is, and a proposal that says nothing binds to nothing.
+        (proposal / "proposal.md").write_text(
+            "# a proposal\n\n"
+            "## The files this proposal adds\n\n"
+            "- `devtools/wb-research/proposals/demo/proposal.md`\n"
+            f"- `{fixture_relative}`\n",
+            encoding="utf-8",
+        )
+        manifest["generated"]["devtools/wb-research/proposals/demo/proposal.md"] = digest(proposal / "proposal.md")
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("names no investigation" in finding for finding in findings), findings
+        write_proposal()
+        manifest["generated"]["devtools/wb-research/proposals/demo/proposal.md"] = digest(proposal / "proposal.md")
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal that names its investigation must pass"
 
         (record / "investigation.yaml").unlink()
         findings = check(proposals, root)

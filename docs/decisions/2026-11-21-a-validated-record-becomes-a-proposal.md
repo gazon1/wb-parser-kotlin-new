@@ -504,12 +504,32 @@ deleted file would otherwise pass.
   object is a broken declaration. Reading it as an empty one would make the two
   the same and let an answer publish itself over a declaration nobody could
   read. An evidence bundle that is not an object, or whose captures are not a
-  list, is refused by name for the same reason.
+  list, is refused by name for the same reason. A field that is there and is
+  null is a broken declaration as well: the record says the field is there and
+  says nothing about it, which is not the same as a field the record does not
+  speak about.
 - **Never** let the drift gate read the evidence of another investigation: a
   proposal is produced from one record, the record of the investigation the
   manifest names, and the captures of another record cannot witness its
   fixtures. A source of another investigation is a finding, and its bundles are
-  not read at all.
+  not read at all. A source outside that record is a finding as well: a
+  manifest that may point anywhere is a manifest that watches nothing.
+- **Never** let the manifest leave part of the record out: the investigation and
+  its validation are both named as sources, because a manifest that watches one
+  of them watches half of the record — and the half it leaves out is the half
+  that may change unnoticed.
+- **Never** let the proposal and the manifest point at two records: the
+  manifest names the investigation, the proposal lives in the directory of that
+  investigation and says in its own words which record it was produced from.
+  A proposal that names another investigation is a proposal that witnesses
+  neither.
+- **Never** let the generator skip an evidence bundle in silence: a bundle that
+  names no captures is a malformed bundle, and it is refused by name — a bundle
+  nobody reads is a bundle nobody watches.
+- **Never** write a dimension of the wrong type into a fixture: the size of the
+  body is a number and the kind of the body is a boolean, and a boolean is not a
+  number. The generator checks the types the drift gate expects before it
+  writes, so a malformed record is refused before it reaches a fixture.
 - **Never** publish an answer the evidence did not record: the status, the
   content type and the keys of the body come from the candidate's own summary,
   so the summary has to agree with the capture, and the published values are the

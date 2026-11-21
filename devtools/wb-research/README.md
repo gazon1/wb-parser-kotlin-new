@@ -1365,7 +1365,16 @@ check that runs only when the manifest helps it is a check the manifest can
 switch off. The sources of the proposal have to be the sources of that
 investigation: a source of another investigation is a source of another
 record, and the captures of another record cannot witness the fixtures of this
-one — so the gate names such a source and does not read its bundles. A fixture
+one — so the gate names such a source and does not read its bundles. A source
+outside the record altogether is named as well: a manifest that may point
+anywhere is a manifest that watches nothing. And the record itself has to be
+named in full — the investigation and its validation — because a manifest that
+leaves one of them out watches half of the record, and the half it leaves out
+is the half that may change unnoticed. The identity of the record is the same
+on all three sides: the manifest names the investigation, the proposal lives in
+the directory of that investigation and says in its own words which record it
+was produced from — a proposal that points at two records is a proposal that
+witnesses neither. A fixture
 has to name the investigation of the
 proposal that holds it, next to the candidate and the observation: a fixture of
 another investigation is a fixture of another record, and the gate names it even

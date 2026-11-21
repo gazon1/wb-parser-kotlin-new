@@ -1117,3 +1117,68 @@ def test_an_endpoint_that_names_no_host_is_refused(world, tmp_path):
     with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
     assert "names no host" in str(refusal.value), str(refusal.value)
+
+
+def test_a_candidate_whose_response_schema_is_null_is_refused(world, tmp_path):
+    # A field that is there and says nothing is not a field that is not there: the
+    # record declares a shape and declares it broken. Read as an empty object it
+    # would look like a candidate that promised no shape at all, and the answer
+    # would be published without anybody saying that the declaration is broken.
+    world.patch_candidate(response_schema=None)
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the 'response_schema' field is null" in str(refusal.value), str(refusal.value)
+
+
+def test_an_observation_whose_request_is_null_is_refused(world, tmp_path):
+    # The same on the side of the record: a request that is there and is null is
+    # a malformed record, and a malformed record is refused by name.
+    world.patch_observation(request=None)
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the 'request' field is null" in str(refusal.value), str(refusal.value)
+
+
+def test_a_bundle_whose_captures_are_null_is_refused(world, tmp_path):
+    # A bundle that says it holds captures and holds none is a malformed bundle:
+    # the generator reads every bundle of the evidence, and a bundle it skips is a
+    # bundle nobody looks at.
+    broken = world.directory / "evidence" / "broken.json"
+    broken.write_text(json.dumps({"schema": "wb-research/validation/v1", "captures": None}), encoding="utf-8")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the captures of the evidence bundle 'broken.json' are null" in str(refusal.value), str(refusal.value)
+
+
+def test_a_response_whose_body_bytes_are_text_is_refused(world, tmp_path):
+    # The size of the body is a number. A number that reads as a text is not a
+    # number, and the fixture would carry it as if the record had held one.
+    world.patch_observation(response={"status": 200, "contentType": "text/plain", "bodyBytes": "10", "isJson": True})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the 'bodyBytes' dimension is '10' and not a number" in str(refusal.value), str(refusal.value)
+
+
+def test_a_response_whose_is_json_is_text_is_refused(world, tmp_path):
+    # The same for the shape of the body: a flag that became the text `true` is a
+    # flag nobody set.
+    world.patch_observation(response={"status": 200, "contentType": "text/plain", "bodyBytes": 10, "isJson": "true"})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the 'isJson' dimension is 'true' and not a boolean" in str(refusal.value), str(refusal.value)
+
+
+def test_a_bundle_that_names_no_captures_is_refused(world, tmp_path):
+    # A bundle that names no captures is not evidence. Skipped in silence it would
+    # be a file of the record that nobody read and nobody watched.
+    broken = world.directory / "evidence" / "broken.json"
+    broken.write_text(json.dumps({"schema": "wb-research/validation/v1"}), encoding="utf-8")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the evidence bundle 'broken.json' names no captures" in str(refusal.value), str(refusal.value)

@@ -467,13 +467,20 @@ def object_field(document: dict[str, Any], name: str, where: str = "") -> dict[s
     object would make the two the same — a `response_schema` written as a list
     would look like a candidate that declared no shape at all, and the answer
     would be published without anybody saying that the declaration is broken.
+
+    A field that is there and is null is malformed in the same way: the record
+    says the field is there and says nothing about it. A field that is not there
+    is a dimension the record does not speak about, and the two have to stay
+    apart — otherwise a candidate that declares `response_schema: null` would be
+    read as a candidate that declares no shape at all.
     """
-    value = document.get(name)
-    if value is None:
+    if name not in document:
         return {}
+    value = document[name]
     if not isinstance(value, dict):
+        shown = "null" if value is None else repr(value)
         raise Refused(
-            f"{where}the '{name}' field is {value!r} and not an object — a field that is not there "
+            f"{where}the '{name}' field is {shown} and not an object — a field that is not there "
             f"is a dimension the record does not speak about, and a field that is there and is not "
             f"an object is a malformed record"
         )
@@ -629,6 +636,29 @@ def candidate_agrees_with_evidence(
             )
 
 
+def response_dimensions(response: dict[str, Any], where: str) -> None:
+    """The dimensions of the answer that the record has to hold by type.
+
+    A boolean is not a number and a number is not a text: `isinstance(True, int)`
+    is true in Python, and a size that became `true` is a size nobody recorded.
+    The fixture is read by a typed test, so a dimension of the wrong type would
+    reach it as if it were the dimension the record holds — the drift gate would
+    catch it later, and the record would have been published in the meantime.
+    """
+    body = response.get("bodyBytes")
+    if not isinstance(body, int) or isinstance(body, bool):
+        raise Refused(
+            f"{where}the 'bodyBytes' dimension is {body!r} and not a number — a dimension of the "
+            f"wrong type is not the dimension"
+        )
+    flag = response.get("isJson")
+    if not isinstance(flag, bool):
+        raise Refused(
+            f"{where}the 'isJson' dimension is {flag!r} and not a boolean — a dimension of the "
+            f"wrong type is not the dimension"
+        )
+
+
 def answer_of_the_evidence(candidate: dict[str, Any], capture: dict[str, Any]) -> dict[str, Any]:
     """The answer the evidence recorded — and the refusal when the candidate disagrees.
 
@@ -647,6 +677,7 @@ def answer_of_the_evidence(candidate: dict[str, Any], capture: dict[str, Any]) -
     """
     recorded = object_field(capture, "response", "the capture: ")
     schema = object_field(capture, "schema", "the capture: ")
+    response_dimensions(recorded, "the capture: ")
     status = recorded.get("status")
     content_type = recorded.get("contentType")
     keys = schema.get("topLevelKeys")
@@ -833,12 +864,16 @@ def evidence_index(directory: Path) -> dict[str, dict[str, Any]]:
                 f"the evidence bundle '{path.name}' is not an object — the captures it holds are "
                 f"what the fixtures were built from, and a bundle that is not an object holds none"
             )
-        listed = bundle.get("captures")
-        if listed is None:
-            continue
-        if not isinstance(listed, list):
+        if "captures" not in bundle:
             raise Refused(
-                f"the captures of the evidence bundle '{path.name}' are not a list — a bundle holds a list of captures"
+                f"the evidence bundle '{path.name}' names no captures — a bundle that holds no "
+                f"captures is not evidence, and a bundle nobody reads is a bundle nobody watches"
+            )
+        listed = bundle["captures"]
+        if not isinstance(listed, list):
+            shown = "null" if listed is None else "not a list"
+            raise Refused(
+                f"the captures of the evidence bundle '{path.name}' are {shown} — a bundle holds a list of captures"
             )
         for capture in listed:
             if isinstance(capture, dict) and capture.get("id"):
@@ -1042,6 +1077,7 @@ def fixture_of(
     response = object_field(observation, "response", "the observation: ")
     answer = object_field(observation, "schema", "the observation: ")
     ordering = object_field(observation, "ordering", "the observation: ")
+    response_dimensions(response, "the observation: ")
 
     return {
         "schema": "wb-research/contract-fixture/v1",
