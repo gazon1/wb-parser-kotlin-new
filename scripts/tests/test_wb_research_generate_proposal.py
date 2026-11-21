@@ -323,6 +323,18 @@ class SimpleWorld:
         record["api_candidates"].append({"id": "another-candidate", "method": "GET", "endpoint": endpoint})
         (self.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
 
+    def write_candidates(self, value) -> None:
+        """Put something that is not a list of candidates into `api_candidates`."""
+        record = yaml.safe_load((self.directory / "investigation.yaml").read_text(encoding="utf-8"))
+        record["api_candidates"] = value
+        (self.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
+
+    def write_claims(self, value) -> None:
+        """Put something that is not a list of claims into `validation`."""
+        record = yaml.safe_load((self.directory / "investigation.yaml").read_text(encoding="utf-8"))
+        record["validation"] = value
+        (self.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
+
     def generate(self, output_root: Path) -> list[Path]:
         return generate_proposal.generate("2026-01-01-demo", output_root, investigations_root=self.investigations)
 
@@ -459,6 +471,32 @@ def test_a_record_whose_summary_is_a_link_to_another_record_is_refused(world, tm
     with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)
     assert "is not a file of this record" in str(refusal.value), str(refusal.value)
+
+
+def test_a_record_whose_top_level_is_not_a_mapping_is_refused(world, tmp_path):
+    # Readable YAML and not a record. The refusal names the file and the shape, because
+    # the alternative is an AttributeError from whichever reader happened to run first.
+    (world.directory / "investigation.yaml").write_text(yaml.safe_dump(["a", "b"]), encoding="utf-8")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "and not a mapping" in str(refusal.value), str(refusal.value)
+
+
+def test_a_record_whose_candidates_are_not_candidates_is_refused(world, tmp_path):
+    world.write_candidates("not-a-candidate")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "not a list of candidates" in str(refusal.value), str(refusal.value)
+
+
+def test_a_record_whose_claims_are_not_claims_is_refused(world, tmp_path):
+    world.write_claims(["not-a-claim"])
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "not a list of claims" in str(refusal.value), str(refusal.value)
 
 
 def test_an_observation_without_a_capture_is_refused(world, tmp_path):

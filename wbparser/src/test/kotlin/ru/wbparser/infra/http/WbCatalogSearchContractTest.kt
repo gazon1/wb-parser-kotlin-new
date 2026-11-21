@@ -364,6 +364,11 @@ class WbCatalogSearchContractTest :
                 if (REDACTED_VALUE.matches(value) || name in storefrontOnly) return@forEach
                 page[name] shouldBe value
             }
+            // And the names, in both directions: a value that matches is not enough,
+            // because a parameter the record did not name would go unnoticed. A page that
+            // dropped `dest` and invented one of its own would pass every assertion above.
+            // The rule is the baseline's, read against the page the record recorded.
+            page.keys shouldBe nextPage.request.query.keys + crawlerOnly - storefrontOnly
         }
 
         test("the next page is another window of the same catalog") {

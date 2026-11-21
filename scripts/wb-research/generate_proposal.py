@@ -297,13 +297,39 @@ UniqueKeyLoader.add_constructor(
 def load_yaml(path: Path) -> Any:
     with path.open(encoding="utf-8") as handle:
         try:
-            return yaml.load(handle, Loader=UniqueKeyLoader)
+            parsed = yaml.load(handle, Loader=UniqueKeyLoader)
         except yaml.YAMLError as error:
             raise Refused(f"the record '{path.name}' is not readable YAML: {error}") from error
+    # A record is a mapping, and every document the tool reads is one: a file whose
+    # top level is a list, a string or a number is readable YAML and not a record.
+    # It is refused here, where the file is still named, so every reader below may
+    # treat what it got as the mapping the format promises — a traceback from
+    # `['a'].get(...)` is not the way to tell a reviewer the record is malformed.
+    if not isinstance(parsed, dict):
+        raise Refused(
+            f"the record '{path.name}' is {type(parsed).__name__} and not a mapping — "
+            f"every document of a record is a set of named fields"
+        )
+    return parsed
 
 
 def claims_of(investigation: dict[str, Any]) -> list[dict[str, Any]]:
-    return list(investigation.get("validation") or [])
+    """The claims the record states, refused when `validation` is not a list of them.
+
+    A claim is a set of named fields. A record whose `validation` is a string, a
+    number or a mapping is readable YAML and not a record: refused once, here, so
+    every reader of a claim below may ask it for its state — an `AttributeError`
+    from `'x'.get(...)` names neither the record nor the field that is wrong.
+    """
+    claims = investigation.get("validation")
+    if claims is None:
+        return []
+    if not isinstance(claims, list) or not all(isinstance(claim, dict) for claim in claims):
+        raise Refused(
+            "the record's 'validation' is not a list of claims — every claim of a record is a "
+            "set of named fields, and a claim that is not one states nothing the record earned"
+        )
+    return claims
 
 
 def validated_claims(investigation: dict[str, Any]) -> list[dict[str, Any]]:
@@ -417,8 +443,26 @@ def endpoint_problems(endpoint: str) -> list[str]:
     return problems
 
 
+def candidates_of(investigation: dict[str, Any]) -> list[dict[str, Any]]:
+    """The candidates the record names, refused when the list is not a list of them.
+
+    `api_candidates` is a list of mappings, and the tool reads it in three places.
+    A record that holds a string there is readable YAML and not a record: refused
+    once, here, rather than as an `AttributeError` from whichever reader ran first.
+    """
+    candidates = investigation.get("api_candidates")
+    if candidates is None:
+        return []
+    if not isinstance(candidates, list) or not all(isinstance(item, dict) for item in candidates):
+        raise Refused(
+            "the record's 'api_candidates' is not a list of candidates — every candidate of a "
+            "record is a set of named fields, and a candidate that is not one names no endpoint"
+        )
+    return candidates
+
+
 def candidate_of(investigation: dict[str, Any], candidate_id: str) -> dict[str, Any]:
-    for candidate in investigation.get("api_candidates") or []:
+    for candidate in candidates_of(investigation):
         if candidate.get("id") == candidate_id:
             return candidate
     raise Refused(f"the record has no candidate '{candidate_id}'")
@@ -1723,6 +1767,11 @@ class %%TEST_CLASS%% :
                 if (REDACTED_VALUE.matches(value) || name in storefrontOnly) return@forEach
                 page[name] shouldBe value
             }
+            // And the names, in both directions: a value that matches is not enough,
+            // because a parameter the record did not name would go unnoticed. A page that
+            // dropped `dest` and invented one of its own would pass every assertion above.
+            // The rule is the baseline's, read against the page the record recorded.
+            page.keys shouldBe nextPage.request.query.keys + crawlerOnly - storefrontOnly
         }
 
         test("the next page is another window of the same catalog") {
@@ -2048,9 +2097,7 @@ def render_proposal(
             evidence = ", ".join(f"`{item}`" for item in (claim.get("evidence") or []))
             lines.append(f"| {claim.get('claim')} | `{claim.get('state')}` | {evidence} |")
         lines.append("")
-    others = [
-        candidate for candidate in investigation.get("api_candidates") or [] if candidate.get("id") != candidate_id
-    ]
+    others = [candidate for candidate in candidates_of(investigation) if candidate.get("id") != candidate_id]
     if others:
         lines.append(
             f"The record names {len(others)} other candidate(s). The validation is of "
@@ -2250,7 +2297,7 @@ def generate(
     # The proposal names the endpoint of every candidate the record holds, so every
     # one of them is a committed value and holds to the record's own rule: a value
     # the record's own redactor would replace is refused here as well.
-    for other in investigation.get("api_candidates") or []:
+    for other in candidates_of(investigation):
         problems = endpoint_problems(str(other.get("endpoint") or ""))
         if problems:
             raise Refused(
@@ -2747,6 +2794,11 @@ def self_test() -> None:
         # not only the number of the page: a builder that changed another parameter from the
         # second page on would still pass a page-only assertion.
         assert "nextPage.request.query.forEach" in test_source, "the page-2 request is not compared as a whole"
+        # And the names of that request, in both directions: a value that matches says
+        # nothing about a parameter the record never named.
+        assert "page.keys shouldBe nextPage.request.query.keys + crawlerOnly - storefrontOnly" in test_source, (
+            "the page-2 request names are not compared"
+        )
 
         fixture = json.loads(
             (root / f"{fixture_dir_of('storefront-catalog-search')}/baseline-1.json").read_text(encoding="utf-8")
