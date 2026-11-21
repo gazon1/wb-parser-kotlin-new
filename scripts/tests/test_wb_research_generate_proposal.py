@@ -233,6 +233,18 @@ class SimpleWorld:
                         capture[name] = value
         self.write_evidence(captures)
 
+    def patch_capture_request(self, capture_id: str, **changes) -> None:
+        """Change the request of a capture of the evidence, leaving the summary as it is.
+
+        The request of a capture is the request the summary describes: the names of
+        the headers it carried are a part of it, and the two have to agree.
+        """
+        captures = self.captures()
+        for capture in captures:
+            if capture["id"] == capture_id:
+                capture["request"].update(changes)
+        self.write_evidence(captures)
+
     def drop_from_capture(self, capture_id: str, *path: str) -> None:
         """Remove a field of a capture of the evidence, leaving the summary as it is.
 
@@ -1224,6 +1236,47 @@ def test_a_count_the_site_did_not_give_is_refused(world, tmp_path):
             "total": None,
         }
     )
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "records no productCount of the answer" in str(refusal.value), str(refusal.value)
+
+
+def test_a_capture_that_names_other_headers_than_the_summary_is_refused(world, tmp_path):
+    # The fixture takes the headers from the summary, the proposal publishes the
+    # capture and the gate compares the two — so the two descriptions of the run
+    # have to name the same headers. A capture that names others would write a
+    # fixture the gate turns down.
+    world.patch_capture_request("baseline-1", headerNames=["deviceid"])
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "have to name the same headers" in str(refusal.value), str(refusal.value)
+
+
+def test_a_capture_whose_count_is_a_boolean_is_refused(world, tmp_path):
+    # A boolean is not a number: `True == 1` in Python, so a capture that recorded
+    # `true` where the summary recorded `2` looks like a match to the generator
+    # and is a finding to the gate that reads the same record.
+    world.patch_capture(
+        "baseline-1",
+        schema={
+            "jsonType": "object",
+            "topLevelKeys": ["metadata", "products", "total"],
+            "productCount": True,
+            "total": 7,
+        },
+    )
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "not a number" in str(refusal.value), str(refusal.value)
+
+
+def test_a_capture_that_records_no_count_is_refused(world, tmp_path):
+    # The capture is the witness of the fixture: a count it does not hold cannot
+    # witness one, and the gate asks the capture for the count as well.
+    world.drop_from_capture("baseline-1", "schema", "productCount")
 
     with pytest.raises(generate_proposal.Refused) as refusal:
         world.generate(tmp_path)

@@ -1253,9 +1253,14 @@ anything is written, and so is one that leaves a parameter of the request out.
 
 **A capture has to describe its run.** The bundle and the summary describe the
 same run twice, and every dimension that tells one run from another — the
-experiment, the run, the method, the URL and the order of the answer — has to be
-there on both sides and to agree. A dimension that is missing is not a dimension
-that matches, and neither is a dimension that is there but of the wrong type: a
+experiment, the run, the method, the URL, the names of the headers the request
+carried and the order of the answer — has to be there on both sides and to
+agree. The names of the headers are a part of the request: the fixture takes
+them from the summary, the proposal publishes the capture, and the gate
+compares the two — so a capture that names other headers than the summary
+would write a fixture the gate turns down. A dimension that is missing is not a
+dimension that matches, and neither is a dimension that is there but of the
+wrong type: a
 status that became the text `200` is not the status the capture recorded, and a
 comparison that reads both sides as text would call them equal. The observation
 has to belong to the experiment that holds it too: the bundle and the summary
@@ -1269,6 +1274,14 @@ top-level keys, the number of its products and their total. A summary that
 says the request came with 200 while the bundle says 498 would write a fixture
 and a proposal that describe two different answers, and the record would earn
 neither.
+
+**The counts of the answer are numbers on both sides.** A boolean is not a
+number, and in Python `True == 1` — so a capture that recorded `true` where
+the summary recorded `1` would look like a match to the generator and be a
+finding to the gate that reads the same record. The counts are therefore
+checked for what they are before they are compared, and a capture that records
+no count at all is refused by name: the capture is the witness of the fixture,
+and a count it does not hold cannot witness one.
 
 **The names are sets, and a name that appears twice is said on its own.** The
 generated test asks whether a header was sent and whether the answer carries a
@@ -1385,7 +1398,12 @@ was produced from — a proposal that points at two records is a proposal that
 witnesses neither. A source is not taken on its word either: the path is
 normalized and resolved before it is judged, so a name that reaches out of the
 record with `..`, or that points at a file of another investigation, is not a
-file of this record. A fixture
+file of this record. And the record itself is not taken on its word: the
+directory of the investigation is resolved and compared with the place its name
+points at, so a record that is a link to the record of another investigation is
+named before any of its sources is read — the sources would resolve into the
+other record, and the captures of the other record would witness the fixtures of
+this one. A fixture
 has to name the investigation of the
 proposal that holds it, next to the candidate and the observation: a fixture of
 another investigation is a fixture of another record, and the gate names it even

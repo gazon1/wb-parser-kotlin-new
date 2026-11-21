@@ -495,9 +495,9 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
     another experiment — would put the products of one run into the fixture of
     another, and the fixture would look perfectly plausible. So the two descriptions
     have to agree on every dimension that tells one run from another: the
-    experiment, the run, the method, the URL and the order of the answer — and on
-    the answer itself, since the fixture is built from the summary while the
-    proposal publishes the capture.
+    experiment, the run, the method, the URL, the names of the headers the request
+    carried and the order of the answer — and on the answer itself, since the
+    fixture is built from the summary while the proposal publishes the capture.
 
     Every dimension has to be *there* on both sides. A dimension that is missing is
     not a dimension that matches: a capture that says nothing about the experiment it
@@ -505,6 +505,12 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
     bundle that has lost the order hash cannot be checked against the summary at all.
     So an incomplete capture is refused rather than accepted on the dimensions that
     happen to be present.
+
+    A dimension that is there but is not of the type the dimension holds is refused
+    as well, and named: the names of the headers are names, the counts of the answer
+    are numbers. The gate reads the same record and asks the same question, and a
+    generator that passed a record the gate would refuse would write a proposal
+    that its own gate turns down.
     """
     for name in ("experiment", "run"):
         left, right = capture.get(name), observation.get(name)
@@ -516,6 +522,30 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
         left, right = capture_request.get(name), observation_request.get(name)
         if left is None or right is None or str(left) != str(right):
             return False
+    # The names of the headers the request carried are part of the request: the
+    # fixture takes them from the summary, the proposal publishes the capture, and
+    # the gate compares the two. So the two descriptions of the run have to name
+    # the same headers — the names are a set, the order they came in is not a
+    # dimension — and both have to name them: a capture that says nothing about
+    # the headers cannot be told apart from a capture of another request.
+    capture_headers = capture_request.get("headerNames")
+    observation_headers = observation_request.get("headerNames")
+    if capture_headers is None or observation_headers is None:
+        return False
+    for side, names in (("the capture", capture_headers), ("the observation", observation_headers)):
+        if not isinstance(names, list):
+            raise Refused(
+                f"{where}{side} holds the header names of the request that are not a list — the names "
+                f"of the headers are a list of names"
+            )
+        if not all(isinstance(name, str) for name in names):
+            raise Refused(f"{where}{side} holds a header name that is not a name — the names of the headers are names")
+    if set(capture_headers) != set(observation_headers):
+        raise Refused(
+            f"{where}the capture names the headers {sorted(set(capture_headers))} of the request and the "
+            f"summary names {sorted(set(observation_headers))} — the fixture takes the headers from the "
+            f"summary and the proposal publishes the capture, so the two have to name the same headers"
+        )
     capture_order = object_field(capture, "ordering", f"{where}the capture: ").get("orderHash")
     observation_order = object_field(observation, "ordering", f"{where}the observation: ").get("orderHash")
     if capture_order is None or observation_order is None or capture_order != observation_order:
@@ -524,6 +554,25 @@ def capture_matches_observation(capture: dict[str, Any], observation: dict[str, 
     # so the answer has to be the same one in both: a summary that says the request
     # came with 200 while the bundle says 498 would write a fixture and a proposal
     # that describe two different answers.
+    #
+    # The counts of the answer are numbers on both sides, and they are checked for
+    # what they are before they are compared: a boolean is not a number — `True == 1`
+    # in Python — so a capture that recorded `true` where the summary recorded `1`
+    # would pass the comparison below and be a finding in the gate that reads the
+    # same record. The two tools ask the record the same question.
+    captured_schema = object_field(capture, "schema", f"{where}the capture: ")
+    for name in ("productCount", "total"):
+        value = captured_schema.get(name)
+        if value is None:
+            raise Refused(
+                f"{where}the capture records no {name} of the answer — the capture is the witness of the "
+                f"fixture, and a count it does not hold cannot witness one"
+            )
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise Refused(
+                f"{where}the capture records a {name} of the answer that is not a number ({value!r}) — a "
+                f"boolean is not a number, and the count the site gave is a number"
+            )
     for field, names in (
         ("response", ("status", "contentType", "bodyBytes", "isJson")),
         ("schema", ("topLevelKeys", "productCount", "total")),

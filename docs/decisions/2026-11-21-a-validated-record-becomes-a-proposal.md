@@ -164,15 +164,32 @@ one request and pinning another.
 
 The capture has to describe its run. The bundle and the summary describe the
 same run twice, and every dimension that tells one run from another — the
-experiment, the run, the method, the URL and the order of the answer — has to
-be there on both sides and to agree. A dimension that is missing is not a
-dimension that matches: a capture that says nothing about the experiment it
-belongs to cannot be told apart from a capture of another one, so an incomplete
-capture is refused rather than accepted on the dimensions that happen to be
-present. The observation has to belong to the experiment that holds it as well:
+experiment, the run, the method, the URL, the names of the headers the request
+carried and the order of the answer — has to be there on both sides and to
+agree. A dimension that is missing is not a dimension that matches: a capture
+that says nothing about the experiment it belongs to cannot be told apart from a
+capture of another one, so an incomplete capture is refused rather than accepted
+on the dimensions that happen to be present. A dimension that is there but is
+not of the type the dimension holds is refused as well: the names of the headers
+are names, and the counts of the answer are numbers — a boolean is not a number,
+and in Python `True == 1`, so a capture that recorded `true` where the summary
+recorded `1` would pass a comparison that reads both sides as they are and be a
+finding in the gate that reads the same record. The two tools ask the record
+the same question, so the counts are checked for what they are before they are
+compared. The observation has to belong to the experiment that holds it as well:
 the bundle and the summary may agree with each other about a run while both
 disagree with the experiment around them, and then a claim is earned by an
 experiment the observation does not name.
+
+The record itself is not taken on its word either. The record of an
+investigation is the directory of that name under
+`devtools/wb-research/investigations`, and a directory that is a link to the
+record of another investigation is a record of something else: the sources of
+the proposal resolve into the other record, and the captures of the other
+record witness the fixtures of this one — a fixture built from a record nobody
+named. So the directory is resolved and compared with the place its name points
+at, and the sources are judged against that place rather than against whatever
+the link points at. The check runs before any source of the record is read.
 
 The whole proposal is rendered and checked before the first byte reaches the
 disk. A refusal never leaves half a proposal behind — a fixture without its
@@ -413,6 +430,18 @@ deleted file would otherwise pass.
 - **Never** accept an observation that does not belong to the experiment that
   holds it: the bundle and the summary may agree with each other and both
   disagree with the experiment around them.
+- **Never** accept a capture whose header names disagree with the summary: the
+  fixture takes the headers from the summary, the proposal publishes the
+  capture, and the gate compares the two — so the two descriptions of one run
+  have to name the same headers.
+- **Never** compare the counts of the answer before they are checked for what
+  they are: a boolean is not a number, and `True == 1` in Python — so a count
+  of the wrong type is refused by name on both sides of the comparison, and a
+  capture that records no count cannot witness a fixture.
+- **Never** let the record of an investigation be a link to the record of
+  another one: the directory is resolved and compared with the place its name
+  points at, and the sources are judged against that place — before any of them
+  is read.
 - **Never** commit a value the record did not sanitize: a query value, a request
   URL and a crawl URL that reach a proposal, a fixture or a test carry a
   placeholder or a value the record's own redactor would leave alone — and the
