@@ -145,7 +145,11 @@ def world(tmp_path):
                     "id": CANDIDATE,
                     "method": "GET",
                     "endpoint": ENDPOINT,
-                    "query": {"resultset": "catalog"},
+                    "query": {
+                        "resultset": "catalog",
+                        "sort": "popular",
+                        "query": "<redacted:query-param>",
+                    },
                     "headers": {"deviceid": "<redacted:deviceid>", "referer": "https://www.wildberries.ru/"},
                     "observed_status": 200,
                     "response_content_type": "text/plain",
@@ -254,6 +258,12 @@ class SimpleWorld:
                 candidate["query"].update(value)
             else:
                 candidate[name] = value
+        (self.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
+
+    def drop_from_candidate(self, name: str) -> None:
+        """Remove a parameter from the query of the candidate."""
+        record = yaml.safe_load((self.directory / "investigation.yaml").read_text(encoding="utf-8"))
+        record["api_candidates"][0]["query"].pop(name, None)
         (self.directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
 
     def patch_page(self, page: str) -> None:
@@ -619,8 +629,11 @@ def test_a_short_value_the_record_would_have_redacted_is_refused(world, tmp_path
 
 def test_a_value_the_record_left_alone_is_published(world, tmp_path):
     # The catalog id of the record is evidence: the site chose it, it is a run of
-    # digits the site asks with, and the redactor keeps it.
-    world.patch_observation(url=f"{ENDPOINT}?resultset=catalog&sort=popular&dest=1259570991")
+    # digits the site asks with, the redactor keeps it, and the contract declares it
+    # as the number it is.
+    world.patch_observation(
+        url=f"{ENDPOINT}?resultset=catalog&sort=popular&query=%3Credacted%3Aquery-param%3E&dest=1259570991"
+    )
     world.patch_candidate(query={"dest": "1259570991"})
 
     written = world.generate(tmp_path)
@@ -690,3 +703,64 @@ def test_a_refusal_leaves_no_file_behind(world, tmp_path):
         world.generate(output)
 
     assert [path for path in output.rglob("*") if path.is_file()] == []
+
+
+def test_personal_data_under_an_unknown_parameter_name_is_refused(world, tmp_path):
+    # The redactor judges a value by the name it was sent under, and it has no rule
+    # for a name it has never seen: `Alice` under `customer` is an ordinary word to
+    # every shape check. So the contract declares the parameters of its request, and
+    # a name it does not declare never reaches a committed file.
+    world.patch_candidate(query={"customer": "Alice"})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "is not a parameter of this contract" in str(refusal.value), str(refusal.value)
+
+
+def test_a_value_the_contract_does_not_allow_is_refused(world, tmp_path):
+    # The contract says what the values of its parameters may be: the language of
+    # the request is `ru`, and a record that says otherwise would publish a request
+    # the crawler does not make.
+    world.patch_candidate(query={"lang": "en"})
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "the contract does not allow" in str(refusal.value), str(refusal.value)
+
+
+def test_a_candidate_that_leaves_a_parameter_out_is_refused(world, tmp_path):
+    # The parameter table of the proposal is the request the fixture pins. A
+    # parameter the request sent and the table does not name is a table that lies
+    # about the request.
+    world.drop_from_candidate("sort")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "would omit a parameter" in str(refusal.value), str(refusal.value)
+
+
+def test_an_observation_of_another_experiment_is_refused(world, tmp_path):
+    # The bundle and the summary describe the same run twice, and they agree with
+    # each other here. What they do not agree with is the experiment that holds
+    # them: an observation has to belong to the experiment it is filed under, or a
+    # claim is earned by an experiment the observation does not name.
+    world.patch_observation(experiment="sort-priceup")
+
+    with pytest.raises(generate_proposal.Refused) as refusal:
+        world.generate(tmp_path)
+    assert "has to belong to the experiment" in str(refusal.value), str(refusal.value)
+
+
+def test_the_manifest_holds_the_redactor_the_generator_loads(world, tmp_path):
+    # The generator loads the record's redactor by its path, and the redactor
+    # decides what may be committed. A change of its rules has to invalidate the
+    # proposal, so its hash belongs to the manifest beside the generator's.
+    world.generate(tmp_path)
+
+    manifest = json.loads(
+        (tmp_path / "devtools/wb-research/proposals/2026-01-01-demo/manifest.json").read_text(encoding="utf-8")
+    )
+    assert "scripts/wb-research/redact.py" in manifest["generator"]
+    assert manifest["generator"]["scripts/wb-research/redact.py"] == generate_proposal.sha256_of(
+        generate_proposal.ROOT / "scripts/wb-research/redact.py"
+    )

@@ -1119,7 +1119,7 @@ names what was held back.
 | `wbparser/src/test/resources/fixtures/catalog-search/<contract>/<observation>.json` | the sanitized observation: the request as it was made, the shape of the answer and the order of the products |
 | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` | the regression test: it pins the crawler's request to the fixtures |
 | `devtools/wb-research/proposals/<id>/proposal.md` | the proposal a human reads: the contract, the claim→evidence→assertion table, the known differences, the reviewer's checklist |
-| `devtools/wb-research/proposals/<id>/manifest.json` | the hashes of the record, of the evidence bundles, of the generator and of every written file |
+| `devtools/wb-research/proposals/<id>/manifest.json` | the hashes of the record, of the evidence bundles, of the generator, of the redactor and of every written file |
 
 The fixtures live in the module that owns the contract, so the ordinary
 `./gradlew :wbparser:test` runs them — offline, with no browser and no live
@@ -1140,19 +1140,31 @@ asks the redactor instead of keeping a second, weaker copy of the rules, so the
 two cannot drift apart. A session token, an account id or a phrase somebody
 typed is refused, not published.
 
+**The contract declares the parameters of its request.** The redactor has a rule
+for every name it knows and none for a name it has never seen: `customer=Alice`
+is an ordinary word under a name nobody declared, and every shape check walks it
+through. So the contract table declares which parameters the request carries and
+what their values may be — a fixed value, a closed set of values, a number the
+site chose, or a phrase somebody typed, which only the placeholder that stands
+for it may be published. A parameter the contract does not declare never reaches
+a committed file.
+
 **The candidate and the evidence have to say the same thing.** The proposal
 publishes the query of the candidate as the parameters of the contract, and the
 fixture pins the request that was recorded. So the candidate has to name the
 identity parameters the contract declares, with the values the contract
-declares, and every parameter it advertises has to be one the recorded request
-sent, with the same value. A candidate that says `resultset=filters` while the
-record says `resultset=catalog` is refused before anything is written.
+declares, and its query has to be the query of the recorded request — the same
+parameters with the same values, in both directions. A candidate that says
+`resultset=filters` while the record says `resultset=catalog` is refused before
+anything is written, and so is one that leaves a parameter of the request out.
 
 **A capture has to describe its run.** The bundle and the summary describe the
 same run twice, and every dimension that tells one run from another — the
 experiment, the run, the method, the URL and the order of the answer — has to be
 there on both sides and to agree. A dimension that is missing is not a dimension
-that matches.
+that matches. The observation has to belong to the experiment that holds it too:
+the bundle and the summary may agree with each other while both disagree with
+the experiment around them.
 
 **A refusal leaves nothing behind.** The whole proposal is rendered and checked
 before the first byte reaches the disk, so a record that is refused half way
@@ -1191,9 +1203,12 @@ proposal first.
 hashes of what was read and what was written, and the gate
 `scripts/ci/check-proposal-fresh.py` compares them with the files on disk. A
 record that changed after the proposal, an evidence bundle that changed, a
-generator that changed, or a generated file edited by hand each fail the gate,
-and the fix is to regenerate. The gate also compares the manifest with the file
-list the proposal itself carries, so a file deleted from the disk and from the
-manifest together still fails, and it checks that every fixture is named after
-the observation it holds, so a fixture renamed on the disk, in the manifest and
-in the proposal together still fails.
+generator that changed, a redactor that changed, or a generated file edited by
+hand each fail the gate, and the fix is to regenerate. The gate also compares
+the manifest with the file list the proposal itself carries, so a file deleted
+from the disk and from the manifest together still fails, and it checks that
+every fixture is named after the observation it holds and lives in the directory
+of its contract, so a fixture renamed on the disk, in the manifest and in the
+proposal together still fails. A fixture cannot be its own witness either: the
+observation it names has to be one the evidence holds, with the experiment and
+the order of the answer the capture recorded.

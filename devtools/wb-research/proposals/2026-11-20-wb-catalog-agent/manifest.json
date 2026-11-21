@@ -13,7 +13,8 @@
     "wbparser/src/test/resources/fixtures/catalog-search/storefront-catalog-search/sort-priceup-2.json": "40335b1af1758dc3bc3d4c431efdef26df9d5c22aedcae3dbd881a5945d98e65"
   },
   "generator": {
-    "scripts/wb-research/generate_proposal.py": "50934b1e9f850da53be943d321716a129241283da8c3ec984bd7c81422dd57c9"
+    "scripts/wb-research/generate_proposal.py": "08d15bfab0c9a591802ee3fda4ceee406ab360c1bd24fe899adcc07f8e2f7f3a",
+    "scripts/wb-research/redact.py": "0611c354d9393a1e7a1291d6d02c18e74382b62d4c6aff49321cd04feb22c6c7"
   },
   "investigation": "2026-11-20-wb-catalog-agent",
   "schema": "wb-research/proposal-manifest/v1",

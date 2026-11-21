@@ -104,14 +104,28 @@ even though both are short and made of ordinary characters. A second, weaker
 copy of the rules inside the generator would be a second policy, and the weaker
 one is the one that decides what a proposal commits.
 
+The redactor alone is not enough, and the reason is the same name: the redactor
+has a rule for every name it knows, and no rule at all for a name it has never
+seen. `customer=Alice` is an ordinary word under a name nobody declared, and
+every shape check walks it through. So the contract declares the parameters of
+its own request and the values they may hold — a fixed value, a closed set of
+values, a number the site chose, or a phrase somebody typed, which the record
+may only publish as the placeholder that stands for it. A name the contract does
+not declare never reaches a committed file, whatever it looks like. The
+declaration is the contract's, not the tool's: a reviewer who disagrees with one
+of the values changes the record, not the list.
+
 The candidate and the evidence have to agree. The proposal publishes the query
 of the candidate as the parameters of the contract, and the fixture pins the
 request that was recorded — so the candidate has to name the identity
-parameters the contract declares, with the values the contract declares, and
-every parameter it advertises has to be one the recorded request sent, with the
-same value. A candidate that says `resultset=filters` while the record says
-`resultset=catalog` would leave the proposal advertising one request and
-pinning another.
+parameters the contract declares, with the values the contract declares, and its
+query has to be the query of the recorded request: the same parameters with the
+same values, in both directions. A parameter the candidate advertises and the
+request did not send is a parameter the evidence does not have; a parameter the
+request sent and the candidate does not name is a parameter the proposal's table
+leaves out while the fixture pins it. A candidate that says `resultset=filters`
+while the record says `resultset=catalog` would leave the proposal advertising
+one request and pinning another.
 
 The capture has to describe its run. The bundle and the summary describe the
 same run twice, and every dimension that tells one run from another — the
@@ -120,7 +134,10 @@ be there on both sides and to agree. A dimension that is missing is not a
 dimension that matches: a capture that says nothing about the experiment it
 belongs to cannot be told apart from a capture of another one, so an incomplete
 capture is refused rather than accepted on the dimensions that happen to be
-present.
+present. The observation has to belong to the experiment that holds it as well:
+the bundle and the summary may agree with each other about a run while both
+disagree with the experiment around them, and then a claim is earned by an
+experiment the observation does not name.
 
 The whole proposal is rendered and checked before the first byte reaches the
 disk. A refusal never leaves half a proposal behind — a fixture without its
@@ -198,6 +215,21 @@ current" …`, so it runs in `./check.sh` and in CI alike. The gate also compare
 the manifest with the file list the proposal itself carries: a file deleted from
 the disk *and* from the manifest together would otherwise pass.
 
+The manifest holds the hash of the redactor beside the hash of the generator.
+The generator loads the redactor by its path, so the redactor is a generation
+dependency: a change of the sanitization rules has to invalidate the proposal
+exactly as a change of the generator does, or the committed artifacts were never
+checked against the policy that is in force now.
+
+The gate binds a fixture to the record, not to itself. A fixture names the
+observation it was built from, and the gate checks that the observation is one
+the evidence holds and that the experiment and the order of the answer are the
+ones the capture recorded. The fixture's own fields cannot be the witness: a
+fixture renamed on the disk, renamed inside itself, in the manifest and in the
+proposal together is internally consistent and says nothing the record ever
+said, and only the record can tell. A file that is gone is a finding, not a
+crash: the gate reports what is wrong with the proposal and keeps going.
+
 ## Rationale
 
 Option 1 is a framework: it would be built for contracts that do not exist yet,
@@ -260,15 +292,25 @@ deleted file would otherwise pass.
   under: the experiment, the run, the request and the order have to agree, and
   every one of them has to be there — a dimension that is missing is not a
   dimension that matches.
+- **Never** accept an observation that does not belong to the experiment that
+  holds it: the bundle and the summary may agree with each other and both
+  disagree with the experiment around them.
 - **Never** commit a value the record did not sanitize: a query value, a request
   URL and a crawl URL that reach a proposal, a fixture or a test carry a
   placeholder or a value the record's own redactor would leave alone — and the
   redactor judges the value by the name of the parameter it was sent under.
+- **Never** publish a parameter the contract does not declare, whatever its value
+  looks like: the redactor has no rule for a name it has never seen, and a name
+  nobody can explain may carry somebody's name. The contract declares the
+  parameters of its request and the values they may hold.
 - **Never** keep a second copy of the sanitization rules in the generator: the
-  generator asks `redact.py`, so the two cannot drift apart.
+  generator asks `redact.py`, so the two cannot drift apart — and the hash of
+  the redactor belongs to the manifest beside the hash of the generator, so a
+  change of the rules invalidates the proposal.
 - **Never** accept a candidate that contradicts the recorded request: it has to
-  name the identity parameters the contract declares, and every parameter it
-  advertises has to be one the recorded request sent, with the same value.
+  name the identity parameters the contract declares, and its query has to be
+  the query of the recorded request — the same parameters with the same values,
+  in both directions.
 - **Never** write a file before the whole proposal is rendered and checked: a
   refusal leaves nothing behind.
 - **Never** let the fixtures of two contracts share one directory, and never
@@ -287,6 +329,9 @@ deleted file would otherwise pass.
 - **Always** let the drift gate check that a fixture is named after the
   observation it holds and lives in the directory of its contract: a fixture
   renamed on the disk, in the manifest and in the proposal together still drifts.
+- **Always** let the drift gate bind a fixture to the record: the observation it
+  names has to be one the evidence holds, with the experiment and the order the
+  capture recorded — a fixture cannot be its own witness.
 - **Never** add a production dependency on the research tooling; the generator
   writes into a test source set and a development directory.
 - A new contract family is a new entry in `CONTRACTS`, not a new framework.

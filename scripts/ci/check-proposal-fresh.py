@@ -59,20 +59,27 @@ EVIDENCE_DIR = "devtools/wb-research/investigations"
 # and in the proposal together still says something the generator would never say.
 FIXTURE_PATH = re.compile(r"^(?P<directory>.+/fixtures/[^/]+/(?P<candidate>[^/]+))/(?P<name>[^/]+)\.json$")
 
+# An evidence bundle of an investigation: the file that holds the captures the
+# fixtures were built from. The gate reads the bundles the manifest names, so the
+# fixtures are checked against the record and not against themselves.
+EVIDENCE_BUNDLE = re.compile(rf"^{re.escape(EVIDENCE_DIR)}/[^/]+/evidence/[^/]+\.json$")
+
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def read_text(path: Path) -> str | None:
-    """The text of a file, or None when it is not text at all.
+    """The text of a file, or None when it cannot be read as text.
 
     A file that is not UTF-8 is a finding, not a crash: the gate has to say what is
-    wrong with the proposal, not die on it.
+    wrong with the proposal, not die on it. A file that is not there at all is the
+    same kind of finding — the hash comparison reports it, and the rest of the gate
+    has to keep going and report what else it found.
     """
     try:
         return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
+    except (UnicodeDecodeError, OSError):
         return None
 
 
@@ -171,7 +178,33 @@ def evidence_findings(investigation: str, entries: dict[str, str], root: Path) -
     return findings
 
 
-def fixture_findings(entries: dict[str, str], root: Path) -> list[str]:
+def evidence_captures(sources: dict[str, str], root: Path) -> dict[str, dict]:
+    """The captures of the evidence bundles the manifest names, by their id.
+
+    The bundles are the record the fixtures were built from, so they are the only
+    independent truth about what a fixture holds. The gate reads them as JSON and
+    needs no YAML: the bundles are JSON by construction.
+    """
+    captures: dict[str, dict] = {}
+    for relative in sorted(sources):
+        if not EVIDENCE_BUNDLE.match(relative):
+            continue
+        text = read_text(root / relative)
+        if text is None:
+            continue
+        try:
+            bundle = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(bundle, dict):
+            continue
+        for capture in bundle.get("captures") or []:
+            if isinstance(capture, dict) and capture.get("id"):
+                captures[str(capture["id"])] = capture
+    return captures
+
+
+def fixture_findings(entries: dict[str, str], captures: dict[str, dict], root: Path) -> list[str]:
     """The generated fixtures whose name does not say what they hold.
 
     The generator names a fixture after the observation it was built from and puts it
@@ -183,13 +216,24 @@ def fixture_findings(entries: dict[str, str], root: Path) -> list[str]:
 
     So the name on the disk is checked against the name inside the file, and the
     contract of the file against the directory it lives in.
+
+    The name inside the file is checked against the record as well: the observation
+    it names has to be one the evidence holds, and the experiment and the order of
+    the answer have to be the ones the capture recorded. A fixture whose identity was
+    changed together with its name — on the disk, in the manifest and in the proposal
+    — is internally consistent and says nothing the record ever said, and only the
+    record can tell.
     """
     findings: list[str] = []
     for relative in sorted(entries):
         match = FIXTURE_PATH.match(relative)
         if match is None:
             continue
-        text = read_text(root / relative)
+        path = root / relative
+        if not path.is_file():
+            # A file that is gone is reported by the hash comparison.
+            continue
+        text = read_text(path)
         if text is None:
             # A file that is not text is reported by the hash comparison.
             continue
@@ -216,6 +260,27 @@ def fixture_findings(entries: dict[str, str], root: Path) -> list[str]:
             findings.append(
                 f"{relative}: the fixture names the candidate '{document.get('candidate')}' — "
                 f"the fixture lives in the directory of its contract, '{candidate}'"
+            )
+        observation = str(document.get("observation"))
+        capture = captures.get(observation)
+        if capture is None:
+            findings.append(
+                f"{relative}: the fixture holds the observation '{observation}', which the "
+                f"evidence does not record — a fixture is built from an observation of the record"
+            )
+            continue
+        if str(document.get("experiment")) != str(capture.get("experiment")):
+            findings.append(
+                f"{relative}: the fixture names the experiment '{document.get('experiment')}', "
+                f"the evidence records the observation '{observation}' in the experiment "
+                f"'{capture.get('experiment')}'"
+            )
+        order = (document.get("ordering") or {}).get("orderHash")
+        recorded = (capture.get("ordering") or {}).get("orderHash")
+        if str(order) != str(recorded):
+            findings.append(
+                f"{relative}: the fixture holds the order '{order}', the evidence records "
+                f"'{recorded}' for the observation '{observation}'"
             )
     return findings
 
@@ -263,7 +328,7 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
     findings += inventory_findings(sections["generated"], root, ".json")
     findings += inventory_findings(sections["sources"], root, ".json")
     findings += evidence_findings(str(manifest.get("investigation") or ""), sections["sources"], root)
-    findings += fixture_findings(sections["generated"], root)
+    findings += fixture_findings(sections["generated"], evidence_captures(sections["sources"], root), root)
 
     if not sections["sources"]:
         findings.append(f"{relative_manifest}: the manifest names no source of the proposal")
@@ -349,12 +414,34 @@ def self_test() -> None:
         fixture = root / fixture_relative
         fixture.parent.mkdir(parents=True)
         fixture.write_text(
-            json.dumps({"observation": "baseline-1", "candidate": "storefront-catalog-search"}) + "\n",
+            json.dumps(
+                {
+                    "observation": "baseline-1",
+                    "candidate": "storefront-catalog-search",
+                    "experiment": "baseline",
+                    "ordering": {"orderHash": "hash-baseline"},
+                }
+            )
+            + "\n",
             encoding="utf-8",
         )
         bundle = record / "evidence" / "validation.json"
         bundle.parent.mkdir(parents=True)
-        bundle.write_text("{}\n", encoding="utf-8")
+        bundle.write_text(
+            json.dumps(
+                {
+                    "captures": [
+                        {
+                            "id": "baseline-1",
+                            "experiment": "baseline",
+                            "ordering": {"orderHash": "hash-baseline"},
+                        }
+                    ]
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
 
         def write_proposal(fixture_path: str = fixture_relative) -> None:
             (proposal / "proposal.md").write_text(
@@ -476,6 +563,103 @@ def self_test() -> None:
         write_proposal()
         write_manifest()
         assert check(proposals, root) == [], "a fixture named after its observation must pass"
+
+        # The same rename, with the identity inside the fixture changed as well: the
+        # file, its own field, the manifest and the proposal all agree, so every
+        # internal check passes. Only the record can tell, and it never held an
+        # observation of that name.
+        renamed.write_text(
+            json.dumps(
+                {
+                    "observation": "renamed-1",
+                    "candidate": "storefront-catalog-search",
+                    "experiment": "baseline",
+                    "ordering": {"orderHash": "hash-baseline"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        manifest["generated"].pop(fixture_relative)
+        manifest["generated"][renamed_relative] = digest(renamed)
+        write_proposal(renamed_relative)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("the evidence does not record" in finding for finding in findings), findings
+        renamed.rename(fixture)
+        fixture.write_text(
+            json.dumps(
+                {
+                    "observation": "baseline-1",
+                    "candidate": "storefront-catalog-search",
+                    "experiment": "baseline",
+                    "ordering": {"orderHash": "hash-baseline"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        manifest["generated"].pop(renamed_relative)
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_proposal()
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture named after its observation must pass"
+
+        # A fixture whose order the record never recorded: the file agrees with
+        # itself, but not with the capture it was built from.
+        fixture.write_text(
+            json.dumps(
+                {
+                    "observation": "baseline-1",
+                    "candidate": "storefront-catalog-search",
+                    "experiment": "baseline",
+                    "ordering": {"orderHash": "hash-somewhere-else"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        findings = check(proposals, root)
+        assert any("the evidence records" in finding for finding in findings), findings
+        fixture.write_text(
+            json.dumps(
+                {
+                    "observation": "baseline-1",
+                    "candidate": "storefront-catalog-search",
+                    "experiment": "baseline",
+                    "ordering": {"orderHash": "hash-baseline"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a fixture built from the recorded order must pass"
+
+        # A fixture that was deleted while the manifest still names it: a finding,
+        # not a crash.
+        fixture.unlink()
+        findings = check(proposals, root)
+        assert findings, "a missing generated file must fail"
+        assert any("missing" in finding for finding in findings), findings
+        fixture.write_text(
+            json.dumps(
+                {
+                    "observation": "baseline-1",
+                    "candidate": "storefront-catalog-search",
+                    "experiment": "baseline",
+                    "ordering": {"orderHash": "hash-baseline"},
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        manifest["generated"][fixture_relative] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal with every file on the disk must pass"
 
         # A manifest that is not text at all is a finding, not a crash.
         manifest_path.write_bytes(b"\xff\xfe not utf-8")

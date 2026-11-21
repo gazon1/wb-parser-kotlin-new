@@ -61,6 +61,11 @@ TEST_FILE = "wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchCont
 FIXTURE_ROOT = "wbparser/src/test/resources/fixtures/catalog-search"
 PROPOSAL_DIR = "devtools/wb-research/proposals"
 GENERATOR_PATH = "scripts/wb-research/generate_proposal.py"
+# The generator loads the record's own redactor by its path, so the redactor is a
+# generation dependency: a change of its rules has to invalidate the proposal, or
+# the committed artifacts were never checked against the current sanitization
+# policy.
+REDACTOR_PATH = "scripts/wb-research/redact.py"
 
 # The id of an investigation names a directory in the repository. A name that carries a
 # separator or a `..` would point at another directory than the operator named, so it is
@@ -120,6 +125,42 @@ CONTRACTS: dict[str, dict[str, Any]] = {
         "storefront_only": {
             "inheritFilters": "the storefront sends it; the crawler does not, and the record does not say the endpoint needs it",
             "suppressSpellcheck": "the storefront sends it; the crawler does not, and the record does not say the endpoint needs it",
+        },
+        # The parameters this contract's request carries, and the values they may
+        # hold. A name that is not declared here is a name this contract does not
+        # know: the record may hold it, the proposal must not publish it.
+        #
+        # The rule exists because a redactor judges a value by the name it was sent
+        # under, and it has no name to judge an unknown one by: `customer=Alice` is
+        # an ordinary word under a name it does not know, and it walks through every
+        # shape check the record made. So the contract declares the parameters of
+        # its own request, and each of them says what its value may be:
+        #
+        # - `value` — the one value the request carries;
+        # - `values` — the closed set of values the request may carry;
+        # - `digits` — a number the site chose (a catalog id, a page);
+        # - `free_text` — a phrase somebody typed, so the record may only publish
+        #   the placeholder that stands for it.
+        #
+        # The reasons are the contract's, not the tool's: a reviewer who disagrees
+        # with one of them changes the record, not the list.
+        "parameters": {
+            "ab_testing": {"value": "false"},
+            "appType": {"value": "1"},
+            "curr": {"value": "rub"},
+            "dest": {"digits": True},
+            "ffeedbackpoints": {"value": "1"},
+            "hide_vflags": {"value": "4294967296"},
+            "inheritFilters": {"value": "true"},
+            "lang": {"value": "ru"},
+            "locale": {"value": "ru"},
+            "page": {"digits": True},
+            "query": {"free_text": True},
+            "resultset": {"value": "catalog"},
+            "search": {"free_text": True},
+            "sort": {"values": ["popular", "priceup"]},
+            "spp": {"value": "30"},
+            "suppressSpellcheck": {"value": "false"},
         },
         "experiments": {
             "baseline": "baseline",
@@ -300,10 +341,13 @@ def candidate_agrees_with_evidence(
     with two truths.
 
     So the candidate has to name the identity parameters the contract declares, with
-    the values the contract declares, and every parameter it advertises has to be one
-    the recorded request sent, with the same value. The baseline is the request the
-    other experiments were compared with, so it is the one the candidate is compared
-    with.
+    the values the contract declares, and its query has to be the query of the
+    recorded request — the same parameters with the same values, in both directions.
+    A parameter the candidate advertises and the request did not send is a parameter
+    the evidence does not have; a parameter the request sent and the candidate does
+    not name is a parameter the proposal's table leaves out while the fixture pins
+    it. The comparison is against the baseline, because the baseline is the request
+    the other experiments were compared with.
     """
     query = {str(name): str(value) for name, value in (candidate.get("query") or {}).items()}
 
@@ -328,6 +372,12 @@ def candidate_agrees_with_evidence(
                 f"the candidate's query holds '{name}={value}', the recorded request sent "
                 f"'{name}={recorded[name]}' — the proposal would advertise one request and "
                 f"pin another"
+            )
+    for name in sorted(recorded):
+        if name not in query:
+            raise Refused(
+                f"the recorded request sent '{name}', the candidate's query does not name it — "
+                f"the proposal's parameter table would omit a parameter of the request it pins"
             )
 
 
@@ -534,6 +584,52 @@ def publishable_query_value(name: str, value: Any) -> bool:
     return str(REDACTOR.redact_query_value(name, text)) == text
 
 
+def parameter_problems(contract: dict[str, Any], pairs: list[tuple[str, Any]]) -> list[str]:
+    """Why these parameters may not be committed — one message per parameter.
+
+    The contract declares the parameters of its request and the values they may
+    hold; the record's redactor judges a value by the name it was sent under. The
+    two rules answer two different questions, and both are needed: the redactor
+    knows that `session` is a credential whatever its value looks like, and only the
+    contract knows that `customer` is not a parameter of this request at all — a
+    name nobody can explain may carry somebody's name, and the redactor has no rule
+    for a name it has never seen.
+
+    So a parameter is publishable when the contract declares it, the record's
+    redactor would leave its value alone (or the value is the placeholder that
+    stands for what it redacted), and the value is one the contract allows.
+    """
+    problems: list[str] = []
+    declared = contract.get("parameters") or {}
+    for name, value in pairs:
+        rule = declared.get(name)
+        if not publishable_query_value(name, value):
+            problems.append(f"{name} holds a value the record did not sanitize")
+            continue
+        if not isinstance(rule, dict):
+            problems.append(f"{name} is not a parameter of this contract")
+            continue
+        text = str(value if value is not None else "")
+        if "value" in rule:
+            allowed = text == str(rule["value"])
+        elif "values" in rule:
+            allowed = text in {str(item) for item in rule["values"]}
+        elif rule.get("digits"):
+            allowed = text.isdigit()
+        elif rule.get("free_text"):
+            allowed = bool(PLACEHOLDER.fullmatch(text))
+        else:
+            allowed = False
+        if not allowed:
+            problems.append(f"{name} holds '{text}', which the contract does not allow")
+    return problems
+
+
+def query_problems(contract: dict[str, Any], url: str) -> list[str]:
+    """The parameters of a URL that may not be committed."""
+    return parameter_problems(contract, list(parse_qsl(urlsplit(url).query, keep_blank_values=True)))
+
+
 def fixture_dir_of(candidate_id: str) -> str:
     """The directory the fixtures of one contract live in.
 
@@ -543,22 +639,6 @@ def fixture_dir_of(candidate_id: str) -> str:
     leftovers.
     """
     return f"{FIXTURE_ROOT}/{candidate_id}"
-
-
-def unpublishable_query_values(url: str) -> list[str]:
-    """The names of the query values of a URL that may not be committed.
-
-    The URL of a request is committed in the fixture and the crawl URL is
-    committed in the test, so the record's sanitization rule applies to the values
-    inside them. The values are read as the server reads them: decoded. The name of
-    the parameter travels with the value, because the name is what decides whether a
-    value is a secret.
-    """
-    return sorted(
-        name
-        for name, value in parse_qsl(urlsplit(url).query, keep_blank_values=True)
-        if not publishable_query_value(name, value)
-    )
 
 
 def header_names_of(observation: dict[str, Any]) -> list[str]:
@@ -1054,13 +1134,13 @@ def render_kotlin(
         )
     # The crawl URL is committed in the test, so its values have to hold to the
     # record's sanitization rule: a placeholder or a value that carries no secret
-    # shape.
-    unsafe = unpublishable_query_values(crawl_url)
+    # shape, under a name the contract declares.
+    unsafe = query_problems(contract, crawl_url)
     if unsafe:
         raise Refused(
-            f"the crawl URL holds a value the record did not sanitize for {unsafe} — the URL "
-            f"is committed in the test, so a committed value is a placeholder or a value that "
-            f"would leave the record's own redactor alone"
+            f"the crawl URL holds parameters the contract does not allow to be committed: "
+            f"{unsafe} — the URL is committed in the test, so a committed parameter is one "
+            f"the contract declares and one the record's own redactor would leave alone"
         )
 
     def names(role: str) -> list[str]:
@@ -1402,6 +1482,18 @@ def generate(
             # The id becomes a file name, and the request becomes the claim the
             # fixture pins. Both are checked before anything is written.
             observation_id = safe_observation(observation.get("id"))
+            # An observation has to belong to the experiment that holds it. The
+            # capture is checked against the observation below, but a capture and an
+            # observation that agree with each other and disagree with the
+            # experiment around them would earn a claim for an experiment the
+            # observation does not name.
+            if observation.get("experiment") != experiment.get("name"):
+                raise Refused(
+                    f"the observation '{observation_id}' names the experiment "
+                    f"'{observation.get('experiment')}', the experiment that holds it is "
+                    f"'{experiment.get('name')}' — an observation has to belong to the "
+                    f"experiment it is filed under"
+                )
             request = observation.get("request") or {}
             if not candidate_request_matches(contract, request.get("method"), request.get("url")):
                 raise Refused(
@@ -1410,14 +1502,15 @@ def generate(
                     f"built from a request of this contract"
                 )
             # The URL of the request is committed in the fixture, so its values have
-            # to hold to the record's sanitization rule.
-            unsafe = unpublishable_query_values(str(request.get("url") or ""))
+            # to hold to the record's sanitization rule and to the contract's
+            # declaration of the parameters this request carries.
+            unsafe = query_problems(contract, str(request.get("url") or ""))
             if unsafe:
                 raise Refused(
-                    f"the observation '{observation_id}' holds a request with a value the record "
-                    f"did not sanitize for {unsafe} — the request is committed in the fixture, so "
-                    f"a committed value is a placeholder or a value the record's own "
-                    f"redactor would leave alone"
+                    f"the observation '{observation_id}' holds a request with parameters the "
+                    f"contract does not allow to be committed: {unsafe} — the request is "
+                    f"committed in the fixture, so a committed parameter is one the contract "
+                    f"declares and one the record's own redactor would leave alone"
                 )
             # The capture has to be the capture of this observation: the bundle is
             # filed under the id, and a bundle of another run of the same endpoint
@@ -1470,17 +1563,17 @@ def generate(
         )
 
     # The query of the candidate is published in the proposal, so the record has to
-    # hold to its own sanitization rule: a committed value is a placeholder or a value
-    # the record's own redactor would leave alone. A session token, an account id or a
-    # search phrase in the query would be committed in the Markdown of the proposal.
-    unpublishable = sorted(
-        name for name, value in (candidate.get("query") or {}).items() if not publishable_query_value(str(name), value)
-    )
+    # hold to its own sanitization rule and the contract has to declare every
+    # parameter: a session token, an account id or a search phrase in the query
+    # would be committed in the Markdown of the proposal, and a name nobody can
+    # explain may carry somebody's name.
+    unpublishable = parameter_problems(contract, list((candidate.get("query") or {}).items()))
     if unpublishable:
         raise Refused(
-            f"the candidate's query holds a value the record did not sanitize for {unpublishable} — "
-            f"a committed query value is a placeholder or a value the record's own "
-            f"redactor would leave alone"
+            f"the candidate's query holds parameters the contract does not allow to be "
+            f"committed: {unpublishable} — a committed query parameter is one the contract "
+            f"declares, with a value the contract allows, and one the record's own redactor "
+            f"would leave alone"
         )
 
     # The candidate is the summary of the request, and the proposal publishes its
@@ -1610,8 +1703,14 @@ def generate(
         "candidate": candidate_id,
         # The generator's own hash: a proposal that was generated by a different
         # version of the tool is a proposal nobody checked, and the drift gate
-        # compares this number with the tool on disk.
-        "generator": {GENERATOR_PATH: sha256_of(Path(__file__).resolve())},
+        # compares this number with the tool on disk. The redactor is in the same
+        # section because it is loaded by path and decides what may be committed:
+        # a change of its rules has to invalidate the proposal just as a change of
+        # the generator does.
+        "generator": {
+            GENERATOR_PATH: sha256_of(Path(__file__).resolve()),
+            REDACTOR_PATH: sha256_of(ROOT / REDACTOR_PATH),
+        },
         "sources": sources,
         # The hashes are of the content that is about to be written, so the manifest
         # says what the disk holds even if the writing itself fails half way.
@@ -1742,7 +1841,11 @@ def self_test() -> None:
                         "id": "storefront-catalog-search",
                         "method": "GET",
                         "endpoint": endpoint,
-                        "query": {"resultset": "catalog"},
+                        "query": {
+                            "resultset": "catalog",
+                            "sort": "popular",
+                            "query": "<redacted:query-param>",
+                        },
                         "headers": {"deviceid": "<redacted:deviceid>"},
                         "observed_status": 200,
                         "response_content_type": "text/plain",
