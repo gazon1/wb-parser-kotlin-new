@@ -12,6 +12,7 @@ import ru.wbparser.domain.parsing.WbCatalogEnvelope
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.infra.json.wbJson
+import java.net.URI
 import java.net.URLDecoder
 import java.util.UUID
 
@@ -54,6 +55,15 @@ class WbCatalogSearchContractTest :
 
         /** The parameters the crawler sends and the storefront did not. */
         val crawlerOnly = setOf("ffeedbackpoints", "page")
+
+        /**
+         * The values the crawler sends for those parameters, where the value is fixed.
+         *
+         * The storefront did not send them, so the record holds no value for them —
+         * the crawler's own contract holds it, and a change of it is a change of the
+         * contract. The page is not here: its value is the page the crawler asks for.
+         */
+        val crawlerOnlyValues = mapOf("ffeedbackpoints" to "1")
 
         /** The parameters the storefront sent and the crawler does not. */
         val storefrontOnly = setOf("inheritFilters", "suppressSpellcheck")
@@ -101,13 +111,26 @@ class WbCatalogSearchContractTest :
         val reload = fixture("after-reload-1")
         val reloadReplay = fixture("after-reload-2")
 
-        val productionQuery = queryOf(WbCatalogApi.buildWbApiUrl(page = 1, searchQuery = token))
+        val productionUrl = WbCatalogApi.buildWbApiUrl(page = 1, searchQuery = token)
+        val productionQuery = queryOf(productionUrl)
         val productionHeaders =
             WbCatalogApi
                 .buildWbHeaders()
                 .keys
                 .map { it.lowercase() }
                 .toSet()
+
+        test("the request goes to the endpoint the record observed") {
+            // The path is as much a part of the contract as the parameters are: the
+            // wrong endpoint answers 200 with somebody else's products. The recorded
+            // query is redacted, so only the place the request goes to is compared.
+            val production = URI(productionUrl)
+            val recorded = URI(baseline.request.url)
+
+            production.scheme shouldBe recorded.scheme
+            production.host shouldBe recorded.host
+            production.path shouldBe recorded.path
+        }
 
         test("the request carries every parameter of the contract — and only those") {
             // The set is the contract. A parameter the record does not name is one the
@@ -125,6 +148,21 @@ class WbCatalogSearchContractTest :
                 if (value.startsWith("<redacted:") || name in storefrontOnly) return@forEach
                 productionQuery[name] shouldBe value
             }
+        }
+
+        test("the parameters the crawler adds carry the values the crawler declares") {
+            // The storefront did not send these parameters, so the record holds no value
+            // for them. The crawler's own contract holds it — and a value that changes
+            // without anybody deciding it is a crawl that quietly collects other goods.
+            crawlerOnlyValues.forEach { (name, value) ->
+                productionQuery[name] shouldBe value
+            }
+        }
+
+        test("the crawler asks for the page it wants") {
+            // The first request asks for the first page, and the next one for the
+            // second: the page is the crawler's own, and it is a value like any other.
+            productionQuery["page"] shouldBe "1"
         }
 
         test("the request carries exactly the headers the contract names") {

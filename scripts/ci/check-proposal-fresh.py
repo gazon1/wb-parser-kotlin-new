@@ -11,12 +11,14 @@ proposal stays green while the evidence it claims to pin has moved on.
 
 The generator writes the hashes of what it read and what it wrote into
 `manifest.json` next to the proposal. This gate compares those numbers with the
-files on disk. Three things can be wrong, and each of them is a proposal that no
+files on disk. Four things can be wrong, and each of them is a proposal that no
 longer says what it says:
 
 - the record changed after the proposal was generated;
 - the generator changed, so the proposal was produced by a tool nobody reviewed;
-- a generated file was edited by hand.
+- a generated file was edited by hand;
+- the manifest no longer holds everything the proposal added — a file deleted from
+  the disk and from the manifest together would otherwise pass.
 
 It is deliberately offline and stdlib-only: no PyPI, no browser, no YAML. The
 generator's command is the one command that fixes a finding.
@@ -31,6 +33,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -40,9 +43,48 @@ PROPOSALS = ROOT / "devtools" / "wb-research" / "proposals"
 GENERATOR = ROOT / "scripts" / "wb-research" / "generate_proposal.py"
 REGENERATE = "uv run python scripts/wb-research/generate_proposal.py --investigation <id>"
 
+MANIFEST_SCHEMA = "wb-research/proposal-manifest/v1"
+FILE_SECTION = "## The files this proposal adds"
+LISTED_FILE = re.compile(r"^- `([^`]+)`$")
+
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def listed_files(proposal_path: Path) -> set[str] | None:
+    """The files the proposal says it adds.
+
+    The proposal is the human-readable inventory of what the generator wrote, and the
+    manifest is the machine-readable one. The gate compares the two, so an artifact
+    that was deleted cannot also be deleted from the manifest: the proposal still
+    names it.
+    """
+    if not proposal_path.is_file():
+        return None
+    inside = False
+    files: set[str] = set()
+    for line in proposal_path.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            inside = line.strip() == FILE_SECTION
+            continue
+        if not inside:
+            continue
+        match = LISTED_FILE.match(line.strip())
+        if match:
+            files.add(match.group(1))
+    return files
+
+
+def section(manifest: dict, name: str) -> dict[str, str] | None:
+    """One section of the manifest, when it is a mapping of paths to hashes."""
+    entries = manifest.get(name)
+    if not isinstance(entries, dict):
+        return None
+    for key, value in entries.items():
+        if not isinstance(key, str) or not isinstance(value, str):
+            return None
+    return entries
 
 
 def proposal_directories(proposals: Path) -> list[Path]:
@@ -54,13 +96,27 @@ def proposal_directories(proposals: Path) -> list[Path]:
 def check_one(manifest_path: Path, root: Path) -> list[str]:
     """The findings of one proposal. An empty list means it is current."""
     findings: list[str] = []
+    relative_manifest = manifest_path.relative_to(root)
 
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
-        return [f"{manifest_path.relative_to(root)}: not readable as JSON ({error})"]
+        return [f"{relative_manifest}: not readable as JSON ({error})"]
 
-    def compare(section: str, entries: dict[str, str], message: str) -> None:
+    if not isinstance(manifest, dict):
+        return [f"{relative_manifest}: the manifest is not an object"]
+
+    if manifest.get("schema") != MANIFEST_SCHEMA:
+        findings.append(f"{relative_manifest}: the schema is not '{MANIFEST_SCHEMA}'")
+
+    sections = {name: section(manifest, name) for name in ("sources", "generator", "generated")}
+    for name, entries in sections.items():
+        if entries is None:
+            findings.append(f"{relative_manifest}: the '{name}' section is missing or malformed")
+    if any(entries is None for entries in sections.values()):
+        return findings
+
+    def compare(entries: dict[str, str], message: str) -> None:
         for relative, expected in sorted(entries.items()):
             path = root / relative
             if not path.is_file():
@@ -70,24 +126,32 @@ def check_one(manifest_path: Path, root: Path) -> list[str]:
             if actual != expected:
                 findings.append(f"{relative}: {message} (recorded {expected[:12]}, on disk {actual[:12]})")
 
-    compare(
-        "sources",
-        manifest.get("sources") or {},
-        "the record changed after this proposal was generated",
-    )
-    compare(
-        "generator",
-        manifest.get("generator") or {},
-        "the generator changed after this proposal was generated",
-    )
-    compare(
-        "generated",
-        manifest.get("generated") or {},
-        "a generated file was changed by hand",
-    )
+    compare(sections["sources"], "the record changed after this proposal was generated")
+    compare(sections["generator"], "the generator changed after this proposal was generated")
+    compare(sections["generated"], "a generated file was changed by hand")
 
-    if not manifest.get("generated"):
-        findings.append(f"{manifest_path.relative_to(root)}: the manifest names no generated file")
+    if not sections["sources"]:
+        findings.append(f"{relative_manifest}: the manifest names no source of the proposal")
+    if not sections["generator"]:
+        findings.append(f"{relative_manifest}: the manifest names no generator of the proposal")
+    if not sections["generated"]:
+        findings.append(f"{relative_manifest}: the manifest names no generated file")
+
+    # The manifest must hold every file the proposal says the proposal adds. Otherwise
+    # a deleted file and a deleted entry would pass together, and the gate would guard
+    # nothing.
+    expected = listed_files(manifest_path.parent / "proposal.md")
+    if expected is None:
+        findings.append(f"{relative_manifest}: the proposal is missing — the generated files cannot be checked")
+    elif set(sections["generated"]) != expected:
+        missing = sorted(expected - set(sections["generated"]))
+        extra = sorted(set(sections["generated"]) - expected)
+        detail = []
+        if missing:
+            detail.append(f"not in the manifest: {missing}")
+        if extra:
+            detail.append(f"not in the proposal: {extra}")
+        findings.append(f"{relative_manifest}: the manifest and the proposal disagree — {'; '.join(detail)}")
 
     return findings
 
@@ -98,12 +162,31 @@ def check(proposals: Path, root: Path) -> list[str]:
     if not directories:
         findings.append(f"{proposals.relative_to(root)}: no proposal has been generated yet")
         return findings
+
+    owners: dict[str, str] = {}
     for directory in directories:
         manifest_path = directory / "manifest.json"
         if not manifest_path.is_file():
             findings.append(f"{directory.relative_to(root)}: no manifest.json — the proposal cannot be checked")
             continue
         findings += check_one(manifest_path, root)
+
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            continue
+        generated = section(manifest, "generated") if isinstance(manifest, dict) else None
+        for path in sorted(generated or {}):
+            owner = owners.get(path)
+            if owner:
+                findings.append(
+                    f"{path}: two proposals claim this file — '{owner}' and "
+                    f"'{manifest.get('investigation')}' — the test and the fixtures belong to "
+                    f"the contract, so one contract has one proposal"
+                )
+            else:
+                owners[path] = str(manifest.get("investigation") or directory.name)
+
     return findings
 
 
@@ -120,7 +203,20 @@ def self_test() -> None:
 
         proposal = proposals / "demo"
         proposal.mkdir(parents=True)
-        (proposal / "proposal.md").write_text("# a proposal\n", encoding="utf-8")
+        fixture = root / "wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json"
+        fixture.parent.mkdir(parents=True)
+        fixture.write_text("{}\n", encoding="utf-8")
+
+        def write_proposal() -> None:
+            (proposal / "proposal.md").write_text(
+                "# a proposal\n\n"
+                "## The files this proposal adds\n\n"
+                "- `devtools/wb-research/proposals/demo/proposal.md`\n"
+                "- `wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json`\n",
+                encoding="utf-8",
+            )
+
+        write_proposal()
         manifest = {
             "schema": "wb-research/proposal-manifest/v1",
             "investigation": "demo",
@@ -129,9 +225,11 @@ def self_test() -> None:
             "sources": {
                 "devtools/wb-research/investigations/demo/investigation.yaml": digest(record / "investigation.yaml")
             },
-            "generated": {"devtools/wb-research/proposals/demo/proposal.md": digest(proposal / "proposal.md")},
+            "generated": {
+                "devtools/wb-research/proposals/demo/proposal.md": digest(proposal / "proposal.md"),
+                "wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json": digest(fixture),
+            },
         }
-        (proposal / "proposal.md").write_text("# a proposal\n", encoding="utf-8")
         manifest_path = proposal / "manifest.json"
 
         def write_manifest() -> None:
@@ -152,12 +250,13 @@ def self_test() -> None:
         assert "the generator changed" in findings[0], findings
 
         generator.write_text("# the generator\n", encoding="utf-8")
+        write_proposal()
         (proposal / "proposal.md").write_text("# an edited proposal\n", encoding="utf-8")
         findings = check(proposals, root)
         assert findings, "an edited generated file must fail"
         assert "by hand" in findings[0], findings
 
-        (proposal / "proposal.md").write_text("# a proposal\n", encoding="utf-8")
+        write_proposal()
         manifest["generated"]["devtools/wb-research/proposals/demo/proposal.md"] = "0" * 64
         write_manifest()
         findings = check(proposals, root)
@@ -167,6 +266,67 @@ def self_test() -> None:
         write_manifest()
         assert check(proposals, root) == [], "a proposal regenerated from the record as it is must pass"
 
+        # A file that was deleted from the disk and from the manifest together: the
+        # proposal still names it, so the gate still catches it.
+        manifest["generated"].pop("wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json")
+        write_manifest()
+        findings = check(proposals, root)
+        assert findings, "a generated file dropped from the manifest must fail"
+        assert "not in the manifest" in findings[0], findings
+
+        manifest["generated"]["wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json"] = digest(fixture)
+        write_manifest()
+        assert check(proposals, root) == [], "a proposal with every file in the manifest must pass"
+
+        # A manifest that is not a mapping of paths to hashes is a finding, not a crash.
+        manifest["generated"] = ["wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json"]
+        write_manifest()
+        findings = check(proposals, root)
+        assert findings, "a malformed manifest must fail"
+        assert "malformed" in findings[0], findings
+
+        manifest["generated"] = {}
+        write_manifest()
+        findings = check(proposals, root)
+        assert findings, "a manifest without generated files must fail"
+
+        manifest["generated"] = {
+            "devtools/wb-research/proposals/demo/proposal.md": digest(proposal / "proposal.md"),
+            "wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json": digest(fixture),
+        }
+        write_manifest()
+
+        # Two proposals that claim the same file: the test and the fixtures belong to
+        # the contract, so one contract has one proposal.
+        second = proposals / "demo-2"
+        second.mkdir()
+        (second / "proposal.md").write_text(
+            "# another proposal\n\n"
+            "## The files this proposal adds\n\n"
+            "- `devtools/wb-research/proposals/demo-2/proposal.md`\n"
+            "- `wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json`\n",
+            encoding="utf-8",
+        )
+        second_manifest = {
+            "schema": "wb-research/proposal-manifest/v1",
+            "investigation": "demo-2",
+            "candidate": "storefront-catalog-search",
+            "generator": {"scripts/wb-research/generate_proposal.py": digest(generator)},
+            "sources": {
+                "devtools/wb-research/investigations/demo/investigation.yaml": digest(record / "investigation.yaml")
+            },
+            "generated": {
+                "devtools/wb-research/proposals/demo-2/proposal.md": digest(second / "proposal.md"),
+                "wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json": digest(fixture),
+            },
+        }
+        (second / "manifest.json").write_text(json.dumps(second_manifest, indent=2, sort_keys=True), encoding="utf-8")
+        findings = check(proposals, root)
+        assert any("two proposals claim this file" in finding for finding in findings), findings
+        (second / "manifest.json").unlink()
+        (second / "proposal.md").unlink()
+        second.rmdir()
+
         (record / "investigation.yaml").unlink()
         findings = check(proposals, root)
         assert findings, "a record file that is gone must fail"
@@ -175,7 +335,10 @@ def self_test() -> None:
         findings = check(proposals, root)
         assert findings, "a proposal directory without a manifest must fail"
 
-    print("self-test: a changed record, a changed generator and an edited file each fail")
+    print(
+        "self-test: a changed record, a changed generator, an edited file, an incomplete "
+        "manifest and two proposals claiming one file each fail"
+    )
 
 
 def main() -> int:

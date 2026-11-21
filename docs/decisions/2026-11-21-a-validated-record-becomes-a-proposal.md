@@ -51,18 +51,28 @@ The generator writes files and nothing else: no commit, no branch, no merge.
 The proposal is a diff a human reads.
 
 The eligibility rule is the whole point of the tool: a contract is eligible only
-when the record is `concluded`, has a `validation.yaml` for that candidate, and at
-least one claim of that candidate reaches `validated` or `reproduced`. Only the
-experiments in those states produce fixtures and assertions. The proposals
-name the claims that were held back and why — a claim that did not reach a
-validated state is not an assertion, and a candidate the record did not validate
-is not a contract.
+when the record is `concluded`, has a `validation.yaml` for that candidate, at
+least one experiment of that candidate reached `validated` or `reproduced`, and
+at least one claim *about that candidate* reached `validated` or `reproduced`. A
+record holds the claims of every endpoint it saw, so a validated claim about
+another endpoint says nothing about this one; the link is the capture — the
+claim names it, and the capture asked the candidate's endpoint. Only the
+experiments in those states produce fixtures and assertions. The proposals name
+the claims that were held back and why — a claim that did not reach a validated
+state is not an assertion, and a candidate the record did not validate is not a
+contract.
 
 The known differences between the recorded request and the production request
 are declared in the generator (`crawler_only` / `storefront_only`), so the
 generated test compares the two and treats any difference that is not listed as
 drift. The reasons are the contract's, not the tool's: a reviewer who
-disagrees with one of them changes the record, not the list.
+disagrees with one of them changes the record, not the list. A difference the
+crawler adds also carries its expected value, where the value is fixed: the
+storefront did not send that parameter, so the record holds no value for it and
+the crawler's own contract holds it. The generated test pins the endpoint as
+well — the scheme, the host and the path of the recorded URL — because the
+wrong endpoint answers 200 with somebody else's products, and it pins the
+crawler's own page, so a page that starts at zero is a failing test.
 
 The fixtures carry no captured payload. The body is reconstructed from the
 recorded shape and the ordered product ids; only the *names* of the headers
@@ -74,13 +84,23 @@ The output goes where the code lives: the test and the fixtures are in
 investigations it came from. The research tooling stays in `devtools/` and
 `scripts/`; no production module depends on it.
 
+The test and the fixtures belong to the *contract*, not to the investigation
+that found it. Two investigations of one contract would write the same files,
+and the second would silently invalidate the first one's proposal — so one
+contract has one proposal, and an investigation that supersedes the old one
+removes the old proposal first. The investigation id names a directory in the
+repository, so it is checked to be a single name and not a path before any file
+is read or written, the rule `capture.py` and `plan.py` already follow.
+
 The house pattern from `scripts/ci/check-catalog-models.py` is reused: a
 generator, a committed artifact, an offline drift gate. `scripts/ci/check-proposal-fresh.py`
 compares the manifest's hashes with the files on disk and fails when the record,
-the generator or a generated file changed under it. It reads hashes only — no
-regeneration, no YAML, no network — and it is registered in
-`scripts/ci/static-gates.sh` as `gate blocking "the generated proposals are
-current" …`, so it runs in `./check.sh` and in CI alike.
+the evidence bundles, the generator or a generated file changed under it. It
+reads hashes only — no regeneration, no YAML, no network — and it is registered
+in `scripts/ci/static-gates.sh` as `gate blocking "the generated proposals are
+current" …`, so it runs in `./check.sh` and in CI alike. The gate also compares
+the manifest with the file list the proposal itself carries: a file deleted from
+the disk *and* from the manifest together would otherwise pass.
 
 ## Rationale
 
@@ -104,8 +124,11 @@ evidence, and a second adapter would have been a second place to drift.
 The drift gate is a hash comparison rather than a regeneration because the
 generator needs the record and the record is a development artifact: a gate that
 had to run the generator would make the ordinary commit path depend on the
-research tooling. The manifest keeps both hashes — the record's and the
-generator's — so a stale proposal is caught whichever of the three moved.
+research tooling. The manifest keeps the hashes of the record, of the evidence
+bundles the fixtures are rebuilt from and of the generator, so a stale proposal
+is caught whichever of them moved. The gate compares the manifest with the file
+list the proposal itself carries, because a manifest that was edited to match a
+deleted file would otherwise pass.
 
 ## Consequences
 
@@ -114,16 +137,26 @@ generator's — so a stale proposal is caught whichever of the three moved.
   failed.
 - **Never** generate an assertion from a claim that is only `observed`,
   `inconclusive`, `open` or `rejected`.
+- **Never** accept a validated claim of another endpoint as the validation of
+  this one: the claim has to be one the candidate's own experiments observed.
+- **Never** generate an assertion from an observation that has no capture in the
+  evidence, or whose capture does not hold the products the observation
+  recorded — a fixture rebuilt from a shape nobody recorded is a guess.
 - **Never** put a captured body, a cookie, a token or the production `deviceid`
   into a fixture or a proposal; the body is reconstructed from the recorded
   shape.
 - **Never** let the generator commit, branch or merge; the output is a diff a
   human reviews.
+- **Never** let an investigation id name anything but a single directory name;
+  the generator writes only inside the repository.
 - **Always** declare the known differences between the recorded request and the
   production request in the `CONTRACTS` table, so an undeclared difference
-  fails the generated test.
+  fails the generated test — and pin the value of the differences the crawler
+  adds, since the record holds no value for them.
 - **Always** regenerate and commit the proposal when the record changes; the
   drift gate fails otherwise.
 - **Never** add a production dependency on the research tooling; the generator
   writes into a test source set and a development directory.
 - A new contract family is a new entry in `CONTRACTS`, not a new framework.
+- One contract has one proposal: the test and the fixtures belong to the
+  contract, so a second investigation of it is refused.

@@ -44,15 +44,17 @@ The generated test pins the crawler's header set to the replay's set, so a heade
 
 ## Traceability — claim → evidence → assertion
 
-| Claim | State | Evidence | Where it is pinned |
-| --- | --- | --- | --- |
-| the storefront reads the seller catalog with GET /__internal/u-search/exactmatch/ru/common/v18/search and resultset=catalog | `reproduced` | `initial-load-004`, `next-page-008` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
-| the catalog answer is a JSON object with metadata, products and total, even though the content type says text/plain | `reproduced` | `initial-load-004`, `next-page-008` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
-| the catalog request carries deviceid, x-requested-with, x-spa-version, x-queryid and x-userid | `reproduced` | `initial-load-004`, `next-page-008` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
-| the catalog request repeats byte for byte when it is replayed from the same page with the same parameters | `reproduced` | `baseline-1`, `baseline-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
-| the parameter sort changes the order of the catalog answer | `validated` | `baseline-1`, `sort-priceup-1`, `sort-priceup-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
-| the parameter page changes the page of the catalog answer | `validated` | `baseline-1`, `page-2-1`, `page-2-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
-| a page reload does not change the answer | `validated` | `after-reload-1`, `after-reload-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
+The table lists the claims the record proves in a validated state. A claim is *about this contract* when the capture it names asked this endpoint — that is what the eligibility rule counts, and it is why a validated claim about another endpoint is not enough.
+
+| Claim | State | About this contract | Evidence | Where it is pinned |
+| --- | --- | --- | --- | --- |
+| the storefront reads the seller catalog with GET /__internal/u-search/exactmatch/ru/common/v18/search and resultset=catalog | `reproduced` | yes | `initial-load-004`, `next-page-008` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
+| the catalog answer is a JSON object with metadata, products and total, even though the content type says text/plain | `reproduced` | yes | `initial-load-004`, `next-page-008` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
+| the catalog request carries deviceid, x-requested-with, x-spa-version, x-queryid and x-userid | `reproduced` | yes | `initial-load-004`, `next-page-008` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
+| the catalog request repeats byte for byte when it is replayed from the same page with the same parameters | `reproduced` | yes | `baseline-1`, `baseline-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
+| the parameter sort changes the order of the catalog answer | `validated` | yes | `baseline-1`, `sort-priceup-1`, `sort-priceup-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
+| the parameter page changes the page of the catalog answer | `validated` | yes | `baseline-1`, `page-2-1`, `page-2-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
+| a page reload does not change the answer | `validated` | yes | `after-reload-1`, `after-reload-2` | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` |
 
 The fixtures carry the evidence itself: the request as it was made, the shape of the answer and the order of the products. The body is reconstructed from that shape — no captured payload enters the repository.
 
@@ -67,6 +69,7 @@ The fixtures carry the evidence itself: the request as it was made, the shape of
 - `wbparser/src/test/resources/fixtures/catalog-search/page-2-2.json`
 - `wbparser/src/test/resources/fixtures/catalog-search/after-reload-1.json`
 - `wbparser/src/test/resources/fixtures/catalog-search/after-reload-2.json`
+- `devtools/wb-research/proposals/2026-11-20-wb-catalog-agent/proposal.md`
 
 ## What the repository already implements
 
@@ -99,7 +102,7 @@ The record names 8 other candidate(s). The validation is of `storefront-catalog-
 
 ## Known differences from the storefront's request
 
-- **`ffeedbackpoints`** — the crawler sends it, the storefront did not: the «Баллы ВБ за отзыв» filter this crawler exists for.
+- **`ffeedbackpoints`** — the crawler sends it with the value `1`, the storefront did not: the «Баллы ВБ за отзыв» filter this crawler exists for.
 - **`page`** — the crawler sends it, the storefront did not: the storefront's first request omits it — the crawler always sends the page it wants.
 - **`inheritFilters`** — the storefront sent it, the crawler does not: the storefront sends it; the crawler does not, and the record does not say the endpoint needs it.
 - **`suppressSpellcheck`** — the storefront sent it, the crawler does not: the storefront sends it; the crawler does not, and the record does not say the endpoint needs it.

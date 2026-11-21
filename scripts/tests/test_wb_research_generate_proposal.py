@@ -52,7 +52,7 @@ def observation(
         "run": run,
         "request": {
             "method": "GET",
-            "url": f"https://www.wildberries.ru/x?{query}",
+            "url": f"{ENDPOINT}?{query}",
             "headerNames": ["deviceid", "x-requested-with"],
         },
         "response": {"status": 200, "contentType": "text/plain", "bodyBytes": 10, "isJson": True},
@@ -113,18 +113,30 @@ def world(tmp_path):
     directory = investigations / "2026-01-01-demo"
     (directory / "evidence").mkdir(parents=True)
 
-    captures = []
-    for experiment in experiments():
-        for item in experiment["observations"]:
-            ids = {"baseline": [1, 2], "after-reload": [1, 2], "sort-priceup": [3, 4], "page-2": [5, 6]}.get(
-                item["experiment"], []
-            )
-            captures.append({**item, "ordering": {**item["ordering"], "productIds": ids}})
-    (directory / "evidence" / "validation.json").write_text(
-        json.dumps({"schema": "wb-research/validation/v1", "captures": captures}), encoding="utf-8"
-    )
+    def captures() -> list[dict]:
+        found = []
+        for experiment in experiments():
+            for item in experiment["observations"]:
+                ids = {"baseline": [1, 2], "after-reload": [1, 2], "sort-priceup": [3, 4], "page-2": [5, 6]}.get(
+                    item["experiment"], []
+                )
+                found.append({**item, "ordering": {**item["ordering"], "productIds": ids}})
+        return found
 
-    def write(state: str = "validated", with_validation: bool = True, status: str = "concluded") -> Path:
+    def write_evidence(found: list[dict]) -> None:
+        (directory / "evidence" / "validation.json").write_text(
+            json.dumps({"schema": "wb-research/validation/v1", "captures": found}), encoding="utf-8"
+        )
+
+    write_evidence(captures())
+
+    def write(
+        state: str = "validated",
+        with_validation: bool = True,
+        status: str = "concluded",
+        evidence: list[str] | None = None,
+        candidate: str | None = CANDIDATE,
+    ) -> Path:
         record = {
             "id": "2026-01-01-demo",
             "status": status,
@@ -141,14 +153,18 @@ def world(tmp_path):
                 }
             ],
             "validation": [
-                {"claim": "the catalog is read with resultset=catalog", "state": state, "evidence": ["baseline-1"]}
+                {
+                    "claim": "the catalog is read with resultset=catalog",
+                    "state": state,
+                    "evidence": evidence if evidence is not None else ["baseline-1"],
+                }
             ],
         }
         (directory / "investigation.yaml").write_text(yaml.safe_dump(record, allow_unicode=True), encoding="utf-8")
         validation = directory / "validation.yaml"
         if with_validation:
             validation.write_text(
-                yaml.safe_dump({"candidate": CANDIDATE, "experiments": experiments()}, allow_unicode=True),
+                yaml.safe_dump({"candidate": candidate, "experiments": experiments()}, allow_unicode=True),
                 encoding="utf-8",
             )
         else:
@@ -156,14 +172,16 @@ def world(tmp_path):
         return investigations
 
     write()
-    return SimpleWorld(investigations, directory, write)
+    return SimpleWorld(investigations, directory, write, captures, write_evidence)
 
 
 class SimpleWorld:
-    def __init__(self, investigations: Path, directory: Path, write) -> None:
+    def __init__(self, investigations: Path, directory: Path, write, captures, write_evidence) -> None:
         self.investigations = investigations
         self.directory = directory
         self.write = write
+        self.captures = captures
+        self.write_evidence = write_evidence
 
     def generate(self, output_root: Path) -> list[Path]:
         return generate_proposal.generate("2026-01-01-demo", output_root, investigations_root=self.investigations)
@@ -188,6 +206,94 @@ def test_a_claim_that_is_only_observed_is_refused(world, tmp_path):
 
     with pytest.raises(generate_proposal.Refused):
         world.generate(tmp_path)
+
+
+def test_a_validated_claim_of_another_candidate_is_not_enough(world, tmp_path):
+    # The record holds the claims of every endpoint it saw. A claim in a validated
+    # state whose capture asked another endpoint says nothing about this one.
+    world.write(evidence=["initial-load-004"])
+    world.write_evidence(
+        [
+            {
+                "id": "initial-load-004",
+                "request": {"method": "GET", "url": "https://www.wildberries.ru/__internal/u-card/cards/v4/list"},
+                "ordering": {"orderHash": "hash", "productIds": []},
+            }
+        ]
+    )
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_validation_that_names_no_candidate_is_refused(world, tmp_path):
+    world.write(candidate=None)
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_an_investigation_id_that_is_a_path_is_refused(world, tmp_path):
+    with pytest.raises(generate_proposal.Refused):
+        generate_proposal.generate("../../../../tmp/target", tmp_path, investigations_root=world.investigations)
+
+
+def test_an_observation_without_a_capture_is_refused(world, tmp_path):
+    world.write_evidence([capture for capture in world.captures() if capture["id"] != "baseline-1"])
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_capture_that_lost_its_products_is_refused(world, tmp_path):
+    lost = [
+        {**capture, "ordering": {**capture["ordering"], "productIds": []}} if capture["id"] == "baseline-1" else capture
+        for capture in world.captures()
+    ]
+    world.write_evidence(lost)
+
+    with pytest.raises(generate_proposal.Refused):
+        world.generate(tmp_path)
+
+
+def test_a_second_investigation_of_the_same_contract_is_refused(world, tmp_path):
+    world.generate(tmp_path)
+
+    # The test and the fixtures belong to the contract, not to the investigation that
+    # found it: a second investigation of the same contract would write the same files
+    # and silently invalidate the first one's proposal.
+    other = world.investigations / "2026-02-02-other"
+    (other / "evidence").mkdir(parents=True)
+    for name in ("investigation.yaml", "validation.yaml"):
+        (other / name).write_text((world.directory / name).read_text(encoding="utf-8"), encoding="utf-8")
+    (other / "evidence" / "validation.json").write_text(
+        (world.directory / "evidence" / "validation.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    with pytest.raises(generate_proposal.Refused):
+        generate_proposal.generate("2026-02-02-other", tmp_path, investigations_root=world.investigations)
+
+
+def test_the_manifest_holds_the_evidence_the_fixtures_come_from(world, tmp_path):
+    world.generate(tmp_path)
+
+    manifest = json.loads(
+        (tmp_path / "devtools/wb-research/proposals/2026-01-01-demo/manifest.json").read_text(encoding="utf-8")
+    )
+    sources = manifest["sources"]
+    assert "devtools/wb-research/investigations/2026-01-01-demo/evidence/validation.json" in sources
+    assert "devtools/wb-research/investigations/2026-01-01-demo/investigation.yaml" in sources
+    assert "devtools/wb-research/investigations/2026-01-01-demo/validation.yaml" in sources
+
+
+def test_the_generated_test_pins_the_endpoint_and_the_crawler_values(world, tmp_path):
+    written = world.generate(tmp_path)
+
+    test = next(path for path in written if path.suffix == ".kt").read_text(encoding="utf-8")
+    assert "production.path shouldBe recorded.path" in test
+    assert "production.host shouldBe recorded.host" in test
+    assert '"ffeedbackpoints" to "1"' in test
+    assert 'productionQuery["page"] shouldBe "1"' in test
 
 
 def test_an_experiment_the_record_did_not_earn_produces_no_fixture(world, tmp_path):

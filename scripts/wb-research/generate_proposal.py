@@ -61,6 +61,12 @@ FIXTURE_DIR = "wbparser/src/test/resources/fixtures/catalog-search"
 PROPOSAL_DIR = "devtools/wb-research/proposals"
 GENERATOR_PATH = "scripts/wb-research/generate_proposal.py"
 
+# The id of an investigation names a directory in the repository. A name that carries a
+# separator or a `..` would point at another directory than the operator named, so it is
+# refused before any file is read or written — the rule `capture.py` and `plan.py` follow
+# for the same reason.
+INVESTIGATION_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
 # The contract family this tool knows. It is one family on purpose: a generator that
 # promises every endpoint of every site is a framework, and a framework nobody can
 # verify is worse than no framework. A new family is a new entry here.
@@ -72,14 +78,25 @@ GENERATOR_PATH = "scripts/wb-research/generate_proposal.py"
 # difference that is not listed here is a drift the test must catch. The reasons are
 # the contract's, not the tool's: a reviewer who disagrees with one of them changes
 # the record, not the list.
+#
+# A crawler-only parameter carries its expected value too, where the value is fixed:
+# the storefront did not send it, so the record does not hold a value for it, and the
+# only value anybody can pin is the crawler's own. `None` means the value is the one
+# the request asks for — the page the crawler wants.
 CONTRACTS: dict[str, dict[str, Any]] = {
     "storefront-catalog-search": {
         "test_class": "WbCatalogSearchContractTest",
         "endpoint": "https://www.wildberries.ru/__internal/u-search/exactmatch/ru/common/v18/search",
         "method": "GET",
         "crawler_only": {
-            "ffeedbackpoints": "the «Баллы ВБ за отзыв» filter this crawler exists for",
-            "page": "the storefront's first request omits it — the crawler always sends the page it wants",
+            "ffeedbackpoints": {
+                "value": "1",
+                "reason": "the «Баллы ВБ за отзыв» filter this crawler exists for",
+            },
+            "page": {
+                "value": None,
+                "reason": "the storefront's first request omits it — the crawler always sends the page it wants",
+            },
         },
         "storefront_only": {
             "inheritFilters": "the storefront sends it; the crawler does not, and the record does not say the endpoint needs it",
@@ -133,10 +150,39 @@ def candidate_of(investigation: dict[str, Any], candidate_id: str) -> dict[str, 
     raise Refused(f"the record has no candidate '{candidate_id}'")
 
 
+def claims_about_candidate(
+    investigation: dict[str, Any],
+    evidence: dict[str, dict[str, Any]],
+    endpoint: str,
+) -> list[dict[str, Any]]:
+    """The claims whose evidence captured this candidate's endpoint.
+
+    A record holds the claims of every endpoint it saw, so a claim in a validated
+    state may be about another endpoint entirely — the card list, the antibot
+    service, an analytics call. The link is the capture: the claim names it, and
+    the capture asked the candidate's endpoint.
+    """
+    earned: list[dict[str, Any]] = []
+    for claim in claims_of(investigation):
+        if claim.get("state") not in VALIDATED_STATES:
+            continue
+        for observation_id in claim.get("evidence") or []:
+            capture = evidence.get(str(observation_id))
+            if capture is None:
+                continue
+            url = str((capture.get("request") or {}).get("url") or "")
+            if url.split("?", 1)[0] == endpoint:
+                earned.append(claim)
+                break
+    return earned
+
+
 def check_eligible(
     investigation: dict[str, Any],
     validation: dict[str, Any] | None,
     candidate_id: str,
+    experiments: list[dict[str, Any]],
+    earned: list[dict[str, Any]],
 ) -> None:
     """Refuse a record that has not earned a proposal."""
     if investigation.get("status") != "concluded":
@@ -150,11 +196,16 @@ def check_eligible(
             f"the validation belongs to the candidate '{validation.get('candidate')}', not to '{candidate_id}'"
         )
 
-    earned = validated_claims(investigation)
+    if not experiments:
+        raise Refused(
+            f"no experiment of the candidate '{candidate_id}' reached a validated state — "
+            f"a contract needs controlled experiments, not one capture"
+        )
+
     if not earned:
         states = sorted({str(claim.get("state")) for claim in claims_of(investigation)})
         raise Refused(
-            f"no claim of the candidate '{candidate_id}' reached a validated state — "
+            f"no claim about the candidate '{candidate_id}' reached a validated state — "
             f"the record holds {states or ['no claims at all']}"
         )
 
@@ -306,6 +357,7 @@ import ru.wbparser.domain.parsing.WbCatalogEnvelope
 import ru.wbparser.domain.value.CrawlHttpStatusCode
 import ru.wbparser.domain.value.CrawlUrl
 import ru.wbparser.infra.json.wbJson
+import java.net.URI
 import java.net.URLDecoder
 import java.util.UUID
 
@@ -348,6 +400,15 @@ class %%TEST_CLASS%% :
 
         /** The parameters the crawler sends and the storefront did not. */
         val crawlerOnly = setOf(%%CRAWLER_ONLY%%)
+
+        /**
+         * The values the crawler sends for those parameters, where the value is fixed.
+         *
+         * The storefront did not send them, so the record holds no value for them —
+         * the crawler's own contract holds it, and a change of it is a change of the
+         * contract. The page is not here: its value is the page the crawler asks for.
+         */
+        val crawlerOnlyValues = mapOf(%%CRAWLER_ONLY_VALUES%%)
 
         /** The parameters the storefront sent and the crawler does not. */
         val storefrontOnly = setOf(%%STOREFRONT_ONLY%%)
@@ -395,13 +456,26 @@ class %%TEST_CLASS%% :
         val reload = fixture("%%RELOAD%%")
         val reloadReplay = fixture("%%RELOAD_REPLAY%%")
 
-        val productionQuery = queryOf(WbCatalogApi.buildWbApiUrl(page = 1, searchQuery = token))
+        val productionUrl = WbCatalogApi.buildWbApiUrl(page = 1, searchQuery = token)
+        val productionQuery = queryOf(productionUrl)
         val productionHeaders =
             WbCatalogApi
                 .buildWbHeaders()
                 .keys
                 .map { it.lowercase() }
                 .toSet()
+
+        test("the request goes to the endpoint the record observed") {
+            // The path is as much a part of the contract as the parameters are: the
+            // wrong endpoint answers 200 with somebody else's products. The recorded
+            // query is redacted, so only the place the request goes to is compared.
+            val production = URI(productionUrl)
+            val recorded = URI(baseline.request.url)
+
+            production.scheme shouldBe recorded.scheme
+            production.host shouldBe recorded.host
+            production.path shouldBe recorded.path
+        }
 
         test("the request carries every parameter of the contract — and only those") {
             // The set is the contract. A parameter the record does not name is one the
@@ -419,6 +493,21 @@ class %%TEST_CLASS%% :
                 if (value.startsWith("<redacted:") || name in storefrontOnly) return@forEach
                 productionQuery[name] shouldBe value
             }
+        }
+
+        test("the parameters the crawler adds carry the values the crawler declares") {
+            // The storefront did not send these parameters, so the record holds no value
+            // for them. The crawler's own contract holds it — and a value that changes
+            // without anybody deciding it is a crawl that quietly collects other goods.
+            crawlerOnlyValues.forEach { (name, value) ->
+                productionQuery[name] shouldBe value
+            }
+        }
+
+        test("the crawler asks for the page it wants") {
+            // The first request asks for the first page, and the next one for the
+            // second: the page is the crawler's own, and it is a value like any other.
+            productionQuery["page"] shouldBe "1"
         }
 
         test("the request carries exactly the headers the contract names") {
@@ -556,6 +645,10 @@ def kotlin_set(values: list[str]) -> str:
     return ", ".join(f'"{value}"' for value in values)
 
 
+def kotlin_map(values: dict[str, str]) -> str:
+    return ", ".join(f'"{name}" to "{value}"' for name, value in sorted(values.items()))
+
+
 def render_kotlin(
     contract: dict[str, Any],
     investigation_id: str,
@@ -592,6 +685,13 @@ def render_kotlin(
         "%%TEST_CLASS%%": contract["test_class"],
         "%%TOKEN%%": SEARCH_TOKEN,
         "%%CRAWLER_ONLY%%": kotlin_set(sorted(contract["crawler_only"])),
+        "%%CRAWLER_ONLY_VALUES%%": kotlin_map(
+            {
+                name: str(spec["value"])
+                for name, spec in contract["crawler_only"].items()
+                if spec.get("value") is not None
+            }
+        ),
         "%%STOREFRONT_ONLY%%": kotlin_set(sorted(contract["storefront_only"])),
         "%%BASELINE%%": baseline_first,
         "%%BASELINE_REPLAY%%": baseline_replay,
@@ -626,8 +726,13 @@ def render_proposal(
     investigation_id: str,
     fixtures: dict[str, list[str]],
     generated_files: list[str],
+    evidence: dict[str, dict[str, Any]],
 ) -> str:
-    earned = validated_claims(investigation)
+    validated = validated_claims(investigation)
+    about = {
+        str(claim.get("claim"))
+        for claim in claims_about_candidate(investigation, evidence, str(candidate.get("endpoint") or ""))
+    }
     evidence_of = {observation["id"] for observation in observations_of(eligible_experiments(validation))}
 
     lines: list[str] = []
@@ -680,11 +785,19 @@ def render_proposal(
     lines.append("")
     lines.append("## Traceability — claim → evidence → assertion")
     lines.append("")
-    lines.append("| Claim | State | Evidence | Where it is pinned |")
-    lines.append("| --- | --- | --- | --- |")
-    for claim in earned:
+    lines.append(
+        "The table lists the claims the record proves in a validated state. A claim is *about "
+        "this contract* when the capture it names asked this endpoint — that is what the "
+        "eligibility rule counts, and it is why a validated claim about another endpoint is not "
+        "enough."
+    )
+    lines.append("")
+    lines.append("| Claim | State | About this contract | Evidence | Where it is pinned |")
+    lines.append("| --- | --- | --- | --- | --- |")
+    for claim in validated:
         evidence = ", ".join(f"`{item}`" for item in (claim.get("evidence") or []))
-        lines.append(f"| {claim.get('claim')} | `{claim.get('state')}` | {evidence} | `{TEST_FILE}` |")
+        seen = "yes" if str(claim.get("claim")) in about else "no"
+        lines.append(f"| {claim.get('claim')} | `{claim.get('state')}` | {seen} | {evidence} | `{TEST_FILE}` |")
     lines.append("")
     lines.append(
         "The fixtures carry the evidence itself: the request as it was made, the shape of the "
@@ -737,8 +850,10 @@ def render_proposal(
         lines.append("")
     lines.append("## Known differences from the storefront's request")
     lines.append("")
-    for name, reason in contract["crawler_only"].items():
-        lines.append(f"- **`{name}`** — the crawler sends it, the storefront did not: {reason}.")
+    for name, spec in contract["crawler_only"].items():
+        value = spec.get("value")
+        sent = f" with the value `{value}`" if value is not None else ""
+        lines.append(f"- **`{name}`** — the crawler sends it{sent}, the storefront did not: {spec['reason']}.")
     for name, reason in contract["storefront_only"].items():
         lines.append(f"- **`{name}`** — the storefront sent it, the crawler does not: {reason}.")
     lines.append("")
@@ -768,12 +883,53 @@ def sha256_of(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def safe_investigation(value: Any) -> str:
+    """The id of an investigation, checked to be a single safe path component.
+
+    The id names a directory in the repository and a directory in the proposal set.
+    A name that carries a separator or a `..` would point at another directory than
+    the operator named, so it is refused before any file is read or written.
+    """
+    text = str(value or "").strip()
+    if not text or ".." in text or not INVESTIGATION_NAME.fullmatch(text):
+        raise Refused(f"the investigation id must be a single name, not a path: {value!r}")
+    return text
+
+
+def existing_proposal_for(output_root: Path, candidate_id: str, investigation_id: str) -> str | None:
+    """The investigation that already proposed this contract, if there is one.
+
+    The test and the fixtures belong to the *contract*, not to the investigation that
+    found it: two investigations of one contract would write the same files, and the
+    second one would silently invalidate the first one's proposal. So one contract has
+    one proposal, and a new investigation that supersedes it says so by removing the
+    old proposal first.
+    """
+    proposals = output_root / PROPOSAL_DIR
+    if not proposals.is_dir():
+        return None
+    for manifest_path in sorted(proposals.glob("*/manifest.json")):
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(manifest, dict):
+            continue
+        if manifest.get("candidate") != candidate_id:
+            continue
+        owner = str(manifest.get("investigation") or "")
+        if owner and owner != investigation_id:
+            return owner
+    return None
+
+
 def generate(
     investigation_id: str,
     output_root: Path,
     investigations_root: Path = INVESTIGATIONS,
 ) -> list[Path]:
     """Write the proposal of one investigation. Returns the files it wrote."""
+    investigation_id = safe_investigation(investigation_id)
     directory = investigations_root / investigation_id
     if not directory.is_dir():
         raise Refused(f"there is no investigation '{investigation_id}' in {investigations_root}")
@@ -782,16 +938,30 @@ def generate(
     validation_path = directory / "validation.yaml"
     validation = load_yaml(validation_path) if validation_path.is_file() else None
 
-    candidate_id = (validation or {}).get("candidate") or "storefront-catalog-search"
-    check_eligible(investigation, validation, candidate_id)
+    if validation is None:
+        raise Refused("the record has no validation.yaml — a contract needs controlled experiments, not one capture")
+
+    candidate_id = str(validation.get("candidate") or "").strip()
+    if not candidate_id:
+        raise Refused("the validation.yaml names no candidate — the record does not say which contract it validated")
+
+    experiments = eligible_experiments(validation)
+    candidate = candidate_of(investigation, candidate_id)
+    evidence = evidence_index(directory)
+    earned = claims_about_candidate(investigation, evidence, str(candidate.get("endpoint") or ""))
+    check_eligible(investigation, validation, candidate_id, experiments, earned)
 
     if candidate_id not in CONTRACTS:
         raise Refused(f"this tool does not know the contract '{candidate_id}' — it knows {sorted(CONTRACTS)}")
     contract = CONTRACTS[candidate_id]
 
-    candidate = candidate_of(investigation, candidate_id)
-    experiments = eligible_experiments(validation or {})
-    evidence = evidence_index(directory)
+    owner = existing_proposal_for(output_root, candidate_id, investigation_id)
+    if owner:
+        raise Refused(
+            f"the contract '{candidate_id}' was already proposed by '{owner}' — the test and the "
+            f"fixtures are the contract's, so one contract has one proposal; remove the old "
+            f"proposal first if this investigation supersedes it"
+        )
 
     fixtures: dict[str, list[str]] = {}
     fixture_documents: list[dict[str, Any]] = []
@@ -804,7 +974,20 @@ def generate(
             continue
         names: list[str] = []
         for observation in experiment["observations"]:
-            capture = evidence.get(str(observation.get("id")), {})
+            observation_id = str(observation.get("id"))
+            capture = evidence.get(observation_id)
+            if capture is None:
+                raise Refused(
+                    f"the observation '{observation_id}' has no capture in the evidence bundle — "
+                    f"a fixture cannot be rebuilt from a shape nobody recorded"
+                )
+            ids = product_ids_of(observation, capture)
+            recorded = (observation.get("schema") or {}).get("productCount")
+            if recorded is not None and len(ids) != recorded:
+                raise Refused(
+                    f"the observation '{observation_id}' recorded {recorded} products, the evidence "
+                    f"carries {len(ids)} — the fixture would not be the answer that was recorded"
+                )
             document = fixture_of(observation, capture, candidate_id, investigation_id)
             fixture_documents.append(document)
             names.append(document["observation"])
@@ -815,9 +998,12 @@ def generate(
         raise Refused(f"the evidence has no experiment for the role(s) {missing}")
 
     written: list[Path] = []
+    root = output_root.resolve()
 
     def write(relative: str, content: str) -> None:
         path = output_root / relative
+        if not path.resolve().is_relative_to(root):
+            raise Refused(f"the generator would write outside the output root: {relative}")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
         written.append(path)
@@ -830,17 +1016,33 @@ def generate(
 
     write(TEST_FILE, render_kotlin(contract, investigation_id, candidate_id, fixtures))
 
+    proposal_file = f"{PROPOSAL_DIR}/{investigation_id}/proposal.md"
     proposal = render_proposal(
         investigation,
-        validation or {},
+        validation,
         candidate,
         contract,
         candidate_id,
         investigation_id,
         fixtures,
-        [TEST_FILE] + [f"{FIXTURE_DIR}/{document['observation']}.json" for document in fixture_documents],
+        [TEST_FILE]
+        + [f"{FIXTURE_DIR}/{document['observation']}.json" for document in fixture_documents]
+        + [proposal_file],
+        evidence,
     )
-    write(f"{PROPOSAL_DIR}/{investigation_id}/proposal.md", proposal)
+    write(proposal_file, proposal)
+
+    sources = {
+        f"devtools/wb-research/investigations/{investigation_id}/{name}": sha256_of(directory / name)
+        for name in ("investigation.yaml", "validation.yaml")
+        if (directory / name).is_file()
+    }
+    # The evidence bundles are read as well: the order of the products comes from them,
+    # so a bundle that changed under the proposal must fail the drift gate.
+    sources |= {
+        f"devtools/wb-research/investigations/{investigation_id}/evidence/{path.name}": sha256_of(path)
+        for path in sorted((directory / "evidence").glob("*.json"))
+    }
 
     manifest = {
         "schema": "wb-research/proposal-manifest/v1",
@@ -850,11 +1052,7 @@ def generate(
         # version of the tool is a proposal nobody checked, and the drift gate
         # compares this number with the tool on disk.
         "generator": {GENERATOR_PATH: sha256_of(Path(__file__).resolve())},
-        "sources": {
-            f"devtools/wb-research/investigations/{investigation_id}/{name}": sha256_of(directory / name)
-            for name in ("investigation.yaml", "validation.yaml")
-            if (directory / name).is_file()
-        },
+        "sources": sources,
         "generated": {path.relative_to(output_root).as_posix(): sha256_of(path) for path in written},
     }
     write(

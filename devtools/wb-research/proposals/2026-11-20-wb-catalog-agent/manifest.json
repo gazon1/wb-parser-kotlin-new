@@ -1,8 +1,8 @@
 {
   "candidate": "storefront-catalog-search",
   "generated": {
-    "devtools/wb-research/proposals/2026-11-20-wb-catalog-agent/proposal.md": "c9bcbc16016bb6f84b0a2271da3b7e1a6190c951a11810829000c8ab73534fd5",
-    "wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt": "1023335130a3d1b3b184a12e697fbd10eb6e589dd2ee09f95fa62d0308c6c595",
+    "devtools/wb-research/proposals/2026-11-20-wb-catalog-agent/proposal.md": "869b08b6efeeaddd7c18026e0dc5b817640f0b33806749b6490141425a941679",
+    "wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt": "ccb78ebc1118b8f3da2a1ee8f7fdde15beceef0b2a5672bf84b64d9ba441ad12",
     "wbparser/src/test/resources/fixtures/catalog-search/after-reload-1.json": "d88e8ee4de6468b47ae436aa1da2169eb4978bd30571c0f30b079c5dd363751e",
     "wbparser/src/test/resources/fixtures/catalog-search/after-reload-2.json": "8cba276f11f9bdf86da5d6f5c1b34744dbf4e38eb250269e18562bff19e2bea4",
     "wbparser/src/test/resources/fixtures/catalog-search/baseline-1.json": "7c1f1f84cb71af25b87004799184666a5623bb278a1c4b5e862d3b3749264c92",
@@ -13,11 +13,15 @@
     "wbparser/src/test/resources/fixtures/catalog-search/sort-priceup-2.json": "40335b1af1758dc3bc3d4c431efdef26df9d5c22aedcae3dbd881a5945d98e65"
   },
   "generator": {
-    "scripts/wb-research/generate_proposal.py": "282c6b97f07646ca781e4e90f3663e913fc14de22f518f8cab87dc296f637f4a"
+    "scripts/wb-research/generate_proposal.py": "77b0bd6b9c0bfbcc99b763e1b38671c6b2cd766dd96cf483e132a02e7d0d77ff"
   },
   "investigation": "2026-11-20-wb-catalog-agent",
   "schema": "wb-research/proposal-manifest/v1",
   "sources": {
+    "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/evidence/initial-load.json": "7d225a453b031239a41537fa2e6aa1eb5921f390d7529fd08408f44bd9eea45d",
+    "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/evidence/next-page.json": "0c44b8c9ab5a02e39cad42e8aeae3a1324d3e538bdc1be15c3952cedc5d80757",
+    "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/evidence/sort-by-rating.json": "8180d288c74e44e298a35f344a7906ebf88f4be3edcbb494ec2417c0fa83371c",
+    "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/evidence/validation.json": "c53dba787b027417f9a4569f45ea0f109881472e36a9797dc5664e661d68c741",
     "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/investigation.yaml": "fcf42eb272b52bb1480485954d3c477fe412d3567b6ec1d834de97715547d7ae",
     "devtools/wb-research/investigations/2026-11-20-wb-catalog-agent/validation.yaml": "9484c11740d7fae436f63d139617b92d24f3899c9fb3272419736800bc38933b"
   }

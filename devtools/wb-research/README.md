@@ -1097,13 +1097,17 @@ just research::proposal 2026-11-20-wb-catalog-agent
 ```
 
 **Only a validated contract is eligible.** The record must be `concluded`, it
-must carry a `validation.yaml` for the candidate, and at least one of its claims
-must have reached `validated` or `reproduced`. A claim that is merely
-`observed`, `inconclusive`, `rejected` or `open` is a hypothesis, and code
-generated from a hypothesis is a guess with a confident shape — so the tool
-refuses the record and says which state it holds instead. Experiments below the
-bar produce no fixture and no assertion, and the proposal names what was held
-back.
+must carry a `validation.yaml` for the candidate, at least one of that
+candidate's experiments must have reached `validated` or `reproduced`, and at
+least one claim *those experiments observed* must have reached `validated` or
+`reproduced`. A claim that is merely `observed`, `inconclusive`, `rejected` or
+`open` is a hypothesis, and code generated from a hypothesis is a guess with a
+confident shape — so the tool refuses the record and says which state it holds
+instead. A validated claim about *another* endpoint is not enough either: a
+record holds the claims of every endpoint it saw, and only the ones this
+candidate's own experiments observed are about this candidate's contract.
+Experiments below the bar produce no fixture and no assertion, and the proposal
+names what was held back.
 
 **What it writes**
 
@@ -1112,7 +1116,7 @@ back.
 | `wbparser/src/test/resources/fixtures/catalog-search/<observation>.json` | the sanitized observation: the request as it was made, the shape of the answer and the order of the products |
 | `wbparser/src/test/kotlin/ru/wbparser/infra/http/WbCatalogSearchContractTest.kt` | the regression test: it pins the crawler's request to the fixtures |
 | `devtools/wb-research/proposals/<id>/proposal.md` | the proposal a human reads: the contract, the claim→evidence→assertion table, the known differences, the reviewer's checklist |
-| `devtools/wb-research/proposals/<id>/manifest.json` | the hashes of the record, of the generator and of every written file |
+| `devtools/wb-research/proposals/<id>/manifest.json` | the hashes of the record, of the evidence bundles, of the generator and of every written file |
 
 The fixtures live in the module that owns the contract, so the ordinary
 `./gradlew :wbparser:test` runs them — offline, with no browser and no live
@@ -1141,8 +1145,17 @@ family, `storefront-catalog-search`. A new family is a new entry in that table,
 not a framework: a generator that promises every endpoint of every site is a
 framework nobody can verify.
 
+**One contract has one proposal.** The test and the fixtures belong to the
+contract, not to the investigation that found it, so a second investigation of the
+same contract is refused: it would write the same files and silently invalidate
+the first proposal. The investigation that supersedes the old one removes the old
+proposal first.
+
 **The proposals cannot drift away from the record.** The manifest holds the
 hashes of what was read and what was written, and the gate
 `scripts/ci/check-proposal-fresh.py` compares them with the files on disk. A
-record that changed after the proposal, a generator that changed, or a
-generated file edited by hand each fail the gate, and the fix is to regenerate.
+record that changed after the proposal, an evidence bundle that changed, a
+generator that changed, or a generated file edited by hand each fail the gate,
+and the fix is to regenerate. The gate also compares the manifest with the file
+list the proposal itself carries, so a file deleted from the disk and from the
+manifest together still fails.
